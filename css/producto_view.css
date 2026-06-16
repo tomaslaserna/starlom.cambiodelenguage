@@ -1,0 +1,324 @@
+
+* {
+
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    text-decoration: none;
+    list-style: none;
+
+}
+
+
+
+:root {
+    --bg-color: #ffffff;
+    --text-color: #101828;
+    --card-color: #eef2f7;
+}
+
+
+
+.dark-mode {
+    --bg-color: #0a0f1c;
+    --text-color: #ffffff;
+    --card-color: #101828;
+
+    th, td {
+        color: #FFFFFF;
+    }
+
+    .box {
+        --bg-color: #0c1322;
+    }
+
+    h2 {
+        color: #e4e7ec;
+    }
+
+    p {
+        color: #98a2b3;
+    }
+
+    .claro {
+        display: none;
+    }
+
+    .oscuro {
+        display: block;
+    }
+
+    .block{
+        background: #0c1322;
+        border-top: 5px solid #2563eb;
+    }
+
+    .block a{
+        color: white;
+    }
+
+    .block {
+        box-shadow: rgba(255, 255, 255, 0.1) 0px 50px 100px -20px,
+            rgba(255, 255, 255, 0.1) 0px 30px 60px -30px,
+            rgba(255, 255, 255, 0.3) 0px -2px 6px 0px inset;
+    }
+
+    .block:hover {
+        background-color: rgb(25, 25, 25);
+    }
+
+    .producto-disponible {
+        border: solid rgb(255, 255, 255);
+        color: #ffffff;
+    }
+
+    .producto-disponible:hover {
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
+    }
+
+    .comprar {
+        border: solid darkgreen;
+        color: #ffffff;
+    }
+
+    .comprar:hover {
+        box-shadow: 0 0 20px rgba(0, 100, 0, 0.7);
+    }
+
+    .back {
+        color: rgb(128, 128, 128);
+    }
+}
+
+@media (prefers-color-scheme: dark) {
+    body.dark-mode {
+        --bg-color: #101828;
+        --text-color: #ffffff;
+    }
+
+    th, td {
+        --text-color: #ffffff;
+    }
+
+    .block {
+        --bg-color: black;
+    }
+
+    h2 {
+        --text-color: #e4e7ec;
+    }
+
+    p {
+        --text-color: #98a2b3;
+    }
+
+    .block{
+        background: #101828;
+        border-top: solid #2563eb;
+    }
+
+    .block a{
+        color: white;
+    }
+
+    .block {
+        box-shadow: rgba(129, 129, 239, 0.25) 0px 50px 100px -20px,
+            rgba(255, 255, 255, 0.3) 0px 30px 60px -30px,
+            rgba(40, 148, 255, 0.468) 0px -2px 6px 0px inset;
+    }
+
+    .block:hover {
+        background-color: rgb(25, 25, 25);
+    }
+
+    .producto-disponible {
+        border: solid rgb(255, 255, 255);
+        color: #ffffff;
+    }
+
+    .producto-disponible:hover {
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
+    }
+
+    .comprar {
+        border: solid darkgreen;
+        color: #ffffff;
+    }
+
+    .comprar:hover {
+        box-shadow: 0 0 20px rgba(0, 100, 0, 0.7);
+    }
+
+    .back {
+        color: rgb(128, 128, 128);
+    }
+
+}
+
+body {
+    width: 100%;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+}
+
+
+
+.contenedor-producto {
+    display: grid;
+    grid-template-columns: 90% 90%; 
+    grid-template-rows: 90% 90%;
+    grid-template-areas: 
+        "do tr"
+        "do cu";
+    gap: 50px;
+    padding: 80px;
+    max-width: 100%; 
+    margin: 0 auto;
+    color: white; 
+}
+
+
+/*.foto { 
+    grid-area: do; 
+    display: flex;
+    justify-content: center;
+}*/
+
+.producto-img { 
+    display: block;
+    width: 100%; /* Ahora ocupa el ancho de su columna */
+    height: 100%;
+    border-radius: 20px;
+    transition: 0.3s;
+}
+
+.nombre { 
+    grid-area: tr; 
+    align-self: end; /* Alinea el nombre abajo del área */
+}
+
+.info { 
+    grid-area: cu; 
+}
+
+.producto-img:hover {
+    transform: scale(1.05);
+    box-shadow: 0 10px 20px rgb(255, 0, 0);
+}
+
+
+
+/* El nombre del producto */
+.nombre h2 {
+    font-size: 3.5rem; /* Mucho más grande */
+    margin-bottom: 10px;
+}
+
+/* El precio */
+.info .precio {
+    font-size: 2rem;
+    margin-bottom: 30px;
+}
+
+/* El botón */
+.producto-disponible {
+    padding: 15px 40px; /* Botón más imponente */
+    font-size: 1.2rem;
+    cursor: pointer;
+    border: 2px solid white;
+    background: transparent;
+    color: white;
+    transition: 0.3s;
+}
+
+.producto-disponible:hover {
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+    transform: scale(1.05);
+}
+
+.comprar {
+    padding: 15px 40px;
+    font-size: 1.2rem;
+    font-style: capitalize;
+    cursor: pointer;
+    border: 2px solid greenyellow;
+    background: green;
+    color: white;
+    transition: 0.3s;
+    border-radius: 15px;
+}
+
+.comprar:hover {
+    box-shadow: 0 0 20px rgba(172, 255, 47, 0.4);
+    transform: scale(1.05);
+}
+
+.luyso {
+    width: 30px;
+    top: 0px;
+    position: fixed;
+    display: inline;
+    align-items: center;
+    z-index: 1001;
+    transition: 0.3s;
+}
+
+.back {
+    color: rgb(80, 80, 80);
+    font-size: 20px;
+}
+
+/*@keyframes appear {
+    from {
+        opacity: 0;
+        scale: 0;
+    }
+    to {
+        opacity: 1;
+        scale: 1;
+    }
+}
+
+.block {
+    animation: appear linear;
+    animation-timeline: view();
+    animation-range: entry 0% cover 30%;
+}
+
+.view {
+    gap: 50px;
+    display: flex;
+    align-items: center;
+    align-content: center;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.block {
+    height: 400px;
+    width: 300px;
+    display: flex;
+    align-items: center;
+    align-content: center;
+    flex-direction: column;
+    transition: 0.5s;
+    box-shadow: rgba(50, 50, 93, 0.25) 0px 50px 100px -20px,
+        rgba(0, 0, 0, 0.3) 0px 30px 60px -30px,
+        rgba(10, 37, 64, 0.35) 0px -2px 6px 0px inset;
+}
+
+.block{
+    background: #ffffff;
+    border-top: 5px solid #2563eb;
+    border-radius: 10px;
+}
+
+.block:hover {
+    transform: scale(1.05);
+    background-color: rgb(208, 208, 208);
+}
+
+.block a{
+    color: rgb(0, 0, 0);
+    font-weight: 800;
+}*/

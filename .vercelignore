@@ -1,0 +1,12 @@
+.env
+api/uploads/comprobantes/*
+api/uploads/recibos/*
+api/phpqrcode/cache/**
+api/facturacion/src/afip.php-master/examples/
+# Solo se deployan los certificados de PRUEBA (homologación). El certificado
+# de producción NUNCA va al repo ni al deploy: cargarlo en las env vars
+# AFIP_CERT / AFIP_KEY (Vercel -> Environment Variables).
+api/fpdf186/doc/
+api/fpdf186/tutorial/
+api/fpdf186/makefont/
+redme.txt

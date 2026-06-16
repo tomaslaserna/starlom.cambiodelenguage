@@ -1,0 +1,468 @@
+/* factura_manual.css */
+
+.fm-layout {
+    display: flex;
+    gap: 2rem;
+    max-width: 1200px;
+    margin: 1rem auto 3rem;
+    padding: 0 1.5rem;
+    align-items: flex-start;
+}
+
+/* ── Columna izquierda ───────────────────────────────── */
+.fm-form-col {
+    flex: 1;
+    min-width: 0;
+}
+
+.fm-header {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.fm-back {
+    font-size: 14px;
+    color: #2563eb;
+    text-decoration: none;
+}
+
+.fm-titulo {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0;
+}
+
+.fm-section {
+    background-color: var(--card-color);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.fm-section-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--text-color);
+    opacity: .5;
+    margin: 0 0 1rem 0;
+}
+
+/* ── Tipo de cliente ─────────────────────────────────── */
+.fm-tipo-grupo {
+    display: flex;
+    gap: .75rem;
+}
+
+.fm-tipo-opcion {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: .5rem;
+    padding: .75rem;
+    border: 1.5px solid rgba(0,0,0,.15);
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: .2s;
+    color: var(--text-color);
+    line-height: 1.4;
+}
+
+
+
+.fm-tipo-opcion input { display: none; }
+
+.fm-tipo-opcion:has(input:checked) {
+    border-color: #2563eb;
+    background-color: rgba(0, 94, 216, .07);
+    color: #2563eb;
+}
+
+.fm-tipo-opcion small {
+    font-size: 11px;
+    opacity: .7;
+    display: block;
+}
+
+/* ── Campos ──────────────────────────────────────────── */
+.fm-campo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: .75rem;
+}
+
+.fm-campo label {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: .7;
+}
+
+select[value="none"] {
+    background-color: #ff000058;
+}
+
+input[type="date"],
+input[type="datetime-local"] {
+    width: 180px;
+    color-scheme: none;
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    transition: border-color .2s;
+    border: 1.5px solid rgba(0,0,0,.15);
+}
+
+input[type="text"],
+input[type="number"],
+#input-producto,
+select {
+    padding: 9px 12px;
+    border: 1.5px solid rgba(0,0,0,.15);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    transition: border-color .2s;
+    width: 100%;
+}
+
+textarea {
+    max-width: 100%;
+    min-width: 100%;
+    min-height: 100px;
+}
+
+#input-producto {
+    flex: 1;
+    min-width: 160px;
+    width: auto;
+}
+
+input:focus, select:focus {
+    outline: none;
+    border-color: #2563eb;
+}
+
+input:hover, select:hover {
+    opacity: 0.7;
+}
+
+/* ── Agregar producto ────────────────────────────────── */
+.fm-agregar-producto {
+    display: flex;
+    gap: .5rem;
+    margin-bottom: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.fm-agregar-producto select { flex: 1; min-width: 140px; }
+
+.fm-agregar-producto input {
+    width: 70px;
+    flex-shrink: 0;
+    -moz-appearance: textfield;
+}
+
+.fm-agregar-producto input::-webkit-outer-spin-button,
+.fm-agregar-producto input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+.fm-btn-agregar {
+    padding: 9px 16px;
+    background-color: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: .2s;
+    flex-shrink: 0;
+}
+
+.fm-btn-agregar:hover { background-color: #1d4ed8; }
+
+/* ── Tabla ───────────────────────────────────────────── */
+.fm-tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.fm-tabla th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    opacity: .5;
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(0,0,0,.08);
+    color: var(--text-color);
+}
+
+.fm-tabla td {
+    padding: 10px 8px;
+    border-bottom: 1px solid rgba(0,0,0,.05);
+    color: var(--text-color);
+    vertical-align: middle;
+}
+
+.fm-tabla-vacia {
+    text-align: center;
+    opacity: .4;
+    padding: 2rem !important;
+}
+
+.fm-btn-eliminar {
+    background: none;
+    border: none;
+    color: #d32f2f;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: .2s;
+}
+
+.fm-btn-eliminar:hover { background-color: rgba(211, 47, 47, .1); }
+
+/* ── Totales ─────────────────────────────────────────── */
+.fm-totales { padding-top: 1rem; }
+
+.fm-total-fila {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    padding: 6px 0;
+    color: var(--text-color);
+    opacity: .8;
+}
+
+.fm-total-final {
+    font-size: 18px;
+    font-weight: 700;
+    opacity: 1;
+    border-top: 1.5px solid rgba(0,0,0,.1);
+    margin-top: .5rem;
+    padding-top: .75rem;
+}
+
+/* ── Botón emitir ────────────────────────────────────── */
+.fm-btn-emitir {
+    width: 100%;
+    padding: 14px;
+    background-color: #2563eb;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: .2s;
+    margin-top: .5rem;
+}
+
+.fm-btn-emitir:hover:not(:disabled) { background-color: #1d4ed8; }
+
+.fm-btn-emitir:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+}
+
+/* ── Columna derecha: preview ────────────────────────── */
+.fm-preview-col {
+    width: 340px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 5rem;
+    background-color: var(--card-color);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.fm-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(0,0,0,.08);
+}
+
+.fm-preview-header h2 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-color);
+}
+
+.fm-badge {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background-color: rgba(0, 94, 216, .1);
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.fm-preview-body { padding: 1.25rem; }
+
+.fm-preview-empresa {
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+    gap: 2px;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(0,0,0,.08);
+    color: var(--text-color);
+}
+
+.fm-preview-cliente {
+    font-size: 13px;
+    margin-bottom: 1rem;
+    color: var(--text-color);
+}
+
+.fm-preview-cliente p { margin: 0 0 4px 0; }
+
+.fm-preview-tabla th,
+.fm-preview-tabla td { font-size: 12px; }
+
+.fm-preview-totales { margin-top: 1rem; }
+
+/* ── Dark mode ───────────────────────────────────────── */
+.dark-mode {
+    --bg-color: #0a0f1c;
+    --text-color: #ffffff;
+    --card-color: #101828;
+
+    input[type="date"],
+    input[type="datetime-local"] {
+        color-scheme: dark;
+    }
+
+}
+
+@media (prefers-color-scheme: dark) {
+    body.dark-mode {
+        --bg-color: #101828;
+        --text-color: #ffffff;
+    }
+
+}
+.dark-mode .fm-tipo-opcion { border-color: rgba(255,255,255,.2); }
+.dark-mode input, .dark-mode select { border-color: rgba(255,255,255,.2); }
+.dark-mode .fm-tabla th,
+.dark-mode .fm-tabla td { border-color: rgba(255,255,255,.06); }
+.dark-mode .fm-total-final { border-color: rgba(255,255,255,.15); }
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 900px) {
+    .fm-layout { flex-direction: column; }
+    .fm-preview-col { width: 100%; position: relative; top: 0; }
+    .fm-tipo-grupo { flex-direction: column; }
+}
+
+/* ── Tabla facturas de referencia (NC / ND) ──────────── */
+.fm-tabla-div {
+    display: none;
+    opacity: 0;
+    margin-bottom: .75rem;
+    border: 1.5px solid rgba(0,0,0,.1);
+    border-radius: 10px;
+    padding: 1rem;
+    /*transition: all 5s;*/
+}
+
+.fm-tabla-div.activo { display: block; opacity: 1; }
+
+.fm-tabla-div-label {
+    font-size: 13px;
+    color: var(--text-color);
+    opacity: .8;
+    margin: .75rem 0 .5rem;
+}
+
+/* ── Fila de campos ──────────────────────────────────── */
+.fm-campo-fila {
+    display: flex;
+    gap: .75rem;
+    flex-wrap: wrap;
+}
+
+.fm-campo-fila .fm-campo {
+    flex: 1;
+    min-width: 120px;
+    margin-bottom: 0;
+}
+
+.dark-mode .fm-tabla-div { border-color: rgba(255,255,255,.12); }
+
+.fm-btn-pdf {
+    display: inline-block;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #2563eb;
+    border: 1.5px solid #2563eb;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: .2s;
+}
+
+.fm-btn-pdf:hover {
+    background-color: #2563eb;
+    color: #fff;
+}
+
+/* ── Secciones colapsables ───────────────────────────── */
+.fm-collapsible {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 0 !important;
+}
+
+.fm-chevron {
+    font-size: 11px;
+    opacity: 0.45;
+    display: inline-block;
+    transition: transform 0.3s ease;
+}
+
+.fm-collapsible.fm-collapsed .fm-chevron {
+    transform: rotate(-90deg);
+}
+
+.fm-section-body {
+    overflow: hidden;
+    max-height: 2000px;
+    opacity: 1;
+    margin-top: 1rem;
+    transition: max-height 0.35s ease, opacity 0.25s ease, margin-top 0.3s ease;
+}
+
+.fm-section-body.fm-collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+}
+
+/**/

@@ -1,0 +1,18 @@
+{
+  "functions": {
+    "api/index.php": { "runtime": "vercel-php@0.7.2" }
+  },
+  "routes": [
+    { "src": "/", "status": 308, "headers": { "Location": "/frontend/index.php" } },
+    { "src": "/([a-zA-Z0-9_.-]+\\.php)$",      "dest": "/api/index.php" },
+    { "src": "/frontend/(.+\\.php)$",          "dest": "/api/index.php" },
+    { "src": "/php/(.+\\.php)$",               "dest": "/api/index.php" },
+    { "src": "/facturacion/(.+\\.php)$",       "dest": "/api/index.php" },
+    { "src": "/integracion/(.+\\.php)$",       "dest": "/api/index.php" },
+    { "src": "/css/(.*)",                      "dest": "/css/$1" },
+    { "src": "/js/(.*)",                       "dest": "/js/$1" },
+    { "src": "/imagenesIndex/(.*)",            "dest": "/imagenesIndex/$1" },
+    { "src": "/imagenesSign/(.*)",             "dest": "/imagenesSign/$1" },
+    { "src": "/imagenesStock/(.*)",            "dest": "/imagenesStock/$1" }
+  ]
+}

@@ -1,0 +1,185 @@
+/* ── Modo Administrador de ventas_registradas.php ─────────────────────────
+   Prefijo vam-. Los modales se generan desde js/ventas_admin_mode.js. */
+
+/* Botón de entrada */
+.vam-btn-admin {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 18px; border-radius: 8px;
+    border: 1px solid rgba(220, 38, 38, .45);
+    background: rgba(220, 38, 38, .08); color: #dc2626;
+    font-size: .85rem; font-weight: 700; cursor: pointer;
+    font-family: inherit; transition: background .15s;
+}
+.vam-btn-admin:hover { background: rgba(220, 38, 38, .16); }
+.dark-mode .vam-btn-admin { color: #f87171; border-color: rgba(248, 113, 113, .4); }
+
+/* Barra de modo activo */
+.vam-bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    margin: 0 0 16px; padding: 12px 18px;
+    border: 1px solid rgba(220, 38, 38, .4); border-radius: 12px;
+    background: rgba(220, 38, 38, .07);
+}
+.vam-bar-badge { font-weight: 800; font-size: .82rem; letter-spacing: .04em; color: #dc2626; }
+.dark-mode .vam-bar-badge { color: #f87171; }
+.vam-bar-hint { font-size: .8rem; opacity: .65; flex: 1; min-width: 200px; }
+.vam-bar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Botones */
+.vam-btn {
+    padding: 9px 18px; border-radius: 8px; border: none;
+    font-size: .88rem; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: opacity .15s, background .15s;
+}
+.vam-btn--sm      { padding: 6px 12px; font-size: .78rem; }
+.vam-btn--primary { background: var(--color-primario, #3b82f6); color: #fff; }
+.vam-btn--danger  { background: #dc2626; color: #fff; }
+.vam-btn--ghost   {
+    background: transparent; color: inherit;
+    border: 1px solid rgba(128, 128, 128, .35);
+}
+.vam-btn--primary:hover, .vam-btn--danger:hover { opacity: .85; }
+.vam-btn--ghost:hover { background: rgba(128, 128, 128, .12); }
+.vam-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Botón de edición en cada fila */
+.btn-admin-edit {
+    background: rgba(220, 38, 38, .1) !important;
+    color: #dc2626 !important;
+    border: 1px solid rgba(220, 38, 38, .3) !important;
+}
+.dark-mode .btn-admin-edit { color: #f87171 !important; }
+
+/* Overlay y modal */
+.vam-overlay {
+    position: fixed; inset: 0; z-index: 1200;
+    background: rgba(0, 0, 0, .55);
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+}
+.vam-modal {
+    background: var(--bg-color, #fff); color: inherit;
+    border-radius: 16px; width: 100%;
+    max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .35);
+}
+.dark-mode .vam-modal { background: #0f172a; border: 1px solid rgba(255, 255, 255, .1); }
+
+.vam-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 24px; border-bottom: 1px solid rgba(128, 128, 128, .2);
+}
+.vam-modal-header h2 { margin: 0; font-size: 1.05rem; }
+.vam-modal-header--danger h2 { color: #dc2626; }
+.dark-mode .vam-modal-header--danger h2 { color: #f87171; }
+.vam-close {
+    background: none; border: none; cursor: pointer;
+    font-size: 1rem; color: inherit; opacity: .5; padding: 4px 8px;
+}
+.vam-close:hover { opacity: 1; }
+
+.vam-modal-body { padding: 20px 24px; font-size: .92rem; line-height: 1.65; }
+.vam-modal-body p { margin: 0 0 12px; }
+.vam-warn-box {
+    background: rgba(220, 38, 38, .08);
+    border: 1px solid rgba(220, 38, 38, .35);
+    border-radius: 10px; padding: 12px 16px;
+}
+.vam-modal-footer {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 16px 24px; border-top: 1px solid rgba(128, 128, 128, .2);
+}
+
+/* Formulario */
+.vam-label {
+    display: block; font-size: .76rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em;
+    opacity: .55; margin-bottom: 5px;
+}
+.vam-input {
+    width: 100%; box-sizing: border-box;
+    padding: 9px 12px; border-radius: 8px;
+    border: 1px solid rgba(128, 128, 128, .35);
+    background: transparent; color: inherit;
+    font-size: .9rem; font-family: inherit;
+}
+.vam-input:focus { outline: none; border-color: var(--color-primario, #3b82f6); }
+.dark-mode .vam-input option { background: #0f172a; }
+.vam-form-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px;
+}
+@media (max-width: 560px) { .vam-form-grid { grid-template-columns: 1fr; } }
+.vam-msg { min-height: 18px; font-size: .83rem; color: #dc2626; margin: 10px 0 0; }
+.dark-mode .vam-msg { color: #f87171; }
+
+/* Registro de actividad */
+.vam-reg-scroll { max-height: 420px; overflow-y: auto; border: 1px solid rgba(128,128,128,.2); border-radius: 10px; }
+.vam-reg-tabla { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.vam-reg-tabla th {
+    position: sticky; top: 0;
+    padding: 8px 12px; text-align: left;
+    font-size: .7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; opacity: .85;
+    background: var(--bg-color, #fff);
+    border-bottom: 1px solid rgba(128, 128, 128, .25);
+}
+.dark-mode .vam-reg-tabla th { background: #0f172a; }
+.vam-reg-tabla td { padding: 8px 12px; border-bottom: 1px solid rgba(128, 128, 128, .12); vertical-align: middle; }
+.vam-reg-tabla tr:last-child td { border-bottom: none; }
+
+.vam-reg-producto {
+    font-size: .98rem; font-weight: 700;
+    margin: 14px 0 12px; padding-bottom: 10px;
+    border-bottom: 1px solid rgba(128, 128, 128, .2);
+}
+
+/* Grid antes/después (mismo diseño que registro_stock.php) */
+.vam-cambios-grid {
+    display: grid; grid-template-columns: 1fr 40px 1fr;
+    border: 1px solid rgba(128, 128, 128, .25);
+    border-radius: 10px; overflow: hidden;
+}
+.vam-cambios-header {
+    padding: 8px 14px; font-size: .7rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .06em; opacity: .5;
+    background: rgba(128, 128, 128, .1);
+    border-bottom: 1px solid rgba(128, 128, 128, .2);
+}
+.vam-cambios-arrow-header {
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(128, 128, 128, .1); opacity: .4;
+    border-bottom: 1px solid rgba(128, 128, 128, .2);
+}
+.vam-cambios-cell {
+    padding: 9px 14px; font-size: .87rem;
+    border-bottom: 1px solid rgba(128, 128, 128, .15);
+    word-break: break-word;
+}
+.vam-cambios-arrow-cell {
+    display: flex; align-items: center; justify-content: center;
+    border-bottom: 1px solid rgba(128, 128, 128, .15); opacity: .35;
+}
+.vam-cambios-cell.vam-last, .vam-cambios-arrow-cell.vam-last { border-bottom: none; }
+.vam-cell-label {
+    display: block; font-size: .64rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em;
+    opacity: .45; margin-bottom: 2px;
+}
+.vam-val-antes   { color: #dc2626; }
+.vam-val-despues { color: #16a34a; }
+.dark-mode .vam-val-antes   { color: #f87171; }
+.dark-mode .vam-val-despues { color: #4ade80; }
+
+/* Toast */
+.vam-toast {
+    position: fixed; bottom: 28px; left: 50%;
+    transform: translate(-50%, 16px); opacity: 0;
+    z-index: 1300; padding: 12px 22px;
+    border-radius: 10px; font-size: .88rem; font-weight: 600;
+    background: #16a34a; color: #fff;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .25);
+    transition: transform .3s, opacity .3s;
+    max-width: 90vw;
+}
+.vam-toast--error   { background: #dc2626; }
+.vam-toast--visible { transform: translate(-50%, 0); opacity: 1; }

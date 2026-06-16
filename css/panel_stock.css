@@ -1,0 +1,84 @@
+/* panel_stock.css — Estilos específicos de stock.php */
+
+/* ── Action cards ─────────────────────────────────────────────────── */
+.action-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 600px) {
+    .action-cards {
+        grid-template-columns: 1fr;
+    }
+}
+
+.action-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-height: 88px;
+    padding: 20px 24px;
+    border-radius: 14px;
+    background: #fff;
+    border: 1px solid rgba(0, 85, 204, 0.12);
+    border-left: 4px solid #2563eb;
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
+    color: var(--text-color);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dark-mode .action-card {
+    background: #101828;
+    border-color: rgba(255, 255, 255, 0.05);
+    border-left-color: #1d4ed8;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
+}
+
+.action-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(0, 85, 204, 0.14);
+}
+
+.dark-mode .action-card:hover {
+    box-shadow: 0 6px 24px rgba(0, 85, 204, 0.22);
+}
+
+.action-card-title {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 3px;
+    color: var(--text-color);
+    line-height: 1.25;
+}
+
+.action-card-sub {
+    display: block;
+    font-size: 12px;
+    color: #475467;
+    line-height: 1.35;
+}
+
+.dark-mode .action-card-sub {
+    color: #98a2b3;
+}
+
+.action-card-arrow {
+    font-size: 22px;
+    font-weight: 300;
+    color: #2563eb;
+    flex-shrink: 0;
+    margin-left: 16px;
+    transition: transform 0.15s ease;
+}
+
+.dark-mode .action-card-arrow {
+    color: #60a5fa;
+}
+
+.action-card:hover .action-card-arrow {
+    transform: translateX(4px);
+}

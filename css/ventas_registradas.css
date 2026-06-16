@@ -1,0 +1,647 @@
+/* ventas_registradas.css */
+
+/* ── Page layout ─────────────────────────────────────── */
+body {
+    min-height: 100vh;
+    padding-right: 20px;
+    padding-bottom: 50px;
+    padding-left: 20px;
+    /* padding-top viene de styleEmpleado.css (102px) — no usar shorthand aquí */
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 28px;
+    font-size: 1.8rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+
+/* ── Cards ───────────────────────────────────────────── */
+.filtros_facturas,
+.tabla_registro {
+    background-color: var(--card-color, #ffffff);
+    border: 1px solid var(--border-color, #e4e7ec);
+    border-radius: var(--radius-md, 18px);
+    padding: 20px 24px;
+    margin: 0 auto 24px;
+    max-width: 1340px;
+    box-shadow: var(--shadow-sm, 0 12px 34px rgba(16, 24, 40, 0.04));
+}
+
+.filtros_facturas h4,
+.tabla_registro h3 {
+    margin-bottom: 14px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    opacity: 0.5;
+}
+
+/* ── Global resumen (above filters) ─────────────────── */
+.resumen-global {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    max-width: 1340px;
+    margin: 0 auto 16px;
+    padding: 16px 24px;
+    background-color: var(--card-color, #ffffff);
+    border: 1px solid var(--border-color, #e4e7ec);
+    border-radius: var(--radius-md, 18px);
+    box-shadow: var(--shadow-sm, 0 12px 34px rgba(16, 24, 40, 0.04));
+    align-items: flex-start;
+}
+
+.rg-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.resumen-global-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    opacity: 0.45;
+}
+
+.rg-periodo-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.rg-periodo-label {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    opacity: 0.5;
+    white-space: nowrap;
+}
+
+.rg-periodo-select {
+    padding: 4px 8px;
+    border: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.15));
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 0.78rem;
+    background: var(--bg-color);
+    color: var(--text-color);
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.rg-periodo-select:focus { border-color: var(--primary, #2563eb); }
+
+/* ── Filtros collapsible ─────────────────────────────── */
+.filtros-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.filtros-header h4 {
+    margin-bottom: 0;
+}
+
+.filtros-toggle-btn {
+    flex-shrink: 0;
+    background: none;
+    border: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.18));
+    border-radius: 7px;
+    padding: 4px 12px;
+    font-family: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--text-color);
+    transition: background-color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+}
+
+.filtros-toggle-btn:hover {
+    background-color: rgba(37, 99, 235, 0.1);
+    border-color: var(--primary, #2563eb);
+}
+
+.filtros-body {
+    overflow: hidden;
+    max-height: 1000px;
+    opacity: 1;
+    margin-top: 14px;
+    transition: max-height 0.3s ease, opacity 0.2s ease, margin-top 0.25s ease;
+}
+
+.filtros_facturas.filtros-collapsed .filtros-body {
+    max-height: 0;
+    opacity: 0;
+    margin-top: 0;
+    pointer-events: none;
+}
+
+/* ── Filter fields ───────────────────────────────────── */
+.campo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.campo label {
+    font-size: 0.72rem;
+    font-weight: 500;
+    opacity: 0.65;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.campo input,
+.campo select {
+    padding: 7px 10px;
+    border: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.15));
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.875rem;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    transition: border-color 0.2s;
+    outline: none;
+}
+
+.campo input:focus,
+.campo select:focus {
+    border-color: var(--primary, #2563eb);
+}
+
+.campo-fila {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.campo-fila .campo {
+    min-width: 118px;
+    flex: 1;
+}
+
+/* ── Table section ───────────────────────────────────── */
+.tabla-div-labels {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.tabla-div-label {
+    font-size: 0.88rem;
+    opacity: 0.65;
+    margin: 0;
+}
+
+.tabla {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.tabla thead th {
+    text-align: left;
+    padding: 9px 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    opacity: 0.5;
+    border-bottom: 2px solid var(--border-color, rgba(0, 0, 0, 0.1));
+    white-space: nowrap;
+}
+
+.tabla tbody tr {
+    border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.06));
+    transition: background-color 0.15s;
+}
+
+.tabla tbody tr:not(.fila-detalle):hover {
+    background-color: rgba(37, 99, 235, 0.06);
+}
+
+.tabla tbody td {
+    padding: 10px 12px;
+    vertical-align: middle;
+}
+
+/* ── Empty / loading states ──────────────────────────── */
+.tabla-vacia {
+    text-align: center;
+    padding: 36px 20px !important;
+    opacity: 0.45;
+    font-style: italic;
+    font-size: 0.9rem;
+}
+
+.tabla-cargando { opacity: 0.55; }
+.tabla-error    { color: #dc2626 !important; opacity: 1 !important; }
+
+/* ── Expand button ───────────────────────────────────── */
+.td-expand { width: 30px; }
+
+.btn-expand {
+    background: none;
+    border: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.18));
+    border-radius: 5px;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-size: 0.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-color);
+    transition: background-color 0.15s, border-color 0.15s;
+    line-height: 1;
+}
+
+.btn-expand:hover,
+.btn-expand-activo {
+    background-color: rgba(37, 99, 235, 0.14);
+    border-color: var(--primary, #2563eb);
+}
+
+/* ── Detail row ──────────────────────────────────────── */
+.fila-detalle > .td-detalle {
+    padding: 14px 20px;
+    background-color: var(--surface-color, rgba(0, 0, 0, 0.025));
+    border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.06));
+}
+
+.tabla-detalle {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+}
+
+.tabla-detalle th,
+.tabla-detalle td {
+    padding: 6px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color, rgba(0, 0, 0, 0.07));
+}
+
+.tabla-detalle thead th {
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.5;
+    border-bottom: 2px solid var(--border-color, rgba(0, 0, 0, 0.1));
+}
+
+.tabla-detalle td:nth-child(2),
+.tabla-detalle td:nth-child(3),
+.tabla-detalle td:nth-child(4) { text-align: right; }
+
+.tabla-detalle th:nth-child(2),
+.tabla-detalle th:nth-child(3),
+.tabla-detalle th:nth-child(4) { text-align: right; }
+
+/* ── Cell helpers ────────────────────────────────────── */
+.td-id    { width: 44px; opacity: 0.38; font-size: 0.77rem; }
+.td-nro   { font-family: monospace; font-size: 0.86rem; white-space: nowrap; }
+.td-monto { text-align: right; font-weight: 600; white-space: nowrap; }
+.td-fecha { white-space: nowrap; }
+.txt-dni  { opacity: 0.45; font-size: 0.73rem; }
+
+/* ── Financial column visibility ─────────────────────── */
+.hide-financiero .col-financiero { display: none; }
+
+/* ── Grupo toggle ────────────────────────────────────── */
+.fila-grupo.grp-hidden { display: none !important; }
+
+/* ── Divisor rows ─────────────────────────────────────── */
+.fila-divisor .td-divisor {
+    padding: 10px 12px 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.45;
+    border-top: 2px solid var(--border-color, rgba(0, 0, 0, 0.1));
+    background-color: var(--surface-color, rgba(0, 0, 0, 0.02));
+}
+
+.btn-grupo-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.6rem;
+    color: inherit;
+    opacity: 0.6;
+    padding: 0 5px 0 0;
+    vertical-align: middle;
+    line-height: 1;
+    transition: opacity 0.15s;
+}
+
+.btn-grupo-toggle:hover { opacity: 1; }
+
+/* ── Mini-calculadora por grupo ───────────────────────── */
+.fila-resumen-grupo > td {
+    padding: 6px 12px 12px;
+    background: none;
+}
+
+.resumen-mini {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    padding-top: 4px;
+}
+
+.resumen-mini-item {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 12px;
+    border-radius: 9px;
+    background-color: var(--bg-color);
+    border: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.08));
+    min-width: 96px;
+}
+
+.resumen-mini-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    opacity: 0.45;
+    margin-bottom: 2px;
+}
+
+.resumen-mini-valor {
+    font-size: 0.88rem;
+    font-weight: 700;
+}
+
+.resumen-mini-pendiente .resumen-mini-valor { color: #92400e; }
+.resumen-mini-vencido   .resumen-mini-valor { color: #991b1b; }
+
+.dark-mode .resumen-mini-pendiente .resumen-mini-valor { color: #fde68a; }
+.dark-mode .resumen-mini-vencido   .resumen-mini-valor { color: #fca5a5; }
+
+/* ── Tipo badges ─────────────────────────────────────── */
+.badge-tipo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 7px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 0.75rem;
+    min-width: 28px;
+    min-height: 22px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.badge-tipo-a      { background: #dbeafe; color: #1e40af; }
+.badge-tipo-b      { background: #dcfce7; color: #166534; }
+.badge-tipo-nc     { background: #fef9c3; color: #854d0e; }
+.badge-tipo-nd     { background: #fce7f3; color: #9d174d; }
+.badge-tipo-remito { background: #f3f0ff; color: #5b21b6; border: 1.5px solid #ddd6fe; }
+
+/* ── Cobro badges (display-only) ─────────────────────── */
+.badge-cobro {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.77rem;
+    font-weight: 600;
+    cursor: default;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.badge-cobro-recibido   { background: #dcfce7; color: #166534; }
+.badge-cobro-pendiente  { background: #fef3c7; color: #92400e; }
+.badge-cobro-en_proceso { background: #dbeafe; color: #1e40af; }
+.badge-cobro-vencido    { background: #fee2e2; color: #991b1b; }
+.badge-cobro-na         { opacity: 0.35; font-size: 0.85rem; }
+
+/* ── Seguimiento badges ───────────────────────────────── */
+.badge-seg {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.77rem;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.15s, transform 0.1s;
+    white-space: nowrap;
+}
+
+.badge-seg:hover { opacity: 0.82; transform: scale(1.05); }
+
+.badge-seg-facturada    { background: #dcfce7; color: #166534; }
+.badge-seg-no_facturada { background: #fef3c7; color: #92400e; }
+
+/* ── Pedido badges ────────────────────────────────────── */
+.badge-ped {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 0.73rem;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.15s, transform 0.1s;
+    white-space: nowrap;
+}
+
+.badge-ped:hover { opacity: 0.82; transform: scale(1.05); }
+
+/* Display-only pedido badge (standalone remito rows) */
+.badge-ped[data-id=""] { cursor: default; opacity: 0.55; }
+.badge-ped[data-id=""]:hover { opacity: 0.55; transform: none; }
+
+.badge-ped-pendiente_armado  { background: #fef3c7; color: #92400e; }
+.badge-ped-pendiente_entrega { background: #dbeafe; color: #1e40af; }
+.badge-ped-recibido          { background: #dcfce7; color: #166534; }
+
+/* ── Seguimiento popover active states ────────────────── */
+.seg-opt-facturada.cobro-opcion-activo    { background: #dcfce7; color: #166534; font-weight: 700; }
+.seg-opt-no_facturada.cobro-opcion-activo { background: #fef3c7; color: #92400e; font-weight: 700; }
+
+/* ── Pedido popover active states ─────────────────────── */
+.ped-opt-pendiente_armado.cobro-opcion-activo  { background: #fef3c7; color: #92400e; font-weight: 700; }
+.ped-opt-pendiente_entrega.cobro-opcion-activo { background: #dbeafe; color: #1e40af; font-weight: 700; }
+.ped-opt-recibido.cobro-opcion-activo          { background: #dcfce7; color: #166534; font-weight: 700; }
+
+/* ── PDF / Remito buttons ────────────────────────────── */
+.td-pdf {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: nowrap;
+}
+
+.btn-pdf {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: opacity 0.15s;
+    white-space: nowrap;
+}
+
+.btn-pdf:hover  { opacity: 0.74; }
+
+.btn-pdf-fac { background: #e0e7ff; color: #3730a3; }
+.btn-pdf-rem { background: #f0fdf4; color: #166534; border: 1.5px solid #86efac; }
+.btn-gen-remito {
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1.5px solid #fed7aa;
+    cursor: pointer;
+    font-family: inherit;
+}
+.btn-gen-remito:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Cobro popover ───────────────────────────────────── */
+.cobro-popover {
+    position: absolute;
+    z-index: 9999;
+    background-color: var(--bg-color, #fff);
+    border: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.14));
+    border-radius: 11px;
+    padding: 6px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.13);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 134px;
+}
+
+.cobro-opcion {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    background: transparent;
+    color: var(--text-color);
+    transition: background-color 0.12s;
+}
+
+.cobro-opcion:hover               { background-color: rgba(37, 99, 235, 0.11); }
+
+.cobro-opt-recibido.cobro-opcion-activo   { background: #dcfce7; color: #166534; font-weight: 700; }
+.cobro-opt-pendiente.cobro-opcion-activo  { background: #fef3c7; color: #92400e; font-weight: 700; }
+.cobro-opt-en_proceso.cobro-opcion-activo { background: #dbeafe; color: #1e40af; font-weight: 700; }
+.cobro-opt-vencido.cobro-opcion-activo    { background: #fee2e2; color: #991b1b; font-weight: 700; }
+
+/* ── Resumen totals ──────────────────────────────────── */
+#resumen-facturas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.1));
+}
+
+.resumen-item {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 16px;
+    border-radius: 10px;
+    background-color: var(--bg-color);
+    border: 1.5px solid var(--border-color, rgba(0, 0, 0, 0.09));
+    min-width: 136px;
+}
+
+.resumen-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    opacity: 0.5;
+    margin-bottom: 4px;
+}
+
+.resumen-valor {
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.resumen-cobrado  .resumen-valor { color: #166534; }
+.resumen-pendiente .resumen-valor { color: #92400e; }
+.resumen-vencido  .resumen-valor { color: #991b1b; }
+
+/* ── Dark mode ───────────────────────────────────────── */
+.dark-mode .badge-tipo-a      { background: #1e3a8a; color: #93c5fd; }
+.dark-mode .badge-tipo-b      { background: #14532d; color: #86efac; }
+.dark-mode .badge-tipo-nc     { background: #4d3800; color: #fde68a; }
+.dark-mode .badge-tipo-nd     { background: #500724; color: #fbcfe8; }
+.dark-mode .badge-tipo-remito { background: #2e1065; color: #c4b5fd; border-color: #4c1d95; }
+
+.dark-mode .badge-cobro-recibido   { background: #14532d; color: #86efac; }
+.dark-mode .badge-cobro-pendiente  { background: #4d3800; color: #fde68a; }
+.dark-mode .badge-cobro-en_proceso { background: #1e3a8a; color: #93c5fd; }
+.dark-mode .badge-cobro-vencido    { background: #7f1d1d; color: #fca5a5; }
+
+.dark-mode .btn-pdf-fac { background: #312e81; color: #a5b4fc; }
+.dark-mode .btn-pdf-rem { background: #14532d; color: #86efac; border-color: #166534; }
+.dark-mode .btn-gen-remito { background: #431407; color: #fb923c; border-color: #9a3412; }
+
+.dark-mode .cobro-opt-recibido.cobro-opcion-activo   { background: #14532d; color: #86efac; }
+.dark-mode .cobro-opt-pendiente.cobro-opcion-activo  { background: #4d3800; color: #fde68a; }
+.dark-mode .cobro-opt-en_proceso.cobro-opcion-activo { background: #1e3a8a; color: #93c5fd; }
+.dark-mode .cobro-opt-vencido.cobro-opcion-activo    { background: #7f1d1d; color: #fca5a5; }
+
+.dark-mode .resumen-cobrado   .resumen-valor { color: #86efac; }
+.dark-mode .resumen-pendiente .resumen-valor { color: #fde68a; }
+.dark-mode .resumen-vencido   .resumen-valor { color: #fca5a5; }
+
+.dark-mode .badge-seg-facturada    { background: #14532d; color: #86efac; }
+.dark-mode .badge-seg-no_facturada { background: #4d3800; color: #fde68a; }
+
+.dark-mode .badge-ped-pendiente_armado  { background: #4d3800; color: #fde68a; }
+.dark-mode .badge-ped-pendiente_entrega { background: #1e3a8a; color: #93c5fd; }
+.dark-mode .badge-ped-recibido          { background: #14532d; color: #86efac; }
+
+.dark-mode .seg-opt-facturada.cobro-opcion-activo    { background: #14532d; color: #86efac; }
+.dark-mode .seg-opt-no_facturada.cobro-opcion-activo { background: #4d3800; color: #fde68a; }
+
+.dark-mode .ped-opt-pendiente_armado.cobro-opcion-activo  { background: #4d3800; color: #fde68a; }
+.dark-mode .ped-opt-pendiente_entrega.cobro-opcion-activo { background: #1e3a8a; color: #93c5fd; }
+.dark-mode .ped-opt-recibido.cobro-opcion-activo          { background: #14532d; color: #86efac; }
+
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 900px) {
+    .td-id, .td-nro { display: none; }
+    .td-pdf { flex-direction: column; gap: 4px; }
+    .campo-fila .campo { min-width: 90px; }
+}
+
+@media (max-width: 600px) {
+    .filtros_facturas,
+    .tabla_registro { padding: 14px 12px; }
+    .tabla { font-size: 0.8rem; }
+    .tabla tbody td { padding: 8px 6px; }
+}
