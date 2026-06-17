@@ -211,3 +211,50 @@ CREATE TABLE IF NOT EXISTS presupuestos (
 );
 CREATE INDEX IF NOT EXISTS idx_presupuestos_estado ON presupuestos(estado);
 CREATE INDEX IF NOT EXISTS idx_presupuestos_vto    ON presupuestos(fecha_vencimiento);
+
+-- ── Empleados y permisos granulares ─────────────────────────────────────
+-- usuarios sigue siendo la tabla de autenticacion. Estas columnas agregan el
+-- perfil operativo del empleado sin romper login/rangos existentes.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS telefono VARCHAR(30) NOT NULL DEFAULT '';
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS nombre VARCHAR(100) NOT NULL DEFAULT '';
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS apellido VARCHAR(100) NOT NULL DEFAULT '';
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS dni VARCHAR(30) NOT NULL DEFAULT '';
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS cargo VARCHAR(100) NOT NULL DEFAULT '';
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS activo SMALLINT NOT NULL DEFAULT 1;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS fecha_ingreso DATE;
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS observaciones TEXT NOT NULL DEFAULT '';
+
+CREATE TABLE IF NOT EXISTS app_roles (
+    id SERIAL PRIMARY KEY,
+    clave VARCHAR(50) NOT NULL UNIQUE,
+    nombre VARCHAR(100) NOT NULL,
+    descripcion TEXT NOT NULL DEFAULT '',
+    activo SMALLINT NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS app_permisos (
+    id SERIAL PRIMARY KEY,
+    clave VARCHAR(80) NOT NULL UNIQUE,
+    modulo VARCHAR(50) NOT NULL,
+    accion VARCHAR(50) NOT NULL,
+    nombre VARCHAR(120) NOT NULL,
+    descripcion TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS app_rol_permisos (
+    id_rol INT NOT NULL REFERENCES app_roles(id) ON DELETE CASCADE,
+    id_permiso INT NOT NULL REFERENCES app_permisos(id) ON DELETE CASCADE,
+    PRIMARY KEY (id_rol, id_permiso)
+);
+
+CREATE TABLE IF NOT EXISTS app_usuario_roles (
+    id_usuario INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    id_rol INT NOT NULL REFERENCES app_roles(id) ON DELETE CASCADE,
+    PRIMARY KEY (id_usuario, id_rol)
+);
+
+CREATE TABLE IF NOT EXISTS app_usuario_permisos (
+    id_usuario INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    id_permiso INT NOT NULL REFERENCES app_permisos(id) ON DELETE CASCADE,
+    PRIMARY KEY (id_usuario, id_permiso)
+);

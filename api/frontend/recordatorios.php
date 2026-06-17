@@ -457,7 +457,7 @@
         .rec-textarea:focus,
         .rec-select:focus { border-color: #2563eb; }
         .rec-textarea { resize: vertical; min-height: 70px; }
-        .rec-select option { background: #101828; color: #fff; }
+        .rec-select option { background: #fff; color: #101828; }
         .rec-submit-btn {
             width: 100%;
             padding: 11px;

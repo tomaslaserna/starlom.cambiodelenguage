@@ -21,12 +21,8 @@ $nav_item = function (string $clave, string $href, string $texto) use ($NAV_ACTI
     return '<a href="' . $href . '" class="' . $clase . '">' . $texto . '</a>';
 };
 ?>
-<div class="menu-sol">
-    <img id="dark-mode-toggle" class="luyso" src="../imagenesIndex/luna.png" alt="Modo oscuro">
-</div>
-
 <nav class="dash-nav">
-    <span class="dash-brand"><a href="index.php" class="dash-brand">[Star Lim - Client page]</a></span>
+    <span class="dash-brand"><a href="index.php" class="dash-brand">Star Lim</a></span>
 
     <div class="dash-links">
         <?= $nav_item('inicio', 'panel_empleados.php', 'Inicio') ?>

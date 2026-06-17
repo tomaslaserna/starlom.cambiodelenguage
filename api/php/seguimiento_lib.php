@@ -53,18 +53,23 @@ function starlim_seg_metricas(array $ts): array {
 }
 
 /**
- * Devuelve ['grupos' => ['contactar'=>[], 'riesgo'=>[], 'perdido'=>[]], 'vendedores'=>[]].
+ * Devuelve ['grupos' => ['al_dia'=>[], 'contactar'=>[], 'riesgo'=>[], 'perdido'=>[], 'sin_historial'=>[]], 'vendedores'=>[]].
  */
 function starlim_calcular_seguimiento($conexion): array {
     $res = $conexion->query("
-        SELECT c.id, c.nombre_cliente, COALESCE(c.telefono,'') AS telefono, COALESCE(c.vendedor_cl,'') AS vendedor, d.fecha
-        FROM (
-            SELECT DISTINCT dni_cliente, fecha
+        SELECT c.id, c.nombre_cliente, COALESCE(c.telefono,'') AS telefono,
+               COALESCE(c.vendedor_cl,'') AS vendedor, d.fecha
+        FROM clientes c
+        LEFT JOIN (
+            SELECT DISTINCT
+                   REGEXP_REPLACE(COALESCE(dni_cliente,''), '[^0-9]', '', 'g') AS dni_norm,
+                   fecha
             FROM ventas
-            WHERE COALESCE(estado_pedido,'entregado') = 'entregado' AND dni_cliente NOT IN ('0','')
-        ) d
-        JOIN clientes c ON REPLACE(REPLACE(c.nro_id,'-',''),' ','') = d.dni_cliente AND c.nro_id <> ''
-        ORDER BY c.id, d.fecha
+            WHERE COALESCE(estado_pedido,'entregado') = 'entregado'
+              AND REGEXP_REPLACE(COALESCE(dni_cliente,''), '[^0-9]', '', 'g') <> ''
+        ) d ON d.dni_norm = REGEXP_REPLACE(COALESCE(c.nro_id,''), '[^0-9]', '', 'g')
+           AND d.dni_norm <> ''
+        ORDER BY c.nombre_cliente ASC, c.id ASC, d.fecha ASC
     ");
 
     // Agrupar fechas por cliente
@@ -72,24 +77,59 @@ function starlim_calcular_seguimiento($conexion): array {
     if ($res) while ($r = $res->fetch_assoc()) {
         $id = (int) $r['id'];
         if (!isset($cli[$id])) $cli[$id] = ['nombre' => $r['nombre_cliente'], 'telefono' => $r['telefono'], 'vendedor' => $r['vendedor'], 'ts' => []];
-        $cli[$id]['ts'][] = strtotime($r['fecha']);
+        if (!empty($r['fecha'])) $cli[$id]['ts'][] = strtotime($r['fecha']);
     }
 
     $hoy = strtotime((new DateTime('now', new DateTimeZone('America/Argentina/Buenos_Aires')))->format('Y-m-d'));
-    $grupos = ['contactar' => [], 'riesgo' => [], 'perdido' => []];
+    $grupos = ['al_dia' => [], 'contactar' => [], 'riesgo' => [], 'perdido' => [], 'sin_historial' => []];
     $vendedores = [];
 
     foreach ($cli as $id => $c) {
-        $ts = $c['ts'];
-        if (count($ts) < 2) continue;
+        $ts = array_values(array_unique(array_filter($c['ts'])));
         sort($ts);
+        $compras = count($ts);
+        if ($c['vendedor'] !== '') $vendedores[$c['vendedor']] = true;
+
+        $fila_base = [
+            'nombre_cliente' => $c['nombre'],
+            'telefono'       => $c['telefono'],
+            'vendedor'       => $c['vendedor'],
+            'promedio'       => null,
+            'desvio'         => 0,
+            'intervalos'     => max(0, $compras - 1),
+            'compras'        => $compras,
+            'desde_ult'      => null,
+            'atraso'         => null,
+            'ultima_fmt'     => $compras ? date('d-m-Y', end($ts)) : '-',
+            'proxima'        => '-',
+            'ratio'          => null,
+            'motivo'         => $compras === 0 ? 'Sin compras entregadas' : 'Falta una compra mas',
+        ];
+
+        if ($compras < 2) {
+            $grupos['sin_historial'][] = $fila_base;
+            continue;
+        }
         $m = starlim_seg_metricas($ts);
         $promedio = $m['promedio'];
         $ultima   = end($ts);
         $desde    = (int) floor(($hoy - $ultima) / 86400);
         $ratio    = $promedio > 0 ? $desde / $promedio : 0;
-        if ($ratio < 0.85) continue;   // todavía no toca
-
+        if ($ratio < 0.85) {
+            $grupos['al_dia'][] = array_merge($fila_base, [
+                'promedio'   => $promedio,
+                'desvio'     => $m['desvio'],
+                'intervalos' => $m['k'],
+                'compras'    => $compras,
+                'desde_ult'  => $desde,
+                'atraso'     => (int) round($desde - $promedio),
+                'ultima_fmt' => date('d-m-Y', $ultima),
+                'proxima'    => date('d-m-Y', $ultima + $promedio * 86400),
+                'ratio'      => $ratio,
+                'motivo'     => '',
+            ]);
+            continue;
+        }
         $fila = [
             'nombre_cliente' => $c['nombre'],
             'telefono'   => $c['telefono'],
@@ -97,6 +137,7 @@ function starlim_calcular_seguimiento($conexion): array {
             'promedio'   => $promedio,
             'desvio'     => $m['desvio'],
             'intervalos' => $m['k'],
+            'compras'    => $compras,
             'desde_ult'  => $desde,
             'atraso'     => (int) round($desde - $promedio),
             'ultima_fmt' => date('d-m-Y', $ultima),
@@ -110,9 +151,11 @@ function starlim_calcular_seguimiento($conexion): array {
         else                     $grupos['perdido'][]   = $fila;
     }
 
+    usort($grupos['al_dia'],    fn($a, $b) => $a['ratio']  <=> $b['ratio']);
     usort($grupos['contactar'], fn($a, $b) => $b['ratio']  <=> $a['ratio']);
     usort($grupos['riesgo'],    fn($a, $b) => $b['atraso'] <=> $a['atraso']);
     usort($grupos['perdido'],   fn($a, $b) => $b['atraso'] <=> $a['atraso']);
+    usort($grupos['sin_historial'], fn($a, $b) => strcmp($a['nombre_cliente'], $b['nombre_cliente']));
 
     ksort($vendedores);
     return ['grupos' => $grupos, 'vendedores' => array_keys($vendedores)];

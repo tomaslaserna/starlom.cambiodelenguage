@@ -394,7 +394,7 @@
             box-sizing: border-box;
         }
         .adm-form-input:focus, .adm-form-select:focus { border-color: #2563eb; }
-        .adm-form-select option { background: #101828; }
+        .adm-form-select option { background: #fff; color: #101828; }
 
         .adm-form-submit {
             padding: 8px 20px;

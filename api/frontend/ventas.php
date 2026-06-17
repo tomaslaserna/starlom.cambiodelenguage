@@ -1,77 +1,119 @@
 <?php
-    $PERMITIDOS = ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
-    require __DIR__ . '/partials/guard.php';
+$PERMITIDOS = ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
+require __DIR__ . '/partials/guard.php';
 
-    include '../php/conexion_starlim_be.php';
+include '../php/conexion_starlim_be.php';
 
-    $inicio_mes = date('Y-m-01');
-    $inicio_sig = date('Y-m-d', strtotime($inicio_mes . ' +1 month'));
+$inicio_mes = date('Y-m-01');
+$inicio_sig = date('Y-m-d', strtotime($inicio_mes . ' +1 month'));
 
-    // Métricas de venta del mes actual. Lo cobrado/vencido vive en Cobros y Pagos.
-    $r = $conexion->query("
-        SELECT
-            COUNT(*)                 AS pedidos_entregados,
-            COALESCE(SUM(monto), 0)  AS facturacion_mes,
-            COALESCE(AVG(monto), 0)  AS ticket_promedio
-        FROM ventas
-        WHERE COALESCE(estado_pedido,'entregado') = 'entregado'
-          AND fecha >= '$inicio_mes' AND fecha < '$inicio_sig'
-    ");
-    $stats = $r ? $r->fetch_assoc() : null;
-
-    $top_clientes = [];
-    $rtop = $conexion->query("
-        SELECT COALESCE(NULLIF(nombre_cliente,''), dni_cliente, 'Sin cliente') AS cliente,
-               COUNT(*) AS pedidos,
-               COALESCE(SUM(monto), 0) AS total
-        FROM ventas
-        WHERE COALESCE(estado_pedido,'entregado') = 'entregado'
-          AND fecha >= '$inicio_mes' AND fecha < '$inicio_sig'
-        GROUP BY COALESCE(NULLIF(nombre_cliente,''), dni_cliente, 'Sin cliente')
-        ORDER BY total DESC
-        LIMIT 3
-    ");
-    if ($rtop) while ($row = $rtop->fetch_assoc()) $top_clientes[] = $row;
-
-    $proximas_compras = [];
+function ventas_scalar($conexion, string $sql, $default = 0) {
     try {
-        require_once __DIR__ . '/../php/seguimiento_lib.php';
-        $seg = starlim_calcular_seguimiento($conexion);
-        $candidatos = array_merge($seg['grupos']['contactar'] ?? [], $seg['grupos']['riesgo'] ?? []);
-        foreach (array_slice($candidatos, 0, 5) as $c) $proximas_compras[] = $c;
+        $r = $conexion->query($sql);
+        if (!$r) return $default;
+        $row = $r->fetch_assoc();
+        if (!$row) return $default;
+        return array_values($row)[0] ?? $default;
     } catch (Throwable $e) {
-        $proximas_compras = [];
+        return $default;
     }
+}
 
-    // Pedidos en curso (no entregados) por estado → acceso rápido a logística
-    $pedidos_curso = ['recibido' => 0, 'en_proceso' => 0, 'pendiente_entrega' => 0];
-    $rp = $conexion->query("
-        SELECT estado_pedido, COUNT(*) AS c FROM ventas
-        WHERE estado_pedido IN ('recibido','en_proceso','pendiente_entrega')
-        GROUP BY estado_pedido
-    ");
-    if ($rp) while ($row = $rp->fetch_assoc()) $pedidos_curso[$row['estado_pedido']] = (int)$row['c'];
-    $pedidos_total = array_sum($pedidos_curso);
-
-    // Presupuestos (sección propia de Ventas, separada de Facturación):
-    // vigentes = pendientes sin vencer.
-    $presup = ['pendientes' => 0, 'vigentes' => 0, 'aceptados' => 0];
-    $rpr = $conexion->query("
-        SELECT
-            COALESCE(SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END), 0)                                          AS pendientes,
-            COALESCE(SUM(CASE WHEN estado = 'pendiente' AND fecha_vencimiento >= CURRENT_DATE THEN 1 ELSE 0 END), 0)    AS vigentes,
-            COALESCE(SUM(CASE WHEN estado = 'aceptada' THEN 1 ELSE 0 END), 0)                                           AS aceptados
-        FROM presupuestos
-    ");
-    if ($rpr && ($prow = $rpr->fetch_assoc())) {
-        $presup['pendientes'] = (int)$prow['pendientes'];
-        $presup['vigentes']   = (int)$prow['vigentes'];
-        $presup['aceptados']  = (int)$prow['aceptados'];
+function ventas_row($conexion, string $sql, array $default): array {
+    try {
+        $r = $conexion->query($sql);
+        if (!$r) return $default;
+        $row = $r->fetch_assoc();
+        return $row ? array_merge($default, $row) : $default;
+    } catch (Throwable $e) {
+        return $default;
     }
+}
 
-    function fmt_pesos(float $v): string {
-        return '$' . number_format($v, 2, ',', '.');
-    }
+function fmt_pesos(float $v): string {
+    return '$' . number_format($v, 2, ',', '.');
+}
+
+$stats = ventas_row($conexion, "
+    SELECT
+        COUNT(*)                AS pedidos_entregados,
+        COALESCE(SUM(monto), 0) AS facturacion_mes,
+        COALESCE(AVG(monto), 0) AS ticket_promedio
+    FROM ventas
+    WHERE COALESCE(estado_pedido,'entregado') = 'entregado'
+      AND fecha >= '$inicio_mes' AND fecha < '$inicio_sig'
+", ['pedidos_entregados' => 0, 'facturacion_mes' => 0, 'ticket_promedio' => 0]);
+
+$presup = ventas_row($conexion, "
+    SELECT
+        COALESCE(SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END), 0) AS pendientes,
+        COALESCE(SUM(CASE WHEN estado = 'pendiente' AND fecha_vencimiento < CURRENT_DATE THEN 1 ELSE 0 END), 0) AS vencidos,
+        COALESCE(SUM(CASE WHEN estado IN ('aceptada','aprobada') THEN 1 ELSE 0 END), 0) AS aprobados,
+        COALESCE(SUM(CASE WHEN estado IN ('denegada','rechazada','cancelada') THEN 1 ELSE 0 END), 0) AS rechazados,
+        COALESCE(SUM(CASE WHEN estado = 'pendiente'
+                           AND fecha_vencimiento >= CURRENT_DATE
+                           AND fecha_vencimiento <= CURRENT_DATE + INTERVAL '3 days'
+                          THEN 1 ELSE 0 END), 0) AS seguimiento
+    FROM presupuestos
+", ['pendientes' => 0, 'vencidos' => 0, 'aprobados' => 0, 'rechazados' => 0, 'seguimiento' => 0]);
+
+$pedidos = ventas_row($conexion, "
+    SELECT
+        COALESCE(SUM(CASE WHEN estado_pedido = 'recibido' THEN 1 ELSE 0 END), 0) AS recibidos,
+        COALESCE(SUM(CASE WHEN estado_pedido = 'en_proceso' THEN 1 ELSE 0 END), 0) AS en_proceso,
+        COALESCE(SUM(CASE WHEN estado_pedido = 'pendiente_entrega' THEN 1 ELSE 0 END), 0) AS listos,
+        COALESCE(SUM(CASE WHEN estado_pedido = 'entregado' AND fecha >= '$inicio_mes' AND fecha < '$inicio_sig' THEN 1 ELSE 0 END), 0) AS entregados_mes,
+        COALESCE(SUM(CASE WHEN estado_pedido IN ('recibido','en_proceso','pendiente_entrega')
+                           AND creado_en < NOW() - INTERVAL '2 days'
+                          THEN 1 ELSE 0 END), 0) AS demorados
+    FROM ventas
+", ['recibidos' => 0, 'en_proceso' => 0, 'listos' => 0, 'entregados_mes' => 0, 'demorados' => 0]);
+
+$pedidos_stock = ventas_scalar($conexion, "
+    SELECT COUNT(DISTINCT v.id)
+    FROM ventas v
+    JOIN detalle_ventas dv ON dv.id_venta = v.id
+    JOIN productos p ON p.id = dv.id_producto
+    WHERE v.estado_pedido IN ('recibido','en_proceso','pendiente_entrega')
+      AND dv.cantidad > p.stock
+", 0);
+
+$compras = ventas_row($conexion, "
+    SELECT
+        COALESCE(SUM(CASE WHEN estado = 'pendiente' THEN 1 ELSE 0 END), 0) AS pendientes,
+        COALESCE(SUM(CASE WHEN estado = 'en_camino' THEN 1 ELSE 0 END), 0) AS en_camino,
+        COALESCE(SUM(CASE WHEN estado = 'recibida' AND fecha >= CURRENT_DATE - INTERVAL '7 days' THEN 1 ELSE 0 END), 0) AS recibidas_recientes
+    FROM compras_registro
+", ['pendientes' => 0, 'en_camino' => 0, 'recibidas_recientes' => 0]);
+
+$stock = ventas_row($conexion, "
+    SELECT
+        COALESCE(SUM(CASE WHEN p.stock > 0 AND p.stock <= 5 THEN 1 ELSE 0 END), 0) AS bajo,
+        COALESCE(SUM(CASE WHEN p.stock <= 0 THEN 1 ELSE 0 END), 0) AS sin_stock
+    FROM productos p
+", ['bajo' => 0, 'sin_stock' => 0]);
+
+$stock_comprometido = ventas_scalar($conexion, "
+    SELECT COALESCE(SUM(reservado), 0) FROM vista_stock_disponible
+", 0);
+
+$reposicion_alertas = ventas_scalar($conexion, "
+    SELECT COUNT(*) FROM vista_stock_disponible WHERE disponible <= 0
+", 0);
+
+$alertas = [];
+if ((int)$pedidos_stock > 0) {
+    $alertas[] = ['alta', 'Pedidos con problema de stock', (int)$pedidos_stock . ' pedido(s) requieren revisar faltantes.'];
+}
+if ((int)$pedidos['demorados'] > 0) {
+    $alertas[] = ['media', 'Pedidos demorados', (int)$pedidos['demorados'] . ' pedido(s) llevan mas de 48 hs sin entregarse.'];
+}
+if ((int)$presup['seguimiento'] > 0) {
+    $alertas[] = ['media', 'Presupuestos por seguir', (int)$presup['seguimiento'] . ' vencen dentro de los proximos 3 dias.'];
+}
+if ((int)$reposicion_alertas > 0) {
+    $alertas[] = ['alta', 'Reposicion critica', (int)$reposicion_alertas . ' producto(s) tienen stock disponible en cero o negativo.'];
+}
 ?>
 <!DOCTYPE html>
 <html class="cambio-pagina" lang="es">
@@ -79,7 +121,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ventas — Star Lim</title>
+    <title>Ventas - Star Lim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_ventas.css">
@@ -87,178 +129,122 @@
 </head>
 <body>
 
-    <?php $NAV_ACTIVA = 'ventas'; include __DIR__ . '/partials/nav.php'; ?>
+<?php $NAV_ACTIVA = 'ventas'; include __DIR__ . '/partials/nav.php'; ?>
 
-    <main class="dash-main">
+<main class="dash-main">
+    <div class="ventas-layout">
+        <?php $VENTAS_ACTIVA = ''; include __DIR__ . '/partials/ventas_sidebar.php'; ?>
 
-        <div class="ventas-layout">
-
-        <!-- ── Sidebar accesos rápidos ── -->
-        <aside class="ventas-sidebar" id="ventas-sidebar">
-
-            <!-- Botón visible cuando está colapsado -->
-            <button class="sidebar-open-btn" id="sidebar-open-btn">EXPANDIR &rsaquo;</button>
-
-            <!-- Contenido expandido -->
-            <div class="ventas-sidebar-inner">
-                <button class="sidebar-close-btn" id="sidebar-close-btn">&lsaquo; MINIMIZAR</button>
-                <div class="sidebar-action-cards">
-                    <a href="ventas_registradas.php" class="action-card">
-                        <div class="action-card-inner">
-                            <span class="action-card-title">Ventas Registradas</span>
-                            <span class="action-card-sub">Historial completo de facturas y cobros</span>
-                        </div>
-                        <span class="action-card-arrow">→</span>
-                    </a>
-                    <a href="factura_manual.php" class="action-card">
-                        <div class="action-card-inner">
-                            <span class="action-card-title">Cargar pedido</span>
-                            <span class="action-card-sub">Nuevo pedido para depósito y entrega</span>
-                        </div>
-                        <span class="action-card-arrow">→</span>
-                    </a>
-                    <a href="presupuestos.php" class="action-card">
-                        <div class="action-card-inner">
-                            <span class="action-card-title">Presupuestos</span>
-                            <span class="action-card-sub">Armar presupuestos y seguir los vigentes</span>
-                        </div>
-                        <span class="action-card-arrow">→</span>
-                    </a>
+        <div class="ventas-content">
+            <div class="ventas-page-head">
+                <div>
+                    <h1 class="dash-hello">Ventas</h1>
+                    <p class="ventas-page-sub">Panel operativo diario para presupuestos, pedidos, compras y stock.</p>
                 </div>
+                <a class="ventas-primary-action" href="factura_manual.php">Cargar pedido</a>
             </div>
 
-        </aside>
-
-        <!-- ── Contenido principal ── -->
-        <div class="ventas-content">
-
-        <!-- Dashboard -->
-        <div class="dash-grid">
-
-            <!-- Panel izquierdo: resumen de ventas -->
-            <section class="dash-panel">
-                <h2 class="panel-title">Ventas del mes</h2>
-                <div class="stats-grid">
-
-                    <div class="stat-card">
-                        <span class="stat-label">Pedidos entregados</span>
-                        <span class="stat-value"><?= $stats ? (int)$stats['pedidos_entregados'] : 0 ?></span>
+            <div class="dash-grid ventas-dashboard-grid">
+                <section class="dash-panel ventas-panel-main">
+                    <div class="panel-header-line">
+                        <h2 class="panel-title">Ventas del mes</h2>
+                        <span class="panel-period"><?= date('m/Y') ?></span>
                     </div>
-
-                    <div class="stat-card stat-wide">
-                        <span class="stat-label">Facturación mensual</span>
-                        <span class="stat-value"><?= fmt_pesos((float)($stats['facturacion_mes'] ?? 0)) ?></span>
-                    </div>
-
-                    <div class="stat-card">
-                        <span class="stat-label">Ticket promedio</span>
-                        <span class="stat-value c-green"><?= fmt_pesos((float)($stats['ticket_promedio'] ?? 0)) ?></span>
-                    </div>
-
-                </div>
-                <p style="margin-top:14px;font-size:13px;opacity:.6;">Mes actual: <?= date('m/Y') ?>. El estado de los cobros se gestiona en <a href="panel_cobros_pagos.php">Cobros y Pagos</a>.</p>
-            </section>
-
-            <section class="dash-panel">
-                <h2 class="panel-title">Top clientes del mes</h2>
-                <?php if (empty($top_clientes)): ?>
-                    <p class="inv-empty inv-empty--ok">Sin ventas entregadas este mes.</p>
-                <?php else: ?>
-                    <div style="display:grid;gap:9px;">
-                    <?php foreach ($top_clientes as $idx => $tc): ?>
-                        <div class="stat-card" style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
-                            <span class="stat-label" style="font-size:12px;"><?= ($idx + 1) ?>. <?= htmlspecialchars($tc['cliente']) ?><br><small><?= (int)$tc['pedidos'] ?> pedido<?= (int)$tc['pedidos'] === 1 ? '' : 's' ?></small></span>
-                            <span class="stat-value" style="font-size:18px;"><?= fmt_pesos((float)$tc['total']) ?></span>
-                        </div>
-                    <?php endforeach; ?>
-                    </div>
-                <?php endif; ?>
-            </section>
-
-            <section class="dash-panel" style="grid-column:1 / -1;">
-                <h2 class="panel-title">Predicción de próximas compras</h2>
-                <?php if (empty($proximas_compras)): ?>
-                    <p class="inv-empty inv-empty--ok">Sin clientes para contactar según el seguimiento actual.</p>
-                <?php else: ?>
-                    <div class="stats-grid">
-                    <?php foreach ($proximas_compras as $pc): ?>
+                    <div class="stats-grid ventas-money-grid">
                         <div class="stat-card">
-                            <span class="stat-label"><?= htmlspecialchars($pc['nombre_cliente']) ?></span>
-                            <span class="stat-value" style="font-size:18px;"><?= htmlspecialchars($pc['proxima']) ?></span>
-                            <small style="opacity:.65;">Última: <?= htmlspecialchars($pc['ultima_fmt']) ?> · ritmo <?= (int)$pc['promedio'] ?> días</small>
+                            <span class="stat-label">Pedidos entregados</span>
+                            <span class="stat-value"><?= (int)$stats['pedidos_entregados'] ?></span>
                         </div>
-                    <?php endforeach; ?>
+                        <div class="stat-card stat-wide stat-money">
+                            <span class="stat-label">Facturacion mensual</span>
+                            <span class="stat-value money-value"><?= fmt_pesos((float)$stats['facturacion_mes']) ?></span>
+                        </div>
+                        <div class="stat-card stat-wide stat-money stat-money--ticket">
+                            <span class="stat-label">Ticket promedio</span>
+                            <span class="stat-value money-value c-green"><?= fmt_pesos((float)$stats['ticket_promedio']) ?></span>
+                        </div>
                     </div>
-                <?php endif; ?>
-                <a href="seguimiento_clientes.php" class="inv-ver-mas">Ver seguimiento →</a>
-            </section>
+                    <p class="ventas-note">Los cobros y saldos se administran desde <a href="panel_cobros_pagos.php">Cobros y Pagos</a>.</p>
+                </section>
 
-            <!-- Panel derecho: pedidos en curso (logística) -->
-            <section class="dash-panel">
-                <h2 class="panel-title">Pedidos en curso</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <span class="stat-label">Recibidos</span>
-                        <span class="stat-value"><?= $pedidos_curso['recibido'] ?></span>
+                <section class="dash-panel ops-alert-panel">
+                    <div class="panel-header-line">
+                        <h2 class="panel-title">Prioridad de hoy</h2>
                     </div>
-                    <div class="stat-card">
-                        <span class="stat-label">En proceso</span>
-                        <span class="stat-value c-yellow"><?= $pedidos_curso['en_proceso'] ?></span>
+                    <?php if (empty($alertas)): ?>
+                        <p class="inv-empty inv-empty--ok">Sin alertas operativas criticas.</p>
+                    <?php else: ?>
+                        <div class="ops-alert-list">
+                            <?php foreach ($alertas as [$nivel, $titulo, $texto]): ?>
+                                <div class="ops-alert ops-alert--<?= htmlspecialchars($nivel) ?>">
+                                    <strong><?= htmlspecialchars($titulo) ?></strong>
+                                    <span><?= htmlspecialchars($texto) ?></span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </section>
+
+                <section class="dash-panel ops-card">
+                    <div class="panel-header-line">
+                        <h2 class="panel-title">Presupuestos</h2>
+                        <a href="presupuestos.php" class="ops-link">Abrir</a>
                     </div>
-                    <div class="stat-card stat-wide">
-                        <span class="stat-label">Pendiente de entrega</span>
-                        <span class="stat-value"><?= $pedidos_curso['pendiente_entrega'] ?></span>
+                    <div class="ops-metric-grid">
+                        <div class="ops-metric"><span>Pendientes</span><strong><?= (int)$presup['pendientes'] ?></strong></div>
+                        <div class="ops-metric"><span>Aprobados</span><strong class="c-green"><?= (int)$presup['aprobados'] ?></strong></div>
+                        <div class="ops-metric"><span>Vencidos</span><strong class="c-red"><?= (int)$presup['vencidos'] ?></strong></div>
+                        <div class="ops-metric"><span>Seguimiento</span><strong class="c-yellow"><?= (int)$presup['seguimiento'] ?></strong></div>
                     </div>
-                </div>
-                <?php if ($pedidos_total === 0): ?>
-                    <p class="inv-empty inv-empty--ok" style="margin-top:14px;">No hay pedidos en curso.</p>
-                <?php endif; ?>
-                <a href="pedidos.php" class="inv-ver-mas">Ir a Pedidos →</a>
-            </section>
+                    <p class="ops-footnote"><?= (int)$presup['rechazados'] ?> rechazado(s) o cancelado(s).</p>
+                </section>
 
-            <!-- Panel ancho: presupuestos (sección propia, separada de facturación) -->
-            <section class="dash-panel" style="grid-column:1 / -1;">
-                <h2 class="panel-title">Presupuestos</h2>
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <span class="stat-label">Vigentes</span>
-                        <span class="stat-value c-green"><?= $presup['vigentes'] ?></span>
+                <section class="dash-panel ops-card">
+                    <div class="panel-header-line">
+                        <h2 class="panel-title">Pedidos</h2>
+                        <a href="pedidos.php" class="ops-link">Abrir</a>
                     </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Pendientes</span>
-                        <span class="stat-value"><?= $presup['pendientes'] ?></span>
+                    <div class="ops-metric-grid">
+                        <div class="ops-metric"><span>Recibidos</span><strong><?= (int)$pedidos['recibidos'] ?></strong></div>
+                        <div class="ops-metric"><span>En preparacion</span><strong class="c-yellow"><?= (int)$pedidos['en_proceso'] ?></strong></div>
+                        <div class="ops-metric"><span>Listos</span><strong><?= (int)$pedidos['listos'] ?></strong></div>
+                        <div class="ops-metric"><span>Demorados</span><strong class="c-red"><?= (int)$pedidos['demorados'] ?></strong></div>
                     </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Aceptados</span>
-                        <span class="stat-value"><?= $presup['aceptados'] ?></span>
+                    <p class="ops-footnote"><?= (int)$pedidos['entregados_mes'] ?> entregado(s) este mes. <?= (int)$pedidos_stock ?> con faltantes.</p>
+                </section>
+
+                <section class="dash-panel ops-card">
+                    <div class="panel-header-line">
+                        <h2 class="panel-title">Compras relacionadas</h2>
+                        <a href="compras.php" class="ops-link">Abrir</a>
                     </div>
-                </div>
-                <?php if (($presup['pendientes'] + $presup['aceptados']) === 0): ?>
-                    <p class="inv-empty inv-empty--ok" style="margin-top:14px;">Todavía no hay presupuestos cargados.</p>
-                <?php endif; ?>
-                <a href="presupuestos.php" class="inv-ver-mas">Ir a Presupuestos →</a>
-            </section>
+                    <div class="ops-metric-grid">
+                        <div class="ops-metric"><span>Pendientes</span><strong><?= (int)$compras['pendientes'] ?></strong></div>
+                        <div class="ops-metric"><span>En camino</span><strong class="c-yellow"><?= (int)$compras['en_camino'] ?></strong></div>
+                        <div class="ops-metric"><span>Recibidas 7 dias</span><strong class="c-green"><?= (int)$compras['recibidas_recientes'] ?></strong></div>
+                        <div class="ops-metric"><span>Faltantes</span><strong class="c-red"><?= (int)$pedidos_stock ?></strong></div>
+                    </div>
+                    <p class="ops-footnote">Los faltantes salen de pedidos activos contra stock real.</p>
+                </section>
 
-        </div><!-- /dash-grid -->
+                <section class="dash-panel ops-card">
+                    <div class="panel-header-line">
+                        <h2 class="panel-title">Stock operativo</h2>
+                        <a href="stock.php" class="ops-link">Abrir</a>
+                    </div>
+                    <div class="ops-metric-grid">
+                        <div class="ops-metric"><span>Bajo stock</span><strong class="c-yellow"><?= (int)$stock['bajo'] ?></strong></div>
+                        <div class="ops-metric"><span>Sin stock</span><strong class="c-red"><?= (int)$stock['sin_stock'] ?></strong></div>
+                        <div class="ops-metric"><span>Comprometido</span><strong><?= (int)$stock_comprometido ?></strong></div>
+                        <div class="ops-metric"><span>Reposicion</span><strong class="c-red"><?= (int)$reposicion_alertas ?></strong></div>
+                    </div>
+                    <p class="ops-footnote">Comprometido = reservado por pedidos vivos aun no entregados.</p>
+                </section>
+            </div>
+        </div>
+    </div>
+</main>
 
-        </div><!-- /ventas-content -->
-
-        </div><!-- /ventas-layout -->
-
-    </main>
-
-    <script src="../js/global.js"></script>
-    <script>
-        const _sidebar    = document.getElementById('ventas-sidebar');
-        const _openBtn    = document.getElementById('sidebar-open-btn');
-        const _closeBtn   = document.getElementById('sidebar-close-btn');
-
-        // Estado inicial: expandido
-        function colapsarSidebar()  { _sidebar.classList.add('sidebar-collapsed'); }
-        function expandirSidebar()  { _sidebar.classList.remove('sidebar-collapsed'); }
-
-        _openBtn.addEventListener('click',  expandirSidebar);
-        _closeBtn.addEventListener('click', colapsarSidebar);
-    </script>
+<script src="../js/global.js"></script>
 </body>
 </html>

@@ -161,6 +161,21 @@ textarea {
     color: var(--text-color);
 }
 
+/* Dark mode was removed from the app; keep legacy toggles hidden everywhere. */
+.menu-sol {
+    display: none !important;
+}
+
+select {
+    color-scheme: light !important;
+}
+
+select option,
+select optgroup {
+    background-color: #ffffff !important;
+    color: #101828 !important;
+}
+
 /*html.lenis, html.lenis body {
   height: auto;
 }

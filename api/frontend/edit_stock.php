@@ -104,7 +104,7 @@ while ($m = $mar_res->fetch_assoc()) {
             transition: border-color .2s;
         }
         .es-filter-select:focus { border-color: #2563eb; }
-        .es-filter-select option { background: #101828; }
+        .es-filter-select option { background: #fff; color: #101828; }
         .es-filter-clear {
             font-size: 12px; font-weight: 600;
             color: #dc2626; text-decoration: none;

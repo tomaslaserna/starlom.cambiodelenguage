@@ -25,9 +25,11 @@ function wa_link($tel) {
 }
 
 $SECCIONES = [
+    'al_dia'    => ['Al dia', 'Todavia no llegaron a su proxima fecha esperada.', 's-ok'],
     'contactar' => ['Para contactar', 'Están en su fecha de recompra — adelantarse al pedido.', 's-contactar'],
     'riesgo'    => ['En riesgo',      'Pasaron su fecha esperada — contactar cuanto antes.',     's-riesgo'],
     'perdido'   => ['Perdidos / a recuperar', 'Sin comprar hace más de un ciclo completo.',      's-perdido'],
+    'sin_historial' => ['Sin historial suficiente', 'Clientes sin dos compras entregadas para calcular ritmo.', 's-info'],
 ];
 ?>
 <!DOCTYPE html>
@@ -44,7 +46,7 @@ $SECCIONES = [
         .sg-card { background:var(--surface,#fff); border:1px solid rgba(128,128,128,.18); border-radius:14px; padding:13px 20px; min-width:160px; }
         .sg-card .lbl { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; opacity:.6; }
         .sg-card .val { font-size:24px; font-weight:800; margin-top:2px; }
-        .s-contactar .val { color:#2563eb; } .s-riesgo .val { color:#b45309; } .s-perdido .val { color:#b91c1c; }
+        .s-ok .val { color:#16a34a; } .s-contactar .val { color:#2563eb; } .s-riesgo .val { color:#b45309; } .s-perdido .val { color:#b91c1c; } .s-info .val { color:#64748b; }
         .sg-sec { margin-bottom:26px; }
         .sg-sec h2 { font-size:16px; margin:0 0 2px; } .sg-sec p { margin:0 0 10px; font-size:12.5px; opacity:.6; }
         .sg-table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -107,18 +109,35 @@ $SECCIONES = [
             <tbody>
             <?php if (empty($grupos[$k])): ?>
                 <tr class="sg-vacia"><td colspan="9" class="sg-empty">Sin clientes en este grupo.</td></tr>
-            <?php else: foreach ($grupos[$k] as $c): $wa = wa_link($c['telefono']); ?>
-                <?php $compras = (int)$c['intervalos'] + 1; ?>
+            <?php else: foreach ($grupos[$k] as $c):
+                $wa = wa_link($c['telefono']);
+                $compras = isset($c['compras']) ? (int)$c['compras'] : ((int)$c['intervalos'] + 1);
+                $tiene_promedio = isset($c['promedio']) && $c['promedio'] !== null;
+                $dias_sin = isset($c['desde_ult']) && $c['desde_ult'] !== null ? (int)$c['desde_ult'] . ' dias' : '-';
+                $atraso_txt = $tiene_promedio
+                    ? ((int)$c['atraso'] > 0 ? '+' . (int)$c['atraso'] . ' dias' : 'al dia')
+                    : ($c['motivo'] ?? '-');
+                $atraso_color = $tiene_promedio && (int)$c['atraso'] > 0 ? '#b45309' : '#16a34a';
+            ?>
                 <tr class="sg-fila" data-vendedor="<?= htmlspecialchars($c['vendedor'], ENT_QUOTES) ?>">
                     <td><strong><?= htmlspecialchars($c['nombre_cliente']) ?></strong></td>
                     <td><?= htmlspecialchars($c['vendedor']) ?></td>
-                    <td><?= $c['ultima_fmt'] ?></td>
+                    <td><?= htmlspecialchars($c['ultima_fmt'] ?? '-') ?></td>
+                    <?php if (!$tiene_promedio): ?>
+                    <td>-</td>
+                    <td>-</td>
+                    <td><?= htmlspecialchars($dias_sin) ?></td>
+                    <td class="sg-atraso" style="color:#64748b;">
+                        <?= htmlspecialchars($atraso_txt) ?>
+                    </td>
+                    <?php else: ?>
                     <td>cada <?= $c['promedio'] ?> días<?= $c['desvio'] > 0 ? ' <span class="sg-desv" title="Variación típica entre compras">± ' . $c['desvio'] . '</span>' : '' ?></td>
-                    <td><?= $c['proxima'] ?></td>
+                    <td><?= htmlspecialchars($c['proxima'] ?? '-') ?></td>
                     <td><?= (int)$c['desde_ult'] ?> días</td>
                     <td class="sg-atraso" style="color:<?= $c['atraso'] > 0 ? '#b45309' : '#16a34a' ?>;">
                         <?= $c['atraso'] > 0 ? '+' . $c['atraso'] . ' días' : 'al día' ?>
                     </td>
+                    <?php endif; ?>
                     <td><?= $compras ?><?= $compras === 2 ? '<span class="sg-baja">estimación baja</span>' : '' ?></td>
                     <td>
                         <?php if ($wa): ?><a class="sg-wa" target="_blank" href="<?= $wa ?>">WhatsApp</a>

@@ -18,6 +18,10 @@
     $resultado = $stmt->get_result();
 
     if($usuario_datos = $resultado->fetch_assoc()){
+        if (array_key_exists('activo', $usuario_datos) && (int)$usuario_datos['activo'] === 0) {
+            echo '<script>alert("Usuario inactivo. Contactá a un administrador."); window.location = "../frontend/sign.php";</script>';
+            exit;
+        }
 
         if(starlim_verificar_password($contrasena, $usuario_datos['contrasena'])){
 

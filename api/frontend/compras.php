@@ -132,17 +132,6 @@
 
     $tipo_labels = [1 => 'A', 2 => 'ND', 3 => 'NC', 6 => 'B', 7 => 'ND', 8 => 'NC'];
 
-    $ultimas_compras = [];
-    $ru = $conexion->query("
-        SELECT cr.id, cr.descripcion, cr.total, cr.fecha, cr.estado,
-               COALESCE(p.nombre, 'Sin proveedor') AS proveedor_nombre
-        FROM compras_registro cr
-        LEFT JOIN proveedores p ON p.id = cr.id_proveedor
-        ORDER BY cr.fecha DESC, cr.id DESC
-        LIMIT 5
-    ");
-    if ($ru) while ($row = $ru->fetch_assoc()) $ultimas_compras[] = $row;
-
     /* ── Verificar detalle_ventas ────────────────────────────────────── */
     $tc = $conexion->query("SHOW TABLES LIKE 'detalle_ventas'");
     $tiene_detalle = $tc && $tc->num_rows > 0;
@@ -244,7 +233,7 @@
         $rp = $conexion->query("SELECT id, nombre FROM proveedores ORDER BY nombre ASC");
         if ($rp) while ($row = $rp->fetch_assoc()) $prov_map[$row['id']] = $row['nombre'];
 
-        $rpa = $conexion->query("SELECT id, nombre FROM productos ORDER BY nombre ASC");
+        $rpa = $conexion->query("SELECT id, nombre, COALESCE(proveedor,'') AS proveedor FROM productos ORDER BY nombre ASC");
         if ($rpa) while ($row = $rpa->fetch_assoc()) $productos_all[] = $row;
 
         $rr = $conexion->query("
@@ -353,17 +342,46 @@
         }
         .comp-back:hover { color: #fff; }
         .comp-page-title { font-size: 22px; font-weight: 700; color: var(--text-color); margin: 0; }
-        .compras-head-actions { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
-        .compras-quick-link { display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:8px 14px; border-radius:8px; background:#2563eb; color:#fff; font-size:13px; font-weight:700; text-decoration:none; }
-        .compras-quick-link:hover { background:#1d4ed8; }
-        .compras-mini-dashboard { display:grid; grid-template-columns: minmax(220px, .7fr) 1fr; gap:14px; margin-bottom:18px; }
-        .compras-mini-card { background:var(--surface,#fff); border:1px solid rgba(128,128,128,.18); border-radius:12px; padding:14px 16px; }
-        .compras-mini-title { margin:0 0 8px; font-size:14px; font-weight:800; }
-        .compras-last-list { display:grid; gap:8px; }
-        .compras-last-row { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid rgba(128,128,128,.12); font-size:12.5px; }
-        .compras-last-row:last-child { border-bottom:none; }
-        .compras-last-row strong { display:block; max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        @media (max-width: 820px) { .compras-mini-dashboard { grid-template-columns:1fr; } .compras-head-actions { margin-left:0; } }
+        .comp-page-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-left: auto;
+            flex-wrap: wrap;
+        }
+        .comp-action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 38px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(37, 99, 235, .22);
+            background: #fff;
+            color: #1d4ed8;
+            font-size: 13px;
+            font-weight: 800;
+            text-decoration: none;
+            box-shadow: 0 1px 2px rgba(16, 24, 40, .05);
+            transition: background .2s, border-color .2s, color .2s, box-shadow .2s;
+        }
+        .comp-action-btn:hover,
+        .comp-action-btn--active {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: #fff;
+            box-shadow: 0 10px 22px rgba(37, 99, 235, .22);
+        }
+        @media (max-width: 820px) {
+            .comp-page-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
+            .comp-action-btn {
+                flex: 1 1 145px;
+            }
+        }
 
         .comp-tabs {
             display: flex;
@@ -375,17 +393,19 @@
             padding: 8px 20px;
             border-radius: 50px;
             font-size: 13px; font-weight: 600;
-            color: rgba(255,255,255,.55);
-            border: 1px solid rgba(255,255,255,.1);
-            background: transparent;
-            transition: background .2s, color .2s, border-color .2s;
+            color: #344054;
+            border: 1px solid rgba(37,99,235,.18);
+            background: rgba(255,255,255,.82);
+            transition: background .2s, color .2s, border-color .2s, box-shadow .2s;
             white-space: nowrap;
             text-decoration: none;
+            box-shadow: 0 1px 2px rgba(16,24,40,.04);
         }
         .comp-tab:hover {
-            background: rgba(255,255,255,.08);
-            color: #fff;
-            border-color: rgba(255,255,255,.22);
+            background: #eef4ff;
+            color: #1d4ed8;
+            border-color: rgba(37,99,235,.35);
+            box-shadow: 0 6px 16px rgba(37,99,235,.10);
         }
         .comp-tab--active, .comp-tab--active:hover {
             background: #2563eb;
@@ -444,11 +464,10 @@
         }
         .comp-form-input:focus, .comp-form-select:focus, .comp-form-textarea:focus { border-color: #2563eb; }
         .comp-form-textarea { resize: vertical; min-height: 68px; }
-        .comp-form-select option { background: #101828; }
+        .comp-form-select option { background: #fff; color: #101828; }
 
         /* ── Dark mode: forzar opciones oscuras en todos los selects ── */
-        .dark-mode select { color-scheme: dark; }
-        .dark-mode select option { background: #101828; color: #e4e7ec; }
+        select { color-scheme: light; }
 
         /* ── Columna Paquete ─────────────────────────────────────────── */
         .paq-cell { vertical-align: middle; min-width: 160px; }
@@ -987,37 +1006,12 @@
         <!-- Encabezado -->
         <div class="comp-page-header">
             <h1 class="comp-page-title">Compras</h1>
-            <div class="compras-head-actions">
-                <a class="compras-quick-link" href="compras.php?tab=registro&nuevo=1">Registrar compra nueva</a>
-                <a class="compras-quick-link" style="background:#16a34a;" href="compras.php?tab=automaticas">Generar orden manual</a>
+            <div class="comp-page-actions" aria-label="Acciones de compra">
+                <a href="compras.php?tab=registro" class="comp-action-btn <?= $tab === 'registro' && !$abrir_nueva_compra ? 'comp-action-btn--active' : '' ?>">Registro</a>
+                <a href="compras.php?tab=registro&nuevo=1" class="comp-action-btn <?= $tab === 'registro' && $abrir_nueva_compra ? 'comp-action-btn--active' : '' ?>">Registrar compra</a>
+                <a href="compras.php?tab=automaticas" class="comp-action-btn <?= $tab === 'automaticas' ? 'comp-action-btn--active' : '' ?>">Generar orden</a>
             </div>
         </div>
-
-        <section class="compras-mini-dashboard">
-            <div class="compras-mini-card">
-                <h2 class="compras-mini-title">Accesos rápidos</h2>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <a class="compras-quick-link" href="compras.php?tab=registro&nuevo=1">Nueva compra</a>
-                    <a class="compras-quick-link" style="background:#475467;" href="compras.php?tab=automaticas">Orden de compra</a>
-                </div>
-            </div>
-            <div class="compras-mini-card">
-                <h2 class="compras-mini-title">Últimos registros</h2>
-                <div class="compras-last-list">
-                    <?php if (empty($ultimas_compras)): ?>
-                        <div class="compras-last-row"><span>Sin compras registradas.</span></div>
-                    <?php else: foreach ($ultimas_compras as $uc): ?>
-                        <div class="compras-last-row">
-                            <div>
-                                <strong>#<?= (int)$uc['id'] ?> · <?= htmlspecialchars($uc['proveedor_nombre']) ?></strong>
-                                <span><?= $uc['fecha'] ? date('d/m/Y', strtotime($uc['fecha'])) : '—' ?> · <?= htmlspecialchars($uc['estado']) ?></span>
-                            </div>
-                            <span><?= $uc['total'] !== null ? fp2((float)$uc['total']) : '—' ?></span>
-                        </div>
-                    <?php endforeach; endif; ?>
-                </div>
-            </div>
-        </section>
 
         <!-- Tabs -->
         <div class="comp-tabs">
@@ -1028,7 +1022,6 @@
                 <?php endif; ?>
             </a>
             <a href="?tab=anticipadas"  class="comp-tab <?= $tab==='anticipadas'  ? 'comp-tab--active' : '' ?>">Anticipadas</a>
-            <a href="?tab=registro"     class="comp-tab <?= $tab==='registro'     ? 'comp-tab--active' : '' ?>">Registro de Compras</a>
             <a href="?tab=automaticas"  class="comp-tab <?= $tab==='automaticas'  ? 'comp-tab--active' : '' ?>">Automáticas</a>
         </div>
 
@@ -1190,10 +1183,10 @@
                     <div class="comp-form-grid">
                         <div class="comp-form-field">
                             <label class="comp-form-label">Proveedor</label>
-                            <select class="comp-form-select" name="id_proveedor">
+                            <select class="comp-form-select" name="id_proveedor" id="compra-proveedor-select">
                                 <option value="">Sin proveedor</option>
                                 <?php foreach ($prov_map as $pid => $pnombre): ?>
-                                <option value="<?= $pid ?>"><?= htmlspecialchars($pnombre) ?></option>
+                                <option value="<?= $pid ?>" data-nombre="<?= htmlspecialchars($pnombre, ENT_QUOTES) ?>"><?= htmlspecialchars($pnombre) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -1253,9 +1246,55 @@
             <script>
             /* ── Productos disponibles para el selector ─────────────── */
             const PRODUCTOS_COMPRA = <?= json_encode(
-                array_map(fn($p) => ['id' => (int)$p['id'], 'nombre' => $p['nombre']], $productos_all),
+                array_map(fn($p) => [
+                    'id' => (int)$p['id'],
+                    'nombre' => $p['nombre'],
+                    'proveedor' => trim($p['proveedor'] ?? ''),
+                ], $productos_all),
                 JSON_HEX_TAG | JSON_UNESCAPED_UNICODE
             ) ?>;
+            const COMPRA_PROVEEDOR_SELECT = document.getElementById('compra-proveedor-select');
+
+            function normalizarProveedorCompra(valor) {
+                return String(valor || '').trim().toLowerCase();
+            }
+
+            function escHtmlCompra(valor) {
+                return String(valor ?? '').replace(/[&<>"']/g, ch => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+                }[ch]));
+            }
+
+            function proveedorCompraActual() {
+                return COMPRA_PROVEEDOR_SELECT?.selectedOptions?.[0]?.dataset?.nombre || '';
+            }
+
+            function productosFiltradosCompra() {
+                const proveedor = normalizarProveedorCompra(proveedorCompraActual());
+                if (!proveedor) return PRODUCTOS_COMPRA;
+                return PRODUCTOS_COMPRA.filter(p => normalizarProveedorCompra(p.proveedor) === proveedor);
+            }
+
+            function renderOpcionesProductosCompra() {
+                const productos = productosFiltradosCompra();
+                if (!productos.length) {
+                    return '<option value="" disabled>-- Sin productos de este proveedor --</option>';
+                }
+                return productos.map(p =>
+                    `<option value="${p.id}">${escHtmlCompra(p.nombre)}</option>`
+                ).join('');
+            }
+
+            function refrescarProductosCompra() {
+                const disponibles = new Set(productosFiltradosCompra().map(p => String(p.id)));
+                document.querySelectorAll('#tbody-prods-compra select[name="prod_id[]"]').forEach(sel => {
+                    const anterior = sel.value;
+                    sel.innerHTML = '<option value="">-- Seleccionar --</option>' + renderOpcionesProductosCompra();
+                    sel.value = disponibles.has(anterior) ? anterior : '';
+                });
+            }
+
+            COMPRA_PROVEEDOR_SELECT?.addEventListener('change', refrescarProductosCompra);
 
             function agregarFilaProducto() {
                 const tbody = document.getElementById('tbody-prods-compra');
@@ -1270,9 +1309,7 @@
                     <td style="padding:4px 8px;">
                         <select name="prod_id[]" class="comp-form-select" style="width:100%;font-size:13px;" required>
                             <option value="">— Seleccionar —</option>
-                            ${PRODUCTOS_COMPRA.map(p =>
-                                `<option value="${p.id}">${p.nombre.replace(/</g,'&lt;')}</option>`
-                            ).join('')}
+                            ${renderOpcionesProductosCompra()}
                         </select>
                     </td>
                     <td style="padding:4px 8px;text-align:center;">

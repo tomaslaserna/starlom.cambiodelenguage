@@ -1,4 +1,6 @@
 .env
+.vercel/
+.vercel-xdg/
 api/uploads/comprobantes/*
 api/uploads/recibos/*
 api/phpqrcode/cache/**
