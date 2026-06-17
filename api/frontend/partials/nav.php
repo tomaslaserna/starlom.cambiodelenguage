@@ -6,7 +6,7 @@
  *
  *   <?php $NAV_ACTIVA = 'stock'; include __DIR__ . '/partials/nav.php'; ?>
  *
- * Claves de $NAV_ACTIVA: inicio | pedidos | ventas | bd | stock | compras | cobros
+ * Claves de $NAV_ACTIVA: inicio | pedidos | ventas | bd | stock | compras | cobros | metricas
  * (omitir o '' si ninguna pestaña corresponde)
  *
  * Requiere guard.php incluido antes (define $usuario, $rango, $can*).
@@ -29,6 +29,9 @@ $nav_item = function (string $clave, string $href, string $texto) use ($NAV_ACTI
         <?= $nav_item('pedidos', 'pedidos.php', 'Pedidos') ?>
         <?php if ($canVentas): ?>
             <?= $nav_item('ventas', 'ventas.php', 'Ventas') ?>
+        <?php endif; ?>
+        <?php if ($canEmpleados): ?>
+            <?= $nav_item('metricas', 'planilla_admin.php', 'Métricas') ?>
         <?php endif; ?>
         <?php if ($canBD): ?>
             <?= $nav_item('bd', 'panel_base_datos.php', 'Bases de Datos') ?>

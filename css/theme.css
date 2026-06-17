@@ -1099,3 +1099,302 @@ input[type="button"],
         flex: 1 0 auto;
     }
 }
+
+/* ERP reference style: blue sidebar + white operational cards.
+   Applied only to authenticated panel pages that render .dash-nav. */
+@media (min-width: 981px) {
+    body:has(.dash-nav) {
+        padding-top: 0 !important;
+        background: #f6f8fc !important;
+    }
+
+    body:has(.dash-nav)::before {
+        display: none !important;
+    }
+
+    .dash-nav {
+        position: fixed !important;
+        inset: 0 auto 0 0 !important;
+        width: 188px !important;
+        height: 100vh !important;
+        min-height: 100vh !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: flex-start !important;
+        gap: 14px !important;
+        padding: 14px 12px !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: linear-gradient(180deg, #0b6cff 0%, #0346a6 58%, #07357f 100%) !important;
+        box-shadow: 16px 0 40px rgba(2, 54, 133, 0.18) !important;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .dash-brand,
+    .dash-brand a {
+        display: flex !important;
+        align-items: center;
+        min-height: 42px;
+        padding: 0 10px;
+        border-radius: 10px;
+        color: #ffffff !important;
+        font-size: 16px !important;
+        font-weight: 900 !important;
+        letter-spacing: 0 !important;
+    }
+
+    .dash-brand a::before {
+        content: "";
+        width: 28px;
+        height: 28px;
+        margin-right: 9px;
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.18);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+    }
+
+    .dash-links {
+        display: flex !important;
+        flex: 1 1 auto;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: flex-start !important;
+        gap: 5px !important;
+        width: 100%;
+        overflow: visible !important;
+    }
+
+    .dash-link {
+        justify-content: flex-start !important;
+        min-height: 40px !important;
+        width: 100%;
+        padding: 0 11px !important;
+        border: 1px solid transparent !important;
+        border-radius: 9px !important;
+        background: transparent !important;
+        color: rgba(255, 255, 255, 0.82) !important;
+        font-size: 13px !important;
+        font-weight: 750 !important;
+        text-align: left !important;
+    }
+
+    .dash-link::before {
+        content: "";
+        width: 17px;
+        height: 17px;
+        margin-right: 9px;
+        border-radius: 5px;
+        border: 1.5px solid rgba(255, 255, 255, 0.52);
+        background: rgba(255, 255, 255, 0.08);
+        flex: 0 0 auto;
+    }
+
+    .dash-link:hover {
+        background: rgba(255, 255, 255, 0.12) !important;
+        border-color: rgba(255, 255, 255, 0.14) !important;
+        color: #ffffff !important;
+    }
+
+    .dash-link--active,
+    .dash-link--active:hover {
+        background: rgba(255, 255, 255, 0.16) !important;
+        border-color: rgba(255, 255, 255, 0.18) !important;
+        color: #ffffff !important;
+        box-shadow: inset 3px 0 0 #ffffff !important;
+    }
+
+    .dash-link--active::before {
+        background: #ffffff;
+        border-color: #ffffff;
+        box-shadow: 0 6px 14px rgba(255, 255, 255, 0.16);
+    }
+
+    .dash-actions {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+        width: 100%;
+        margin-top: auto;
+        padding-top: 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .dash-user {
+        min-height: auto;
+        align-items: flex-start;
+        padding: 10px 11px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.10);
+        color: #ffffff !important;
+        text-align: left;
+        font-size: 12px;
+    }
+
+    .dash-user em {
+        color: rgba(255, 255, 255, 0.66) !important;
+        font-size: 10.5px;
+    }
+
+    .dash-logout {
+        justify-content: flex-start !important;
+        min-height: 36px !important;
+        padding: 0 11px !important;
+        border: 1px solid rgba(255, 255, 255, 0.16) !important;
+        border-radius: 9px !important;
+        background: rgba(255, 255, 255, 0.10) !important;
+        color: #ffffff !important;
+    }
+
+    .dash-logout:hover {
+        background: #ef4444 !important;
+        border-color: #ef4444 !important;
+        color: #ffffff !important;
+    }
+
+    .nav-msgs-wrap,
+    .nav-msgs-btn {
+        width: 100%;
+    }
+
+    .nav-msgs-btn {
+        justify-content: flex-start;
+        gap: 9px;
+        height: 36px;
+        padding: 0 11px;
+        border-color: rgba(255, 255, 255, 0.16) !important;
+        background: rgba(255, 255, 255, 0.10) !important;
+        color: #ffffff !important;
+    }
+
+    .nav-msgs-btn::after {
+        content: "Mensajes";
+        font-size: 12px;
+        font-weight: 800;
+    }
+
+    .nav-msgs-badge {
+        border-color: #0b5ad0 !important;
+    }
+
+    .nav-msgs-dropdown {
+        top: auto !important;
+        right: auto !important;
+        bottom: 0;
+        left: calc(100% + 12px);
+        width: 320px;
+    }
+
+    .dash-main {
+        width: calc(100% - 188px) !important;
+        max-width: none !important;
+        margin: 0 0 0 188px !important;
+        padding: 24px 28px 64px !important;
+    }
+
+    .dash-hello,
+    .comp-page-title,
+    .adm-title {
+        text-align: left !important;
+        color: #101828 !important;
+    }
+
+    .dash-panel,
+    .bd-panel,
+    .stat-card,
+    .comp-form-panel,
+    .adm-top-card,
+    .adm-metric-card,
+    .adm-stock-card,
+    .ops-metric,
+    .ops-alert,
+    .compras-mini-card,
+    .summ-card,
+    .reparto-panel {
+        background: #ffffff !important;
+        border: 1px solid #e7edf5 !important;
+        border-radius: 10px !important;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.045) !important;
+    }
+
+    .dash-panel,
+    .bd-panel {
+        padding: 20px !important;
+    }
+
+    .adm-header,
+    .ventas-page-head {
+        min-height: 48px;
+        padding: 0 0 12px;
+        margin-bottom: 18px !important;
+        border-bottom: 1px solid #e7edf5;
+    }
+
+    .adm-back,
+    .adm-subtitle,
+    .ventas-page-sub {
+        color: #64748b !important;
+        opacity: 1 !important;
+    }
+
+    .adm-subtitle,
+    .panel-period {
+        display: inline-flex;
+        align-items: center;
+        min-height: 32px;
+        padding: 0 12px;
+        border: 1px solid #e7edf5;
+        border-radius: 9px;
+        background: #ffffff;
+        color: #334155 !important;
+        font-weight: 800;
+    }
+
+    .adm-top-row,
+    .stats-grid,
+    .ops-metric-grid,
+    .adm-metrics-grid {
+        gap: 12px !important;
+    }
+
+    .adm-top-card {
+        min-height: 112px;
+        padding: 16px 18px !important;
+        border-left: 0 !important;
+    }
+
+    .adm-top-label,
+    .adm-metric-label,
+    .summ-label {
+        color: #64748b !important;
+        opacity: 1 !important;
+        letter-spacing: 0.04em !important;
+    }
+
+    .adm-top-value,
+    .adm-metric-value,
+    .summ-val,
+    .stat-value,
+    .money-value {
+        color: #0f172a !important;
+        font-weight: 900 !important;
+    }
+
+    .adm-chart-wrap {
+        height: 280px !important;
+    }
+
+    .ped-table th,
+    .ped-table td {
+        border-color: #edf2f7 !important;
+    }
+
+    .btn-mini,
+    .filter-pill,
+    .adm-balance-toggle {
+        border-radius: 8px !important;
+    }
+}

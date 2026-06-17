@@ -158,6 +158,19 @@ foreach ($pedidos as $p) $stats[$p['estado_pedido']] = ($stats[$p['estado_pedido
         .ped-empty { text-align:center; padding:42px; color:#9ca3af; font-style:italic; }
         .comp-chip { display:inline-block; padding:2px 9px; border-radius:14px; font-size:11px; font-weight:700; background:rgba(128,128,128,.12); }
 
+        .ped-order-cell { display:flex; flex-direction:column; align-items:flex-start; gap:6px; min-width:104px; }
+        .ped-order-number { font-weight:800; line-height:1.1; }
+        .ped-doc-actions { display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
+        .ped-doc-actions .btn-mini {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-height:25px;
+            padding:5px 9px;
+            line-height:1;
+            white-space:nowrap;
+        }
+
         .col-check { width:34px; text-align:center; }
         .col-check input { width:16px; height:16px; cursor:pointer; }
 
@@ -280,13 +293,17 @@ foreach ($pedidos as $p) $stats[$p['estado_pedido']] = ($stats[$p['estado_pedido
                             <?php endif; ?>
                         </td>
                         <td>
-                            <strong>#<?= str_pad((string)(int)$p['nro_remito'], 4, '0', STR_PAD_LEFT) ?></strong>
-                            <br><a class="btn-mini" target="_blank"
-                                   href="../php/generar_pdf_solicitud_pedido.php?id_venta=<?= (int)$p['id'] ?>&view=1">Solicitud PDF</a>
-                            <?php if ($p['id_remito']): ?>
-                                <br><a class="btn-mini" target="_blank"
-                                       href="../php/generar_pdf_remito.php?id_remito=<?= (int)$p['id_remito'] ?>&view=1">Remito PDF</a>
-                            <?php endif; ?>
+                            <div class="ped-order-cell">
+                                <span class="ped-order-number">#<?= str_pad((string)(int)$p['nro_remito'], 4, '0', STR_PAD_LEFT) ?></span>
+                                <div class="ped-doc-actions">
+                                    <a class="btn-mini" target="_blank"
+                                       href="../php/generar_pdf_solicitud_pedido.php?id_venta=<?= (int)$p['id'] ?>&view=1">Solicitud PDF</a>
+                                    <?php if ($p['id_remito']): ?>
+                                        <a class="btn-mini" target="_blank"
+                                           href="../php/generar_pdf_remito.php?id_remito=<?= (int)$p['id_remito'] ?>&view=1">Remito PDF</a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
                         </td>
                         <td>
                             <span class="edad <?= $edad_min >= 1440 ? 'edad-vieja' : '' ?>" title="<?= htmlspecialchars((string)$p['creado_en']) ?> UTC"><?= $edad_txt ?></span>

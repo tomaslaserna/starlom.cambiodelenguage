@@ -148,10 +148,12 @@
     if ($tp && $tp->num_rows > 0) {
         $r = $conexion->query("SELECT COUNT(*) AS c FROM presupuestos
                                WHERE fecha >= '$inicio_mes' AND fecha < '$inicio_sig'");
-        if ($r) $presupuestos_mes = (int)$r->fetch_assoc()['c'];
+        $row = $r ? $r->fetch_assoc() : null;
+        $presupuestos_mes = is_array($row) ? (int)($row['c'] ?? 0) : 0;
         $r = $conexion->query("SELECT COUNT(*) AS c FROM presupuestos
                                WHERE fecha >= '$inicio_pasado' AND fecha < '$inicio_mes'");
-        if ($r) $presupuestos_pasado = (int)$r->fetch_assoc()['c'];
+        $row = $r ? $r->fetch_assoc() : null;
+        $presupuestos_pasado = is_array($row) ? (int)($row['c'] ?? 0) : 0;
     }
 
     /* ── Datos para gráfico — últimos 12 meses ─────────────────────── */
@@ -523,7 +525,7 @@
 </head>
 <body>
 
-    <?php $NAV_ACTIVA = ''; include __DIR__ . '/partials/nav.php'; ?>
+    <?php $NAV_ACTIVA = 'metricas'; include __DIR__ . '/partials/nav.php'; ?>
 
     <main class="dash-main">
 
