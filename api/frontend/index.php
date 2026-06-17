@@ -9,7 +9,7 @@
     else{
         $rango = $_SESSION['rango'];
     }
-    
+
     include '../php/conexion_starlim_be.php';
 
     $query = "SELECT * FROM productos LIMIT 50";
@@ -32,8 +32,8 @@
 </head>
 
 <body>
- 
-    <header class="header">
+
+    <header class="header landing-header">
         <div class="bg_4"></div>
         <div class="menu">
             <a href="#" class="logo">Star Lim</a>
@@ -46,17 +46,13 @@
             <nav class="navbar">
 
                 <ul>
-                    <li><a href="#" class="ini">- Inicio -</a></li>
+                    <li><a href="#" class="ini">Inicio</a></li>
                     <li><a href="productos.php" class="pro">Productos</a></li>
+                    <li><a href="#servicios" class="con">Servicios</a></li>
                     <li><a href="#footerid" class="con">Contacto</a></li>
                     <?php if ($rango === 'Empleado_1' || $rango === 'Empleado_2' || $rango === 'Jefe' || $rango === 'Jefe1' || $rango === 'Admin'): ?>
-                        <li><a href="panel_empleados.php" class="ser">Empleados</a></li>
+                        <li><a href="panel_empleados.php" class="ser">Panel interno</a></li>
                     <?php endif; ?>
-                    <li>
-                        <div class="menu-sol">
-                            <img id="dark-mode-toggle" class="luyso" src="../imagenesIndex/luna.png" >
-                        </div>
-                    </li>
                 </ul>
             </nav>
             <div>
@@ -98,19 +94,22 @@
             </div>
         </div>
 
-        <div class="header-content container">
-            <div class="header-txt">
-                <h1> <span>Bienvenido,</span> disfruta de nuestros productos </h1>
+        <div class="header-content container landing-hero">
+            <div class="header-txt hero-copy">
+                <span class="hero-eyebrow">Productos de limpieza y gestion comercial</span>
+                <h1>Star Lim</h1>
                 <p>
-                    Lorem ipsum dolor sit, amet consectetur adipisicing elit. Debitis sapiente quibusdam voluptatem
-                    eligendi modi iure minus beatae, vero, dolorum quo tempore animi, ipsam ullam illum veniam similique
-                    distinctio. Doloremque, porro.
+                    Productos de limpieza, catalogo, pedidos, stock y seguimiento comercial en una experiencia simple para comprar, vender y administrar sin perder control.
                 </p>
-                <a href="#" class="btn-1">Informacion</a>
-            </div>
-            <div class="header-img">
-                <img src="../imagenesIndex/logo nuevo starlim-04.png" class="claro" loading="lazy" alt="">
-                <img src="../imagenesIndex/logo starlim blanco.png" class="oscuro" loading="lazy" alt="">
+                <div class="hero-actions">
+                    <a href="productos.php" class="btn-1">Ver productos</a>
+                    <a href="sign.php" class="btn-1 btn-ghost">Ingresar al sistema</a>
+                </div>
+                <div class="hero-proof" aria-label="Beneficios principales">
+                    <span>Catalogo organizado</span>
+                    <span>Gestion de stock</span>
+                    <span>Ventas y presupuestos</span>
+                </div>
             </div>
         </div>
 
@@ -120,11 +119,12 @@
 
 
 
-    <section class="quimico container">
+    <section class="quimico container landing-section" id="servicios">
 
-        <h2>Productos de las mejores marcas</h2>
+        <span class="section-eyebrow">Catalogo seleccionado</span>
+        <h2>Productos para abastecer operaciones de limpieza</h2>
         <p>
-            Solo lo mejor de lo mejor
+            Marcas reconocidas, insumos de alta rotacion y una experiencia pensada para encontrar rapido lo que se necesita.
         </p>
 
         <div class="quimico-content reveal">
@@ -148,35 +148,35 @@
 
     </section>
 
-    <section class="info reveal" id="infoid">
+    <section class="info reveal landing-section" id="infoid">
         <div class="info-content container">
             <div class="info-img">
-                <img src="../imagenesIndex/Local.png" loading="lazy" alt="">
+                <img src="../imagenesIndex/Local.png" loading="lazy" alt="Local de Star Lim">
             </div>
             <div class="info-txt">
-                <h2>La mejor calidad en los productos</h2>
+                <span class="section-eyebrow">Atencion y control</span>
+                <h2>Compra con informacion clara y gestion ordenada</h2>
                 <p>
-                    Lorem ipsum dolor sit amet consectetur adipisicing elit. Accusantium dolorum ab similique ratione
-                    optio. Unde nesciunt sequi molestias, error, quis reiciendis quas, nobis ea earum minima ullam vel
-                    perferendis maiores!
+                    El sistema permite consultar productos, registrar ventas, preparar pedidos y controlar reposicion desde una misma base operativa.
                 </p>
-                <a href="#" class="btn-1">Informacion</a>
+                <a href="productos.php" class="btn-1">Explorar catalogo</a>
             </div>
         </div>
     </section>
 
 
 
-    <main class="products container reveal">
+    <main class="products container reveal landing-section">
 
         <h2>Productos</h2>
+        <p>Una vista rapida de articulos disponibles para limpieza, mantenimiento y abastecimiento diario.</p>
         <img src="../imagenesIndex/bg block.png" style="opacity: 0; width: 100%; z-index: 999999; display: block; position: absolute;" alt="">
         <div class="carousel">
             <div class="box-container">
-                <?php 
+                <?php
                 $productos = [];
                 while ($fila = $resultado->fetch_assoc()) { $productos[] = $fila; }
-                
+
                 foreach ($productos as $p) { ?>
                     <div class="box">
                         <img src="<?= htmlspecialchars(str_starts_with($p['imagen'] ?? '', 'http') ? $p['imagen'] : '../' . $p['imagen']) ?>" alt="<?= htmlspecialchars($p['nombre']) ?>">
@@ -194,35 +194,37 @@
                 <?php } ?>
             </div>
         </div>
-        <a href="productos.php" class="btn-2 reveal">Ver mas</a>
+        <a href="productos.php" class="btn-2 reveal">Ver catalogo completo</a>
 
     </main>
 
-    <section class="app container reveal">
+    <section class="app container reveal operations-section">
 
         <div class="app-txt">
 
-            <h2>Descarga nuestra app y descubre ofertas</h2>
+            <span class="section-eyebrow">Sistema interno</span>
+            <h2>Herramientas para vender, comprar y reponer con menos friccion</h2>
             <p>
-                Lorem ipsum dolor sit amet consectetur adipisicing elit. Blanditiis, vel perferendis! Ad tempora quaerat
-                laudantium, id autem vitae distinctio facere eius veritatis quae neque a nemo, sint incidunt nesciunt
-                voluptatem!
+                El panel conecta clientes, presupuestos, pedidos, compras, stock y facturacion para que cada equipo vea lo que necesita sin pasos innecesarios.
             </p>
-            <div class="descarga reveal">
-                <div>
-                    <img src="../imagenesIndex/google light.png" class="claro" loading="lazy" alt="">
-                    <img src="../imagenesIndex/google dark.png" class="oscuro" loading="lazy" alt="">
-                </div>
-                <div>
-                    <img src="../imagenesIndex/apple light.png" class="claro" loading="lazy" alt="">
-                    <img src="../imagenesIndex/apple dark.png" class="oscuro" loading="lazy" alt="">
-                </div>
+            <div class="operations-grid reveal">
+                <article>
+                    <strong>Ventas</strong>
+                    <span>Presupuestos, comprobantes y seguimiento de entregas.</span>
+                </article>
+                <article>
+                    <strong>Stock</strong>
+                    <span>Reconteos, codigos, listas y control de disponibilidad.</span>
+                </article>
+                <article>
+                    <strong>Compras</strong>
+                    <span>Reposicion por proveedor y alertas para productos criticos.</span>
+                </article>
             </div>
         </div>
 
         <div class="app-img reveal">
-            <img src="../imagenesIndex/phone light.png" class="claro" loading="lazy" alt="">
-            <img src="../imagenesIndex/phone dark.png" class="oscuro" loading="lazy" alt="">            
+            <img src="../imagenesIndex/phone light.png" loading="lazy" alt="Vista movil del sistema Star Lim">
         </div>
     </section>
 
@@ -233,45 +235,42 @@
         <div class="footer-content container reveal">
 
             <div class="link">
-                <h3>Lorem</h3>
+                <h3>Star Lim</h3>
                 <ul>
-                    <li><a href="#">Lorem</a></li>
-                    <li><a href="#">Lorem</a></li>
-                    <li><a href="#">Lorem</a></li>
-                    <li><a href="#">Lorem</a></li>
+                    <li><a href="#">Inicio</a></li>
+                    <li><a href="productos.php">Productos</a></li>
+                    <li><a href="#servicios">Servicios</a></li>
+                    <li><a href="sign.php">Acceso al sistema</a></li>
                 </ul>
             </div>
 
             <div class="link">
-                <h3>Lorem</h3>
+                <h3>Operacion</h3>
                 <ul>
-                    <li><a href="#">Lorem</a></li>
-                    <li><a href="#">Lorem</a></li>
-                    <li><a href="#">Lorem</a></li>
-                    <li><a href="#">Lorem</a></li>
+                    <li><a href="presupuestar.php">Presupuestos</a></li>
+                    <li><a href="pedidos.php">Pedidos</a></li>
+                    <li><a href="stock.php">Stock</a></li>
+                    <li><a href="compras.php">Compras</a></li>
                 </ul>
             </div>
 
             <div class="link">
-                <h3>Lorem</h3>
+                <h3>Gestion</h3>
                 <ul>
-                    <li><a href="#">Lorem</a></li>
-                    <li><a href="#">Lorem</a></li>
-                    <li><a href="#">Lorem</a></li>
-                    <li><a href="#">Lorem</a></li>
+                    <li><a href="clientes.php">Clientes</a></li>
+                    <li><a href="proveedores.php">Proveedores</a></li>
+                    <li><a href="ventas_registradas.php">Ventas registradas</a></li>
+                    <li><a href="panel_empleados.php">Panel interno</a></li>
                 </ul>
             </div>
 
             <div class="link">
-                <h3>Lorem</h3>
-                <div class="descarga">
-                    <img src="../imagenesIndex/google light.png" loading="lazy" alt="">
-                    <img src="../imagenesIndex/apple light.png" loading="lazy" alt="">
-
-                </div>
+                <h3>Contacto</h3>
+                <p>Consultas comerciales, pedidos y soporte operativo desde los canales habituales de Star Lim.</p>
+                <a href="sign.php" class="footer-cta">Ingresar</a>
             </div>
 
-            
+
         </div>
         <!--<img src="../imagenesIndex/bg 3.png" id="bg-3" class="oscuro" alt="">
         <img src="../imagenesIndex/bg 5.png" id="bg-3" class="claro" alt="">-->
@@ -280,7 +279,7 @@
 
     <script src="../js/script.js" ></script>
     <script src="../js/global.js"></script>
-    
+
 </body>
 
 </html>
