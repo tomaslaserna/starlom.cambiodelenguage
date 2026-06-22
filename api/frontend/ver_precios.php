@@ -3,6 +3,7 @@ $PERMITIDOS = ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 // Precios calculados dinámicamente: costo × margen por código de categoría
 // precio_4 = precio_3 + 10%  |  precio_minorista_r: lista obsoleta, eliminada
@@ -14,7 +15,7 @@ $res = $conexion->query("SELECT nombre,
             ROUND(precio_3 * 1.10, 2) AS precio_4,
             precio_minorista
      FROM vista_precios
-     WHERE precio_1 IS NOT NULL
+     WHERE empresa_id = $empresaId AND precio_1 IS NOT NULL
      ORDER BY nombre ASC"
 );
 
@@ -32,7 +33,7 @@ while ($row = $res->fetch_assoc()) {
 }
 
 $cli_res = $conexion->query("SELECT id, nombre_cliente, lista_precios, nro_id, cond_iva
-     FROM clientes ORDER BY nombre_cliente ASC"
+     FROM clientes WHERE empresa_id = $empresaId ORDER BY nombre_cliente ASC"
 );
 $clientes_prp = [];
 while ($c = $cli_res->fetch_assoc()) {
@@ -48,7 +49,7 @@ while ($c = $cli_res->fetch_assoc()) {
 <!DOCTYPE html>
 <html class="cambio-pagina" lang="es">
 <head>
-    <title>Ver Precios — Star Lim</title>
+    <title>Ver Precios — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">

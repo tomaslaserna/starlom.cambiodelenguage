@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 
 if (!isset($_SESSION['usuario'])) {
     header('Location: ../frontend/sign.php');
@@ -8,14 +9,17 @@ if (!isset($_SESSION['usuario'])) {
 
 include 'conexion_starlim_be.php';
 require_once 'presupuesto_pdf_lib.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $conexion->query("SET NAMES 'utf8mb4'");
 
 $id = intval($_GET['id'] ?? 0);
 if (!$id) die("ID inválido.");
 
-$res = $conexion->query("SELECT * FROM presupuestos WHERE id = $id LIMIT 1");
-$prp = $res->fetch_assoc();
+$stmt = $conexion->prepare("SELECT * FROM presupuestos WHERE id = ? AND empresa_id = ? LIMIT 1");
+$stmt->bind_param('ii', $id, $empresaId);
+$stmt->execute();
+$prp = $stmt->get_result()->fetch_assoc();
 if (!$prp) die("Presupuesto no encontrado.");
 
 $cl = [

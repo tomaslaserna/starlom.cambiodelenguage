@@ -1,16 +1,9 @@
 <?php
 /**
- * comprobante_pdf_lib.php — Base compartida para comprobantes con el mismo
- * formato visual que el remito/factura (FPDF).
+ * Shared PDF primitives for Starlim operational documents.
  *
- * require_once __DIR__ . '/comprobante_pdf_lib.php';
- *
- * Provee:
- *   - class ComprobantePDF  (RoundedRect + Footer "Pagina N")
- *   - function p($s)        (UTF-8 -> ISO-8859-1 para FPDF)
- *   - function cabecera_comprobante(...)  (encabezado estándar + línea)
- *
- * Modelado sobre api/php/generar_pdf_remito.php para mantener el mismo look.
+ * The visual language mirrors the supplied HTML references while keeping the
+ * existing FPDF runtime used in production.
  */
 
 if (!class_exists('FPDF')) {
@@ -18,22 +11,51 @@ if (!class_exists('FPDF')) {
 }
 
 if (!function_exists('p')) {
-    /** Codifica UTF-8 -> ISO-8859-1 para que FPDF muestre tildes/ñ. */
     function p($str) {
-        return iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $str ?? '');
+        return iconv('UTF-8', 'ISO-8859-1//TRANSLIT', (string)($str ?? ''));
+    }
+}
+
+if (!function_exists('starlim_pdf_money')) {
+    function starlim_pdf_money(float $value): string {
+        return '$' . number_format($value, 2, ',', '.');
+    }
+}
+
+if (!function_exists('starlim_pdf_logo_path')) {
+    function starlim_pdf_logo_path(): string {
+        foreach ([
+            __DIR__ . '/../../imagenesIndex/logo nuevo starlim-04.png',
+            __DIR__ . '/../imagenesIndex/logo nuevo starlim-04.png',
+        ] as $path) {
+            if (is_file($path)) return $path;
+        }
+        return '';
+    }
+}
+
+if (!function_exists('starlim_pdf_company')) {
+    function starlim_pdf_company(): array {
+        return [
+            'name' => 'Starlim S.A.S.',
+            'brand' => 'Starlim',
+            'cuit' => '20-46656757-5',
+            'address' => 'Av. Argentina 1515, Villa Allende, Cordoba',
+            'phone' => '+54 9 351 373-7820',
+            'email' => 'starlimmsas@gmail.com',
+            'iva' => 'Responsable Inscripto',
+        ];
     }
 }
 
 if (!class_exists('ComprobantePDF')) {
     class ComprobantePDF extends FPDF {
-
-        /** Rectángulo de esquinas redondeadas (idéntico al del remito). */
         function RoundedRect($x, $y, $w, $h, $r, $style = '') {
-            if ($style == 'F') $op = 'f';
-            elseif ($style == 'FD' || $style == 'DF') $op = 'B';
+            if ($style === 'F') $op = 'f';
+            elseif ($style === 'FD' || $style === 'DF') $op = 'B';
             else $op = 'S';
 
-            $k  = $this->k;
+            $k = $this->k;
             $hp = $this->h;
             $cp = 0.4477 * $r;
 
@@ -62,108 +84,188 @@ if (!class_exists('ComprobantePDF')) {
         }
 
         function Footer() {
-            $this->SetY(-12);
-            $this->SetFont('Arial', 'I', 7);
-            $this->SetTextColor(150, 150, 150);
-            $this->Cell(0, 5, 'Pagina ' . $this->PageNo(), 0, 0, 'C');
+            $this->SetY(-13);
+            $this->SetFont('Arial', '', 7);
+            $this->SetTextColor(138, 147, 140);
+            $this->Cell(95, 5, p('Starlim - documento operativo'), 0, 0, 'L');
+            $this->Cell(95, 5, 'Pagina ' . $this->PageNo(), 0, 0, 'R');
         }
     }
 }
 
-if (!function_exists('cabecera_comprobante')) {
-    /**
-     * Dibuja el encabezado estándar (logo + empresa a la izquierda, recuadro
-     * central con letra grande + título, bloque derecho con Nro/CUIT/Fecha y
-     * líneas extra) más la línea separadora.
-     *
-     * @param ComprobantePDF $pdf
-     * @param string $titulo  Ej. 'SOLICITUD DE PEDIDO'
-     * @param string $letra   Letra grande del recuadro central, ej. 'P'
-     * @param string $nro     Número ya formateado
-     * @param string $fecha   Fecha ya formateada dd/mm/Y
-     * @param array  $extra   Líneas extra del bloque derecho (strings UTF-8)
-     * @return float          Y donde puede empezar el contenido
-     */
-    function cabecera_comprobante($pdf, $titulo, $letra, $nro, $fecha, $extra = []) {
-        // — Izquierda: logo + empresa —
-        // El logo vive en imagenesIndex/ (raíz del repo). Según el entorno
-        // (local vs. bundle de Vercel) puede resolver desde api/ o desde la
-        // raíz, así que probamos ambas rutas y usamos la primera que exista.
-        $logo = '';
-        foreach ([
-            __DIR__ . '/../../imagenesIndex/logo nuevo starlim-04.png',
-            __DIR__ . '/../imagenesIndex/logo nuevo starlim-04.png',
-        ] as $cand) {
-            if (file_exists($cand)) { $logo = $cand; break; }
-        }
+if (!function_exists('starlim_pdf_set_text')) {
+    function starlim_pdf_set_text(FPDF $pdf, string $tone = 'body'): void {
+        $colors = [
+            'body' => [31, 36, 33],
+            'muted' => [91, 102, 97],
+            'soft' => [138, 147, 140],
+            'blue' => [31, 58, 96],
+            'white' => [255, 255, 255],
+            'danger' => [185, 28, 28],
+            'ok' => [0, 122, 92],
+        ];
+        [$r, $g, $b] = $colors[$tone] ?? $colors['body'];
+        $pdf->SetTextColor($r, $g, $b);
+    }
+}
+
+if (!function_exists('starlim_pdf_draw_logo')) {
+    function starlim_pdf_draw_logo(FPDF $pdf, float $x, float $y, float $w): float {
+        $logo = starlim_pdf_logo_path();
         if ($logo !== '') {
-            $logo_w_mm = 45;
-            [$px_w, $px_h] = getimagesize($logo);
-            $logo_h_mm = ($px_h / $px_w) * $logo_w_mm;
-            $pdf->Image($logo, 10, 10, $logo_w_mm);
-            $y_empresa = 10 + $logo_h_mm + 2;
-        } else {
-            $pdf->SetXY(10, 10);
-            $pdf->SetFont('Arial', 'B', 16);
-            $pdf->SetTextColor(0, 80, 180);
-            $pdf->Cell(70, 8, 'star lim', 0, 1, 'L');
-            $y_empresa = 18;
+            [$pxW, $pxH] = getimagesize($logo);
+            $h = ($pxH / max(1, $pxW)) * $w;
+            $pdf->Image($logo, $x, $y, $w);
+            return $h;
         }
 
-        $pdf->SetXY(10, $y_empresa);
-        $pdf->SetFont('Arial', 'B', 9);
-        $pdf->SetTextColor(0, 0, 0);
-        $pdf->Cell(70, 5, 'De Starlimm S.A.S.', 0, 1, 'L');
-        $pdf->SetX(10);
-        $pdf->SetFont('Arial', '', 8);
-        $pdf->SetTextColor(60, 60, 60);
-        $pdf->Cell(70, 4, 'starlimmsas@gmail.com', 0, 1, 'L');
-        $pdf->SetX(10);
-        $pdf->Cell(70, 4, '+54 9 351 373-7820', 0, 1, 'L');
-        $y_left = $pdf->GetY();
-
-        // — Centro: recuadro con letra + título —
-        $pdf->SetXY(83, 10);
+        $pdf->SetXY($x, $y);
         $pdf->SetFont('Arial', 'B', 18);
-        $pdf->SetTextColor(0, 0, 0);
-        $pdf->Cell(44, 22, $letra, 1, 0, 'C');
+        starlim_pdf_set_text($pdf, 'blue');
+        $pdf->Cell($w, 8, 'Starlim', 0, 0, 'L');
+        return 9;
+    }
+}
 
-        $pdf->SetXY(83, 33);
+if (!function_exists('starlim_pdf_section_title')) {
+    function starlim_pdf_section_title(FPDF $pdf, string $title, float $x = 15, ?float $y = null): void {
+        if ($y !== null) $pdf->SetXY($x, $y);
+        else $pdf->SetX($x);
         $pdf->SetFont('Arial', 'B', 8);
-        $pdf->Cell(44, 6, p($titulo), 0, 0, 'C');
+        starlim_pdf_set_text($pdf, 'soft');
+        $pdf->Cell(0, 5, p(strtoupper($title)), 0, 1, 'L');
+        starlim_pdf_set_text($pdf, 'body');
+    }
+}
 
-        // — Derecha: datos del comprobante —
-        $pdf->SetXY(133, 10);
-        $pdf->SetFont('Arial', 'B', 12);
-        $pdf->SetTextColor(0, 0, 0);
-        $pdf->Cell(67, 6, 'Star Lim', 0, 1, 'R');
-
-        $pdf->SetX(133);
-        $pdf->SetFont('Arial', 'B', 10);
-        $pdf->Cell(67, 6, 'Nro: ' . $nro, 0, 1, 'R');
-
-        $pdf->SetX(133);
+if (!function_exists('starlim_pdf_key_value')) {
+    function starlim_pdf_key_value(FPDF $pdf, string $label, string $value, float $labelW, float $valueW, float $h = 5): void {
         $pdf->SetFont('Arial', '', 8);
-        $pdf->Cell(67, 4, 'CUIT: 20-46656757-5', 0, 1, 'R');
-
-        $pdf->SetX(133);
+        starlim_pdf_set_text($pdf, 'soft');
+        $pdf->Cell($labelW, $h, p($label), 0, 0, 'L');
         $pdf->SetFont('Arial', 'B', 8);
-        $pdf->Cell(67, 4, 'Fecha: ' . $fecha, 0, 1, 'R');
+        starlim_pdf_set_text($pdf, 'body');
+        $pdf->Cell($valueW, $h, p($value !== '' ? $value : '-'), 0, 0, 'L');
+    }
+}
 
-        $pdf->SetFont('Arial', '', 8);
-        foreach ($extra as $linea) {
-            $pdf->SetX(133);
-            $pdf->Cell(67, 4, p($linea), 0, 1, 'R');
-        }
-        $y_right = $pdf->GetY();
-
-        // — Línea separadora —
-        $y_linea = max($y_left, $y_right, 39) + 2;
-        $pdf->SetDrawColor(0, 0, 0);
-        $pdf->SetLineWidth(0.5);
-        $pdf->Line(10, $y_linea, 200, $y_linea);
+if (!function_exists('starlim_pdf_table_header')) {
+    function starlim_pdf_table_header(FPDF $pdf, array $headers, array $widths, array $aligns = []): void {
+        $pdf->SetFillColor(31, 58, 96);
+        $pdf->SetDrawColor(31, 58, 96);
         $pdf->SetLineWidth(0.2);
+        $pdf->SetFont('Arial', 'B', 7.5);
+        starlim_pdf_set_text($pdf, 'white');
+        foreach ($headers as $i => $label) {
+            $align = $aligns[$i] ?? 'L';
+            $pdf->Cell($widths[$i], 7, p(strtoupper($label)), 1, 0, $align, true);
+        }
+        $pdf->Ln();
+        starlim_pdf_set_text($pdf, 'body');
+    }
+}
 
-        return $y_linea;
+if (!function_exists('starlim_pdf_signature_pair')) {
+    function starlim_pdf_signature_pair(FPDF $pdf, string $left, string $right, float $y): void {
+        $pdf->SetDrawColor(31, 36, 33);
+        $pdf->SetLineWidth(0.2);
+        $pdf->Line(15, $y, 86, $y);
+        $pdf->Line(124, $y, 195, $y);
+        $pdf->SetFont('Arial', '', 8);
+        starlim_pdf_set_text($pdf, 'muted');
+        $pdf->SetXY(15, $y + 2);
+        $pdf->Cell(71, 5, p($left), 0, 0, 'C');
+        $pdf->SetXY(124, $y + 2);
+        $pdf->Cell(71, 5, p($right), 0, 0, 'C');
+        starlim_pdf_set_text($pdf, 'body');
+    }
+}
+
+if (!function_exists('starlim_pdf_signature_trio')) {
+    function starlim_pdf_signature_trio(FPDF $pdf, array $labels, float $y): void {
+        $labels = array_values(array_pad($labels, 3, ''));
+        $segments = [
+            [15, 65, $labels[0]],
+            [80, 130, $labels[1]],
+            [145, 195, $labels[2]],
+        ];
+
+        $pdf->SetDrawColor(31, 36, 33);
+        $pdf->SetLineWidth(0.2);
+        $pdf->SetFont('Arial', '', 8);
+        starlim_pdf_set_text($pdf, 'muted');
+        foreach ($segments as [$x1, $x2, $label]) {
+            $pdf->Line($x1, $y, $x2, $y);
+            $pdf->SetXY($x1, $y + 2);
+            $pdf->Cell($x2 - $x1, 5, p($label), 0, 0, 'C');
+        }
+        starlim_pdf_set_text($pdf, 'body');
+    }
+}
+
+if (!function_exists('cabecera_comprobante')) {
+    function cabecera_comprobante($pdf, $titulo, $letra, $nro, $fecha, $extra = []) {
+        $company = starlim_pdf_company();
+
+        $pdf->SetMargins(15, 14, 15);
+        $pdf->SetDrawColor(31, 36, 33);
+        $pdf->SetLineWidth(0.35);
+
+        $logoH = starlim_pdf_draw_logo($pdf, 15, 14, 42);
+        $infoY = 14 + $logoH + 3;
+        $pdf->SetXY(15, $infoY);
+        $pdf->SetFont('Arial', 'B', 8.5);
+        starlim_pdf_set_text($pdf, 'body');
+        $pdf->Cell(82, 4.5, p($company['name'] . ' - CUIT ' . $company['cuit']), 0, 1, 'L');
+        $pdf->SetX(15);
+        $pdf->SetFont('Arial', '', 8);
+        starlim_pdf_set_text($pdf, 'muted');
+        $pdf->Cell(82, 4, p($company['address']), 0, 1, 'L');
+        $pdf->SetX(15);
+        $pdf->Cell(82, 4, p($company['phone'] . ' - ' . $company['email']), 0, 1, 'L');
+
+        $boxX = 132;
+        $boxY = 14;
+        $pdf->RoundedRect($boxX, $boxY, 63, 27, 2, 'D');
+        $pdf->SetXY($boxX + 4, $boxY + 4);
+        $pdf->SetFont('Arial', 'B', strlen((string)$letra) > 1 ? 14 : 18);
+        starlim_pdf_set_text($pdf, 'blue');
+        $pdf->Cell(14, 10, p((string)$letra), 0, 0, 'C');
+
+        $title = strtoupper((string)$titulo);
+        $titleLen = strlen($title);
+        $titleSize = $titleLen > 22 ? 7.7 : ($titleLen > 15 ? 8.8 : ($titleLen > 10 ? 10.5 : 14));
+        $pdf->SetXY($boxX + 21, $boxY + 4);
+        $pdf->SetFont('Arial', 'B', $titleSize);
+        starlim_pdf_set_text($pdf, 'body');
+        $pdf->MultiCell(37, $titleLen > 15 ? 4.2 : 6, p($title), 0, 'R');
+        $docY = $titleLen > 22 ? $boxY + 17.5 : $boxY + 16;
+        if ($docY < $pdf->GetY() + 1) $docY = $pdf->GetY() + 1;
+
+        $pdf->SetXY($boxX + 21, $docY);
+        $pdf->SetX($boxX + 21);
+        $pdf->SetFont('Arial', '', 8);
+        starlim_pdf_set_text($pdf, 'muted');
+        $pdf->Cell(37, 5, p('Nro. ' . $nro), 0, 1, 'R');
+        $pdf->SetX($boxX + 21);
+        $pdf->Cell(37, 5, p('Fecha ' . $fecha), 0, 1, 'R');
+
+        $extraY = 43;
+        foreach ($extra as $line) {
+            $pdf->SetXY($boxX, $extraY);
+            $pdf->SetFont('Arial', '', 8);
+            starlim_pdf_set_text($pdf, 'muted');
+            $pdf->Cell(63, 4.2, p((string)$line), 0, 1, 'R');
+            $extraY += 4.2;
+        }
+
+        $lineY = max(56, $pdf->GetY() + 2);
+        $pdf->SetDrawColor(31, 36, 33);
+        $pdf->SetLineWidth(0.55);
+        $pdf->Line(15, $lineY, 195, $lineY);
+        $pdf->SetLineWidth(0.2);
+        starlim_pdf_set_text($pdf, 'body');
+
+        return $lineY;
     }
 }

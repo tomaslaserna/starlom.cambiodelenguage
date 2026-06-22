@@ -17,6 +17,7 @@
 require __DIR__ . '/_auth.php';
 
 $pdo = $conexion->getPDO();
+$empresa_id = (int)($GLOBALS['STARLIM_EMPRESA_ID'] ?? 1);
 
 /* ════════ GET: búsqueda ════════ */
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -25,8 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $q        = trim($_GET['q'] ?? '');
     $limite   = max(1, min(500, (int) ($_GET['limite'] ?? 100)));
 
-    $where  = [];
-    $params = [];
+    $where  = ['empresa_id = ?'];
+    $params = [$empresa_id];
     if ($telefono !== '') {
         // comparar sin separadores: el campo puede tener "351-555 1234"
         $where[]  = "REPLACE(REPLACE(REPLACE(telefono, '-', ''), ' ', ''), '.', '') LIKE ?";
@@ -75,17 +76,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tel_limpio = preg_replace('/[^0-9+]/', '', $telefono);
         $dup = $pdo->prepare(
             "SELECT id, nombre_cliente FROM clientes
-             WHERE REPLACE(REPLACE(REPLACE(telefono, '-', ''), ' ', ''), '.', '') LIKE ? LIMIT 1"
+             WHERE empresa_id = ?
+               AND REPLACE(REPLACE(REPLACE(telefono, '-', ''), ' ', ''), '.', '') LIKE ? LIMIT 1"
         );
-        $dup->execute(['%' . $tel_limpio . '%']);
+        $dup->execute([$empresa_id, '%' . $tel_limpio . '%']);
         if ($row = $dup->fetch()) {
             integracion_responder(409, ['ok' => false, 'error' => 'Ya existe un cliente con ese teléfono.',
                                         'cliente_existente' => $row]);
         }
     }
     if ($nro_id !== '') {
-        $dup = $pdo->prepare("SELECT id, nombre_cliente FROM clientes WHERE nro_id = ? LIMIT 1");
-        $dup->execute([$nro_id]);
+        $dup = $pdo->prepare("SELECT id, nombre_cliente FROM clientes WHERE empresa_id = ? AND nro_id = ? LIMIT 1");
+        $dup->execute([$empresa_id, $nro_id]);
         if ($row = $dup->fetch()) {
             integracion_responder(409, ['ok' => false, 'error' => 'Ya existe un cliente con ese CUIT/DNI.',
                                         'cliente_existente' => $row]);
@@ -107,6 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'vendedor_cl'    => trim($body['vendedor_cl'] ?? ''),
         'estado'         => 'activo',
         'activo'         => 'true',
+        'empresa_id'     => $empresa_id,
     ];
 
     $cols  = implode(', ', array_keys($campos));

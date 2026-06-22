@@ -56,19 +56,27 @@ function starlim_seg_metricas(array $ts): array {
  * Devuelve ['grupos' => ['al_dia'=>[], 'contactar'=>[], 'riesgo'=>[], 'perdido'=>[], 'sin_historial'=>[]], 'vendedores'=>[]].
  */
 function starlim_calcular_seguimiento($conexion): array {
+    $empresaId = function_exists('starlim_current_empresa_id')
+        ? starlim_current_empresa_id($conexion, false)
+        : 1;
+
     $res = $conexion->query("
         SELECT c.id, c.nombre_cliente, COALESCE(c.telefono,'') AS telefono,
                COALESCE(c.vendedor_cl,'') AS vendedor, d.fecha
         FROM clientes c
         LEFT JOIN (
             SELECT DISTINCT
+                   empresa_id,
                    REGEXP_REPLACE(COALESCE(dni_cliente,''), '[^0-9]', '', 'g') AS dni_norm,
                    fecha
             FROM ventas
-            WHERE COALESCE(estado_pedido,'entregado') = 'entregado'
+            WHERE empresa_id = $empresaId
+              AND COALESCE(estado_pedido,'entregado') = 'entregado'
               AND REGEXP_REPLACE(COALESCE(dni_cliente,''), '[^0-9]', '', 'g') <> ''
-        ) d ON d.dni_norm = REGEXP_REPLACE(COALESCE(c.nro_id,''), '[^0-9]', '', 'g')
+        ) d ON d.empresa_id = c.empresa_id
+           AND d.dni_norm = REGEXP_REPLACE(COALESCE(c.nro_id,''), '[^0-9]', '', 'g')
            AND d.dni_norm <> ''
+        WHERE c.empresa_id = $empresaId
         ORDER BY c.nombre_cliente ASC, c.id ASC, d.fecha ASC
     ");
 

@@ -1,6 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -26,8 +28,8 @@ if (!preg_match('/^[A-Z]{1,4}[0-9]{1,6}$/', $codigo)) {
 }
 
 // Verificar que no exista
-$chk = $conexion->prepare("SELECT codigo FROM margenes WHERE codigo = ?");
-$chk->bind_param('s', $codigo);
+$chk = $conexion->prepare("SELECT codigo FROM margenes WHERE codigo = ? AND empresa_id = ?");
+$chk->bind_param('si', $codigo, $empresaId);
 $chk->execute();
 if ($chk->get_result()->num_rows > 0) {
     echo json_encode(['error' => "El código \"$codigo\" ya existe."]);
@@ -49,19 +51,19 @@ foreach ($campos as $c) {
 
 // codigo(s), nombre(s), p0(d), p1(d), p2(d), p3(d), min(d)
 $stmt = $conexion->prepare(
-    "INSERT INTO margenes (codigo, nombre, precio_0, precio_1, precio_2, precio_3, margen_minorista)
-     VALUES (?, ?, ?, ?, ?, ?, ?)"
+    "INSERT INTO margenes (codigo, nombre, precio_0, precio_1, precio_2, precio_3, margen_minorista, empresa_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
 );
 if (!$stmt) {
     echo json_encode(['error' => 'Error interno: ' . $conexion->error]);
     exit();
 }
 
-$stmt->bind_param('ssddddd',
+$stmt->bind_param('ssdddddi',
     $codigo, $nombre,
     $vals['precio_0'], $vals['precio_1'],
     $vals['precio_2'], $vals['precio_3'],
-    $vals['margen_minorista']
+    $vals['margen_minorista'], $empresaId
 );
 
 if ($stmt->execute()) {

@@ -1,9 +1,16 @@
 <?php
-session_start();
-if (!isset($_SESSION['usuario'])) { http_response_code(403); die(); }
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
+header('Content-Type: application/json; charset=utf-8');
+
+if (!isset($_SESSION['usuario'])) {
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'error' => 'SESSION_EXPIRED']);
+    exit;
+}
 
 include 'conexion_starlim_be.php';
-header('Content-Type: application/json; charset=utf-8');
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 // Esquema gestionado en supabase_migration.sql + db_fixes.sql
 
@@ -23,9 +30,9 @@ $lista_precios = trim($_GET['lista_precios'] ?? '');
 
 // ── Ventas branch conditions ──────────────────────────────────────────
 // Solo ventas ENTREGADAS: los pedidos sin entregar viven en pedidos.php.
-$conds_v  = ["COALESCE(v.estado_pedido, 'entregado') = 'entregado'"];
-$params_v = [];
-$types_v  = '';
+$conds_v  = ['v.empresa_id = ?', "COALESCE(v.estado_pedido, 'entregado') = 'entregado'"];
+$params_v = [$empresaId];
+$types_v  = 'i';
 
 if ($nro_id !== '') {
     $conds_v[]  = 'v.dni_cliente = ?';
@@ -71,7 +78,7 @@ if ($anio !== '') {
     $types_v   .= 'i';
 }
 
-$valid_cobro = ['en_proceso', 'recibido', 'pendiente', 'vencido'];
+$valid_cobro = ['en_proceso', 'pendiente_aprobacion', 'recibido', 'pendiente', 'vencido'];
 if (in_array($cobro, $valid_cobro, true)) {
     $conds_v[]  = "COALESCE(v.estado_cobro, 'pendiente') = ?";
     $params_v[] = $cobro;
@@ -91,7 +98,7 @@ if (in_array($lista_precios, $valid_lista, true)) {
     $conds_v[]  = 'cl.lista_precios = ?';
     $params_v[] = $lista_precios;
     $types_v   .= 's';
-    $join_cli_v = 'LEFT JOIN clientes cl ON cl.nro_id = v.dni_cliente';
+    $join_cli_v = 'LEFT JOIN clientes cl ON cl.empresa_id = v.empresa_id AND cl.nro_id = v.dni_cliente';
 }
 
 $where_v = implode(' AND ', $conds_v);
@@ -111,9 +118,9 @@ $include_remitos = $filtro_solo_remito || (
 );
 
 // ── Standalone remitos branch conditions ─────────────────────────────
-$conds_r  = ['r.id_venta IS NULL', "COALESCE(r.estado_pedido, 'entregado') = 'entregado'"];
-$params_r = [];
-$types_r  = '';
+$conds_r  = ['r.empresa_id = ?', 'r.id_venta IS NULL', "COALESCE(r.estado_pedido, 'entregado') = 'entregado'"];
+$params_r = [$empresaId];
+$types_r  = 'i';
 
 if ($nro_id !== '') {
     $conds_r[]  = 'r.dni_cliente = ?';
@@ -161,7 +168,7 @@ $sql_v = "SELECT
     rj.id        AS id_remito,
     rj.nro_remito
 FROM ventas v
-LEFT JOIN remitos rj ON rj.id_venta = v.id
+LEFT JOIN remitos rj ON rj.empresa_id = v.empresa_id AND rj.id_venta = v.id
 $join_cli_v
 WHERE $where_v";
 
@@ -196,8 +203,13 @@ $stmt_count = $conexion->prepare($sql_count);
 if ($types_count !== '') {
     $stmt_count->bind_param($types_count, ...$params_count);
 }
-$stmt_count->execute();
-$total_rows = (int)$stmt_count->get_result()->fetch_assoc()['total'];
+if (!$stmt_count->execute()) {
+    error_log('[Starlim] get_facturas_cliente count error: ' . $conexion->error);
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'QUERY_ERROR']);
+    exit;
+}
+$total_rows = (int)($stmt_count->get_result()->fetch_assoc()['total'] ?? 0);
 
 // ── Main query with ORDER + LIMIT ─────────────────────────────────────
 $sql_main = "SELECT * FROM ($sql_v $sql_r) AS combined
@@ -209,7 +221,12 @@ $types_main  = $types_v . ($include_remitos ? $types_r : '') . 'ii';
 
 $stmt = $conexion->prepare($sql_main);
 $stmt->bind_param($types_main, ...$params_main);
-$stmt->execute();
+if (!$stmt->execute()) {
+    error_log('[Starlim] get_facturas_cliente main error: ' . $conexion->error);
+    http_response_code(500);
+    echo json_encode(['ok' => false, 'error' => 'QUERY_ERROR']);
+    exit;
+}
 $rows = $stmt->get_result();
 
 $tipo_labels = [

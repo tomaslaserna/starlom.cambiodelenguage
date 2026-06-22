@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/../php/session_bootstrap.php';
+starlim_session_start();
 
 if (!isset($_SESSION['usuario'])) {
     header('Location: sign.php');
@@ -24,7 +25,7 @@ $nro_fmt     = str_pad($nro_remito, 8, '0', STR_PAD_LEFT);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remito emitido — Star Lim</title>
+    <title>Remito emitido — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <style>
         .cf-wrap {

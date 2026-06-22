@@ -20,7 +20,7 @@ $vs_card = function (string $clave, string $href, string $titulo, string $sub) u
         <button class="sidebar-close-btn" id="sidebar-close-btn">&lsaquo; MINIMIZAR</button>
         <div class="sidebar-action-cards">
             <?= $vs_card('registradas', 'ventas_registradas.php', 'Ventas Registradas', 'Historial de ventas entregadas y comprobantes') ?>
-            <?= $vs_card('cargar', 'factura_manual.php', 'Cargar pedido', 'El pedido pasa por depósito y se factura al entregarse') ?>
+            <?= $vs_card('cargar', 'factura_manual.php', 'Cargar pedido', 'El pedido pasa por deposito y genera remito interno') ?>
             <?= $vs_card('presupuestos', 'presupuestos.php', 'Presupuestos', 'Armar presupuestos y seguir los vigentes') ?>
         </div>
     </div>

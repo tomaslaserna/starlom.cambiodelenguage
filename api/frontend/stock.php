@@ -2,6 +2,8 @@
     require __DIR__ . '/partials/guard.php';
 
     include '../php/conexion_starlim_be.php';
+    $empresaId = starlim_bootstrap_tenant_context($conexion);
+    $canViewFinancialData = starlim_admin_is_admin();
 
     function fmt_pesos_s(float $v): string {
         return '$' . number_format($v, 2, ',', '.');
@@ -18,12 +20,13 @@
     ];
     $rs = $conexion->query("
         SELECT
-            COALESCE(SUM(stock_real * costo), 0) AS valor,
+            " . ($canViewFinancialData ? "COALESCE(SUM(stock_real * costo), 0)" : "0") . " AS valor,
             COALESCE(SUM(stock_real), 0)         AS unidades_reales,
             COALESCE(SUM(reservado), 0)          AS reservadas,
             COALESCE(SUM(disponible), 0)         AS disponibles,
             COALESCE(SUM(CASE WHEN disponible <= 0 THEN 1 ELSE 0 END), 0) AS productos_bajos
         FROM vista_stock_disponible
+        WHERE empresa_id = $empresaId
     ");
     if ($rs && ($row = $rs->fetch_assoc())) {
         $stock_stats['valor']           = (float)$row['valor'];
@@ -42,6 +45,7 @@
                 SUM(CASE WHEN fecha >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')
                           AND fecha <  DATE_TRUNC('month', CURRENT_DATE) THEN 1 ELSE 0 END) AS mov_pasado
             FROM stock_modificaciones
+            WHERE empresa_id = $empresaId
         ");
         if ($rm && ($m = $rm->fetch_assoc())) {
             $stock_stats['mov_mes']    = (int)($m['mov_mes'] ?? 0);
@@ -51,6 +55,7 @@
         $rl = $conexion->query("
             SELECT empleado, producto_nombre, cambios, justificacion, fecha
             FROM stock_modificaciones
+            WHERE empresa_id = $empresaId
             ORDER BY fecha DESC
             LIMIT 6
         ");
@@ -112,10 +117,11 @@
                         )
                     )                                                   AS cnt_recomendada
                 FROM productos p
-                JOIN vista_stock_disponible vsd ON vsd.id = p.id
-                JOIN detalle_ventas  dv ON dv.id_producto = p.id
-                JOIN ventas          v  ON v.id = dv.id_venta
-                WHERE v.fecha >= CURRENT_DATE - INTERVAL '6 months'
+                JOIN vista_stock_disponible vsd ON vsd.id = p.id AND vsd.empresa_id = p.empresa_id
+                JOIN detalle_ventas  dv ON dv.id_producto = p.id AND dv.empresa_id = p.empresa_id
+                JOIN ventas          v  ON v.id = dv.id_venta AND v.empresa_id = p.empresa_id
+                WHERE p.empresa_id = $empresaId
+                  AND v.fecha >= CURRENT_DATE - INTERVAL '6 months'
                 GROUP BY p.id, p.imagen, p.nombre, vsd.stock_real, vsd.reservado, vsd.disponible, p.costo
             ) AS base
             WHERE base.disponible < base.cnt_recomendada
@@ -140,7 +146,7 @@
                    costo,
                    NULL  AS cnt_recomendada
             FROM vista_stock_disponible
-            WHERE disponible <= 0
+            WHERE empresa_id = $empresaId AND disponible <= 0
             ORDER BY nombre ASC
             LIMIT 20
         ");
@@ -155,7 +161,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock — Star Lim</title>
+    <title>Stock — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">
@@ -224,10 +230,12 @@
             </div>
 
             <div class="stats-grid">
-                <div class="stat-card stat-wide">
-                    <span class="stat-label">Valor monetario en stock</span>
-                    <span class="stat-value"><?= fmt_pesos_s($stock_stats['valor']) ?></span>
-                </div>
+                <?php if ($canViewFinancialData): ?>
+                    <div class="stat-card stat-wide">
+                        <span class="stat-label">Valor monetario en stock</span>
+                        <span class="stat-value"><?= fmt_pesos_s($stock_stats['valor']) ?></span>
+                    </div>
+                <?php endif; ?>
                 <div class="stat-card">
                     <span class="stat-label">Unidades reales</span>
                     <span class="stat-value"><?= number_format($stock_stats['unidades_reales'], 0, ',', '.') ?></span>
@@ -303,7 +311,7 @@
                         <th>Disponible</th>
                         <th>Recomendado</th>
                         <th>Faltante</th>
-                        <th>Precio</th>
+                        <?php if ($canViewFinancialData): ?><th>Precio</th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
@@ -342,7 +350,7 @@
                         <td><span class="reponer-pill <?= $qtyClass ?>"><?= $disp ?></span></td>
                         <td><span class="reponer-number reponer-rec"><?= $rec !== null ? $rec : '—' ?></span></td>
                         <td><span class="reponer-pill reponer-faltante"><?= $faltante !== null ? $faltante : '—' ?></span></td>
-                        <td class="reponer-precio"><?= fmt_pesos_s((float)($p['costo'] ?? 0)) ?></td>
+                        <?php if ($canViewFinancialData): ?><td class="reponer-precio"><?= fmt_pesos_s((float)($p['costo'] ?? 0)) ?></td><?php endif; ?>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>

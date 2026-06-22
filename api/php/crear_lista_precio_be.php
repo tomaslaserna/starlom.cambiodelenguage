@@ -1,9 +1,11 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 ob_start();
 ini_set('display_errors', '0');
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -20,17 +22,23 @@ $conexion->query("CREATE TABLE IF NOT EXISTS listas_precio (
         id     SERIAL PRIMARY KEY,
         nombre VARCHAR(50) NOT NULL,
         activa SMALLINT    NOT NULL DEFAULT 1,
-        orden  INT         NOT NULL DEFAULT 0
+        orden  INT         NOT NULL DEFAULT 0,
+        empresa_id BIGINT  NOT NULL DEFAULT 1
     )"
 );
+$conexion->query("ALTER TABLE listas_precio ADD COLUMN IF NOT EXISTS empresa_id BIGINT NOT NULL DEFAULT 1");
+$conexion->query("CREATE INDEX IF NOT EXISTS idx_listas_precio_empresa ON listas_precio(empresa_id)");
 
 $conexion->query("CREATE TABLE IF NOT EXISTS margenes_listas (
         codigo      VARCHAR(10)    NOT NULL,
         lista_id    INT            NOT NULL,
         multiplicador DECIMAL(5,2) NOT NULL DEFAULT 1.00,
+        empresa_id BIGINT          NOT NULL DEFAULT 1,
         PRIMARY KEY (codigo, lista_id)
     )"
 );
+$conexion->query("ALTER TABLE margenes_listas ADD COLUMN IF NOT EXISTS empresa_id BIGINT NOT NULL DEFAULT 1");
+$conexion->query("CREATE INDEX IF NOT EXISTS idx_margenes_listas_empresa ON margenes_listas(empresa_id)");
 
 /* ── Datos entrantes ──────────────────────────────────── */
 $datos  = json_decode(file_get_contents('php://input'), true);
@@ -49,14 +57,14 @@ if (mb_strlen($nombre) > 50) {
 
 /* ── Insertar en listas_precio ───────────────────────── */
 $stmt = $conexion->prepare(
-    "INSERT INTO listas_precio (nombre, activa, orden) VALUES (?, 1, 0) RETURNING id"
+    "INSERT INTO listas_precio (nombre, activa, orden, empresa_id) VALUES (?, 1, 0, ?) RETURNING id"
 );
 if (!$stmt) {
     ob_end_clean();
     echo json_encode(['error' => 'Error interno: ' . $conexion->error]);
     exit();
 }
-$stmt->bind_param('s', $nombre);
+$stmt->bind_param('si', $nombre, $empresaId);
 
 if (!$stmt->execute()) {
     ob_end_clean();
@@ -75,20 +83,20 @@ if ($nuevaId <= 0) {
 
 /* ── Crear filas por defecto en margenes_listas ─────── */
 $codigos = [];
-$res = $conexion->query("SELECT codigo FROM margenes ORDER BY codigo ASC");
+$res = $conexion->query("SELECT codigo FROM margenes WHERE empresa_id = $empresaId ORDER BY codigo ASC");
 while ($row = $res->fetch_assoc()) {
     $codigos[] = $row['codigo'];
 }
 
 if (!empty($codigos)) {
     $stmtML = $conexion->prepare(
-        "INSERT INTO margenes_listas (codigo, lista_id, multiplicador)
-         VALUES (?, ?, 1.00)
+        "INSERT INTO margenes_listas (codigo, lista_id, multiplicador, empresa_id)
+         VALUES (?, ?, 1.00, ?)
          ON CONFLICT (codigo, lista_id) DO NOTHING"
     );
     if ($stmtML) {
         foreach ($codigos as $cod) {
-            $stmtML->bind_param('si', $cod, $nuevaId);
+            $stmtML->bind_param('sii', $cod, $nuevaId, $empresaId);
             $stmtML->execute();
         }
         $stmtML->close();

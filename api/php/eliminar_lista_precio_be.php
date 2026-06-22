@@ -1,9 +1,11 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 ob_start();
 ini_set('display_errors', '0');
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -26,8 +28,8 @@ if ($lista_id <= 0) {
 }
 
 /* ── Verificar que la lista exista ───────────────────── */
-$chk = $conexion->prepare("SELECT id, nombre FROM listas_precio WHERE id = ?");
-$chk->bind_param('i', $lista_id);
+$chk = $conexion->prepare("SELECT id, nombre FROM listas_precio WHERE id = ? AND empresa_id = ?");
+$chk->bind_param('ii', $lista_id, $empresaId);
 $chk->execute();
 $row = $chk->get_result()->fetch_assoc();
 $chk->close();
@@ -39,13 +41,13 @@ if (!$row) {
 }
 
 /* ── Soft-delete: activa = 0 ─────────────────────────── */
-$stmt = $conexion->prepare("UPDATE listas_precio SET activa = 0 WHERE id = ?");
+$stmt = $conexion->prepare("UPDATE listas_precio SET activa = 0 WHERE id = ? AND empresa_id = ?");
 if (!$stmt) {
     ob_end_clean();
     echo json_encode(['error' => 'Error interno: ' . $conexion->error]);
     exit();
 }
-$stmt->bind_param('i', $lista_id);
+$stmt->bind_param('ii', $lista_id, $empresaId);
 
 if ($stmt->execute() && $stmt->affected_rows > 0) {
     ob_end_clean();

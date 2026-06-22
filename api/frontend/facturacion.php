@@ -1,213 +1,408 @@
 <?php
-/**
- * facturacion.php — Administración de facturación (AFIP). Solo Jefe1/Admin.
- *
- * Reúne lo que antes estaba disperso en Ventas:
- *   - Solicitudes de factura pendientes de aprobación.
- *   - Facturas emitidas (con CAE) y el IVA acumulado.
- *   - Notas de crédito/débito emitidas.
- *   - Registro de cambios de ventas (auditoría).
- */
 $PERMITIDOS = ['Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 include '../php/conexion_starlim_be.php';
+require_once __DIR__ . '/../php/billing_lib.php';
+require_once __DIR__ . '/../php/admin_permissions.php';
 
-function fmtP($v) { return '$' . number_format((float)$v, 2, ',', '.'); }
+$empresaId = starlim_bootstrap_tenant_context($conexion);
+$canAdminFacturacion = starlim_admin_can($conexion, 'admin.facturacion', 'ver')
+    || starlim_admin_can_sensitive($conexion, 'admin.obligaciones_fiscales', 'ver')
+    || in_array((string)($rango ?? ''), ['Jefe1', 'Admin'], true);
+if (!$canAdminFacturacion) {
+    http_response_code(403);
+    echo 'Acceso denegado.';
+    exit;
+}
+starlim_set_empresa_context(billing_pdo($conexion), $empresaId);
 
-$tipo_labels = [1 => 'Factura A', 6 => 'Factura B', 2 => 'ND A', 3 => 'NC A', 7 => 'ND B', 8 => 'NC B'];
+$billing = billing_dashboard_data($conexion, $_GET);
+$range = $billing['range'];
+$docs = $billing['docs'];
+$op = $billing['operational'];
+$quality = $billing['data_quality'];
+$approvalQueue = $billing['approval_queue'] ?? [];
+$isBillingAdmin = starlim_normalizar_rango((string)($rango ?? '')) === 'Admin';
 
-/* ── Solicitudes pendientes ──────────────────────────────────────────── */
-$solicitudes = [];
-$rs = $conexion->query(
-    "SELECT sf.id, sf.tipo_cbte, sf.solicitado_por, sf.creado_en, v.nombre_cliente, v.monto, v.nro_comprobante
-     FROM solicitudes_factura sf JOIN ventas v ON v.id = sf.id_venta
-     WHERE sf.estado = 'pendiente' ORDER BY sf.creado_en ASC"
-);
-if ($rs) while ($row = $rs->fetch_assoc()) $solicitudes[] = $row;
+$periodOptions = [
+    'hoy' => 'Hoy',
+    '7d' => 'Ultimos 7 dias',
+    '30d' => 'Ultimos 30 dias',
+    'mes_actual' => 'Mes actual',
+    'anio_actual' => 'Anio actual',
+    'personalizado' => 'Personalizado',
+];
 
-/* ── Facturas emitidas (con CAE) + IVA acumulado ─────────────────────── */
-$tot = $conexion->query(
-    "SELECT COUNT(*) AS n, COALESCE(SUM(monto),0) AS total,
-            COALESCE(SUM(CASE WHEN tipo_cbte = 1 THEN monto - (monto/1.21) ELSE monto - (monto/1.21) END),0) AS iva_aprox
-     FROM ventas WHERE COALESCE(cae,'') <> ''"
-)->fetch_assoc();
+$alerts = [];
+if ((int)$docs['pending_count'] > 0) {
+    $alerts[] = ['level' => 'critica', 'title' => 'Facturas pendientes de aprobacion', 'text' => billing_int((int)$docs['pending_count']) . ' comprobantes esperan validacion o autorizacion fiscal.'];
+}
+if ((int)$billing['remitos_sin_factura'] > 0) {
+    $alerts[] = ['level' => 'alta', 'title' => 'Remitos sin comprobante fiscal', 'text' => billing_int((int)$billing['remitos_sin_factura']) . ' remitos entregados no tienen factura autorizada vinculada.'];
+}
+if ((int)$docs['rejected_count'] > 0) {
+    $alerts[] = ['level' => 'alta', 'title' => 'Rechazos fiscales pendientes', 'text' => billing_int((int)$docs['rejected_count']) . ' comprobantes rechazados requieren resolucion.'];
+}
+if ((int)$billing['drafts_vencidos'] > 0) {
+    $alerts[] = ['level' => 'media', 'title' => 'Borradores fuera de plazo', 'text' => billing_int((int)$billing['drafts_vencidos']) . ' borradores llevan mas de 7 dias sin resolverse.'];
+}
+$missingFiscal = (int)$quality['clientes_sin_doc'] + (int)$quality['clientes_sin_iva'] + (int)$quality['clientes_sin_razon'] + (int)$quality['clientes_sin_domicilio'];
+if ($missingFiscal > 0) {
+    $alerts[] = ['level' => 'media', 'title' => 'Datos fiscales incompletos', 'text' => billing_int($missingFiscal) . ' campos fiscales faltantes en clientes activos/base.'];
+}
 
-$facturas = [];
-$rf = $conexion->query(
-    "SELECT id, nro_comprobante, tipo_cbte, fecha, monto, cae, nombre_cliente
-     FROM ventas WHERE COALESCE(cae,'') <> '' ORDER BY fecha DESC, id DESC LIMIT 100"
-);
-if ($rf) while ($row = $rf->fetch_assoc()) $facturas[] = $row;
+function billing_status_label(string $status): string {
+    return [
+        'draft' => 'Borrador',
+        'validation_failed' => 'Validacion fallida',
+        'ready_for_validation' => 'Listo para validar',
+        'pending_authorization' => 'Pendiente ARCA',
+        'authorized' => 'Autorizado',
+        'authorized_with_observations' => 'Autorizado c/obs.',
+        'rejected' => 'Rechazado',
+        'sent' => 'Enviado',
+        'paid' => 'Cobrado',
+        'overdue' => 'Vencido',
+    ][$status] ?? $status;
+}
 
-/* ── Notas de crédito/débito emitidas ────────────────────────────────── */
-$notas = [];
-$rn = $conexion->query(
-    "SELECT cv.id, cv.clase, cv.fiscal, cv.nro_comprobante, cv.monto, cv.creado_en, cv.creado_por,
-            COALESCE(v.nombre_cliente, r.nombre_cliente, '') AS nombre_cliente
-     FROM comprobantes_venta cv
-     LEFT JOIN ventas v  ON v.id = cv.id_venta
-     LEFT JOIN remitos r ON r.id = cv.id_remito
-     ORDER BY cv.id DESC LIMIT 100"
-);
-if ($rn) while ($row = $rn->fetch_assoc()) $notas[] = $row;
+function billing_queue_errors(?string $raw): string {
+    if (!$raw) return '';
+    $decoded = json_decode($raw, true);
+    if (is_array($decoded)) {
+        $flat = array_filter(array_map(fn($v) => is_scalar($v) ? (string)$v : json_encode($v, JSON_UNESCAPED_UNICODE), $decoded));
+        return implode(' | ', $flat);
+    }
+    return $raw;
+}
 ?>
 <!DOCTYPE html>
 <html class="cambio-pagina" lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Facturación (AFIP) — Star Lim</title>
+    <title>Facturacion - Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
-    <style>
-        .summ-row { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
-        .summ-card { background:var(--surface,#fff); border:1px solid rgba(128,128,128,.18); border-radius:14px; padding:14px 22px; min-width:170px; }
-        .summ-label { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; opacity:.6; }
-        .summ-val { font-size:24px; font-weight:800; margin-top:2px; }
-        .fac-sec { margin-bottom:26px; }
-        .fac-sec h2 { font-size:16px; margin:0 0 10px; }
-        .fac-table { width:100%; border-collapse:collapse; font-size:13px; }
-        .fac-table th { text-align:left; padding:8px 10px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; opacity:.6; border-bottom:2px solid rgba(128,128,128,.2); }
-        .fac-table td { padding:8px 10px; border-bottom:1px solid rgba(128,128,128,.12); }
-        .fac-empty { padding:18px; text-align:center; opacity:.55; font-style:italic; }
-        .fac-btn { padding:5px 12px; border:none; border-radius:7px; cursor:pointer; font-size:12px; font-weight:600; font-family:inherit; }
-        .fac-btn-ok { background:#2563eb; color:#fff; } .fac-btn-ok:hover { background:#1d4ed8; }
-        .fac-btn-no { background:rgba(128,128,128,.14); color:inherit; }
-        .fac-chip { display:inline-block; padding:2px 9px; border-radius:12px; font-size:11px; font-weight:700; background:rgba(128,128,128,.12); }
-        .fac-link { color:#2563eb; text-decoration:none; } .fac-link:hover { text-decoration:underline; }
-        .fac-msg { font-size:13px; padding:8px 10px; border-radius:8px; margin-bottom:10px; display:none; }
-    </style>
+    <link rel="stylesheet" href="../css/panel_ventas.css">
     <link rel="stylesheet" href="../css/theme.css">
 </head>
 <body>
+<?php $NAV_ACTIVA = 'admin'; $ADMIN_ACTIVA = 'admin.facturacion'; include __DIR__ . '/partials/nav.php'; ?>
 
-<?php $NAV_ACTIVA = ''; include __DIR__ . '/partials/nav.php'; ?>
-
-<main class="dash-main">
-    <h1 class="dash-hello">Facturación (AFIP)</h1>
-    <p style="opacity:.65;font-size:13.5px;margin:-6px 0 18px;">Aprobación de facturas, comprobantes emitidos e IVA acumulado.</p>
-
-    <div class="summ-row">
-        <div class="summ-card">
-            <div class="summ-label">Facturas emitidas</div>
-            <div class="summ-val"><?= (int)$tot['n'] ?></div>
+<main class="dash-main billing-workbench">
+    <header class="billing-topbar">
+        <div>
+            <p class="billing-kicker">Centro financiero</p>
+            <h1>Facturacion</h1>
+            <span>Aprobacion de facturas, IVA debito/credito y registro de comprobantes fiscales.</span>
         </div>
-        <div class="summ-card">
-            <div class="summ-label">Total facturado</div>
-            <div class="summ-val"><?= fmtP($tot['total']) ?></div>
-        </div>
-        <div class="summ-card">
-            <div class="summ-label">IVA acumulado (aprox.)</div>
-            <div class="summ-val"><?= fmtP($tot['iva_aprox']) ?></div>
-        </div>
-        <div class="summ-card">
-            <div class="summ-label">Solicitudes pendientes</div>
-            <div class="summ-val" style="color:#b45309;"><?= count($solicitudes) ?></div>
-        </div>
-    </div>
+    </header>
 
-    <div class="fac-msg" id="fac-msg"></div>
+    <form class="billing-filterbar" method="get">
+        <label>
+            Periodo
+            <select name="periodo" onchange="this.form.submit()">
+                <?php foreach ($periodOptions as $key => $label): ?>
+                    <option value="<?= htmlspecialchars($key) ?>" <?= $range['period'] === $key ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </label>
+        <label>
+            Desde
+            <input type="date" name="desde" value="<?= htmlspecialchars($range['from']) ?>">
+        </label>
+        <label>
+            Hasta
+            <input type="date" name="hasta" value="<?= htmlspecialchars($range['to']) ?>">
+        </label>
+        <button type="submit">Aplicar</button>
+    </form>
 
-    <!-- Solicitudes pendientes -->
-    <section class="dash-panel fac-sec">
-        <h2>Solicitudes de factura pendientes</h2>
-        <table class="fac-table">
-            <thead><tr><th>Cliente</th><th>Pedido</th><th>Tipo</th><th>Monto</th><th>Solicitó</th><th></th></tr></thead>
-            <tbody>
-            <?php if (empty($solicitudes)): ?>
-                <tr><td colspan="6" class="fac-empty">No hay solicitudes pendientes.</td></tr>
-            <?php else: foreach ($solicitudes as $s): ?>
-                <tr data-sol="<?= (int)$s['id'] ?>">
-                    <td><?= htmlspecialchars($s['nombre_cliente']) ?></td>
-                    <td>#<?= str_pad((int)$s['nro_comprobante'], 8, '0', STR_PAD_LEFT) ?></td>
-                    <td><span class="fac-chip"><?= ((int)$s['tipo_cbte'] === 1) ? 'Factura A' : 'Factura B' ?></span></td>
-                    <td><?= fmtP($s['monto']) ?></td>
-                    <td><?= htmlspecialchars($s['solicitado_por']) ?></td>
-                    <td style="white-space:nowrap;">
-                        <button class="fac-btn fac-btn-ok" data-acc="aprobar"  data-id="<?= (int)$s['id'] ?>">Aprobar y emitir</button>
-                        <button class="fac-btn fac-btn-no" data-acc="rechazar" data-id="<?= (int)$s['id'] ?>">Rechazar</button>
-                    </td>
-                </tr>
-            <?php endforeach; endif; ?>
-            </tbody>
-        </table>
+    <section class="billing-grid billing-grid-kpis">
+        <article class="billing-kpi">
+            <span>Total facturado bruto</span>
+            <strong><?= billing_money((float)$docs['gross_total']) ?></strong>
+            <em><?= billing_int((int)$docs['authorized_count']) ?> comprobantes autorizados</em>
+        </article>
+        <article class="billing-kpi">
+            <span>IVA debito</span>
+            <strong><?= billing_money((float)$docs['vat_total']) ?></strong>
+            <em>Neto gravado: <?= billing_money((float)$docs['net_taxable']) ?></em>
+        </article>
+        <article class="billing-kpi">
+            <span>IVA credito</span>
+            <strong><?= billing_money((float)$docs['purchase_vat_credit']) ?></strong>
+            <em>Tomado de compras registradas</em>
+        </article>
+        <article class="billing-kpi billing-kpi-risk">
+            <span>Facturas pendientes de aprobacion</span>
+            <strong><?= billing_int((int)$docs['pending_count']) ?></strong>
+            <em>Borradores: <?= billing_int((int)$docs['draft_count']) ?></em>
+        </article>
     </section>
 
-    <!-- Facturas emitidas -->
-    <section class="dash-panel fac-sec">
-        <h2>Facturas emitidas</h2>
-        <table class="fac-table">
-            <thead><tr><th>Nro</th><th>Tipo</th><th>Cliente</th><th>Fecha</th><th>Monto</th><th>CAE</th><th></th></tr></thead>
-            <tbody>
-            <?php if (empty($facturas)): ?>
-                <tr><td colspan="7" class="fac-empty">Todavía no se emitieron facturas.</td></tr>
-            <?php else: foreach ($facturas as $f): ?>
-                <tr>
-                    <td><?= str_pad((int)$f['nro_comprobante'], 8, '0', STR_PAD_LEFT) ?></td>
-                    <td><span class="fac-chip"><?= $tipo_labels[(int)$f['tipo_cbte']] ?? '?' ?></span></td>
-                    <td><?= htmlspecialchars($f['nombre_cliente']) ?></td>
-                    <td><?= $f['fecha'] ? date('d-m-Y', strtotime($f['fecha'])) : '—' ?></td>
-                    <td><?= fmtP($f['monto']) ?></td>
-                    <td style="font-size:11px;opacity:.7;"><?= htmlspecialchars($f['cae']) ?></td>
-                    <td><a class="fac-link" target="_blank" href="../php/generar_pdf_factura.php?id_venta=<?= (int)$f['id'] ?>&view=1">PDF</a></td>
-                </tr>
-            <?php endforeach; endif; ?>
-            </tbody>
-        </table>
+    <section class="billing-layout">
+        <article class="billing-card billing-card-wide">
+            <div class="billing-card-head">
+                <div>
+                    <h2>Evolucion fiscal</h2>
+                    <p>Importes autorizados por fecha de emision.</p>
+                </div>
+                <span><?= billing_date($range['from']) ?> - <?= billing_date($range['to']) ?></span>
+            </div>
+            <?php if (empty($billing['daily'])): ?>
+                <div class="billing-empty">Todavia no hay comprobantes fiscales autorizados en este periodo. El grafico se activara con datos reales.</div>
+            <?php else: ?>
+                <?php
+                $max = max(array_map(fn($r) => (float)$r['amount'], $billing['daily'])) ?: 1;
+                ?>
+                <div class="billing-bars">
+                    <?php foreach ($billing['daily'] as $bar): ?>
+                        <div class="billing-bar" title="<?= htmlspecialchars(billing_date($bar['day']) . ' - ' . billing_money((float)$bar['amount'])) ?>">
+                            <span style="height: <?= max(4, round(((float)$bar['amount'] / $max) * 100)) ?>%"></span>
+                            <em><?= date('d/m', strtotime($bar['day'])) ?></em>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </article>
+
+        <article class="billing-card">
+            <div class="billing-card-head">
+                <div>
+                    <h2>Requiere atencion</h2>
+                    <p>Alertas reales del circuito fiscal.</p>
+                </div>
+            </div>
+            <?php if (!$alerts): ?>
+                <div class="billing-empty billing-empty-ok">Sin alertas fiscales para el periodo seleccionado.</div>
+            <?php else: ?>
+                <div class="billing-alerts">
+                    <?php foreach ($alerts as $alert): ?>
+                        <div class="billing-alert billing-alert-<?= htmlspecialchars($alert['level']) ?>">
+                            <strong><?= htmlspecialchars($alert['title']) ?></strong>
+                            <span><?= htmlspecialchars($alert['text']) ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </article>
     </section>
 
-    <!-- Notas de crédito / débito -->
-    <section class="dash-panel fac-sec">
-        <h2>Notas de crédito / débito emitidas</h2>
-        <table class="fac-table">
-            <thead><tr><th>Nro</th><th>Clase</th><th>Cliente</th><th>Monto</th><th>Fecha</th><th>Por</th><th></th></tr></thead>
-            <tbody>
-            <?php if (empty($notas)): ?>
-                <tr><td colspan="7" class="fac-empty">No se emitieron notas.</td></tr>
-            <?php else: foreach ($notas as $n): ?>
-                <tr>
-                    <td><?= str_pad((int)$n['nro_comprobante'], 8, '0', STR_PAD_LEFT) ?></td>
-                    <td><span class="fac-chip"><?= $n['clase'] ?><?= (int)$n['fiscal'] ? ' fiscal' : ' interna' ?></span></td>
-                    <td><?= htmlspecialchars($n['nombre_cliente']) ?></td>
-                    <td><?= fmtP($n['monto']) ?></td>
-                    <td><?= $n['creado_en'] ? date('d-m-Y', strtotime($n['creado_en'])) : '—' ?></td>
-                    <td><?= htmlspecialchars($n['creado_por']) ?></td>
-                    <td><a class="fac-link" target="_blank" href="../php/generar_pdf_comprobante.php?id=<?= (int)$n['id'] ?>&view=1">PDF</a></td>
-                </tr>
-            <?php endforeach; endif; ?>
-            </tbody>
-        </table>
-    </section>
+    <section class="billing-layout billing-layout-details">
+        <article class="billing-card billing-card-wide">
+            <div class="billing-card-head">
+                <div>
+                    <h2>Cola de aprobacion ARCA</h2>
+                    <p>Solicitudes fiscales generadas desde ventas. Solo Admin puede aprobar y emitir CAE.</p>
+                </div>
+                <span><?= billing_int(count($approvalQueue)) ?> pendientes</span>
+            </div>
+            <?php if (empty($approvalQueue)): ?>
+                <div class="billing-empty billing-empty-ok">No hay facturas esperando aprobacion.</div>
+            <?php else: ?>
+                <div class="billing-table-wrap">
+                    <table class="billing-table">
+                        <thead>
+                            <tr>
+                                <th>Solicitud</th>
+                                <th>Cliente</th>
+                                <th>Documento</th>
+                                <th>Total</th>
+                                <th>Estado</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($approvalQueue as $doc): ?>
+                            <?php
+                                $status = (string)$doc['status'];
+                                $canApprove = $isBillingAdmin && in_array($status, ['ready_for_validation', 'rejected'], true);
+                                $errors = billing_queue_errors((string)($doc['validation_errors'] ?? ''));
+                            ?>
+                            <tr>
+                                <td>
+                                    <strong>#<?= (int)$doc['id'] ?></strong>
+                                    <span><?= billing_date($doc['issue_date'] ?: $doc['created_at']) ?></span>
+                                </td>
+                                <td>
+                                    <strong><?= htmlspecialchars($doc['customer_name'] ?: '-') ?></strong>
+                                    <span><?= htmlspecialchars($doc['vat_condition'] ?: 'Sin IVA cargado') ?></span>
+                                </td>
+                                <td>
+                                    <?= htmlspecialchars(trim(($doc['identification_type'] ?: 'Doc') . ' ' . ($doc['identification_number'] ?: ''))) ?>
+                                    <?php if ($errors): ?><span><?= htmlspecialchars($errors) ?></span><?php endif; ?>
+                                </td>
+                                <td><?= billing_money((float)$doc['grand_total']) ?></td>
+                                <td><span class="billing-pill"><?= htmlspecialchars(billing_status_label($status)) ?></span></td>
+                                <td>
+                                    <?php if ($canApprove): ?>
+                                        <button class="billing-approve-action" type="button" data-doc="<?= (int)$doc['id'] ?>">Aprobar y emitir</button>
+                                    <?php elseif ($status === 'pending_authorization'): ?>
+                                        <button class="billing-row-action" type="button" disabled>Procesando</button>
+                                    <?php elseif ($status === 'validation_failed'): ?>
+                                        <button class="billing-row-action" type="button" disabled>Corregir datos</button>
+                                    <?php elseif (!$isBillingAdmin): ?>
+                                        <button class="billing-row-action" type="button" disabled>Espera Admin</button>
+                                    <?php else: ?>
+                                        <button class="billing-row-action" type="button" disabled>No disponible</button>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </article>
 
-    <div style="text-align:center;margin-top:10px;">
-        <a href="panel_empleados.php" class="volver">Volver al Inicio</a>
-    </div>
+        <article class="billing-card">
+            <div class="billing-card-head">
+                <div>
+                    <h2>Ventas sin solicitud fiscal</h2>
+                    <p>Ventas entregadas que todavia no entraron en la cola de aprobacion.</p>
+                </div>
+            </div>
+            <?php if (empty($billing['pending_sales'])): ?>
+                <div class="billing-empty">No hay ventas entregadas pendientes de preparar.</div>
+            <?php else: ?>
+                <div class="billing-table-wrap">
+                    <table class="billing-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Cliente</th>
+                                <th>Remito</th>
+                                <th>Total</th>
+                                <th>Condicion IVA</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        <?php foreach ($billing['pending_sales'] as $sale): ?>
+                            <tr>
+                                <td><?= billing_date($sale['fecha']) ?></td>
+                                <td>
+                                    <strong><?= htmlspecialchars($sale['nombre_cliente'] ?: '-') ?></strong>
+                                    <span><?= htmlspecialchars($sale['dni_cliente'] ?: 'Sin documento') ?></span>
+                                </td>
+                                <td>#<?= str_pad((string)$sale['nro_remito'], 8, '0', STR_PAD_LEFT) ?></td>
+                                <td><?= billing_money((float)$sale['monto']) ?></td>
+                                <td><span class="billing-pill"><?= htmlspecialchars($sale['cond_iva'] ?: 'Sin dato') ?></span></td>
+                                <td>
+                                    <button class="billing-row-action" type="button" data-sale="<?= (int)$sale['id'] ?>">Enviar a aprobacion</button>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </article>
+
+        <article class="billing-card">
+            <div class="billing-card-head">
+                <div>
+                    <h2>Comprobantes</h2>
+                    <p>Ultimos documentos creados en el modulo.</p>
+                </div>
+            </div>
+            <?php if (empty($billing['recent_docs'])): ?>
+                <div class="billing-empty">Aun no hay documentos en el modulo nuevo.</div>
+            <?php else: ?>
+                <div class="billing-doc-list">
+                    <?php foreach ($billing['recent_docs'] as $doc): ?>
+                        <div class="billing-doc-item">
+                            <div>
+                                <strong><?= htmlspecialchars(ucfirst($doc['document_type'])) ?> <?= htmlspecialchars($doc['letter']) ?></strong>
+                                <span><?= htmlspecialchars($doc['customer_name'] ?: 'Sin cliente') ?></span>
+                            </div>
+                            <div>
+                                <b><?= billing_money((float)$doc['grand_total']) ?></b>
+                                <em><?= htmlspecialchars(billing_status_label($doc['status'])) ?></em>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </article>
+
+        <article class="billing-card">
+            <div class="billing-card-head">
+                <div>
+                    <h2>Calidad fiscal de clientes</h2>
+                    <p>Campos necesarios antes de emitir.</p>
+                </div>
+            </div>
+            <div class="billing-quality">
+                <div><span>Sin documento</span><strong><?= billing_int((int)$quality['clientes_sin_doc']) ?></strong></div>
+                <div><span>Sin condicion IVA</span><strong><?= billing_int((int)$quality['clientes_sin_iva']) ?></strong></div>
+                <div><span>Sin razon social</span><strong><?= billing_int((int)$quality['clientes_sin_razon']) ?></strong></div>
+                <div><span>Sin domicilio fiscal</span><strong><?= billing_int((int)$quality['clientes_sin_domicilio']) ?></strong></div>
+            </div>
+        </article>
+    </section>
 </main>
 
-<script src="../js/global.js"></script>
 <script>
-    const _msg = document.getElementById('fac-msg');
-    function mostrar(t, ok) { _msg.textContent = t; _msg.style.display = 'block';
-        _msg.style.background = ok ? '#dcfce7' : '#fee2e2'; _msg.style.color = ok ? '#166534' : '#991b1b'; }
-
-    document.querySelectorAll('[data-acc]').forEach(btn => btn.addEventListener('click', async function () {
-        const acc = this.dataset.acc, id = this.dataset.id;
-        let motivo = '';
-        if (acc === 'rechazar') { motivo = prompt('Motivo del rechazo:') || ''; if (motivo === '') return; }
-        this.disabled = true;
+document.querySelectorAll('.billing-row-action').forEach((button) => {
+    if (!button.dataset.sale) return;
+    button.addEventListener('click', async () => {
+        const saleId = button.dataset.sale;
+        button.disabled = true;
+        const original = button.textContent;
+        button.textContent = 'Preparando...';
         try {
-            const res = await fetch('../php/resolver_solicitud_factura.php', {
-                method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ accion: acc, id_solicitud: id, motivo }),
+            const body = new URLSearchParams({ id_venta: saleId });
+            const res = await fetch('../php/billing_prepare_draft.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body,
             });
-            const r = await res.json();
-            if (r.ok) {
-                document.querySelector(`[data-sol="${id}"]`)?.remove();
-                mostrar(acc === 'aprobar' ? `Factura emitida (CAE ${r.cae || ''}).` : 'Solicitud rechazada.', true);
-                setTimeout(() => window.location.reload(), 1400);
-            } else { mostrar(r.error || 'Error', false); this.disabled = false; }
-        } catch { mostrar('Error de conexión', false); this.disabled = false; }
-    }));
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error || 'No se pudo enviar a aprobacion.');
+            window.location.reload();
+        } catch (error) {
+            alert(error.message);
+            button.disabled = false;
+            button.textContent = original;
+        }
+    });
+});
+
+document.querySelectorAll('.billing-approve-action').forEach((button) => {
+    button.addEventListener('click', async () => {
+        const documentId = button.dataset.doc;
+        if (!documentId) return;
+        const confirmed = window.confirm('Aprobar y emitir esta factura en ARCA? Esta accion solicita CAE y no debe duplicarse.');
+        if (!confirmed) return;
+        button.disabled = true;
+        const original = button.textContent;
+        button.textContent = 'Emitiendo...';
+        try {
+            const body = new URLSearchParams({ document_id: documentId });
+            const res = await fetch('../php/billing_approve_document.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body,
+            });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error || 'No se pudo aprobar la factura.');
+            const nro = String(data.document_number || '').padStart(8, '0');
+            alert(`Factura autorizada. CAE: ${data.cae || '-'} | Nro: ${nro}`);
+            if (data.pdf_url) {
+                window.open(data.pdf_url, '_blank');
+            }
+            window.location.reload();
+        } catch (error) {
+            alert(error.message);
+            button.disabled = false;
+            button.textContent = original;
+        }
+    });
+});
 </script>
+<script src="../js/global.js"></script>
 </body>
 </html>

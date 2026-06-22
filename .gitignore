@@ -1,6 +1,9 @@
 .env
 *.log
 *.err.log
+__pycache__/
+*.py[cod]
+.pytest_cache/
 .claude/
 uploads/comprobantes/*
 uploads/recibos/*

@@ -1,5 +1,5 @@
 -- ============================================================
--- Star Lim — Migración MySQL → PostgreSQL (Supabase)
+-- Starlim — Migración MySQL → PostgreSQL (Supabase)
 -- Ejecutar en: Supabase Dashboard → SQL Editor
 -- ============================================================
 

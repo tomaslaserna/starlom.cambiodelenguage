@@ -1,5 +1,5 @@
 -- ============================================================
--- Star Lim — Correcciones de base (jun 2026)
+-- Starlim — Correcciones de base (jun 2026)
 -- Idempotente: se puede ejecutar más de una vez sin daño.
 -- Reemplaza a los bloques de "migración runtime" con SHOW COLUMNS
 -- (sintaxis MySQL) que fallaban silenciosamente en Postgres.
@@ -39,9 +39,17 @@ CREATE INDEX IF NOT EXISTS idx_ventas_fecha           ON ventas(fecha);
 CREATE INDEX IF NOT EXISTS idx_ventas_dni_cliente     ON ventas(dni_cliente);
 CREATE INDEX IF NOT EXISTS idx_ventas_estado_cobro    ON ventas(estado_cobro);
 CREATE INDEX IF NOT EXISTS idx_ventas_nro_comprobante ON ventas(nro_comprobante);
+CREATE INDEX IF NOT EXISTS idx_ventas_cobros_panel ON ventas(fecha DESC, id DESC)
+WHERE COALESCE(estado_pedido,'entregado') = 'entregado'
+  AND COALESCE(estado_cobro,'pendiente') NOT IN ('recibido','cancelado');
+CREATE INDEX IF NOT EXISTS idx_ventas_cobro_vencimiento ON ventas(vencimiento_cobro)
+WHERE COALESCE(estado_cobro,'pendiente') = 'pendiente'
+  AND COALESCE(estado_pedido,'entregado') = 'entregado'
+  AND vencimiento_cobro IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_detalle_ventas_venta   ON detalle_ventas(id_venta);
 CREATE INDEX IF NOT EXISTS idx_detalle_remitos_remito ON detalle_remitos(id_remito);
 CREATE INDEX IF NOT EXISTS idx_remitos_venta          ON remitos(id_venta);
+CREATE INDEX IF NOT EXISTS idx_remitos_venta_id       ON remitos(id_venta, id);
 CREATE INDEX IF NOT EXISTS idx_remitos_fecha          ON remitos(fecha);
 CREATE INDEX IF NOT EXISTS idx_productos_codigo       ON productos(codigo);
 CREATE INDEX IF NOT EXISTS idx_productos_nombre       ON productos(nombre);
@@ -50,6 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_clientes_nro_id        ON clientes(nro_id);
 CREATE INDEX IF NOT EXISTS idx_compras_proveedor      ON compras_registro(id_proveedor);
 CREATE INDEX IF NOT EXISTS idx_mensajes_para_leido    ON mensajes(para, leido);
 CREATE INDEX IF NOT EXISTS idx_cc_entidad             ON cuentas_corrientes(entidad_nombre);
+CREATE INDEX IF NOT EXISTS idx_cc_origen_tipo         ON cuentas_corrientes(tipo_origen, id_origen);
 CREATE INDEX IF NOT EXISTS idx_tareas_asignado_a      ON tareas_asignadas(asignado_a);
 
 -- ── Modo Administrador de ventas_registradas.php (jun 2026) ──
@@ -89,10 +98,23 @@ ALTER TABLE remitos ALTER COLUMN estado_pedido SET DEFAULT 'recibido';
 
 ALTER TABLE ventas ADD COLUMN IF NOT EXISTS observacion         TEXT        NOT NULL DEFAULT '';
 ALTER TABLE ventas ADD COLUMN IF NOT EXISTS creado_en           TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP;
-ALTER TABLE ventas ADD COLUMN IF NOT EXISTS comprobante_deseado VARCHAR(20) NOT NULL DEFAULT 'remito'; -- remito | factura_a | factura_b
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS comprobante_deseado VARCHAR(20) NOT NULL DEFAULT 'remito'; -- remito
 ALTER TABLE ventas ADD COLUMN IF NOT EXISTS vencimiento_cobro   TIMESTAMP;
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cobro_metodo VARCHAR(30) NOT NULL DEFAULT '';
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cobro_monto_registrado DECIMAL(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cobro_fecha DATE;
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cobro_destino VARCHAR(255) NOT NULL DEFAULT '';
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cobro_operacion VARCHAR(120) NOT NULL DEFAULT '';
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cobro_notas TEXT NOT NULL DEFAULT '';
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cobro_registrado_por VARCHAR(100) NOT NULL DEFAULT '';
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cobro_registrado_at TIMESTAMP;
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cobro_aprobado_por VARCHAR(100) NOT NULL DEFAULT '';
+ALTER TABLE ventas ADD COLUMN IF NOT EXISTS cobro_aprobado_at TIMESTAMP;
 
 CREATE INDEX IF NOT EXISTS idx_ventas_estado_pedido    ON ventas(estado_pedido);
+CREATE INDEX IF NOT EXISTS idx_ventas_cobros_aprobacion ON ventas(cobro_registrado_at DESC, id DESC)
+WHERE COALESCE(estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
+  AND COALESCE(estado_pedido,'entregado') = 'entregado';
 CREATE INDEX IF NOT EXISTS idx_detalle_ventas_producto ON detalle_ventas(id_producto);
 
 -- Stock real vs disponible: el real es productos.stock (físico en las
@@ -118,34 +140,20 @@ LEFT JOIN (
 -- al cargar un pedido/venta. 0 = sin plazo (se deja vacío).
 ALTER TABLE clientes ADD COLUMN IF NOT EXISTS plazo_pago_dias SMALLINT NOT NULL DEFAULT 0;
 
--- Facturación post-entrega: el staff la solicita, Jefe1/Admin la aprueba
--- (recién ahí se emite por ARCA y la venta recibe CAE).
-CREATE TABLE IF NOT EXISTS solicitudes_factura (
-    id             SERIAL       PRIMARY KEY,
-    id_venta       INT          NOT NULL,
-    tipo_cbte      INT          NOT NULL DEFAULT 6,            -- 1=Factura A, 6=Factura B
-    estado         VARCHAR(20)  NOT NULL DEFAULT 'pendiente',  -- pendiente | aprobada | rechazada
-    solicitado_por VARCHAR(100) NOT NULL DEFAULT '',
-    resuelto_por   VARCHAR(100) NOT NULL DEFAULT '',
-    motivo_rechazo TEXT         NOT NULL DEFAULT '',
-    creado_en      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    resuelto_en    TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS idx_solicitudes_factura_estado ON solicitudes_factura(estado);
-CREATE INDEX IF NOT EXISTS idx_solicitudes_factura_venta  ON solicitudes_factura(id_venta);
+DROP TABLE IF EXISTS solicitudes_factura;
 
--- Notas de crédito/débito sobre ventas entregadas (o remitos standalone
--- legacy): fiscales (ARCA, con CAE, tipo_cbte 2/3/7/8) o internas (sin CAE,
--- correlativo propio). NC devuelve stock, ND lo resta (flag stock_ajustado,
--- mismo patrón que ventas.stock_descontado). El saldo a cobrar se netea vía
--- cuentas_corrientes (NC → haber, ND → debe).
+-- Notas internas de credito/debito sobre ventas entregadas o remitos standalone.
+-- No emiten ARCA ni CAE. NC devuelve stock, ND lo resta.
+-- El saldo a cobrar se netea via cuentas_corrientes (NC haber, ND debe).
+
+
 CREATE TABLE IF NOT EXISTS comprobantes_venta (
     id              SERIAL        PRIMARY KEY,
     id_venta        INT,                                -- NULL si es sobre remito standalone
     id_remito       INT,                                -- solo para standalone legacy
     clase           VARCHAR(2)    NOT NULL,             -- 'NC' | 'ND'
-    fiscal          SMALLINT      NOT NULL DEFAULT 0,   -- 1 = ARCA, 0 = interna
-    tipo_cbte       INT           NOT NULL DEFAULT 0,   -- 2,3,7,8 si fiscal; 0 si interna
+    fiscal          SMALLINT      NOT NULL DEFAULT 0,   -- siempre 0: interna
+    tipo_cbte       INT           NOT NULL DEFAULT 0,   -- 0 si interna
     nro_comprobante INT           NOT NULL DEFAULT 0,
     cae             VARCHAR(30)   NOT NULL DEFAULT '',
     vencimiento_cae VARCHAR(20)   NOT NULL DEFAULT '',
@@ -258,3 +266,17 @@ CREATE TABLE IF NOT EXISTS app_usuario_permisos (
     id_permiso INT NOT NULL REFERENCES app_permisos(id) ON DELETE CASCADE,
     PRIMARY KEY (id_usuario, id_permiso)
 );
+
+INSERT INTO app_permisos (clave, modulo, accion, nombre)
+VALUES ('cobranzas.aprobar', 'cobranzas', 'aprobar', 'Aprobar cobros registrados')
+ON CONFLICT (clave) DO UPDATE
+SET modulo = EXCLUDED.modulo,
+    accion = EXCLUDED.accion,
+    nombre = EXCLUDED.nombre;
+
+INSERT INTO app_rol_permisos (id_rol, id_permiso)
+SELECT r.id, p.id
+FROM app_roles r
+JOIN app_permisos p ON p.clave = 'cobranzas.aprobar'
+WHERE r.clave IN ('Jefe1', 'Admin')
+ON CONFLICT DO NOTHING;

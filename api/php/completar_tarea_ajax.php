@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['usuario'])) {
@@ -23,13 +24,14 @@ if ($id_tarea <= 0) {
 }
 
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 // Verificar que la tarea esté asignada al usuario actual y pendiente
 $stmt = $conexion->prepare(
     "SELECT id, titulo, asignado_por FROM tareas_asignadas
-     WHERE id = ? AND asignado_a = ? AND completado = 0"
+     WHERE id = ? AND empresa_id = ? AND asignado_a = ? AND completado = 0"
 );
-$stmt->bind_param('is', $id_tarea, $usuario);
+$stmt->bind_param('iis', $id_tarea, $empresaId, $usuario);
 $stmt->execute();
 $res = $stmt->get_result();
 if ($res->num_rows === 0) {
@@ -43,9 +45,9 @@ $stmt->close();
 $stmt = $conexion->prepare(
     "UPDATE tareas_asignadas
      SET completado = 1, mensaje_completado = ?, fecha_completado = NOW()
-     WHERE id = ?"
+     WHERE id = ? AND empresa_id = ?"
 );
-$stmt->bind_param('si', $mensaje, $id_tarea);
+$stmt->bind_param('sii', $mensaje, $id_tarea, $empresaId);
 $stmt->execute();
 $stmt->close();
 
@@ -64,9 +66,9 @@ if ($mensaje !== '') {
 $tipo = 'tarea_completada';
 
 $stmt = $conexion->prepare(
-    "INSERT INTO mensajes (de, para, asunto, cuerpo, tipo) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO mensajes (de, para, asunto, cuerpo, tipo, empresa_id) VALUES (?, ?, ?, ?, ?, ?)"
 );
-$stmt->bind_param('sssss', $de_sistema, $para, $asunto, $cuerpo, $tipo);
+$stmt->bind_param('sssssi', $de_sistema, $para, $asunto, $cuerpo, $tipo, $empresaId);
 $stmt->execute();
 $stmt->close();
 

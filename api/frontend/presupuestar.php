@@ -6,17 +6,18 @@
 $PERMITIDOS = ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 // Productos con disponible (precio se asigna por lista en el front)
 $productos = [];
-$res = $conexion->query("SELECT id, nombre, 0 AS precio, disponible AS cantidad FROM vista_stock_disponible ORDER BY nombre ASC");
+$res = $conexion->query("SELECT id, nombre, 0 AS precio, disponible AS cantidad FROM vista_stock_disponible WHERE empresa_id = $empresaId ORDER BY nombre ASC");
 while ($p = $res->fetch_assoc()) $productos[] = $p;
 
 // Precios por lista (indexados por nombre)
 $listas_precios = [];
 $res4 = $conexion->query("SELECT id, nombre, precio_0, precio_1, precio_2, precio_3,
         precio_3 AS precio_4, precio_minorista, precio_minorista AS precio_minorista_r
-     FROM vista_precios WHERE precio_1 IS NOT NULL");
+     FROM vista_precios WHERE empresa_id = $empresaId AND precio_1 IS NOT NULL");
 while ($l = $res4->fetch_assoc()) {
     $listas_precios[(string)$l['id']] = $l;
     $listas_precios[$l['nombre']] = $l;
@@ -27,7 +28,7 @@ $clientes = [];
 $res2 = $conexion->query("SELECT nombre_cliente, razon_social, tipo_id, nro_id, cond_iva,
         COALESCE(telefono,'') AS telefono, COALESCE(domicilio,'') AS domicilio,
         COALESCE(lista_precios,'') AS lista_precios, COALESCE(vendedor_cl,'') AS vendedor_cl
-     FROM clientes WHERE estado = 'Activo' ORDER BY nombre_cliente ASC");
+     FROM clientes WHERE empresa_id = $empresaId AND estado = 'Activo' ORDER BY nombre_cliente ASC");
 while ($c = $res2->fetch_assoc()) $clientes[] = $c;
 ?>
 <!DOCTYPE html>
@@ -35,7 +36,7 @@ while ($c = $res2->fetch_assoc()) $clientes[] = $c;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nuevo presupuesto — Star Lim</title>
+    <title>Nuevo presupuesto — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_ventas.css">

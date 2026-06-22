@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 ob_start();
 ini_set('display_errors', '0');
 
@@ -18,8 +19,10 @@ set_error_handler(function ($errno, $errstr, $errfile, $errline) {
     return true;
 });
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
+require_once __DIR__ . '/tenant.php';
+$empresa_id = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -140,8 +143,8 @@ try {
         }
 
         // Evitar filas 100% idénticas (mismo nombre + codigo + costo)
-        $chkStmt = $conexion->prepare("SELECT id FROM productos WHERE codigo = ? AND nombre = ? AND costo = ? LIMIT 1");
-        $chkStmt->bind_param("ssd", $codigo, $nombre, $costo);
+        $chkStmt = $conexion->prepare("SELECT id FROM productos WHERE empresa_id = ? AND codigo = ? AND nombre = ? AND costo = ? LIMIT 1");
+        $chkStmt->bind_param("issd", $empresa_id, $codigo, $nombre, $costo);
         $chkStmt->execute();
         if ($chkStmt->get_result()->num_rows > 0) {
             $chkStmt->close();
@@ -152,18 +155,18 @@ try {
         $chkStmt->close();
 
         // Calcular el próximo id_producto para este codigo (auto-increment por categoría)
-        $maxStmt = $conexion->prepare("SELECT COALESCE(MAX(id_producto), 0) AS max_id FROM productos WHERE codigo = ?");
-        $maxStmt->bind_param("s", $codigo);
+        $maxStmt = $conexion->prepare("SELECT COALESCE(MAX(id_producto), 0) AS max_id FROM productos WHERE empresa_id = ? AND codigo = ?");
+        $maxStmt->bind_param("is", $empresa_id, $codigo);
         $maxStmt->execute();
         $maxRow     = $maxStmt->get_result()->fetch_assoc();
         $idProducto = (int)$maxRow['max_id'] + 1;
         $maxStmt->close();
 
         $insStmt = $conexion->prepare(
-            "INSERT INTO productos (id_producto, rubro, codigo, categoria, proveedor, nombre, costo, stock, descripcion)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, '')"
+            "INSERT INTO productos (id_producto, rubro, codigo, categoria, proveedor, nombre, costo, stock, descripcion, empresa_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?)"
         );
-        $insStmt->bind_param("isssssdi", $idProducto, $rubro, $codigo, $categoria, $proveedor, $nombre, $costo, $stock);
+        $insStmt->bind_param("isssssdii", $idProducto, $rubro, $codigo, $categoria, $proveedor, $nombre, $costo, $stock, $empresa_id);
         if ($insStmt->execute()) {
             $insertados++;
         } else {

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 ob_start();
 ini_set('display_errors', '0');
 
@@ -18,7 +19,7 @@ set_error_handler(function ($errno, $errstr, $errfile, $errline) {
     return true;
 });
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
 $conexion->query("SET NAMES 'utf8mb4'");
 

@@ -2,6 +2,7 @@
     require __DIR__ . '/partials/guard.php';
 
     include '../php/conexion_starlim_be.php';
+    $empresaId = starlim_bootstrap_tenant_context($conexion);
 
     /* Esquema gestionado en supabase_migration.sql + db_fixes.sql (los bloques
        de auto-migración MySQL que vivían acá fallaban silenciosamente en Postgres) */
@@ -25,12 +26,12 @@
 
             if ($desc !== '') {
                 $s = $conexion->prepare(
-                    "INSERT INTO compras_registro (id_proveedor,descripcion,total,fecha,estado,tipo)
-                     VALUES (?,?,?,?,?,'manual')"
+                    "INSERT INTO compras_registro (id_proveedor,descripcion,total,fecha,estado,tipo,empresa_id)
+                     VALUES (?,?,?,?,?,'manual',?) RETURNING id"
                 );
-                $s->bind_param('isdss', $id_prov, $desc, $total, $fecha, $estado);
+                $s->bind_param('isdssi', $id_prov, $desc, $total, $fecha, $estado, $empresaId);
                 $s->execute();
-                $id_compra = $conexion->insert_id;
+                $id_compra = (int)($s->get_result()->fetch_assoc()['id'] ?? 0);
                 $s->close();
 
                 /* Guardar detalle de productos */
@@ -39,10 +40,10 @@
                     $qty = max(1, (int)($prod_qty[$idx] ?? 1));
                     if ($pid > 0) {
                         $sd = $conexion->prepare(
-                            "INSERT INTO detalle_compras_registro (id_compra, id_producto, cantidad)
-                             VALUES (?, ?, ?)"
+                            "INSERT INTO detalle_compras_registro (id_compra, id_producto, cantidad, empresa_id)
+                             VALUES (?, ?, ?, ?)"
                         );
-                        $sd->bind_param('iii', $id_compra, $pid, $qty);
+                        $sd->bind_param('iiii', $id_compra, $pid, $qty, $empresaId);
                         $sd->execute(); $sd->close();
                     }
                 }
@@ -52,8 +53,8 @@
         if ($accion === 'del_registro') {
             $id = (int)($_POST['id'] ?? 0);
             if ($id > 0) {
-                $s = $conexion->prepare("DELETE FROM compras_registro WHERE id = ?");
-                $s->bind_param('i', $id); $s->execute(); $s->close();
+                $s = $conexion->prepare("DELETE FROM compras_registro WHERE id = ? AND empresa_id = ?");
+                $s->bind_param('ii', $id, $empresaId); $s->execute(); $s->close();
             }
         }
         if ($accion === 'update_estado') {
@@ -61,8 +62,8 @@
             $estado = in_array($_POST['estado'] ?? '', ['pendiente','en_camino','recibida','cancelada'])
                       ? $_POST['estado'] : 'pendiente';
             if ($id > 0) {
-                $s = $conexion->prepare("UPDATE compras_registro SET estado = ? WHERE id = ?");
-                $s->bind_param('si', $estado, $id); $s->execute(); $s->close();
+                $s = $conexion->prepare("UPDATE compras_registro SET estado = ? WHERE id = ? AND empresa_id = ?");
+                $s->bind_param('sii', $estado, $id, $empresaId); $s->execute(); $s->close();
             }
         }
 
@@ -80,8 +81,8 @@
             foreach ($ids_prod as $pid) {
                 $pid = (int)$pid;
                 $qty = max(1, (int)($qtys[$pid] ?? 1));
-                $rp  = $conexion->prepare("SELECT nombre, costo FROM productos WHERE id = ?");
-                $rp->bind_param('i', $pid);
+                $rp  = $conexion->prepare("SELECT nombre, costo FROM productos WHERE id = ? AND empresa_id = ?");
+                $rp->bind_param('ii', $pid, $empresaId);
                 $rp->execute();
                 $prod = $rp->get_result()->fetch_assoc();
                 $rp->close();
@@ -95,12 +96,12 @@
                 $desc = "Orden generada automáticamente\n\nProductos:\n" . implode("\n", $lineas);
                 if ($notas_ord !== '') $desc .= "\n\nNotas: $notas_ord";
                 $s = $conexion->prepare(
-                    "INSERT INTO compras_registro (id_proveedor,descripcion,total,fecha,estado,tipo)
-                     VALUES (?,?,?,?,'pendiente','automatica')"
+                    "INSERT INTO compras_registro (id_proveedor,descripcion,total,fecha,estado,tipo,empresa_id)
+                     VALUES (?,?,?,?,'pendiente','automatica',?) RETURNING id"
                 );
-                $s->bind_param('isds', $id_prov, $desc, $total, $fecha);
+                $s->bind_param('isdsi', $id_prov, $desc, $total, $fecha, $empresaId);
                 $s->execute();
-                $id_orden = $conexion->insert_id;
+                $id_orden = (int)($s->get_result()->fetch_assoc()['id'] ?? 0);
                 $s->close();
 
                 /* Guardar detalle estructurado */
@@ -109,10 +110,10 @@
                     $qty = max(1, (int)($qtys[$pid] ?? 1));
                     if ($pid > 0) {
                         $sd = $conexion->prepare(
-                            "INSERT INTO detalle_compras_registro (id_compra, id_producto, cantidad)
-                             VALUES (?, ?, ?)"
+                            "INSERT INTO detalle_compras_registro (id_compra, id_producto, cantidad, empresa_id)
+                             VALUES (?, ?, ?, ?)"
                         );
-                        $sd->bind_param('iii', $id_orden, $pid, $qty);
+                        $sd->bind_param('iiii', $id_orden, $pid, $qty, $empresaId);
                         $sd->execute(); $sd->close();
                     }
                 }
@@ -144,10 +145,11 @@
                    v.fecha, v.tipo_cbte, MIN(r.id) AS remito_id,
                    SUM(GREATEST(dv.cantidad - p.stock, 0)) AS total_exceso
             FROM ventas v
-            JOIN detalle_ventas dv ON dv.id_venta  = v.id
-            JOIN productos     p  ON p.id          = dv.id_producto
-            LEFT JOIN remitos  r  ON r.id_venta    = v.id
-            WHERE v.estado_pedido IN ('recibido', 'en_proceso', 'pendiente_entrega')
+            JOIN detalle_ventas dv ON dv.id_venta = v.id AND dv.empresa_id = v.empresa_id
+            JOIN productos     p  ON p.id = dv.id_producto AND p.empresa_id = v.empresa_id
+            LEFT JOIN remitos  r  ON r.id_venta = v.id AND r.empresa_id = v.empresa_id
+            WHERE v.empresa_id = $empresaId
+              AND v.estado_pedido IN ('recibido', 'en_proceso', 'pendiente_entrega')
             GROUP BY v.id, v.nro_comprobante, v.nombre_cliente, v.dni_cliente, v.fecha, v.tipo_cbte
             HAVING SUM(GREATEST(dv.cantidad - p.stock, 0)) > 0
             ORDER BY DATE(v.fecha) ASC, total_exceso DESC
@@ -163,8 +165,8 @@
             $rd  = $conexion->query("
                 SELECT dv.id_venta, p.id AS cod_producto, p.nombre AS nombre_producto,
                        dv.cantidad AS cantidad_vendida, p.stock AS stock_actual
-                FROM detalle_ventas dv JOIN productos p ON p.id = dv.id_producto
-                WHERE dv.id_venta IN ($ids)
+                FROM detalle_ventas dv JOIN productos p ON p.id = dv.id_producto AND p.empresa_id = dv.empresa_id
+                WHERE dv.empresa_id = $empresaId AND dv.id_venta IN ($ids)
                 ORDER BY dv.id_venta, (dv.cantidad > p.stock) DESC, p.nombre ASC
             ");
             if ($rd) while ($row = $rd->fetch_assoc())
@@ -195,9 +197,10 @@
                                * 2, 1
                            )) AS cnt_recomendada
                     FROM productos p
-                    JOIN detalle_ventas dv ON dv.id_producto = p.id
-                    JOIN ventas        v  ON v.id = dv.id_venta
-                    WHERE v.fecha >= CURRENT_DATE - INTERVAL '6 months'
+                    JOIN detalle_ventas dv ON dv.id_producto = p.id AND dv.empresa_id = p.empresa_id
+                    JOIN ventas        v  ON v.id = dv.id_venta AND v.empresa_id = p.empresa_id
+                    WHERE p.empresa_id = $empresaId
+                      AND v.fecha >= CURRENT_DATE - INTERVAL '6 months'
                     GROUP BY p.id, p.nombre, p.stock, p.costo, p.proveedor
                 ) AS base
                 WHERE base.stock_actual < base.cnt_recomendada
@@ -211,12 +214,12 @@
             /* Sin LIMIT esta lista puede traer miles de productos y el HTML
                resultante supera el límite de 4.5MB de respuesta de Vercel
                (FUNCTION_RESPONSE_PAYLOAD_TOO_LARGE). */
-            $rc = $conexion->query("SELECT COUNT(*) AS c FROM productos WHERE stock <= 0");
+            $rc = $conexion->query("SELECT COUNT(*) AS c FROM productos WHERE empresa_id = $empresaId AND stock <= 0");
             $reponer_total = $rc && ($cr = $rc->fetch_assoc()) ? (int)$cr['c'] : 0;
             $rr2 = $conexion->query("
                 SELECT id, nombre, stock AS stock_actual, costo, NULL AS cnt_recomendada,
                        COALESCE(proveedor,'') AS prov_nombre
-                FROM productos WHERE stock <= 0 ORDER BY proveedor ASC, nombre ASC
+                FROM productos WHERE empresa_id = $empresaId AND stock <= 0 ORDER BY proveedor ASC, nombre ASC
                 LIMIT 400
             ");
             if ($rr2) while ($row = $rr2->fetch_assoc()) $reponer[] = $row;
@@ -230,10 +233,10 @@
     $detalle_reg_map  = [];
     $prov_contact_map = [];
     if ($tab === 'registro') {
-        $rp = $conexion->query("SELECT id, nombre FROM proveedores ORDER BY nombre ASC");
+        $rp = $conexion->query("SELECT id, nombre FROM proveedores WHERE empresa_id = $empresaId ORDER BY nombre ASC");
         if ($rp) while ($row = $rp->fetch_assoc()) $prov_map[$row['id']] = $row['nombre'];
 
-        $rpa = $conexion->query("SELECT id, nombre, COALESCE(proveedor,'') AS proveedor FROM productos ORDER BY nombre ASC");
+        $rpa = $conexion->query("SELECT id, nombre, COALESCE(proveedor,'') AS proveedor FROM productos WHERE empresa_id = $empresaId ORDER BY nombre ASC");
         if ($rpa) while ($row = $rpa->fetch_assoc()) $productos_all[] = $row;
 
         $rr = $conexion->query("
@@ -242,7 +245,8 @@
                    cr.estado_paquete, cr.falla_descripcion, cr.recibo_foto,
                    p.nombre AS proveedor_nombre
             FROM compras_registro cr
-            LEFT JOIN proveedores p ON p.id = cr.id_proveedor
+            LEFT JOIN proveedores p ON p.id = cr.id_proveedor AND p.empresa_id = cr.empresa_id
+            WHERE cr.empresa_id = $empresaId
             ORDER BY cr.fecha DESC, cr.id DESC
         ");
         if ($rr) while ($row = $rr->fetch_assoc()) $registros[] = $row;
@@ -253,21 +257,29 @@
             $rd = $conexion->query("
                 SELECT dcr.id_compra, p.nombre AS prod_nombre, dcr.cantidad
                 FROM detalle_compras_registro dcr
-                JOIN productos p ON p.id = dcr.id_producto
-                WHERE dcr.id_compra IN ($ids_reg)
+                JOIN productos p ON p.id = dcr.id_producto AND p.empresa_id = dcr.empresa_id
+                WHERE dcr.empresa_id = $empresaId AND dcr.id_compra IN ($ids_reg)
                 ORDER BY dcr.id_compra, p.nombre
             ");
             if ($rd) while ($row = $rd->fetch_assoc())
                 $detalle_reg_map[(int)$row['id_compra']][] = $row;
 
-            $rpc = $conexion->query("SELECT id, telefono, email, contacto FROM proveedores");
+            $rpc = $conexion->query("SELECT id, telefono, email, contacto FROM proveedores WHERE empresa_id = $empresaId");
             if ($rpc) while ($row = $rpc->fetch_assoc())
                 $prov_contact_map[(int)$row['id']] = $row;
         }
 
         /* Jefes para asignación de tareas */
         $jefes_lista = [];
-        $rj = $conexion->query("SELECT usuario FROM usuarios WHERE rango IN ('Jefe','Jefe1','Admin') ORDER BY usuario ASC");
+        $rj = $conexion->query("
+            SELECT u.usuario
+            FROM usuarios u
+            JOIN usuario_empresa ue ON ue.id_usuario = u.id
+            WHERE ue.empresa_id = $empresaId
+              AND ue.activo = TRUE
+              AND COALESCE(ue.rango, u.rango) IN ('Jefe','Jefe1','Admin')
+            ORDER BY u.usuario ASC
+        ");
         if ($rj) while ($row = $rj->fetch_assoc()) $jefes_lista[] = $row['usuario'];
 
         /* Detalle de productos para compras recibidas (tabla en modal de falla) */
@@ -280,8 +292,8 @@
             $rdr = $conexion->query("
                 SELECT dcr.id_compra, dcr.id_producto, p.nombre, p.costo, dcr.cantidad
                 FROM detalle_compras_registro dcr
-                JOIN productos p ON p.id = dcr.id_producto
-                WHERE dcr.id_compra IN ($ids_str_r)
+                JOIN productos p ON p.id = dcr.id_producto AND p.empresa_id = dcr.empresa_id
+                WHERE dcr.empresa_id = $empresaId AND dcr.id_compra IN ($ids_str_r)
                 ORDER BY dcr.id_compra, p.nombre ASC
             ");
             if ($rdr) while ($row = $rdr->fetch_assoc())
@@ -299,7 +311,7 @@
     $reponer_auto_grouped = [];
     $prov_info_by_name    = [];
     if ($tab === 'automaticas') {
-        $rpi = $conexion->query("SELECT id, nombre, telefono, email FROM proveedores ORDER BY nombre ASC");
+        $rpi = $conexion->query("SELECT id, nombre, telefono, email FROM proveedores WHERE empresa_id = $empresaId ORDER BY nombre ASC");
         if ($rpi) while ($row = $rpi->fetch_assoc())
             $prov_info_by_name[$row['nombre']] = ['id' => (int)$row['id'], 'telefono' => $row['telefono'] ?? '', 'email' => $row['email'] ?? ''];
 
@@ -322,7 +334,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Compras — Star Lim</title>
+    <title>Compras — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">
@@ -1462,6 +1474,10 @@
                                     onclick="abrirDevolModal(<?= (int)$reg['id'] ?>)"
                                     style="font-size:11px;font-weight:700;color:#dc2626;background:none;cursor:pointer;padding:2px 8px;border:1px solid rgba(220,38,38,.35);border-radius:6px;font-family:inherit;">Devolución</button>
                             <?php endif; ?>
+                            <a class="reg-action-btn"
+                               href="../php/generar_pdf_orden_compra.php?id=<?= (int)$reg['id'] ?>&view=1"
+                               target="_blank" title="Orden de compra PDF"
+                               style="font-size:11px;font-weight:800;color:#1f3a60;">PDF</a>
                             <button type="button" class="reg-action-btn" title="Copiar mensaje para el proveedor"
                                     onclick="copiarMsgReg(<?= (int)$reg['id'] ?>)"></button>
                             <?php if ($reg_ct && !empty($reg_ct['telefono'])): ?>
@@ -1470,7 +1486,7 @@
                             <?php endif; ?>
                             <?php if ($reg_ct && !empty($reg_ct['email'])): ?>
                             <a class="reg-action-btn"
-                               href="https://mail.google.com/mail/?view=cm&to=<?= rawurlencode($reg_ct['email']) ?>&su=Orden+de+compra+STARLIM"
+                               href="https://mail.google.com/mail/?view=cm&to=<?= rawurlencode($reg_ct['email']) ?>&su=Orden+de+compra+Starlim"
                                target="_blank" title="Gmail"></a>
                             <?php endif; ?>
                             <form method="POST" action="compras.php" style="display:inline;"
@@ -1509,12 +1525,12 @@
 
             function buildMsgReg(d) {
                 const saludo = d.contacto || d.prov;
-                let msg = `Hola ${saludo}!\nLe hacemos llegar la siguiente orden de compra desde STARLIM.\n\n`;
+                let msg = `Hola ${saludo}!\nLe hacemos llegar la siguiente orden de compra desde Starlim.\n\n`;
                 if (d.productos.length) {
                     msg += 'Productos:\n';
                     d.productos.forEach(p => msg += `- ${p.nombre}: ${p.cantidad} ud${p.cantidad !== 1 ? 's' : ''}.\n`);
                 }
-                msg += '\nSaludos, STARLIM';
+                msg += '\nSaludos, Starlim';
                 return msg;
             }
 
@@ -1782,7 +1798,7 @@
                         <?php endif; ?>
                         <?php if ($prov_email): ?>
                         <a class="auto-contact-btn auto-contact-btn--mail"
-                           href="https://mail.google.com/mail/?view=cm&to=<?= rawurlencode($prov_email) ?>&su=Orden+de+compra+STARLIM"
+                           href="https://mail.google.com/mail/?view=cm&to=<?= rawurlencode($prov_email) ?>&su=Orden+de+compra+Starlim"
                            target="_blank">Gmail</a>
                         <?php endif; ?>
                     </div>

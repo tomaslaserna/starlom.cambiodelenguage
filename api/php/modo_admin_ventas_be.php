@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 /**
  * modo_admin_ventas_be.php — Backend del Modo Administrador de ventas_registradas.php.
  *
@@ -28,9 +29,10 @@ register_shutdown_function(function () {
     }
 });
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
 require_once 'auth.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -49,13 +51,11 @@ const VAM_CAMPOS = [
     'fecha'           => ['Fecha',              'date'],
     'monto'           => ['Monto',              'decimal'],
     'condicion_pago'  => ['Condición de pago',  'str'],
-    'estado_cobro'    => ['Estado de cobro',    'enum_cobro'],
     'estado_pedido'   => ['Estado de pedido',   'enum_pedido'],
     'seguimiento'     => ['Seguimiento',        'enum_seguimiento'],
     'vendedor'        => ['Vendedor',           'str'],
 ];
 const VAM_ENUMS = [
-    'enum_cobro'       => ['pendiente', 'en_proceso', 'recibido', 'vencido', 'cancelado'],
     'enum_pedido'      => ['recibido', 'en_proceso', 'pendiente_entrega', 'entregado'],
     'enum_seguimiento' => ['facturada', 'no_facturada'],
     'tipo_cbte'        => ['1', '2', '3', '6', '7', '8'],
@@ -68,12 +68,13 @@ function vam_responder(array $data): void {
 }
 
 function vam_log($conexion, string $usuario, int $venta_id, string $label, string $accion, array $cambios): void {
+    $empresaId = function_exists('starlim_current_empresa_id') ? starlim_current_empresa_id($conexion, false) : 1;
     $json = json_encode($cambios, JSON_UNESCAPED_UNICODE);
     $s = $conexion->prepare(
-        "INSERT INTO ventas_modificaciones (empleado, venta_id, venta_label, accion, cambios)
-         VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO ventas_modificaciones (empleado, venta_id, venta_label, accion, cambios, empresa_id)
+         VALUES (?, ?, ?, ?, ?, ?)"
     );
-    $s->bind_param('sisss', $usuario, $venta_id, $label, $accion, $json);
+    $s->bind_param('sisssi', $usuario, $venta_id, $label, $accion, $json, $empresaId);
     $s->execute(); $s->close();
 }
 
@@ -92,9 +93,9 @@ try {
                     COALESCE(estado_pedido,'entregado') AS estado_pedido,
                     COALESCE(seguimiento,'no_facturada')       AS seguimiento,
                     vendedor
-             FROM ventas WHERE id = ?"
+             FROM ventas WHERE id = ? AND empresa_id = ?"
         );
-        $s->bind_param('i', $id);
+        $s->bind_param('ii', $id, $empresaId);
         $s->execute();
         $venta = $s->get_result()->fetch_assoc();
         $s->close();
@@ -105,10 +106,13 @@ try {
     /* ── Editar venta ────────────────────────────────────────────────────── */
     if ($accion === 'editar_venta') {
         $id = (int)($_POST['id_venta'] ?? 0);
+        if (array_key_exists('estado_cobro', $_POST)) {
+            vam_responder(['error' => 'El estado de cobro se gestiona desde Cobros y Pagos y se aprueba en Administracion.']);
+        }
         if ($id <= 0) vam_responder(['error' => 'ID inválido.']);
 
-        $s = $conexion->prepare("SELECT * FROM ventas WHERE id = ?");
-        $s->bind_param('i', $id);
+        $s = $conexion->prepare("SELECT * FROM ventas WHERE id = ? AND empresa_id = ?");
+        $s->bind_param('ii', $id, $empresaId);
         $s->execute();
         $actual = $s->get_result()->fetch_assoc();
         $s->close();
@@ -174,8 +178,9 @@ try {
         if (empty($sets)) vam_responder(['ok' => true, 'sin_cambios' => true]);
 
         $valores[] = $id;
-        $tipos    .= 'i';
-        $s = $conexion->prepare("UPDATE ventas SET " . implode(', ', $sets) . " WHERE id = ?");
+        $valores[] = $empresaId;
+        $tipos    .= 'ii';
+        $s = $conexion->prepare("UPDATE ventas SET " . implode(', ', $sets) . " WHERE id = ? AND empresa_id = ?");
         $s->bind_param($tipos, ...$valores);
         if (!$s->execute()) {
             $s->close();
@@ -195,6 +200,7 @@ try {
         $r = $conexion->query(
             "SELECT id, empleado, venta_id, venta_label, accion, cambios, fecha
              FROM ventas_modificaciones
+             WHERE empresa_id = $empresaId
              ORDER BY fecha DESC, id DESC
              LIMIT 200"
         );

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 /**
  * crear_reparto.php — Arma una ruta de reparto desde Pedidos.
  *
@@ -7,12 +8,14 @@
  * la lista de entregas (cliente, dirección, observación) y devuelve un link
  * wa.me listo para enviar, además de emitir el evento reparto.asignado.
  */
-session_start();
+starlim_session_start();
 if (!isset($_SESSION['usuario'])) { http_response_code(403); die(); }
 
 include 'conexion_starlim_be.php';
 require_once 'auth.php';
+require_once __DIR__ . '/tenant.php';
 header('Content-Type: application/json; charset=utf-8');
+$empresa_id = starlim_bootstrap_tenant_context($conexion);
 
 $usuario = $_SESSION['usuario'];
 $rango   = starlim_normalizar_rango($_SESSION['rango'] ?? '');
@@ -47,8 +50,9 @@ $res = $conexion->query(
             COALESCE(v.estado_pedido,'') AS estado_pedido,
             COALESCE(c.domicilio,'') AS domicilio, COALESCE(c.ciudad,'') AS ciudad, COALESCE(c.provincia,'') AS provincia
      FROM ventas v
-     LEFT JOIN clientes c ON REPLACE(REPLACE(c.nro_id,'-',''),' ','') = v.dni_cliente AND c.nro_id <> ''
+     LEFT JOIN clientes c ON c.empresa_id = v.empresa_id AND REPLACE(REPLACE(c.nro_id,'-',''),' ','') = v.dni_cliente AND c.nro_id <> ''
      WHERE v.id IN ($in)
+       AND v.empresa_id = $empresa_id
      ORDER BY v.id"
 );
 $pedidos = [];
@@ -61,7 +65,7 @@ while ($row = $res->fetch_assoc()) {
 if (count($pedidos) !== count($ids)) { echo json_encode(['ok' => false, 'error' => 'Algún pedido no existe']); exit; }
 
 // Excluir los que ya estén en un reparto
-$ya = $conexion->query("SELECT id_venta FROM reparto_pedidos WHERE id_venta IN ($in)");
+$ya = $conexion->query("SELECT id_venta FROM reparto_pedidos WHERE empresa_id = $empresa_id AND id_venta IN ($in)");
 $asignados = [];
 while ($r = $ya->fetch_assoc()) $asignados[] = (int)$r['id_venta'];
 if ($asignados) {
@@ -70,15 +74,15 @@ if ($asignados) {
 
 // Crear el reparto
 $st = $conexion->prepare(
-    "INSERT INTO repartos (repartidor_nombre, repartidor_telefono, creado_por) VALUES (?, ?, ?) RETURNING id"
+    "INSERT INTO repartos (repartidor_nombre, repartidor_telefono, creado_por, empresa_id) VALUES (?, ?, ?, ?) RETURNING id"
 );
-$st->bind_param('sss', $rep['nombre_completo'], $rep['telefono'], $usuario);
+$st->bind_param('sssi', $rep['nombre_completo'], $rep['telefono'], $usuario, $empresa_id);
 $st->execute();
 $id_reparto = (int)$st->get_result()->fetch_assoc()['id'];
 $st->close();
 
-$ins = $conexion->prepare("INSERT INTO reparto_pedidos (id_reparto, id_venta) VALUES (?, ?)");
-foreach ($pedidos as $p) { $vid = (int)$p['id']; $ins->bind_param('ii', $id_reparto, $vid); $ins->execute(); }
+$ins = $conexion->prepare("INSERT INTO reparto_pedidos (id_reparto, id_venta, empresa_id) VALUES (?, ?, ?)");
+foreach ($pedidos as $p) { $vid = (int)$p['id']; $ins->bind_param('iii', $id_reparto, $vid, $empresa_id); $ins->execute(); }
 $ins->close();
 
 // Armar el mensaje

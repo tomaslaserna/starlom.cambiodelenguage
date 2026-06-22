@@ -1,13 +1,16 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
     include 'conexion_starlim_be.php';
     require_once __DIR__ . '/auth.php';
-    session_start();
+    require_once __DIR__ . '/tenant.php';
+    require_once __DIR__ . '/admin_permissions.php';
+    starlim_session_start();
 
     $identificador = $_POST['correo'] ?? '';
     $contrasena    = $_POST['contrasena'] ?? '';
 
     if ($identificador === '' || $contrasena === '') {
-        echo '<script>alert("Completá usuario y contraseña"); window.location = "../frontend/sign.php";</script>';
+        echo '<script>alert("Completa usuario y contrasena"); window.location = "../frontend/sign.php";</script>';
         exit;
     }
 
@@ -19,11 +22,12 @@
 
     if($usuario_datos = $resultado->fetch_assoc()){
         if (array_key_exists('activo', $usuario_datos) && (int)$usuario_datos['activo'] === 0) {
-            echo '<script>alert("Usuario inactivo. Contactá a un administrador."); window.location = "../frontend/sign.php";</script>';
+            echo '<script>alert("Usuario inactivo. Contacta a un administrador."); window.location = "../frontend/sign.php";</script>';
             exit;
         }
 
         if(starlim_verificar_password($contrasena, $usuario_datos['contrasena'])){
+            session_regenerate_id(true);
 
             // Normalizar rangos legacy ('Empleado1', 'Jefe0') y autocurar la fila
             $rango = starlim_normalizar_rango($usuario_datos['rango']);
@@ -33,16 +37,24 @@
                 $fix->execute();
             }
 
-            $_SESSION['usuario'] = $usuario_datos['usuario'];
-            $_SESSION['rango']   = $rango;
-            $_SESSION['correo']  = $usuario_datos['correo'];
+            $_SESSION['id_usuario'] = (int)$usuario_datos['id'];
+            $_SESSION['usuario']    = $usuario_datos['usuario'];
+            $_SESSION['rango']      = $rango;
+            $_SESSION['correo']     = $usuario_datos['correo'];
+
+            starlim_bootstrap_tenant_context($conexion);
+            $rango = starlim_normalizar_rango($_SESSION['rango'] ?? $rango);
 
             // Staff al panel; clientes (Minorista/Mayorista) a la tienda
-            $destino = starlim_es_staff($rango) ? 'panel_empleados.php' : 'index.php';
+            if (starlim_es_staff($rango)) {
+                $destino = starlim_admin_can($conexion, 'admin.panel', 'ver') ? 'panel_empleados.php' : 'pedidos.php';
+            } else {
+                $destino = 'index.php';
+            }
             header("Location: ../frontend/{$destino}");
             exit;
         } else {
-            echo '<script>alert("Contraseña incorrecta"); window.location = "../frontend/sign.php";</script>';
+            echo '<script>alert("Contrasena incorrecta"); window.location = "../frontend/sign.php";</script>';
             exit;
         }
     } else {
@@ -50,3 +62,4 @@
         exit;
     }
 ?>
+

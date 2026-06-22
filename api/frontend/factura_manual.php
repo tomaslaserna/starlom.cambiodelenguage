@@ -3,12 +3,13 @@ $PERMITIDOS = ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 
 // Traer productos con stock DISPONIBLE (real menos reservado por pedidos sin
 // entregar); el precio se asigna dinámicamente por lista en el frontend
 $productos = [];
-$res = $conexion->query("SELECT id, nombre, 0 AS precio, disponible AS cantidad FROM vista_stock_disponible ORDER BY nombre ASC");
+$res = $conexion->query("SELECT id, nombre, 0 AS precio, disponible AS cantidad FROM vista_stock_disponible WHERE empresa_id = $empresaId ORDER BY nombre ASC");
 while ($p = $res->fetch_assoc()) {
     $productos[] = $p;
 }
@@ -25,7 +26,7 @@ $res4 = $conexion->query("SELECT id, nombre,
             precio_minorista,
             precio_minorista AS precio_minorista_r   -- REV = minorista por defecto
      FROM vista_precios
-     WHERE precio_1 IS NOT NULL"
+     WHERE empresa_id = $empresaId AND precio_1 IS NOT NULL"
 );
 while ($l = $res4->fetch_assoc()) {
     $listas_precios[(string)$l['id']] = $l;
@@ -34,16 +35,43 @@ while ($l = $res4->fetch_assoc()) {
 
 // Traer clientes
 $clientes = [];
-$res2 = $conexion->query("SELECT id, nombre_cliente, codigo_cliente, tipo_id, nro_id, cond_iva, sucursales, nombre_sucursal, lista_precios, observacion, cbu, vendedor_cl FROM clientes WHERE estado = 'Activo' ORDER BY nombre_cliente ASC");
+$res2 = $conexion->query("SELECT id, nombre_cliente, codigo_cliente, tipo_id, nro_id, cond_iva, sucursales, nombre_sucursal, lista_precios, observacion, cbu, vendedor_cl FROM clientes WHERE empresa_id = $empresaId AND estado = 'Activo' ORDER BY nombre_cliente ASC");
 while ($c = $res2->fetch_assoc()) {
     $clientes[] = $c;
 }
 
 // Plazo de pago por cliente (columna nueva). Consulta separada y tolerante: si la
 // migración (db_fixes.sql) aún no corrió, cargar pedido sigue funcionando sin autocompletar.
+function fm_nombre_key(string $nombre): string {
+    $nombre = preg_replace('/\s+/', ' ', trim($nombre));
+    return function_exists('mb_strtolower') ? mb_strtolower($nombre, 'UTF-8') : strtolower($nombre);
+}
+
+function fm_nombre_usuario_ventas(array $u): string {
+    $nombre = trim((string)($u['nombre'] ?? '') . ' ' . (string)($u['apellido'] ?? ''));
+    if ($nombre !== '') return $nombre;
+    $nombreCompleto = trim((string)($u['nombre_completo'] ?? ''));
+    return $nombreCompleto !== '' ? $nombreCompleto : trim((string)($u['usuario'] ?? ''));
+}
+
+function fm_agregar_vendedor_asignable(array &$map, string $nombre): void {
+    $nombre = preg_replace('/\s+/', ' ', trim($nombre));
+    if ($nombre === '') return;
+    $map[fm_nombre_key($nombre)] = $nombre;
+}
+
+function fm_agregar_operador_pedido(array &$items, array &$vistos, string $value, string $nombre, string $origen): void {
+    $nombre = preg_replace('/\s+/', ' ', trim($nombre));
+    if ($nombre === '') return;
+    $key = fm_nombre_key($nombre);
+    if (isset($vistos[$key])) return;
+    $vistos[$key] = true;
+    $items[] = ['value' => $value, 'nombre' => $nombre, 'origen' => $origen];
+}
+
 $plazos_cliente = [];
 try {
-    $rpl = $conexion->query("SELECT id, plazo_pago_dias FROM clientes");
+    $rpl = $conexion->query("SELECT id, plazo_pago_dias FROM clientes WHERE empresa_id = $empresaId");
     if ($rpl) while ($row = $rpl->fetch_assoc()) $plazos_cliente[(int)$row['id']] = (int)$row['plazo_pago_dias'];
 } catch (Throwable $e) {
     $plazos_cliente = [];
@@ -51,19 +79,92 @@ try {
 foreach ($clientes as &$c) $c['plazo_pago_dias'] = $plazos_cliente[(int)$c['id']] ?? 0;
 unset($c);
 
-// Traer vendedores
-$vendedores = [];
-$res3 = $conexion->query("SELECT id, nombre, apellido FROM operadores ORDER BY nombre ASC");
-while ($v = $res3->fetch_assoc()) {
-    $vendedores[] = $v;
+// Vendedores asignables: clientes legacy, operadores legacy y usuarios activos de ventas.
+$vendedoresAsignables = [];
+foreach ($clientes as $c) {
+    fm_agregar_vendedor_asignable($vendedoresAsignables, (string)($c['vendedor_cl'] ?? ''));
 }
+
+$operadoresPedido = [];
+$operadoresPedidoVistos = [];
+$res3 = $conexion->query("SELECT id, nombre, apellido FROM operadores WHERE empresa_id = $empresaId ORDER BY nombre ASC");
+while ($v = $res3->fetch_assoc()) {
+    $nombreOperador = trim((string)$v['nombre'] . ' ' . (string)$v['apellido']);
+    fm_agregar_vendedor_asignable($vendedoresAsignables, $nombreOperador);
+    fm_agregar_operador_pedido($operadoresPedido, $operadoresPedidoVistos, (string)$v['id'], $nombreOperador, 'operador');
+}
+
+$usuariosVentas = [];
+try {
+    $pdo = $conexion->getPDO();
+    $stmtUsuariosVentas = $pdo->prepare("
+        SELECT DISTINCT u.id, u.nombre_completo, u.nombre, u.apellido, u.usuario
+        FROM usuarios u
+        JOIN usuario_empresa ue ON ue.id_usuario = u.id
+        WHERE ue.empresa_id = ?
+          AND ue.activo = TRUE
+          AND COALESCE(u.activo, 1) = 1
+          AND COALESCE(ue.rango, u.rango) NOT IN ('Minorista', 'Mayorista')
+          AND (
+              COALESCE(ue.rango, u.rango) IN ('Empleado_2', 'Jefe', 'Jefe1', 'Admin')
+              OR LOWER(COALESCE(u.cargo, '')) LIKE '%venta%'
+              OR LOWER(COALESCE(u.cargo, '')) LIKE '%vendedor%'
+              OR EXISTS (
+                  SELECT 1
+                  FROM app_usuario_permisos up
+                  JOIN app_permisos p ON p.id = up.id_permiso
+                  WHERE up.id_usuario = u.id
+                    AND up.empresa_id = ue.empresa_id
+                    AND p.clave IN ('ventas.ver', 'ventas.crear', 'pedidos.crear')
+              )
+              OR EXISTS (
+                  SELECT 1
+                  FROM app_usuario_roles ur
+                  JOIN app_rol_permisos rp ON rp.id_rol = ur.id_rol
+                  JOIN app_permisos p ON p.id = rp.id_permiso
+                  WHERE ur.id_usuario = u.id
+                    AND ur.empresa_id = ue.empresa_id
+                    AND p.clave IN ('ventas.ver', 'ventas.crear', 'pedidos.crear')
+              )
+          )
+        ORDER BY u.nombre_completo ASC, u.usuario ASC
+    ");
+    $stmtUsuariosVentas->execute([$empresaId]);
+    $usuariosVentas = $stmtUsuariosVentas->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {
+    try {
+        $pdo = $conexion->getPDO();
+        $stmtUsuariosVentas = $pdo->prepare("
+            SELECT DISTINCT u.id, u.nombre_completo, u.nombre, u.apellido, u.usuario
+            FROM usuarios u
+            JOIN usuario_empresa ue ON ue.id_usuario = u.id
+            WHERE ue.empresa_id = ?
+              AND ue.activo = TRUE
+              AND COALESCE(u.activo, 1) = 1
+              AND COALESCE(ue.rango, u.rango) IN ('Empleado_2', 'Jefe', 'Jefe1', 'Admin')
+            ORDER BY u.nombre_completo ASC, u.usuario ASC
+        ");
+        $stmtUsuariosVentas->execute([$empresaId]);
+        $usuariosVentas = $stmtUsuariosVentas->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Throwable $e2) {
+        $usuariosVentas = [];
+    }
+}
+
+foreach ($usuariosVentas as $u) {
+    $nombreUsuarioVentas = fm_nombre_usuario_ventas($u);
+    fm_agregar_vendedor_asignable($vendedoresAsignables, $nombreUsuarioVentas);
+    fm_agregar_operador_pedido($operadoresPedido, $operadoresPedidoVistos, 'usuario:' . (int)$u['id'], $nombreUsuarioVentas, 'usuario');
+}
+
+natcasesort($vendedoresAsignables);
 ?>
 <!DOCTYPE html>
 <html class="cambio-pagina" lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cargar Pedido — Star Lim</title>
+    <title>Cargar Pedido — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_ventas.css">
@@ -93,21 +194,8 @@ while ($v = $res3->fetch_assoc()) {
 
             <!-- Comprobante deseado (preferencia: la factura se emite después de la entrega) -->
             <div class="fm-section">
-                <h2 class="fm-section-title">Comprobante deseado</h2>
-                <p style="font-size:.8rem;opacity:.65;margin:0 0 10px;">El pedido entra a depósito y la factura (si corresponde) se emite desde Ventas una vez entregado.</p>
-                <div class="fm-tipo-grupo">
-                    <label class="fm-tipo-opcion">
-                        <input type="radio" name="tipo_cliente" value="sin_factura" id="radio-sf">
-                        <span>Solo remito<br><small>Sin factura</small></span>
-                    </label>
-                    <label class="fm-tipo-opcion" style="flex:2">
-                        <select name="tipo_comprobante" id="select-tipo-comprobante">
-                            <option value="" selected>— Elija un tipo de comprobante —</option>
-                            <option value="factura_a">Factura A</option>
-                            <option value="factura_b">Factura B</option>
-                        </select>
-                    </label>
-                </div>
+                <h2 class="fm-section-title">Comprobante operativo</h2>
+                <p style="font-size:.8rem;opacity:.65;margin:0;">El pedido genera remito interno y hoja de armado. Las facturas fiscales se gestionan fuera de esta app y solo pueden adjuntarse como comprobante externo.</p>
             </div>
 
             <div class="fm-section" id="seccion-datos-fecha">
@@ -126,14 +214,9 @@ while ($v = $res3->fetch_assoc()) {
                     <label>Vendedor</label>
                     <select name="vendedor_cl" id="select-vendedor">
                         <option value="" selected>— Sin asignar —</option>
-                        <?php
-                        $vendedoresVistos = [];
-                        foreach ($clientes as $c):
-                            if (empty($c['vendedor_cl']) || in_array($c['vendedor_cl'], $vendedoresVistos)) continue;
-                            $vendedoresVistos[] = $c['vendedor_cl'];
-                        ?>
-                            <option value="<?php echo htmlspecialchars($c['vendedor_cl'], ENT_QUOTES); ?>">
-                                <?php echo htmlspecialchars($c['vendedor_cl']); ?>
+                        <?php foreach ($vendedoresAsignables as $vendedorNombre): ?>
+                            <option value="<?php echo htmlspecialchars($vendedorNombre, ENT_QUOTES); ?>">
+                                <?php echo htmlspecialchars($vendedorNombre); ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -142,18 +225,13 @@ while ($v = $res3->fetch_assoc()) {
                     <label>Operador</label>
                     <select name="id_operador">
                         <option value="" selected>— Sin asignar —</option>
-                        <?php foreach ($vendedores as $v): ?>
-                            <option value="<?php echo $v['id']; ?>">
-                                <?php echo htmlspecialchars($v['nombre'] . ' ' . $v['apellido']); ?>
+                        <?php foreach ($operadoresPedido as $op): ?>
+                            <option value="<?php echo htmlspecialchars($op['value'], ENT_QUOTES); ?>" data-operador-nombre="<?php echo htmlspecialchars($op['nombre'], ENT_QUOTES); ?>">
+                                <?php echo htmlspecialchars($op['nombre']); ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
-                </div>
-                <div class="fm-campo">
-                    <label>Punto de venta *</label>
-                    <select name="punto_de_venta">
-                        <option value="1">00001 - Default</option>
-                    </select>
+                    <input type="hidden" name="operador_nombre" id="operador-nombre" value="">
                 </div>
                 <div class="fm-campo">
                     <label>Lista precios *</label>
@@ -234,7 +312,7 @@ while ($v = $res3->fetch_assoc()) {
                 <!-- Campos ocultos -->
                 <input type="hidden" name="tipo_cbte"          id="tipo-cbte"          value="6">
                 <input type="hidden" name="tipo_doc"            id="tipo-doc"           value="96">
-                <input type="hidden" name="tipo_cliente_hidden" id="tipo-cliente-hidden" value="consumidor_final">
+                <input type="hidden" name="tipo_cliente_hidden" id="tipo-cliente-hidden" value="sin_factura">
                 <input type="hidden" name="nro_doc"             id="nro-doc"            value="">
                 <input type="hidden" name="nombre_cliente"      id="nombre-cliente"     value="">
 
@@ -353,13 +431,13 @@ while ($v = $res3->fetch_assoc()) {
 <aside class="fm-preview-col">
     <div class="fm-preview-header">
         <h2>Vista previa</h2>
-        <span id="preview-tipo-cbte" class="fm-badge">Factura B</span>
+        <span id="preview-tipo-cbte" class="fm-badge">Remito</span>
     </div>
     <div class="fm-preview-body">
         <div class="fm-preview-empresa">
-            <strong>Star Lim</strong>
+            <strong>Starlim</strong>
             <span>CUIT: 20-46656757-5</span>
-            <span>Punto de venta: 0001</span>
+            <span>Comprobante interno</span>
         </div>
         <div class="fm-preview-cliente">
             <p><strong>Cliente:</strong> <span id="preview-cliente">—</span></p>
@@ -401,12 +479,12 @@ while ($v = $res3->fetch_assoc()) {
     const LISTAS_PRECIOS_DB = <?php echo json_encode($listas_precios); ?>;
 </script>
 <script src="../js/global.js"></script>
-<script src="../js/factura_manual.js?v=14"></script>
+<script src="../js/factura_manual.js?v=15"></script>
 <?php
 // Pre-llenado desde presupuesto
 $presupuesto_id = intval($_GET['presupuesto_id'] ?? 0);
 if ($presupuesto_id > 0):
-    $prp_res  = $conexion->query("SELECT * FROM presupuestos WHERE id = $presupuesto_id LIMIT 1");
+    $prp_res  = $conexion->query("SELECT * FROM presupuestos WHERE id = $presupuesto_id AND empresa_id = $empresaId LIMIT 1");
     $prp_data = $prp_res->fetch_assoc();
     if ($prp_data):
         $prp_data['productos'] = json_decode($prp_data['productos_json'], true) ?: [];

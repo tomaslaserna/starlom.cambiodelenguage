@@ -30,9 +30,10 @@ if ($estado !== '' && !in_array($estado, $estados_validos, true)) {
 }
 
 $pdo = $conexion->getPDO();
+$empresa_id = (int)($GLOBALS['STARLIM_EMPRESA_ID'] ?? 1);
 
-$where  = [];
-$params = [];
+$where  = ['t.empresa_id = ?'];
+$params = [$empresa_id];
 if ($id > 0)       { $where[] = 't.id = ?';            $params[] = $id; }
 if ($estado !== ''){ $where[] = 't.estado_pedido = ?'; $params[] = $estado; }
 if ($desde !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $desde)) {
@@ -46,7 +47,7 @@ if ($fuente === 'ventas') {
                    t.tipo_cbte, t.nro_comprobante, t.vendedor,
                    c.telefono AS telefono_cliente, c.nombre_cliente AS cliente_registrado
             FROM ventas t
-            LEFT JOIN clientes c ON c.nro_id = t.dni_cliente AND c.nro_id <> ''
+            LEFT JOIN clientes c ON c.empresa_id = t.empresa_id AND c.nro_id = t.dni_cliente AND c.nro_id <> ''
             $where_sql
             ORDER BY t.id DESC
             LIMIT $limite";
@@ -55,7 +56,7 @@ if ($fuente === 'ventas') {
                    t.monto, t.estado_pedido, t.vendedor, t.provincia, t.sucursal_cliente,
                    c.telefono AS telefono_cliente
             FROM remitos t
-            LEFT JOIN clientes c ON c.nro_id = t.dni_cliente AND c.nro_id <> ''
+            LEFT JOIN clientes c ON c.empresa_id = t.empresa_id AND c.nro_id = t.dni_cliente AND c.nro_id <> ''
             $where_sql
             ORDER BY t.id DESC
             LIMIT $limite";

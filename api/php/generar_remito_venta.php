@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 if (!isset($_SESSION['usuario'])) { http_response_code(403); die(); }
 
 $rango = $_SESSION['rango'];
@@ -10,7 +11,9 @@ if (!in_array($rango, ['Empleado_2','Jefe','Jefe1','Admin'], true)) {
 }
 
 include 'conexion_starlim_be.php';
+require_once __DIR__ . '/tenant.php';
 header('Content-Type: application/json; charset=utf-8');
+$empresa_id = starlim_bootstrap_tenant_context($conexion);
 
 $id_venta = intval($_POST['id_venta'] ?? 0);
 if (!$id_venta) {
@@ -23,9 +26,9 @@ $stmt = $conexion->prepare(
     "SELECT v.nombre_cliente, v.dni_cliente, v.fecha, v.monto,
             v.condicion_pago, v.vendedor,
             COALESCE(v.lista_precios, '') AS lista_precios
-     FROM ventas v WHERE v.id = ?"
+     FROM ventas v WHERE v.id = ? AND v.empresa_id = ?"
 );
-$stmt->bind_param('i', $id_venta);
+$stmt->bind_param('ii', $id_venta, $empresa_id);
 $stmt->execute();
 $venta = $stmt->get_result()->fetch_assoc();
 $stmt->close();
@@ -35,8 +38,8 @@ if (!$venta) {
     exit;
 }
 
-$chk = $conexion->prepare("SELECT id FROM remitos WHERE id_venta = ? LIMIT 1");
-$chk->bind_param('i', $id_venta);
+$chk = $conexion->prepare("SELECT id FROM remitos WHERE id_venta = ? AND empresa_id = ? LIMIT 1");
+$chk->bind_param('ii', $id_venta, $empresa_id);
 $chk->execute();
 if ($chk->get_result()->num_rows > 0) {
     $chk->close();
@@ -52,9 +55,9 @@ if ($chk_det && $chk_det->num_rows > 0) {
     $stmt2 = $conexion->prepare(
         "SELECT id_producto, nombre_producto, cantidad, precio_unit,
                 COALESCE(descuento, 0) AS descuento, subtotal
-         FROM detalle_ventas WHERE id_venta = ? ORDER BY id ASC"
+         FROM detalle_ventas WHERE id_venta = ? AND empresa_id = ? ORDER BY id ASC"
     );
-    $stmt2->bind_param('i', $id_venta);
+    $stmt2->bind_param('ii', $id_venta, $empresa_id);
     $stmt2->execute();
     $res2 = $stmt2->get_result();
     while ($row = $res2->fetch_assoc()) $detalles[] = $row;
@@ -62,22 +65,21 @@ if ($chk_det && $chk_det->num_rows > 0) {
 }
 
 /* ── Siguiente nro_remito ── */
-$res_nro    = $conexion->query("SELECT COALESCE(MAX(nro_remito), 0) + 1 AS sig FROM remitos");
-$nro_remito = (int)$res_nro->fetch_assoc()['sig'];
+$nro_remito = starlim_next_sequence($conexion, 'nro_remito', $empresa_id);
 
 /* ── Insertar remito (fecha = fecha de la venta) ── */
 $stmt3 = $conexion->prepare(
     "INSERT INTO remitos
         (id_venta, nro_remito, nombre_cliente, lista_precios, dni_cliente,
-         fecha, condicion_pago, monto, vendedor)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+         fecha, condicion_pago, monto, vendedor, empresa_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 );
 $stmt3->bind_param(
-    'iisssssds',
+    'iisssssdsi',
     $id_venta, $nro_remito,
     $venta['nombre_cliente'], $venta['lista_precios'],
     $venta['dni_cliente'],    $venta['fecha'],
-    $venta['condicion_pago'], $venta['monto'], $venta['vendedor']
+    $venta['condicion_pago'], $venta['monto'], $venta['vendedor'], $empresa_id
 );
 $stmt3->execute();
 $id_remito = $conexion->insert_id;
@@ -87,13 +89,13 @@ $stmt3->close();
 foreach ($detalles as $d) {
     $stmt4 = $conexion->prepare(
         "INSERT INTO detalle_remitos
-            (id_remito, id_producto, nombre_producto, cantidad, precio_unit, descuento, subtotal)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+            (id_remito, id_producto, nombre_producto, cantidad, precio_unit, descuento, subtotal, empresa_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     );
     $stmt4->bind_param(
-        'iisiddd',
+        'iisidddi',
         $id_remito,       $d['id_producto'], $d['nombre_producto'],
-        $d['cantidad'],   $d['precio_unit'], $d['descuento'], $d['subtotal']
+        $d['cantidad'],   $d['precio_unit'], $d['descuento'], $d['subtotal'], $empresa_id
     );
     $stmt4->execute();
     $stmt4->close();

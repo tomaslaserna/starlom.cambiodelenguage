@@ -3,25 +3,26 @@ $PERMITIDOS = ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 
 // Traer productos
 $productos = [];
-$res = $conexion->query("SELECT id, nombre, costo AS precio, stock AS cantidad FROM productos WHERE stock > 0 ORDER BY nombre ASC");
+$res = $conexion->query("SELECT id, nombre, costo AS precio, stock AS cantidad FROM productos WHERE empresa_id = $empresaId AND stock > 0 ORDER BY nombre ASC");
 while ($p = $res->fetch_assoc()) {
     $productos[] = $p;
 }
 
 // Traer clientes
 $clientes = [];
-$res2 = $conexion->query("SELECT id, nombre_cliente, codigo_cliente, tipo_id, nro_id, cond_iva, sucursales, nombre_sucursal, lista_precios, observacion FROM clientes WHERE estado = 'Activo' ORDER BY nombre_cliente ASC");
+$res2 = $conexion->query("SELECT id, nombre_cliente, codigo_cliente, tipo_id, nro_id, cond_iva, sucursales, nombre_sucursal, lista_precios, observacion FROM clientes WHERE empresa_id = $empresaId AND estado = 'Activo' ORDER BY nombre_cliente ASC");
 while ($c = $res2->fetch_assoc()) {
     $clientes[] = $c;
 }
 
 // Traer vendedores
 $vendedores = [];
-$res3 = $conexion->query("SELECT id, nombre, apellido FROM operadores ORDER BY nombre ASC");
+$res3 = $conexion->query("SELECT id, nombre, apellido FROM operadores WHERE empresa_id = $empresaId ORDER BY nombre ASC");
 while ($v = $res3->fetch_assoc()) {
     $vendedores[] = $v;
 }
@@ -31,7 +32,7 @@ while ($v = $res3->fetch_assoc()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ventas Registradas — Star Lim</title>
+    <title>Ventas Registradas — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_ventas.css">
@@ -198,8 +199,8 @@ while ($v = $res3->fetch_assoc()) {
         const CLIENTES_DATA = <?= json_encode($clientes, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;
     </script>
     <script src="../js/global.js"></script>
-    <script src="../js/Ventas_registradas.js?v=20"></script>
-    <script src="../js/ventas_comprobantes.js?v=1"></script>
+    <script src="../js/Ventas_registradas.js?v=22"></script>
+    <script src="../js/ventas_comprobantes.js?v=2"></script>
     <?php if (in_array($rango, ['Jefe1', 'Admin'], true)): ?>
     <script src="../js/ventas_admin_mode.js?v=1"></script>
     <?php endif; ?>

@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/../php/session_bootstrap.php';
+starlim_session_start();
 
 if (!isset($_SESSION['usuario'])) {
     header('Location: sign.php');
@@ -70,7 +71,7 @@ $subcarpeta_remito  = 'RMT_' . $mes_anio;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo $tipo_corto; ?> emitida — Star Lim</title>
+    <title><?php echo $tipo_corto; ?> emitida — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <style>
         body { overflow-x: hidden; }
@@ -283,7 +284,7 @@ $subcarpeta_remito  = 'RMT_' . $mes_anio;
         } catch {}
     }
 
-    // ── Obtener (o pedir) la carpeta base de Star Lim ──────────────────────
+    // ── Obtener (o pedir) la carpeta base de Starlim ──────────────────────
     async function obtenerCarpetaBase() {
         if (!window.showDirectoryPicker) return null;
 
@@ -358,13 +359,13 @@ $subcarpeta_remito  = 'RMT_' . $mes_anio;
 
         const archivo  = new File([blob], nombreArchivo, { type: 'application/pdf' });
         const saludo   = cliente ? `¡Hola ${cliente}! ` : '¡Hola! ';
-        const mensajeTxt = `${saludo}Te enviamos tu ${nombre} de Star Lim. Lo encontrás en el archivo adjunto.`;
+        const mensajeTxt = `${saludo}Te enviamos tu ${nombre} de Starlim. Lo encontrás en el archivo adjunto.`;
 
         // Opción 1: Web Share API con archivo — abre el selector de apps del sistema.
         // WhatsApp envía el texto como mensaje separado y el PDF como adjunto.
         if (navigator.canShare && navigator.canShare({ files: [archivo] })) {
             try {
-                await navigator.share({ files: [archivo], title: nombre + ' — Star Lim', text: mensajeTxt });
+                await navigator.share({ files: [archivo], title: nombre + ' — Starlim', text: mensajeTxt });
                 return;
             } catch (e) {
                 if (e.name === 'AbortError') return;

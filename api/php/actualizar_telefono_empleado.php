@@ -1,9 +1,10 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 /**
  * actualizar_telefono_empleado.php — Setea el teléfono de un empleado
  * (lo usa el reparto para avisar por WhatsApp). Solo Jefe1/Admin.
  */
-session_start();
+starlim_session_start();
 if (!isset($_SESSION['usuario'])) { http_response_code(403); die(); }
 
 include 'conexion_starlim_be.php';

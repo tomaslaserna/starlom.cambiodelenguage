@@ -1,21 +1,33 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 /**
  * empleados_be.php - Alta/edicion/estado/permisos de empleados.
  */
 require_once __DIR__ . '/auth.php';
 include 'conexion_starlim_be.php';
 require_once __DIR__ . '/empleados_lib.php';
+require_once __DIR__ . '/tenant.php';
+require_once __DIR__ . '/admin_permissions.php';
 
-if (session_status() === PHP_SESSION_NONE) session_start();
+starlim_session_start();
 
 $rangoActual = starlim_normalizar_rango($_SESSION['rango'] ?? '');
-if (!isset($_SESSION['usuario']) || !in_array($rangoActual, ['Jefe1', 'Admin'], true)) {
+if (!isset($_SESSION['usuario'])) {
     header('Location: ../frontend/sign.php');
     exit;
 }
 
 $pdo = $conexion->getPDO();
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 starlim_empleados_ensure_schema($pdo);
+
+$puedeAdministrarUsuarios = in_array($rangoActual, ['Jefe1', 'Admin'], true)
+    || starlim_admin_can($conexion, 'admin.usuarios', 'editar');
+if (!$puedeAdministrarUsuarios) {
+    http_response_code(403);
+    echo 'Acceso denegado.';
+    exit;
+}
 
 function empleados_volver(bool $ok, string $msg): void {
     header('Location: ../frontend/gestion_empleados.php?ok=' . ($ok ? '1' : '0') . '&msg=' . urlencode($msg));
@@ -49,6 +61,10 @@ try {
 
         $stmt = $pdo->prepare("UPDATE usuarios SET activo = CASE WHEN COALESCE(activo, 1) = 1 THEN 0 ELSE 1 END WHERE id = ?");
         $stmt->execute([$id]);
+        starlim_admin_audit($conexion, 'admin.usuarios', 'toggle_estado', 'usuario', $id, [
+            'usuario_objetivo' => $target['usuario'] ?? '',
+            'rango_objetivo' => $target['rango'] ?? '',
+        ]);
         empleados_volver(true, 'Estado actualizado.');
     }
 
@@ -148,10 +164,26 @@ try {
         $stmt->execute($params);
     }
 
+    $stmt = $pdo->prepare("
+        INSERT INTO usuario_empresa (id_usuario, empresa_id, rango, activo)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (id_usuario, empresa_id) DO UPDATE
+        SET rango = EXCLUDED.rango,
+            activo = EXCLUDED.activo,
+            updated_at = CURRENT_TIMESTAMP
+    ");
+    $stmt->execute([$id, $empresaId, $rango, $activo === 1]);
+
     starlim_empleados_sync_rol($pdo, $id, $rango);
     starlim_empleados_guardar_permisos($pdo, $id, is_array($permisos) ? $permisos : []);
 
     $pdo->commit();
+    starlim_admin_audit($conexion, 'admin.usuarios', $esCrear ? 'crear_usuario' : 'editar_usuario', 'usuario', $id, [
+        'usuario_objetivo' => $usuario,
+        'rango' => $rango,
+        'activo' => $activo,
+        'permisos_asignados' => array_values(array_map('intval', is_array($permisos) ? $permisos : [])),
+    ]);
     empleados_volver(true, $esCrear ? 'Empleado creado correctamente.' : 'Empleado actualizado correctamente.');
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();

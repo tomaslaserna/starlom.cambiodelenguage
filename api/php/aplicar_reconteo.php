@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 header('Content-Type: application/json');
 
 $allowed = ['Empleado_1', 'Empleado_2', 'Jefe1', 'Admin'];
@@ -10,6 +11,7 @@ if (!isset($_SESSION['usuario']) || !in_array($_SESSION['rango'] ?? '', $allowed
 }
 
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 $conexion->query("SET NAMES 'utf8mb4'");
 
 $raw  = file_get_contents('php://input');
@@ -36,18 +38,21 @@ foreach ($items as $item) {
     if ($modo === 'exacto') {
         // Fijar stock al valor exacto (mínimo 0)
         $val = max(0, $valor);
-        $sql = "UPDATE productos SET stock = $val WHERE id = $id";
+        $stmt = $conexion->prepare("UPDATE productos SET stock = ? WHERE id = ? AND empresa_id = ?");
+        $stmt->bind_param('dii', $val, $id, $empresaId);
     } else {
         // Sumar/restar delta, clampeando a 0 para evitar stock negativo
         $delta = $valor;
-        $sql   = "UPDATE productos SET stock = GREATEST(0, stock + ($delta)) WHERE id = $id";
+        $stmt = $conexion->prepare("UPDATE productos SET stock = GREATEST(0, stock + ?) WHERE id = ? AND empresa_id = ?");
+        $stmt->bind_param('dii', $delta, $id, $empresaId);
     }
 
-    if ($conexion->query($sql) && $conexion->affected_rows > 0) {
+    if ($stmt->execute() && $stmt->affected_rows > 0) {
         $actualizados++;
     } else {
         $errores[] = $id;
     }
+    $stmt->close();
 }
 
 echo json_encode([

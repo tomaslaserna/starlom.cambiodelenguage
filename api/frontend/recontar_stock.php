@@ -3,8 +3,9 @@ $PERMITIDOS = ['Empleado_1', 'Empleado_2', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
-$res = $conexion->query("SELECT id, nombre, stock FROM productos ORDER BY nombre ASC"
+$res = $conexion->query("SELECT id, nombre, stock FROM productos WHERE empresa_id = $empresaId ORDER BY nombre ASC"
 );
 $productos = [];
 while ($p = $res->fetch_assoc()) {
@@ -20,7 +21,7 @@ while ($p = $res->fetch_assoc()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recontar Stock — Star Lim</title>
+    <title>Recontar Stock — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">

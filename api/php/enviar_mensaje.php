@@ -1,8 +1,10 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 header('Content-Type: application/json');
 
 if (!isset($_SESSION['usuario'])) {
+    http_response_code(401);
     echo json_encode(['ok' => false, 'error' => 'No autenticado']);
     exit;
 }
@@ -29,23 +31,19 @@ if (mb_strlen($asunto) > 255) {
 }
 
 include 'conexion_starlim_be.php';
-
-// Crear tabla si no existe (idempotente)
-$conexion->query("
-    CREATE TABLE IF NOT EXISTS mensajes (
-        id     SERIAL       PRIMARY KEY,
-        de     VARCHAR(255) NOT NULL,
-        para   VARCHAR(255) NOT NULL,
-        asunto VARCHAR(255) NOT NULL DEFAULT '',
-        cuerpo TEXT         NOT NULL,
-        fecha  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        leido  SMALLINT     NOT NULL DEFAULT 0
-    )
-");
+require_once __DIR__ . '/mensajes_lib.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
+starlim_mensajes_ensure_schema($conexion);
 
 // Verificar que el destinatario existe
-$chk = $conexion->prepare("SELECT id FROM usuarios WHERE usuario = ?");
-$chk->bind_param("s", $para);
+$chk = $conexion->prepare("
+    SELECT u.id
+    FROM usuarios u
+    JOIN usuario_empresa ue ON ue.id_usuario = u.id
+    WHERE u.usuario = ? AND ue.empresa_id = ? AND ue.activo = TRUE
+    LIMIT 1
+");
+$chk->bind_param("si", $para, $empresaId);
 $chk->execute();
 if ($chk->get_result()->num_rows === 0) {
     echo json_encode(['ok' => false, 'error' => 'El destinatario no existe']);
@@ -54,9 +52,9 @@ if ($chk->get_result()->num_rows === 0) {
 $chk->close();
 
 $stmt = $conexion->prepare(
-    "INSERT INTO mensajes (de, para, asunto, cuerpo) VALUES (?, ?, ?, ?)"
+    "INSERT INTO mensajes (de, para, asunto, cuerpo, tipo, empresa_id) VALUES (?, ?, ?, ?, 'directo', ?)"
 );
-$stmt->bind_param("ssss", $de, $para, $asunto, $cuerpo);
+$stmt->bind_param("ssssi", $de, $para, $asunto, $cuerpo, $empresaId);
 
 if ($stmt->execute()) {
     echo json_encode(['ok' => true]);

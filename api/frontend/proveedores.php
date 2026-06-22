@@ -7,14 +7,20 @@
 $PERMITIDOS = ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 // Auto-sync: insertar proveedores presentes en productos pero ausentes en la tabla
 $conexion->query("
-    INSERT INTO proveedores (nombre)
-    SELECT DISTINCT TRIM(p.proveedor)
+    INSERT INTO proveedores (nombre, empresa_id)
+    SELECT DISTINCT TRIM(p.proveedor), $empresaId
     FROM productos p
     WHERE TRIM(COALESCE(p.proveedor,'')) <> ''
-      AND NOT EXISTS (SELECT 1 FROM proveedores pv WHERE LOWER(pv.nombre) = LOWER(TRIM(p.proveedor)))
+      AND p.empresa_id = $empresaId
+      AND NOT EXISTS (
+          SELECT 1 FROM proveedores pv
+          WHERE pv.empresa_id = p.empresa_id
+            AND LOWER(pv.nombre) = LOWER(TRIM(p.proveedor))
+      )
 ");
 
 $proveedores = [];
@@ -22,7 +28,8 @@ $rp = $conexion->query("
     SELECT pv.id, pv.nombre, pv.contacto, pv.telefono, pv.email, pv.direccion, pv.notas,
            COUNT(p.id) AS total_productos
     FROM proveedores pv
-    LEFT JOIN productos p ON LOWER(TRIM(p.proveedor)) = LOWER(pv.nombre)
+    LEFT JOIN productos p ON p.empresa_id = pv.empresa_id AND LOWER(TRIM(p.proveedor)) = LOWER(pv.nombre)
+    WHERE pv.empresa_id = $empresaId
     GROUP BY pv.id
     ORDER BY pv.nombre ASC
 ");
@@ -33,7 +40,7 @@ if ($rp) while ($row = $rp->fetch_assoc()) $proveedores[] = $row;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proveedores — Star Lim</title>
+    <title>Proveedores — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">

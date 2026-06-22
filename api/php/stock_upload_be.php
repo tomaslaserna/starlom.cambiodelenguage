@@ -1,6 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 include 'conexion_starlim_be.php';
+require_once __DIR__ . '/tenant.php';
+$empresa_id = starlim_bootstrap_tenant_context($conexion);
 
 $rango = $_SESSION['rango'] ?? '';
 if (!in_array($rango, ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'])) {
@@ -32,8 +35,8 @@ if ($codigo  === '') redir_error('Debes seleccionar una categoría de precio.');
 if ($costo  <= 0)   redir_error('El costo debe ser mayor a 0.');
 
 // Verificar que el codigo existe en margenes
-$chk = $conexion->prepare("SELECT nombre FROM margenes WHERE codigo = ? LIMIT 1");
-$chk->bind_param('s', $codigo);
+$chk = $conexion->prepare("SELECT nombre FROM margenes WHERE codigo = ? AND empresa_id = ? LIMIT 1");
+$chk->bind_param('si', $codigo, $empresa_id);
 $chk->execute();
 $chk_row = $chk->get_result()->fetch_assoc();
 $chk->close();
@@ -79,15 +82,15 @@ if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
 // ── INSERT productos (id_producto = MAX+1 del código, atómico) ────
 $stmt = $conexion->prepare(
     "INSERT INTO productos
-        (id_producto, rubro, codigo, categoria, proveedor, nombre, costo, stock, descripcion, imagen)
-     SELECT COALESCE(MAX(id_producto), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?
-     FROM productos WHERE codigo = ?"
+        (id_producto, rubro, codigo, categoria, proveedor, nombre, costo, stock, descripcion, imagen, empresa_id)
+     SELECT COALESCE(MAX(id_producto), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+     FROM productos WHERE codigo = ? AND empresa_id = ?"
 );
 if (!$stmt) redir_error('Error interno al preparar la inserción.');
 
-$stmt->bind_param('sssssdisss',
+$stmt->bind_param('sssssdissisi',
     $rubro, $codigo, $categoria, $proveedor,
-    $nombre, $costo, $stock_qty, $descripcion, $imagen, $codigo
+    $nombre, $costo, $stock_qty, $descripcion, $imagen, $empresa_id, $codigo, $empresa_id
 );
 
 if (!$stmt->execute()) {

@@ -1,8 +1,12 @@
 <?php
-    $PERMITIDOS = ['Jefe', 'Jefe1', 'Admin'];
+    $PERMITIDOS = ['Empleado', 'Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
     require __DIR__ . '/partials/guard.php';
 
     include '../php/conexion_starlim_be.php';
+    $empresaId = starlim_bootstrap_tenant_context($conexion);
+    require_once __DIR__ . '/../php/cobros_aprobacion_lib.php';
+    require_once __DIR__ . '/../php/admin_permissions.php';
+    starlim_admin_require($conexion, 'admin.metricas', $_SERVER['REQUEST_METHOD'] === 'POST' ? 'editar' : 'ver');
 
     /* ── Handle POST ────────────────────────────────────────────────── */
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -16,9 +20,9 @@
 
             if ($concepto !== '' && $monto > 0) {
                 $stmt = $conexion->prepare(
-                    "INSERT INTO costos_operativos (concepto, monto, categoria, fecha) VALUES (?, ?, ?, ?)"
+                    "INSERT INTO costos_operativos (concepto, monto, categoria, fecha, empresa_id) VALUES (?, ?, ?, ?, ?)"
                 );
-                $stmt->bind_param('sdss', $concepto, $monto, $categoria, $fecha);
+                $stmt->bind_param('sdssi', $concepto, $monto, $categoria, $fecha, $empresaId);
                 $stmt->execute();
                 $stmt->close();
             }
@@ -27,11 +31,30 @@
         if ($accion === 'del_costo') {
             $id = (int)($_POST['id'] ?? 0);
             if ($id > 0) {
-                $stmt = $conexion->prepare("DELETE FROM costos_operativos WHERE id = ?");
-                $stmt->bind_param('i', $id);
+                $stmt = $conexion->prepare("DELETE FROM costos_operativos WHERE id = ? AND empresa_id = ?");
+                $stmt->bind_param('ii', $id, $empresaId);
                 $stmt->execute();
                 $stmt->close();
             }
+        }
+
+        if ($accion === 'aprobar_cobro_admin') {
+            $id_venta = (int)($_POST['id_venta'] ?? 0);
+            if (starlim_cobros_puede_aprobar($conexion, $_SESSION['rango'] ?? '', $_SESSION['usuario'] ?? '')) {
+                starlim_cobros_aprobar($conexion, $id_venta, $_SESSION['usuario'] ?? '');
+            }
+            header('Location: planilla_admin.php#cobros-pendientes-aprobacion');
+            exit;
+        }
+
+        if ($accion === 'rechazar_cobro_admin') {
+            $id_venta = (int)($_POST['id_venta'] ?? 0);
+            $motivo   = trim($_POST['motivo'] ?? '');
+            if (starlim_cobros_puede_aprobar($conexion, $_SESSION['rango'] ?? '', $_SESSION['usuario'] ?? '')) {
+                starlim_cobros_rechazar($conexion, $id_venta, $_SESSION['usuario'] ?? '', $motivo);
+            }
+            header('Location: planilla_admin.php#cobros-pendientes-aprobacion');
+            exit;
         }
 
         header('Location: planilla_admin.php');
@@ -57,24 +80,28 @@
 
     /* ── Ventas (solo entregadas = ventas concretadas) ──────────────── */
     $r = $conexion->query("SELECT COALESCE(SUM(monto),0) AS t FROM ventas
-                           WHERE fecha >= '$inicio_mes' AND fecha < '$inicio_sig'
+                           WHERE empresa_id = $empresaId
+                           AND fecha >= '$inicio_mes' AND fecha < '$inicio_sig'
                            AND COALESCE(estado_pedido,'entregado') = 'entregado'");
     $ventas_mes = (float)($r ? $r->fetch_assoc()['t'] : 0);
 
     $r = $conexion->query("SELECT COALESCE(SUM(monto),0) AS t FROM ventas
-                           WHERE fecha >= '$inicio_pasado' AND fecha < '$inicio_mes'
+                           WHERE empresa_id = $empresaId
+                           AND fecha >= '$inicio_pasado' AND fecha < '$inicio_mes'
                            AND COALESCE(estado_pedido,'entregado') = 'entregado'");
     $ventas_pasado = (float)($r ? $r->fetch_assoc()['t'] : 0);
 
     /* ── Cobros ─────────────────────────────────────────────────────── */
     $r = $conexion->query("SELECT COALESCE(SUM(monto),0) AS t FROM ventas
-                           WHERE fecha >= '$inicio_mes' AND fecha < '$inicio_sig'
+                           WHERE empresa_id = $empresaId
+                           AND fecha >= '$inicio_mes' AND fecha < '$inicio_sig'
                            AND COALESCE(estado_cobro,'pendiente') = 'recibido'
                            AND COALESCE(estado_pedido,'entregado') = 'entregado'");
     $cobros_mes = (float)($r ? $r->fetch_assoc()['t'] : 0);
 
     $r = $conexion->query("SELECT COALESCE(SUM(monto),0) AS t FROM ventas
-                           WHERE fecha >= '$inicio_pasado' AND fecha < '$inicio_mes'
+                           WHERE empresa_id = $empresaId
+                           AND fecha >= '$inicio_pasado' AND fecha < '$inicio_mes'
                            AND COALESCE(estado_cobro,'pendiente') = 'recibido'
                            AND COALESCE(estado_pedido,'entregado') = 'entregado'");
     $cobros_pasado = (float)($r ? $r->fetch_assoc()['t'] : 0);
@@ -88,9 +115,10 @@
         $r = $conexion->query("
             SELECT COALESCE(SUM(dv.cantidad * p.costo), 0) AS cmv
             FROM detalle_ventas dv
-            JOIN ventas    v ON v.id = dv.id_venta
-            JOIN productos p ON p.id = dv.id_producto
-            WHERE v.fecha >= '$inicio_mes' AND v.fecha < '$inicio_sig'
+            JOIN ventas    v ON v.id = dv.id_venta AND v.empresa_id = dv.empresa_id
+            JOIN productos p ON p.id = dv.id_producto AND p.empresa_id = dv.empresa_id
+            WHERE dv.empresa_id = $empresaId
+              AND v.fecha >= '$inicio_mes' AND v.fecha < '$inicio_sig'
               AND COALESCE(v.estado_pedido,'entregado') = 'entregado'
         ");
         $cmv_mes = (float)($r ? $r->fetch_assoc()['cmv'] : 0);
@@ -98,9 +126,10 @@
         $r = $conexion->query("
             SELECT COALESCE(SUM(dv.cantidad * p.costo), 0) AS cmv
             FROM detalle_ventas dv
-            JOIN ventas    v ON v.id = dv.id_venta
-            JOIN productos p ON p.id = dv.id_producto
-            WHERE v.fecha >= '$inicio_pasado' AND v.fecha < '$inicio_mes'
+            JOIN ventas    v ON v.id = dv.id_venta AND v.empresa_id = dv.empresa_id
+            JOIN productos p ON p.id = dv.id_producto AND p.empresa_id = dv.empresa_id
+            WHERE dv.empresa_id = $empresaId
+              AND v.fecha >= '$inicio_pasado' AND v.fecha < '$inicio_mes'
               AND COALESCE(v.estado_pedido,'entregado') = 'entregado'
         ");
         $cmv_pasado = (float)($r ? $r->fetch_assoc()['cmv'] : 0);
@@ -121,7 +150,7 @@
         SELECT COALESCE(SUM(stock * costo), 0) AS valor,
                COALESCE(SUM(stock), 0)         AS unidades,
                COUNT(*)                         AS productos
-        FROM productos WHERE stock > 0
+        FROM productos WHERE empresa_id = $empresaId AND stock > 0
     ");
     $sd = $r ? $r->fetch_assoc() : ['valor' => 0, 'unidades' => 0, 'productos' => 0];
 
@@ -129,7 +158,8 @@
     $r = $conexion->query("
         SELECT id, concepto, monto, categoria, fecha
         FROM costos_operativos
-        WHERE fecha >= '$inicio_mes' AND fecha < '$inicio_sig'
+        WHERE empresa_id = $empresaId
+          AND fecha >= '$inicio_mes' AND fecha < '$inicio_sig'
         ORDER BY fecha DESC, id DESC
     ");
     $costos_op = [];
@@ -147,11 +177,11 @@
     $presupuestos_mes = $presupuestos_pasado = null;
     if ($tp && $tp->num_rows > 0) {
         $r = $conexion->query("SELECT COUNT(*) AS c FROM presupuestos
-                               WHERE fecha >= '$inicio_mes' AND fecha < '$inicio_sig'");
+                               WHERE empresa_id = $empresaId AND fecha >= '$inicio_mes' AND fecha < '$inicio_sig'");
         $row = $r ? $r->fetch_assoc() : null;
         $presupuestos_mes = is_array($row) ? (int)($row['c'] ?? 0) : 0;
         $r = $conexion->query("SELECT COUNT(*) AS c FROM presupuestos
-                               WHERE fecha >= '$inicio_pasado' AND fecha < '$inicio_mes'");
+                               WHERE empresa_id = $empresaId AND fecha >= '$inicio_pasado' AND fecha < '$inicio_mes'");
         $row = $r ? $r->fetch_assoc() : null;
         $presupuestos_pasado = is_array($row) ? (int)($row['c'] ?? 0) : 0;
     }
@@ -171,7 +201,8 @@
     $r = $conexion->query("
         SELECT TO_CHAR(fecha, 'YYYY-MM') AS mes, COALESCE(SUM(monto), 0) AS total
         FROM ventas
-        WHERE fecha >= '$chart_desde'
+        WHERE empresa_id = $empresaId
+          AND fecha >= '$chart_desde'
           AND COALESCE(estado_pedido,'entregado') = 'entregado'
         GROUP BY TO_CHAR(fecha, 'YYYY-MM')
     ");
@@ -184,9 +215,10 @@
             SELECT TO_CHAR(v.fecha, 'YYYY-MM') AS mes,
                    COALESCE(SUM(dv.cantidad * p.costo), 0) AS total
             FROM detalle_ventas dv
-            JOIN ventas    v ON v.id = dv.id_venta
-            JOIN productos p ON p.id = dv.id_producto
-            WHERE v.fecha >= '$chart_desde'
+            JOIN ventas    v ON v.id = dv.id_venta AND v.empresa_id = dv.empresa_id
+            JOIN productos p ON p.id = dv.id_producto AND p.empresa_id = dv.empresa_id
+            WHERE dv.empresa_id = $empresaId
+              AND v.fecha >= '$chart_desde'
               AND COALESCE(v.estado_pedido,'entregado') = 'entregado'
             GROUP BY TO_CHAR(v.fecha, 'YYYY-MM')
         ");
@@ -202,6 +234,53 @@
         $chart_ventas[]    = $d['ventas'];
         $chart_cmv[]       = $d['cmv'];
         $chart_ganancias[] = round($d['ventas'] - $d['cmv'], 2);
+    }
+
+    /* ── Cobros pendientes de aprobacion ───────────────────────────── */
+    $puede_aprobar_cobros = starlim_cobros_puede_aprobar($conexion, $_SESSION['rango'] ?? '', $_SESSION['usuario'] ?? '');
+    $cobros_pendientes_aprobacion = [];
+    $r = $conexion->query("
+        SELECT v.id, v.nro_comprobante, v.tipo_cbte, COALESCE(v.cae,'') AS cae,
+               v.fecha, v.monto, v.nombre_cliente, v.dni_cliente,
+               COALESCE(rm.nro_remito, v.nro_comprobante) AS nro_remito,
+               COALESCE(cli.codigo_cliente, '') AS codigo_cliente,
+               COALESCE(cli.nro_id, v.dni_cliente, '') AS cuit_cliente,
+               COALESCE(v.cobro_metodo,'') AS cobro_metodo,
+               COALESCE(v.cobro_monto_registrado,0) AS cobro_monto_registrado,
+               v.cobro_fecha,
+               COALESCE(v.cobro_destino,'') AS cobro_destino,
+               COALESCE(v.cobro_operacion,'') AS cobro_operacion,
+               COALESCE(v.cobro_notas,'') AS cobro_notas,
+               COALESCE(v.cobro_registrado_por,'') AS cobro_registrado_por,
+               v.cobro_registrado_at,
+               COALESCE(v.estado_cobro,'pendiente') AS estado_cobro
+        FROM ventas v
+        LEFT JOIN (
+            SELECT id_venta, MIN(nro_remito) AS nro_remito
+            FROM remitos
+            WHERE empresa_id = $empresaId
+            GROUP BY id_venta
+        ) rm ON rm.id_venta = v.id
+        LEFT JOIN (
+            SELECT REPLACE(REPLACE(nro_id,'-',''),' ','') AS nro_norm,
+                   MAX(NULLIF(codigo_cliente,'')) AS codigo_cliente,
+                   MAX(NULLIF(nro_id,'')) AS nro_id
+            FROM clientes
+            WHERE empresa_id = $empresaId AND COALESCE(nro_id,'') <> ''
+            GROUP BY REPLACE(REPLACE(nro_id,'-',''),' ','')
+        ) cli ON cli.nro_norm = REPLACE(REPLACE(v.dni_cliente,'-',''),' ','')
+        WHERE COALESCE(v.estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
+          AND v.empresa_id = $empresaId
+          AND COALESCE(v.estado_pedido,'entregado') = 'entregado'
+        ORDER BY v.cobro_registrado_at DESC, v.id DESC
+    ");
+    if ($r) {
+        while ($row = $r->fetch_assoc()) {
+            $row['remito_fmt'] = starlim_cobros_doc_remito($row);
+            $row['fecha_fmt'] = !empty($row['fecha']) ? date('d/m/Y', strtotime($row['fecha'])) : '-';
+            $row['cobro_fecha_fmt'] = !empty($row['cobro_fecha']) ? date('d/m/Y', strtotime($row['cobro_fecha'])) : '-';
+            $cobros_pendientes_aprobacion[] = $row;
+        }
     }
 
     /* ── Helpers ────────────────────────────────────────────────────── */
@@ -229,7 +308,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Planilla Admin — Star Lim</title>
+    <title>Planilla Admin — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_ventas.css">
@@ -520,12 +599,50 @@
         .adm-delta--neutral { color: #667085; font-weight: 400; }
         .dark-mode .adm-delta--up   { color: #22c55e; }
         .dark-mode .adm-delta--down { color: #ef4444; }
+
+        .adm-approval-panel { margin-bottom: 24px; }
+        .adm-approval-head {
+            display:flex; align-items:flex-start; justify-content:space-between;
+            gap:14px; flex-wrap:wrap; margin-bottom:14px;
+        }
+        .adm-approval-count {
+            min-width:34px; height:34px; border-radius:17px;
+            display:inline-flex; align-items:center; justify-content:center;
+            background:#fef3c7; color:#92400e; font-weight:800; font-size:14px;
+        }
+        .adm-approval-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+        .adm-approval-table th {
+            text-align:left; padding:9px 8px; border-bottom:1px solid rgba(128,128,128,.16);
+            color:#667085; font-size:10px; text-transform:uppercase; letter-spacing:.06em;
+        }
+        .adm-approval-table td { padding:10px 8px; border-bottom:1px solid rgba(128,128,128,.10); vertical-align:top; }
+        .adm-approval-table tr:last-child td { border-bottom:none; }
+        .adm-approval-money { font-weight:800; color:#0f172a; white-space:nowrap; }
+        .dark-mode .adm-approval-money { color:#f8fafc; }
+        .adm-approval-meta { color:#667085; font-size:11.5px; line-height:1.45; }
+        .adm-approval-actions { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+        .adm-approval-actions form { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:0; }
+        .adm-approval-input {
+            width:150px; padding:6px 8px; border-radius:7px;
+            border:1px solid rgba(128,128,128,.22); background:#fff; color:#101828;
+        }
+        .dark-mode .adm-approval-input { background:#0c1322; color:#e4e7ec; border-color:rgba(255,255,255,.14); }
+        .adm-approve-btn,.adm-reject-btn {
+            border:none; border-radius:7px; padding:7px 11px; font-size:12px;
+            font-weight:800; cursor:pointer; font-family:inherit; white-space:nowrap;
+        }
+        .adm-approve-btn { background:#16a34a; color:#fff; }
+        .adm-reject-btn { background:#fee2e2; color:#991b1b; }
+        .adm-approval-empty {
+            border:1px dashed rgba(128,128,128,.22); border-radius:12px;
+            padding:18px; color:#667085; font-size:13px; text-align:center;
+        }
     </style>
     <link rel="stylesheet" href="../css/theme.css">
 </head>
 <body>
 
-    <?php $NAV_ACTIVA = 'metricas'; include __DIR__ . '/partials/nav.php'; ?>
+    <?php $NAV_ACTIVA = 'admin'; $ADMIN_ACTIVA = 'admin.metricas'; include __DIR__ . '/partials/nav.php'; ?>
 
     <main class="dash-main">
 
@@ -583,6 +700,88 @@
             </div>
 
         </div>
+
+        <section class="dash-panel adm-approval-panel" id="cobros-pendientes-aprobacion">
+            <div class="adm-approval-head">
+                <div>
+                    <h2 class="panel-title" style="margin-bottom:3px;">Cobros pendientes de aprobación</h2>
+                    <p style="font-size:12px;opacity:.5;margin:0;">
+                        Administración certifica que el dinero ingresó antes de marcar la venta como pagada.
+                    </p>
+                </div>
+                <span class="adm-approval-count"><?= count($cobros_pendientes_aprobacion) ?></span>
+            </div>
+
+            <?php if (empty($cobros_pendientes_aprobacion)): ?>
+                <div class="adm-approval-empty">No hay cobros cargados por operadores pendientes de revisión.</div>
+            <?php else: ?>
+                <div style="overflow-x:auto;">
+                    <table class="adm-approval-table">
+                        <thead>
+                            <tr>
+                                <th>Remito</th>
+                                <th>Cliente</th>
+                                <th>Venta</th>
+                                <th>Cobro registrado</th>
+                                <th>Ingreso declarado</th>
+                                <th>Operador</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($cobros_pendientes_aprobacion as $cobro): ?>
+                            <tr>
+                                <td><strong><?= htmlspecialchars($cobro['remito_fmt']) ?></strong></td>
+                                <td>
+                                    <strong><?= htmlspecialchars($cobro['nombre_cliente'] ?: '-') ?></strong>
+                                    <div class="adm-approval-meta">
+                                        Nro cliente: <?= htmlspecialchars($cobro['codigo_cliente'] ?: '-') ?><br>
+                                        CUIT: <?= htmlspecialchars($cobro['cuit_cliente'] ?: 'Sin CUIT') ?>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="adm-approval-money"><?= fp((float)$cobro['monto']) ?></span>
+                                    <div class="adm-approval-meta">Fecha venta: <?= htmlspecialchars($cobro['fecha_fmt']) ?></div>
+                                </td>
+                                <td>
+                                    <span class="adm-approval-money"><?= fp((float)$cobro['cobro_monto_registrado']) ?></span>
+                                    <div class="adm-approval-meta">Fecha cobro: <?= htmlspecialchars($cobro['cobro_fecha_fmt']) ?></div>
+                                </td>
+                                <td>
+                                    <strong><?= htmlspecialchars($cobro['cobro_metodo'] ?: '-') ?></strong>
+                                    <div class="adm-approval-meta">
+                                        Destino: <?= htmlspecialchars($cobro['cobro_destino'] ?: '-') ?><br>
+                                        Operación: <?= htmlspecialchars($cobro['cobro_operacion'] ?: '-') ?>
+                                        <?php if (!empty($cobro['cobro_notas'])): ?><br>Notas: <?= htmlspecialchars($cobro['cobro_notas']) ?><?php endif; ?>
+                                    </div>
+                                </td>
+                                <td><?= htmlspecialchars($cobro['cobro_registrado_por'] ?: '-') ?></td>
+                                <td>
+                                    <?php if ($puede_aprobar_cobros): ?>
+                                        <div class="adm-approval-actions">
+                                            <form method="POST">
+                                                <input type="hidden" name="accion" value="aprobar_cobro_admin">
+                                                <input type="hidden" name="id_venta" value="<?= (int)$cobro['id'] ?>">
+                                                <button type="submit" class="adm-approve-btn">Aprobar</button>
+                                            </form>
+                                            <form method="POST">
+                                                <input type="hidden" name="accion" value="rechazar_cobro_admin">
+                                                <input type="hidden" name="id_venta" value="<?= (int)$cobro['id'] ?>">
+                                                <input class="adm-approval-input" type="text" name="motivo" placeholder="Motivo">
+                                                <button type="submit" class="adm-reject-btn" onclick="return confirm('¿Rechazar este cobro y volver la venta a pendiente?')">Rechazar</button>
+                                            </form>
+                                        </div>
+                                    <?php else: ?>
+                                        <span class="adm-approval-meta">Sin permiso para aprobar</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+        </section>
 
         <!-- ══════════════════════════════════════════════════════════
              GRÁFICO LINEAL — últimos 12 meses

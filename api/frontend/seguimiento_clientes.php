@@ -11,6 +11,7 @@
 $PERMITIDOS = ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 require_once '../php/seguimiento_lib.php';
 
 $seg        = starlim_calcular_seguimiento($conexion);
@@ -37,7 +38,7 @@ $SECCIONES = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seguimiento de clientes — Star Lim</title>
+    <title>Seguimiento de clientes — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">

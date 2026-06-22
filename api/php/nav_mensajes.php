@@ -10,13 +10,16 @@ $_nmsg_count = 0;
 $_nmsg_empleados = [];
 
 if (!empty($conexion) && !empty($usuario)) {
+    require_once __DIR__ . '/mensajes_lib.php';
+    starlim_mensajes_ensure_schema($conexion);
+    $empresaIdMensajes = function_exists('starlim_current_empresa_id') ? starlim_current_empresa_id($conexion, false) : 1;
     // En la carga inicial solo traemos el contador. El listado completo y la
     // lista de empleados se cargan al abrir el dropdown para no frenar cada página.
     $nstmt = $conexion->prepare(
-        "SELECT COUNT(*) AS c FROM mensajes WHERE para = ? AND leido = 0"
+        "SELECT COUNT(*) AS c FROM mensajes WHERE empresa_id = ? AND para = ? AND leido = 0"
     );
     if ($nstmt) {
-        $nstmt->bind_param('s', $usuario);
+        $nstmt->bind_param('is', $empresaIdMensajes, $usuario);
         $nstmt->execute();
         $nres = $nstmt->get_result();
         $nrow = $nres->fetch_assoc();
@@ -137,8 +140,8 @@ if (!empty($conexion) && !empty($usuario)) {
         if (cargado) return Promise.resolve();
         var list = document.getElementById('nm-msgs-list');
         if (list) list.innerHTML = '<p class="nav-msgs-empty">Cargando...</p>';
-        return fetch('../php/nav_mensajes_data.php', { headers: { 'Accept': 'application/json' } })
-            .then(function (r) { return r.json(); })
+        return fetch('../php/nav_mensajes_data.php', { credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/json' } })
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function (d) {
                 if (!d.ok) throw new Error(d.error || 'Error');
                 cargado = true;
@@ -156,7 +159,7 @@ if (!empty($conexion) && !empty($usuario)) {
         if (abierto) cargarMensajes();
         if (abierto && !marcado) {
             marcado = true;
-            fetch('../php/marcar_mensajes_leidos.php', { method: 'POST' }).then(function () {
+            fetch('../php/marcar_mensajes_leidos.php', { method: 'POST', credentials: 'same-origin', cache: 'no-store' }).then(function () {
                 var b = document.getElementById('nav-msgs-badge');
                 if (b) b.remove();
             }).catch(function () {});
@@ -185,8 +188,8 @@ if (!empty($conexion) && !empty($usuario)) {
             var fb = document.getElementById('nm-feedback');
             var send = document.getElementById('nm-send');
             send.disabled = true; fb.textContent = 'Enviando...'; fb.className = 'nm-feedback';
-            fetch('../php/enviar_mensaje.php', { method: 'POST', body: new FormData(form) })
-                .then(function (r) { return r.json(); })
+            fetch('../php/enviar_mensaje.php', { method: 'POST', credentials: 'same-origin', cache: 'no-store', body: new FormData(form) })
+                .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
                 .then(function (d) {
                     if (d.ok) { fb.textContent = 'Mensaje enviado.'; fb.className = 'nm-feedback ok'; form.reset(); }
                     else { fb.textContent = d.error || 'Error al enviar.'; fb.className = 'nm-feedback err'; }

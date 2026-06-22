@@ -22,14 +22,18 @@ define('STARLIM_INTEGRACION_EVENTOS', true);
  */
 function starlim_evento_registrar($conexion, string $tipo, array $datos): void {
     try {
+        if (!function_exists('starlim_current_empresa_id')) {
+            require_once __DIR__ . '/tenant.php';
+        }
+        $empresa_id = starlim_current_empresa_id($conexion, false);
         $json = json_encode($datos, JSON_UNESCAPED_UNICODE);
         $stmt = $conexion->prepare(
-            "INSERT INTO eventos_integracion (tipo, datos) VALUES (?, ?)"
+            "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES (?, ?, ?)"
         );
-        $stmt->bind_param('ss', $tipo, $json);
+        $stmt->bind_param('ssi', $tipo, $json, $empresa_id);
         $stmt->execute();
     } catch (Throwable $e) {
-        error_log('[StarLim] No se pudo registrar evento de integración: ' . $e->getMessage());
+        error_log('[Starlim] No se pudo registrar evento de integración: ' . $e->getMessage());
         return; // nunca romper la operación principal por un evento
     }
 
@@ -56,6 +60,6 @@ function starlim_evento_registrar($conexion, string $tipo, array $datos): void {
         curl_exec($ch);
         curl_close($ch);
     } catch (Throwable $e) {
-        error_log('[StarLim] Webhook saliente falló: ' . $e->getMessage());
+        error_log('[Starlim] Webhook saliente falló: ' . $e->getMessage());
     }
 }

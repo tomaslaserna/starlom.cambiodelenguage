@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 ob_start();
 ini_set('display_errors', '0');
 
@@ -11,8 +12,9 @@ register_shutdown_function(function () {
     }
 });
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -70,7 +72,7 @@ try {
         ob_end_clean(); echo json_encode(['error' => 'Contraseña requerida.']); exit();
     }
 
-    $resPass = $conexion->query("SELECT valor FROM config_sistema WHERE clave = 'password_carga_masiva' LIMIT 1");
+    $resPass = $conexion->query("SELECT valor FROM config_sistema WHERE empresa_id = $empresaId AND clave = 'password_carga_masiva' LIMIT 1");
     if (!$resPass || $resPass->num_rows === 0) {
         ob_end_clean(); echo json_encode(['error' => 'Contraseña no configurada en el sistema.']); exit();
     }
@@ -103,11 +105,11 @@ try {
     $headers = fgetcsv($handle, 0, $sep);
 
     // ── VACIAR la tabla de productos ──────────────────────────────────────────
-    $conexion->query("TRUNCATE TABLE productos RESTART IDENTITY");
+    $conexion->query("DELETE FROM productos WHERE empresa_id = $empresaId");
 
     // ── Precargar categorías desde margenes ───────────────────────────────────
     $categorias = [];
-    $resCat = $conexion->query("SELECT codigo, nombre FROM margenes");
+    $resCat = $conexion->query("SELECT codigo, nombre FROM margenes WHERE empresa_id = $empresaId");
     while ($cat = $resCat->fetch_assoc()) {
         $categorias[strtoupper($cat['codigo'])] = $cat['nombre'];
     }
@@ -155,10 +157,10 @@ try {
         $idProducto = $contadorPorCodigo[$codigo];
 
         $stmtIns = $conexion->prepare(
-            "INSERT INTO productos (id_producto, codigo, proveedor, nombre, costo, stock, descripcion)
-             VALUES (?, ?, ?, ?, ?, 0, '')"
+            "INSERT INTO productos (id_producto, codigo, proveedor, nombre, costo, stock, descripcion, empresa_id)
+             VALUES (?, ?, ?, ?, ?, 0, '', ?)"
         );
-        $stmtIns->bind_param("isssd", $idProducto, $codigo, $proveedor, $nombre, $costo);
+        $stmtIns->bind_param("isssdi", $idProducto, $codigo, $proveedor, $nombre, $costo, $empresaId);
         if ($stmtIns->execute()) {
             $insertados++;
         } else {

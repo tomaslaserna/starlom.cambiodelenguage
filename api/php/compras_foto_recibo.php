@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 header('Content-Type: application/json; charset=utf-8');
 
 $usuario = $_SESSION['usuario'] ?? '';
@@ -9,13 +10,14 @@ if (!$usuario) {
 }
 
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 /* ── ID de compra ───────────────────────────────────────────────── */
 $id = (int)($_POST['id'] ?? 0);
 if (!$id) { echo json_encode(['ok' => false, 'msg' => 'ID inválido']); exit; }
 
 /* ── Verificar que la compra existe y está en estado recibida ────── */
-$chk = $conexion->query("SELECT id FROM compras_registro WHERE id = {$id} AND estado = 'recibida' LIMIT 1");
+$chk = $conexion->query("SELECT id FROM compras_registro WHERE id = {$id} AND empresa_id = {$empresaId} AND estado = 'recibida' LIMIT 1");
 if (!$chk || !$chk->fetch_assoc()) {
     echo json_encode(['ok' => false, 'msg' => 'Compra no encontrada o no está en estado recibida']); exit;
 }
@@ -88,8 +90,8 @@ if (!$up['ok']) {
 }
 
 /* ── Actualizar BD ──────────────────────────────────────────────── */
-$stmt = $conexion->prepare("UPDATE compras_registro SET recibo_foto = ? WHERE id = ?");
-$stmt->bind_param('si', $up['url'], $id);
+$stmt = $conexion->prepare("UPDATE compras_registro SET recibo_foto = ? WHERE id = ? AND empresa_id = ?");
+$stmt->bind_param('sii', $up['url'], $id, $empresaId);
 $stmt->execute();
 
 echo json_encode(['ok' => true, 'foto' => $up['url']]);

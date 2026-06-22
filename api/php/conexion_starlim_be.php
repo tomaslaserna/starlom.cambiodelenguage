@@ -1,25 +1,25 @@
 <?php
 /**
- * Conexión a Supabase (PostgreSQL) mediante PDO.
- * Incluye la capa de compatibilidad mysqli y el handler de sesiones en DB,
- * ambos necesarios para funcionar en Vercel (entorno serverless/stateless).
+ * Conexion a Supabase/PostgreSQL mediante PDO.
+ * Incluye compatibilidad mysqli, contexto tenant y sesiones persistidas en DB
+ * para Vercel/serverless.
  */
 
-// Guarda de inclusión: las páginas incluyen este archivo con `include` simple
-// (no _once) y algunas lo hacen más de una vez. Importante: las funciones van
-// DENTRO de bloques if — una declaración top-level incondicional se compila
-// antes de que el `return` de la guarda pueda ejecutarse, y fatal-ea igual.
 if (defined('STARLIM_DB_BOOTSTRAPPED')) return;
 define('STARLIM_DB_BOOTSTRAPPED', true);
 
 require_once __DIR__ . '/db_compat.php';
+require_once __DIR__ . '/auth.php';
 
-// ── Variables de entorno ──────────────────────────────────────────────────────
-// En Vercel: Project Settings → Environment Variables
-// En local:  archivo .env en la raíz del proyecto (nunca commitear)
+// Browser session cookie: the browser cookie is session-scoped, while the DB
+// row lives longer so Vercel/serverless instances share the same session state.
+if (session_status() === PHP_SESSION_NONE) {
+    $session_ttl = 7 * 24 * 60 * 60;
+    ini_set('session.gc_maxlifetime', (string)$session_ttl);
+    starlim_configure_session_security();
+}
+
 if (!function_exists('_env')) {
-    // Limpia BOM (UTF-8/UTF-16) y espacios invisibles que se cuelan al
-    // copiar/pegar valores en el dashboard de Vercel.
     function _env_clean(string $val): string {
         $val = str_replace(["\xEF\xBB\xBF", "\u{200B}", "\u{200E}", "\u{200F}"], '', $val);
         return trim($val);
@@ -29,7 +29,6 @@ if (!function_exists('_env')) {
         $val = getenv($key);
         if ($val !== false) return _env_clean($val);
 
-        // Fallback: leer .env manual si no está en el entorno
         static $dotenv = null;
         if ($dotenv === null) {
             $dotenv = [];
@@ -46,51 +45,43 @@ if (!function_exists('_env')) {
     }
 }
 
-// Host del pooler de Supabase (Supavisor). El host directo db.*.supabase.co
-// es solo IPv6 y Vercel no tiene salida IPv6, por eso el pooler es obligatorio.
 $db_host = _env('SUPABASE_DB_HOST', 'aws-1-us-east-2.pooler.supabase.com');
 $db_port = _env('SUPABASE_DB_PORT', '6543');
 $db_name = _env('SUPABASE_DB_NAME', 'postgres');
 $db_user = _env('SUPABASE_DB_USER', 'postgres.fholnxqkkuqvqlkzvqmb');
 $db_pass = _env('SUPABASE_DB_PASS', '');
 
-// ── Conexión PDO ──────────────────────────────────────────────────────────────
 $dsn = "pgsql:host={$db_host};port={$db_port};dbname={$db_name};sslmode=require";
 
 try {
     $pdo_options = [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
+        // Supabase transaction pooler (:6543) does not support server-side
+        // prepared statements. PDO emulation keeps placeholders safe without
+        // creating prepared statements on the pooled Postgres connection.
+        PDO::ATTR_EMULATE_PREPARES   => true,
     ];
 
-    // En el servidor local de PHP se reutiliza el mismo proceso entre requests:
-    // mantener la conexion evita repetir el handshake remoto con Supabase.
     if (PHP_SAPI === 'cli-server') {
         $pdo_options[PDO::ATTR_PERSISTENT] = true;
     }
 
     $pdo = new PDO($dsn, $db_user, $db_pass, $pdo_options);
 } catch (PDOException $e) {
-    error_log('[StarLim] PDO error: ' . $e->getMessage());
+    error_log('[Starlim] PDO error: ' . $e->getMessage());
     http_response_code(500);
-    die(json_encode(['error' => 'Error de conexión a la base de datos.', 'detail' => $e->getMessage()]));
+    die(json_encode(['error' => 'Error de conexion a la base de datos.']));
 }
 
-// $conexion imita la interfaz mysqli para que el código existente no cambie
 $conexion = new PDOMysqliWrapper($pdo);
 
-// ── Sesiones en base de datos ─────────────────────────────────────────────────
-// Vercel es stateless: las sesiones en archivos no persisten entre requests.
-// Guardamos la sesión en la tabla "php_sessions" de Supabase.
+require_once __DIR__ . '/tenant.php';
+starlim_set_empresa_context($pdo, starlim_current_empresa_id(null, false));
+
 if (PHP_SAPI !== 'cli-server' && session_status() === PHP_SESSION_NONE) session_set_save_handler(
-    // open
     function (string $path, string $name): bool { return true; },
-
-    // close
     function (): bool { return true; },
-
-    // read
     function (string $id) use ($pdo): string {
         try {
             $stmt = $pdo->prepare(
@@ -103,13 +94,11 @@ if (PHP_SAPI !== 'cli-server' && session_status() === PHP_SESSION_NONE) session_
             return '';
         }
     },
-
-    // write
     function (string $id, string $data) use ($pdo): bool {
         try {
             $stmt = $pdo->prepare(
                 "INSERT INTO php_sessions (session_id, session_data, expires_at)
-                 VALUES (?, ?, NOW() + INTERVAL '2 hours')
+                 VALUES (?, ?, NOW() + INTERVAL '7 days')
                  ON CONFLICT (session_id) DO UPDATE
                  SET session_data = EXCLUDED.session_data,
                      expires_at   = EXCLUDED.expires_at"
@@ -119,8 +108,6 @@ if (PHP_SAPI !== 'cli-server' && session_status() === PHP_SESSION_NONE) session_
             return false;
         }
     },
-
-    // destroy
     function (string $id) use ($pdo): bool {
         try {
             $stmt = $pdo->prepare("DELETE FROM php_sessions WHERE session_id = ?");
@@ -129,8 +116,6 @@ if (PHP_SAPI !== 'cli-server' && session_status() === PHP_SESSION_NONE) session_
             return false;
         }
     },
-
-    // gc (limpieza de sesiones expiradas)
     function (int $maxlifetime) use ($pdo): int|false {
         try {
             $stmt = $pdo->prepare("DELETE FROM php_sessions WHERE expires_at < NOW()");

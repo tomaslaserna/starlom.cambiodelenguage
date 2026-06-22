@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 if (!isset($_SESSION['usuario'])) { http_response_code(403); die(); }
 
 $rango = $_SESSION['rango'];
@@ -10,6 +11,7 @@ if ($rango !== 'Empleado_2' && $rango !== 'Jefe' && $rango !== 'Jefe1' && $rango
 }
 
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 header('Content-Type: application/json; charset=utf-8');
 
 $id_venta  = intval($_POST['id_venta']  ?? 0);
@@ -38,11 +40,11 @@ if (!$target_id || !isset($allowed[$campo]) || !in_array($valor, $allowed[$campo
 /* $campo viene de la whitelist de arriba: interpolarlo es seguro.
    (Sin backticks: son sintaxis MySQL y Postgres los rechaza) */
 if ($es_remito) {
-    $stmt = $conexion->prepare("UPDATE remitos SET $campo = ? WHERE id = ?");
+    $stmt = $conexion->prepare("UPDATE remitos SET $campo = ? WHERE id = ? AND empresa_id = ?");
 } else {
-    $stmt = $conexion->prepare("UPDATE ventas SET $campo = ? WHERE id = ?");
+    $stmt = $conexion->prepare("UPDATE ventas SET $campo = ? WHERE id = ? AND empresa_id = ?");
 }
-$stmt->bind_param('si', $valor, $target_id);
+$stmt->bind_param('sii', $valor, $target_id, $empresaId);
 $stmt->execute();
 $affected = $stmt->affected_rows;
 $stmt->close();

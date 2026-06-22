@@ -3,6 +3,8 @@ $PERMITIDOS = ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
+$canViewFinancialData = starlim_admin_is_admin();
 
 $inicio_mes = date('Y-m-01');
 $inicio_sig = date('Y-m-d', strtotime($inicio_mes . ' +1 month'));
@@ -34,15 +36,16 @@ function fmt_pesos(float $v): string {
     return '$' . number_format($v, 2, ',', '.');
 }
 
+$statsSelect = $canViewFinancialData
+    ? "COUNT(*) AS pedidos_entregados, COALESCE(SUM(monto), 0) AS ventas_mes, COALESCE(AVG(monto), 0) AS ticket_promedio"
+    : "COUNT(*) AS pedidos_entregados, 0 AS ventas_mes, 0 AS ticket_promedio";
 $stats = ventas_row($conexion, "
-    SELECT
-        COUNT(*)                AS pedidos_entregados,
-        COALESCE(SUM(monto), 0) AS facturacion_mes,
-        COALESCE(AVG(monto), 0) AS ticket_promedio
+    SELECT $statsSelect
     FROM ventas
-    WHERE COALESCE(estado_pedido,'entregado') = 'entregado'
+    WHERE empresa_id = $empresaId
+      AND COALESCE(estado_pedido,'entregado') = 'entregado'
       AND fecha >= '$inicio_mes' AND fecha < '$inicio_sig'
-", ['pedidos_entregados' => 0, 'facturacion_mes' => 0, 'ticket_promedio' => 0]);
+", ['pedidos_entregados' => 0, 'ventas_mes' => 0, 'ticket_promedio' => 0]);
 
 $presup = ventas_row($conexion, "
     SELECT
@@ -55,6 +58,7 @@ $presup = ventas_row($conexion, "
                            AND fecha_vencimiento <= CURRENT_DATE + INTERVAL '3 days'
                           THEN 1 ELSE 0 END), 0) AS seguimiento
     FROM presupuestos
+    WHERE empresa_id = $empresaId
 ", ['pendientes' => 0, 'vencidos' => 0, 'aprobados' => 0, 'rechazados' => 0, 'seguimiento' => 0]);
 
 $pedidos = ventas_row($conexion, "
@@ -67,14 +71,16 @@ $pedidos = ventas_row($conexion, "
                            AND creado_en < NOW() - INTERVAL '2 days'
                           THEN 1 ELSE 0 END), 0) AS demorados
     FROM ventas
+    WHERE empresa_id = $empresaId
 ", ['recibidos' => 0, 'en_proceso' => 0, 'listos' => 0, 'entregados_mes' => 0, 'demorados' => 0]);
 
 $pedidos_stock = ventas_scalar($conexion, "
     SELECT COUNT(DISTINCT v.id)
     FROM ventas v
-    JOIN detalle_ventas dv ON dv.id_venta = v.id
-    JOIN productos p ON p.id = dv.id_producto
-    WHERE v.estado_pedido IN ('recibido','en_proceso','pendiente_entrega')
+    JOIN detalle_ventas dv ON dv.id_venta = v.id AND dv.empresa_id = v.empresa_id
+    JOIN productos p ON p.id = dv.id_producto AND p.empresa_id = v.empresa_id
+    WHERE v.empresa_id = $empresaId
+      AND v.estado_pedido IN ('recibido','en_proceso','pendiente_entrega')
       AND dv.cantidad > p.stock
 ", 0);
 
@@ -84,6 +90,7 @@ $compras = ventas_row($conexion, "
         COALESCE(SUM(CASE WHEN estado = 'en_camino' THEN 1 ELSE 0 END), 0) AS en_camino,
         COALESCE(SUM(CASE WHEN estado = 'recibida' AND fecha >= CURRENT_DATE - INTERVAL '7 days' THEN 1 ELSE 0 END), 0) AS recibidas_recientes
     FROM compras_registro
+    WHERE empresa_id = $empresaId
 ", ['pendientes' => 0, 'en_camino' => 0, 'recibidas_recientes' => 0]);
 
 $stock = ventas_row($conexion, "
@@ -91,14 +98,15 @@ $stock = ventas_row($conexion, "
         COALESCE(SUM(CASE WHEN p.stock > 0 AND p.stock <= 5 THEN 1 ELSE 0 END), 0) AS bajo,
         COALESCE(SUM(CASE WHEN p.stock <= 0 THEN 1 ELSE 0 END), 0) AS sin_stock
     FROM productos p
+    WHERE p.empresa_id = $empresaId
 ", ['bajo' => 0, 'sin_stock' => 0]);
 
 $stock_comprometido = ventas_scalar($conexion, "
-    SELECT COALESCE(SUM(reservado), 0) FROM vista_stock_disponible
+    SELECT COALESCE(SUM(reservado), 0) FROM vista_stock_disponible WHERE empresa_id = $empresaId
 ", 0);
 
 $reposicion_alertas = ventas_scalar($conexion, "
-    SELECT COUNT(*) FROM vista_stock_disponible WHERE disponible <= 0
+    SELECT COUNT(*) FROM vista_stock_disponible WHERE empresa_id = $empresaId AND disponible <= 0
 ", 0);
 
 $alertas = [];
@@ -121,7 +129,7 @@ if ((int)$reposicion_alertas > 0) {
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ventas - Star Lim</title>
+    <title>Ventas - Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_ventas.css">
@@ -155,16 +163,20 @@ if ((int)$reposicion_alertas > 0) {
                             <span class="stat-label">Pedidos entregados</span>
                             <span class="stat-value"><?= (int)$stats['pedidos_entregados'] ?></span>
                         </div>
-                        <div class="stat-card stat-wide stat-money">
-                            <span class="stat-label">Facturacion mensual</span>
-                            <span class="stat-value money-value"><?= fmt_pesos((float)$stats['facturacion_mes']) ?></span>
-                        </div>
-                        <div class="stat-card stat-wide stat-money stat-money--ticket">
-                            <span class="stat-label">Ticket promedio</span>
-                            <span class="stat-value money-value c-green"><?= fmt_pesos((float)$stats['ticket_promedio']) ?></span>
-                        </div>
+                        <?php if ($canViewFinancialData): ?>
+                            <div class="stat-card stat-wide stat-money">
+                                <span class="stat-label">Ventas mensuales</span>
+                                <span class="stat-value money-value"><?= fmt_pesos((float)$stats['ventas_mes']) ?></span>
+                            </div>
+                            <div class="stat-card stat-wide stat-money stat-money--ticket">
+                                <span class="stat-label">Ticket promedio</span>
+                                <span class="stat-value money-value c-green"><?= fmt_pesos((float)$stats['ticket_promedio']) ?></span>
+                            </div>
+                        <?php endif; ?>
                     </div>
-                    <p class="ventas-note">Los cobros y saldos se administran desde <a href="panel_cobros_pagos.php">Cobros y Pagos</a>.</p>
+                    <?php if ($canViewFinancialData): ?>
+                        <p class="ventas-note">Los cobros y saldos se administran desde <a href="panel_cobros_pagos.php">Cobros y Pagos</a>.</p>
+                    <?php endif; ?>
                 </section>
 
                 <section class="dash-panel ops-alert-panel">

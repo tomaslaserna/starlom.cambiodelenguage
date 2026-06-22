@@ -1,0 +1,16 @@
+-- RLS pendiente: NO ejecutar en produccion hasta que el rol de conexion
+-- no sea duenio de las tablas o se use FORCE ROW LEVEL SECURITY.
+--
+-- Motivo: la app PHP conecta actualmente con el usuario postgres del pooler.
+-- En Postgres, el duenio de tabla puede bypass-ear RLS salvo FORCE RLS.
+-- Activar esto sin cambiar el rol de conexion daria una falsa sensacion de
+-- seguridad, o con FORCE podria romper endpoints que todavia no setean tenant.
+--
+-- Patron previsto para tablas tenant:
+--
+-- ALTER TABLE public.ventas ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY ventas_tenant_isolation
+-- ON public.ventas
+-- FOR ALL
+-- USING (empresa_id = app_private.current_empresa_id(NULL))
+-- WITH CHECK (empresa_id = app_private.current_empresa_id(NULL));

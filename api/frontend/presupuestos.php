@@ -7,6 +7,7 @@
 $PERMITIDOS = ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $puede_aceptar = $canVentas;
 
@@ -15,7 +16,7 @@ $res = $conexion->query(
             total, creado_por, (fecha_vencimiento - CURRENT_DATE) AS dias_restantes,
             (fecha_vencimiento >= CURRENT_DATE) AS vigente
      FROM presupuestos
-     WHERE estado = 'pendiente'
+     WHERE empresa_id = $empresaId AND estado = 'pendiente'
      ORDER BY fecha_vencimiento DESC, id DESC"
 );
 $vigentes = $vencidos = [];
@@ -31,7 +32,7 @@ function fmt_ars($n) { return '$' . number_format((float)$n, 2, ',', '.'); }
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Presupuestos — Star Lim</title>
+    <title>Presupuestos — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">

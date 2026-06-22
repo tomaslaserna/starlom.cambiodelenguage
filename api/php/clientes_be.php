@@ -1,14 +1,17 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 /**
  * clientes_be.php — Alta y edición de clientes desde la base de datos.
  * Acciones (POST): crear | editar. Solo staff con acceso a BD.
  */
-session_start();
+starlim_session_start();
 if (!isset($_SESSION['usuario'])) { http_response_code(403); die(); }
 
 include 'conexion_starlim_be.php';
 require_once 'auth.php';
+require_once __DIR__ . '/tenant.php';
 header('Content-Type: application/json; charset=utf-8');
+$empresa_id = starlim_bootstrap_tenant_context($conexion);
 
 $rango = starlim_normalizar_rango($_SESSION['rango'] ?? '');
 if (!in_array($rango, ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'], true)) {
@@ -38,14 +41,16 @@ $nro_norm = preg_replace('/[^0-9]/', '', $datos['nro_id']);
 if ($accion === 'crear') {
     // Dedup por nro_id (si se cargó)
     if ($nro_norm !== '') {
-        $ck = $conexion->prepare("SELECT id FROM clientes WHERE REPLACE(REPLACE(nro_id,'-',''),' ','') = ? LIMIT 1");
-        $ck->bind_param('s', $nro_norm); $ck->execute();
+        $ck = $conexion->prepare("SELECT id FROM clientes WHERE empresa_id = ? AND REPLACE(REPLACE(nro_id,'-',''),' ','') = ? LIMIT 1");
+        $ck->bind_param('is', $empresa_id, $nro_norm); $ck->execute();
         if ($ck->get_result()->fetch_assoc()) { echo json_encode(['ok' => false, 'error' => 'Ya existe un cliente con ese CUIT/DNI']); exit; }
         $ck->close();
     }
-    $sql = "INSERT INTO clientes (" . implode(',', $campos) . ") VALUES (" . implode(',', array_fill(0, count($campos), '?')) . ") RETURNING id";
+    $camposInsert = array_merge($campos, ['empresa_id']);
+    $datosInsert = array_merge(array_values($datos), [(string)$empresa_id]);
+    $sql = "INSERT INTO clientes (" . implode(',', $camposInsert) . ") VALUES (" . implode(',', array_fill(0, count($camposInsert), '?')) . ") RETURNING id";
     $st = $conexion->prepare($sql);
-    $st->bind_param(str_repeat('s', count($campos)), ...array_values($datos));
+    $st->bind_param(str_repeat('s', count($camposInsert)), ...$datosInsert);
     $st->execute();
     $id = (int)$st->get_result()->fetch_assoc()['id'];
     $st->close();
@@ -59,8 +64,9 @@ if ($accion === 'editar') {
     $sets = implode(', ', array_map(fn($c) => "$c = ?", $campos));
     $valores = array_values($datos);
     $valores[] = $id;
-    $st = $conexion->prepare("UPDATE clientes SET $sets WHERE id = ?");
-    $st->bind_param(str_repeat('s', count($campos)) . 'i', ...$valores);
+    $valores[] = $empresa_id;
+    $st = $conexion->prepare("UPDATE clientes SET $sets WHERE id = ? AND empresa_id = ?");
+    $st->bind_param(str_repeat('s', count($campos)) . 'ii', ...$valores);
     $st->execute();
     $st->close();
     echo json_encode(['ok' => true]);

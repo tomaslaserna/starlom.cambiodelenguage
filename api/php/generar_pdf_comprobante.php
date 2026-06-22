@@ -1,31 +1,35 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 /**
  * generar_pdf_comprobante.php — PDF de una Nota de Crédito/Débito de
  * comprobantes_venta (fiscal o interna). Reusa el layout del remito.
  */
-session_start();
+starlim_session_start();
 if (!isset($_SESSION['usuario'])) { header('Location: ../frontend/sign.php'); die(); }
 
 include 'conexion_starlim_be.php';
 require_once '../fpdf186/fpdf.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $id = intval($_GET['id'] ?? 0);
 if (!$id) die("Error: ID inválido.");
 
-$res = $conexion->query("SELECT * FROM comprobantes_venta WHERE id = $id");
-$c = $res->fetch_assoc();
+$stmt = $conexion->prepare("SELECT * FROM comprobantes_venta WHERE id = ? AND empresa_id = ?");
+$stmt->bind_param('ii', $id, $empresaId);
+$stmt->execute();
+$c = $stmt->get_result()->fetch_assoc();
 if (!$c) die("Error: comprobante no encontrado.");
 
 // Datos del cliente vía la venta o el remito asociado
 $cliente_nombre = ''; $cliente_doc = ''; $ref_label = '';
 if (!empty($c['id_venta'])) {
-    $r = $conexion->query("SELECT nombre_cliente, dni_cliente, nro_comprobante, COALESCE(cae,'') AS cae FROM ventas WHERE id = " . (int)$c['id_venta']);
+    $r = $conexion->query("SELECT nombre_cliente, dni_cliente, nro_comprobante, COALESCE(cae,'') AS cae FROM ventas WHERE id = " . (int)$c['id_venta'] . " AND empresa_id = " . (int)$empresaId);
     if ($v = $r->fetch_assoc()) {
         $cliente_nombre = $v['nombre_cliente']; $cliente_doc = $v['dni_cliente'];
         $ref_label = ($v['cae'] !== '' ? 'Factura #' : 'Pedido #') . str_pad((int)$v['nro_comprobante'], 8, '0', STR_PAD_LEFT);
     }
 } elseif (!empty($c['id_remito'])) {
-    $r = $conexion->query("SELECT nombre_cliente, dni_cliente, nro_remito FROM remitos WHERE id = " . (int)$c['id_remito']);
+    $r = $conexion->query("SELECT nombre_cliente, dni_cliente, nro_remito FROM remitos WHERE id = " . (int)$c['id_remito'] . " AND empresa_id = " . (int)$empresaId);
     if ($v = $r->fetch_assoc()) {
         $cliente_nombre = $v['nombre_cliente']; $cliente_doc = $v['dni_cliente'];
         $ref_label = 'Remito #' . str_pad((int)$v['nro_remito'], 8, '0', STR_PAD_LEFT);
@@ -64,7 +68,7 @@ if (file_exists($logo)) {
 
 $pdf->SetXY(10, $y_empresa);
 $pdf->SetFont('Arial', 'B', 9);
-$pdf->Cell(70, 5, 'De Starlimm S.A.S.', 0, 1, 'L');
+$pdf->Cell(70, 5, 'Starlim S.A.S.', 0, 1, 'L');
 $pdf->SetX(10); $pdf->SetFont('Arial', '', 8); $pdf->SetTextColor(60, 60, 60);
 $pdf->Cell(70, 4, 'CUIT: 20-46656757-5', 0, 1, 'L');
 
@@ -79,7 +83,7 @@ $pdf->Cell(44, 6, p($titulo), 0, 0, 'C');
 // — Derecha —
 $pdf->SetXY(133, 10);
 $pdf->SetFont('Arial', 'B', 12);
-$pdf->Cell(67, 6, 'Star Lim', 0, 1, 'R');
+$pdf->Cell(67, 6, 'Starlim', 0, 1, 'R');
 $pdf->SetX(133); $pdf->SetFont('Arial', 'B', 10);
 $pdf->Cell(67, 6, 'Nro: ' . str_pad((int)$c['nro_comprobante'], 8, '0', STR_PAD_LEFT), 0, 1, 'R');
 $pdf->SetX(133); $pdf->SetFont('Arial', '', 8);

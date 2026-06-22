@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 ob_start();
 ini_set('display_errors', '0');
 
@@ -11,8 +12,9 @@ register_shutdown_function(function () {
     }
 });
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 $conexion->query("SET NAMES 'utf8mb4'");
 
 header('Content-Type: application/json; charset=utf-8');
@@ -34,7 +36,7 @@ function archivoAUTF8_c($ruta) {
 }
 
 function limpiar_c($conn, $val) {
-    return trim((string)($val ?? ''));
+    return $conn->real_escape_string(trim((string)($val ?? '')));
 }
 
 // Formato argentino: punto = miles, coma = decimal
@@ -107,7 +109,7 @@ try {
         }
 
         // Buscar el producto por nombre + costo
-        $where = "nombre = '$nombre'";
+        $where = "empresa_id = $empresaId AND nombre = '$nombre'";
         if ($costo !== null) {
             $where .= " AND costo = $costo";
         }

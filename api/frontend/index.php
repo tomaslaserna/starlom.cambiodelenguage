@@ -1,7 +1,9 @@
 <?php
-    session_start();
+require_once __DIR__ . '/../php/session_bootstrap.php';
+    starlim_session_start();
 
     include '../php/conexion_starlim_be.php';
+    $empresaId = starlim_bootstrap_tenant_context($conexion);
 
     if (!isset($_SESSION['usuario'])) {
         $rango = "x";
@@ -12,7 +14,7 @@
 
     include '../php/conexion_starlim_be.php';
 
-    $query = "SELECT * FROM productos LIMIT 50";
+    $query = "SELECT * FROM productos WHERE empresa_id = $empresaId LIMIT 50";
     $resultado = $conexion->query($query);
 ?>
 
@@ -25,7 +27,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Star Lim</title>
+    <title>Starlim</title>
     <link rel="stylesheet" href="../css/style.css">
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/theme.css">
@@ -36,7 +38,7 @@
     <header class="header landing-header">
         <div class="bg_4"></div>
         <div class="menu">
-            <a href="#" class="logo">Star Lim</a>
+            <a href="#" class="logo">Starlim</a>
             <input type="checkbox" id="menu">
                 <label for="menu" class="menu-icono">
                     <span></span>
@@ -87,7 +89,16 @@
                             <img src="../imagenesIndex/usuario dark.png" id="img-usuario" class="oscuro" loading="lazy" alt="">
                         </label>
                         <div id="usuario">
-                            <a href="sign.php" id="log-in_registro" class="btn-3">Iniciar sesión o Registrarse</a>
+                            <?php if (isset($_SESSION['usuario'])): ?>
+                                <?php if (in_array($rango, ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'], true)): ?>
+                                    <a href="panel_empleados.php" id="log-in_registro" class="btn-3">Panel interno</a>
+                                <?php else: ?>
+                                    <span class="btn-3"><?= htmlspecialchars((string)$_SESSION['usuario']) ?></span>
+                                <?php endif; ?>
+                                <a href="../php/cerrar_sesion.php" class="btn-3">Cerrar sesi&oacute;n</a>
+                            <?php else: ?>
+                                <a href="sign.php" id="log-in_registro" class="btn-3">Iniciar sesi&oacute;n o Registrarse</a>
+                            <?php endif; ?>
                         </div>
                     </li>
                 </ul>
@@ -97,7 +108,7 @@
         <div class="header-content container landing-hero">
             <div class="header-txt hero-copy">
                 <span class="hero-eyebrow">Productos de limpieza y gestion comercial</span>
-                <h1>Star Lim</h1>
+                <h1>Starlim</h1>
                 <p>
                     Productos de limpieza, catalogo, pedidos, stock y seguimiento comercial en una experiencia simple para comprar, vender y administrar sin perder control.
                 </p>
@@ -151,7 +162,7 @@
     <section class="info reveal landing-section" id="infoid">
         <div class="info-content container">
             <div class="info-img">
-                <img src="../imagenesIndex/Local.png" loading="lazy" alt="Local de Star Lim">
+                <img src="../imagenesIndex/Local.png" loading="lazy" alt="Local de Starlim">
             </div>
             <div class="info-txt">
                 <span class="section-eyebrow">Atencion y control</span>
@@ -224,7 +235,7 @@
         </div>
 
         <div class="app-img reveal">
-            <img src="../imagenesIndex/phone light.png" loading="lazy" alt="Vista movil del sistema Star Lim">
+            <img src="../imagenesIndex/phone light.png" loading="lazy" alt="Vista movil del sistema Starlim">
         </div>
     </section>
 
@@ -235,7 +246,7 @@
         <div class="footer-content container reveal">
 
             <div class="link">
-                <h3>Star Lim</h3>
+                <h3>Starlim</h3>
                 <ul>
                     <li><a href="#">Inicio</a></li>
                     <li><a href="productos.php">Productos</a></li>
@@ -266,7 +277,7 @@
 
             <div class="link">
                 <h3>Contacto</h3>
-                <p>Consultas comerciales, pedidos y soporte operativo desde los canales habituales de Star Lim.</p>
+                <p>Consultas comerciales, pedidos y soporte operativo desde los canales habituales de Starlim.</p>
                 <a href="sign.php" class="footer-cta">Ingresar</a>
             </div>
 

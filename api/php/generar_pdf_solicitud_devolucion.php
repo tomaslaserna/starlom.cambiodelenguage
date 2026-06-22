@@ -1,211 +1,206 @@
 <?php
-/**
- * generar_pdf_solicitud_devolucion.php — Comprobante de SOLICITUD DE DEVOLUCIÓN
- * a un proveedor. Se entrega junto con la mercadería: detalla qué se devuelve,
- * el motivo, y deja espacio de firma para ambas partes.
- *
- * Entrada (POST desde el modal de Compras → Registro):
- *   id_compra       (int)
- *   prod_id[]       ids de producto a devolver
- *   prod_cant[]     cantidades a devolver (alineadas por índice con prod_id[])
- *   motivo[]        motivo por ítem (opcional, alineado por índice)
- *   motivo_general  (string)
- *
- * Solo Jefe / Jefe1 / Admin.
- */
+require_once __DIR__ . '/session_bootstrap.php';
 require_once __DIR__ . '/auth.php';
-if (session_status() === PHP_SESSION_NONE) session_start();
+starlim_session_start();
 
 if (!isset($_SESSION['usuario'], $_SESSION['rango'])) {
     header('Location: ../frontend/sign.php');
-    die();
+    exit;
 }
+
 $rango = starlim_normalizar_rango($_SESSION['rango']);
 if (!in_array($rango, ['Jefe', 'Jefe1', 'Admin'], true)) {
     http_response_code(403);
-    die('No tenés permiso para emitir devoluciones.');
+    die('No tenes permiso para emitir devoluciones.');
 }
 
-include 'conexion_starlim_be.php';
-require_once 'comprobante_pdf_lib.php';
+require_once __DIR__ . '/conexion_starlim_be.php';
+require_once __DIR__ . '/comprobante_pdf_lib.php';
 
-$id_compra = intval($_POST['id_compra'] ?? 0);
-if ($id_compra <= 0) die('Error: compra inválida.');
+$empresaId = starlim_bootstrap_tenant_context($conexion);
+$id_compra = (int)($_POST['id_compra'] ?? 0);
+if ($id_compra <= 0) die('Error: compra invalida.');
 
-$prod_ids  = $_POST['prod_id']   ?? [];
+$prod_ids = $_POST['prod_id'] ?? [];
 $prod_cant = $_POST['prod_cant'] ?? [];
-$motivos   = $_POST['motivo']    ?? [];
-$motivo_general = trim($_POST['motivo_general'] ?? '');
+$motivos = $_POST['motivo'] ?? [];
+$motivo_general = trim((string)($_POST['motivo_general'] ?? ''));
 
-/* ── Compra + proveedor ─────────────────────────────────────────── */
-$res = $conexion->query(
+$stmt = $conexion->prepare(
     "SELECT cr.id, cr.descripcion, cr.total, cr.fecha,
             p.nombre AS prov_nombre, p.contacto, p.telefono, p.email, p.direccion
      FROM compras_registro cr
-     LEFT JOIN proveedores p ON p.id = cr.id_proveedor
-     WHERE cr.id = $id_compra LIMIT 1"
+     LEFT JOIN proveedores p ON p.id = cr.id_proveedor AND p.empresa_id = cr.empresa_id
+     WHERE cr.id = ? AND cr.empresa_id = ?
+     LIMIT 1"
 );
-$compra = $res ? $res->fetch_assoc() : null;
+$stmt->bind_param('ii', $id_compra, $empresaId);
+$stmt->execute();
+$compra = $stmt->get_result()->fetch_assoc();
+$stmt->close();
 if (!$compra) die('Error: compra no encontrada.');
 
-/* ── Detalle real de la compra (para validar) ───────────────────── */
-$recibido = [];   // id_producto => ['nombre' => ..., 'cantidad' => ...]
-$rd = $conexion->query(
+$recibido = [];
+$det = $conexion->prepare(
     "SELECT dcr.id_producto, COALESCE(p.nombre, '(producto eliminado)') AS nombre, dcr.cantidad
      FROM detalle_compras_registro dcr
-     LEFT JOIN productos p ON p.id = dcr.id_producto
-     WHERE dcr.id_compra = $id_compra"
+     LEFT JOIN productos p ON p.id = dcr.id_producto AND p.empresa_id = dcr.empresa_id
+     WHERE dcr.id_compra = ? AND dcr.empresa_id = ?
+     ORDER BY dcr.id ASC"
 );
+$det->bind_param('ii', $id_compra, $empresaId);
+$det->execute();
+$rd = $det->get_result();
 if ($rd) while ($row = $rd->fetch_assoc()) {
     $recibido[(int)$row['id_producto']] = [
-        'nombre'   => $row['nombre'],
+        'nombre' => (string)$row['nombre'],
         'cantidad' => (int)$row['cantidad'],
     ];
 }
+$det->close();
 
-/* ── Armar lista a devolver (solo ítems válidos de esta compra) ─── */
 $items = [];
 foreach ($prod_ids as $i => $pid) {
-    $pid  = (int)$pid;
+    $pid = (int)$pid;
     $cant = (int)($prod_cant[$i] ?? 0);
     if ($pid <= 0 || $cant <= 0 || !isset($recibido[$pid])) continue;
-    $cant = min($cant, $recibido[$pid]['cantidad']);   // no más de lo recibido
+    $cant = min($cant, $recibido[$pid]['cantidad']);
     if ($cant <= 0) continue;
     $items[] = [
-        'codigo'   => $pid,
-        'nombre'   => $recibido[$pid]['nombre'],
+        'codigo' => $pid,
+        'nombre' => $recibido[$pid]['nombre'],
         'cantidad' => $cant,
-        'motivo'   => trim($motivos[$i] ?? ''),
+        'motivo' => trim((string)($motivos[$i] ?? '')),
     ];
 }
-if (empty($items)) die('Error: no se seleccionaron productos válidos para devolver.');
+if (empty($items)) die('Error: no se seleccionaron productos validos para devolver.');
 
-/* ── PDF ────────────────────────────────────────────────────────── */
+function sd_fecha(?string $fecha, string $fallback = '-'): string {
+    if (!$fecha) return $fallback;
+    $ts = strtotime($fecha);
+    return $ts ? date('d/m/Y', $ts) : $fallback;
+}
+
+function sd_short(string $text, int $width): string {
+    return mb_strimwidth(trim($text), 0, $width, '...', 'UTF-8');
+}
+
 $pdf = new ComprobantePDF('P', 'mm', 'A4');
-$pdf->SetMargins(10, 10, 10);
-$pdf->SetAutoPageBreak(true, 20);
-$pdf->SetDrawColor(0, 0, 0);
-$pdf->SetLineWidth(0.2);
+$pdf->SetMargins(15, 14, 15);
+$pdf->SetAutoPageBreak(true, 22);
 $pdf->AddPage();
 
-$nro   = str_pad((string)$id_compra, 8, '0', STR_PAD_LEFT);
+$nro = 'SD-' . str_pad((string)$id_compra, 8, '0', STR_PAD_LEFT);
 $fecha = date('d/m/Y');
-$extra = [];
-if (!empty($compra['fecha'])) $extra[] = 'Compra del: ' . date('d/m/Y', strtotime($compra['fecha']));
+$fechaCompra = sd_fecha($compra['fecha'] ?? null);
 
-$y0 = cabecera_comprobante($pdf, 'SOLICITUD DE DEVOLUCION', 'D', $nro, $fecha, $extra) + 3;
+$y_linea = cabecera_comprobante(
+    $pdf,
+    'SOLICITUD DE DEVOLUCION',
+    'SD',
+    $nro,
+    $fecha,
+    ['Proveedor', 'Compra: #' . str_pad((string)$id_compra, 8, '0', STR_PAD_LEFT), 'Fecha compra: ' . $fechaCompra]
+);
 
-/* ── Datos del proveedor / referencia de compra ─────────────────── */
-$izq = [
-    ['Proveedor:', p($compra['prov_nombre'] ?: 'Sin proveedor')],
-    ['Contacto:',  p($compra['contacto']  ?: '-')],
-    ['Telefono:',  p($compra['telefono']  ?: '-')],
-    ['Email:',     p($compra['email']     ?: '-')],
-];
-$der = [
-    ['Compra Nro:', '#' . $nro],
-    ['Fecha compra:', !empty($compra['fecha']) ? date('d/m/Y', strtotime($compra['fecha'])) : '-'],
-    ['Direccion:', p($compra['direccion'] ?: '-')],
-];
+$pdf->SetY($y_linea + 8);
+starlim_pdf_section_title($pdf, 'Proveedor', 15);
+$pdf->SetFont('Arial', 'B', 10.5);
+starlim_pdf_set_text($pdf, 'body');
+$pdf->Cell(180, 6, p((string)($compra['prov_nombre'] ?: 'Sin proveedor')), 0, 1, 'L');
+$pdf->SetFont('Arial', '', 8.5);
+starlim_pdf_set_text($pdf, 'muted');
+$proveedorLineas = array_filter([
+    trim((string)($compra['direccion'] ?? '')),
+    trim((string)($compra['telefono'] ?? '')),
+    trim((string)($compra['email'] ?? '')),
+    trim((string)($compra['contacto'] ?? '')) !== '' ? 'Contacto: ' . trim((string)$compra['contacto']) : '',
+]);
+$pdf->MultiCell(180, 4.8, p(implode(' - ', $proveedorLineas) ?: '-'), 0, 'L');
 
-$y_izq = $y0;
-foreach ($izq as [$lbl, $val]) {
-    $pdf->SetXY(10, $y_izq);
-    $pdf->SetFont('Arial', '', 8);  $pdf->SetTextColor(80, 80, 80); $pdf->Cell(24, 5, $lbl, 0, 0, 'L');
-    $pdf->SetFont('Arial', 'B', 8); $pdf->SetTextColor(0, 0, 0);    $pdf->Cell(69, 5, $val, 0, 0, 'L');
-    $y_izq += 5;
-}
-$y_der = $y0;
-foreach ($der as [$lbl, $val]) {
-    $pdf->SetXY(107, $y_der);
-    $pdf->SetFont('Arial', '', 8);  $pdf->SetTextColor(80, 80, 80); $pdf->Cell(28, 5, $lbl, 0, 0, 'L');
-    $pdf->SetFont('Arial', 'B', 8); $pdf->SetTextColor(0, 0, 0);    $pdf->Cell(65, 5, $val, 0, 0, 'L');
-    $y_der += 5;
-}
+$pdf->Ln(6);
+$headers = ['Cant.', 'Codigo', 'Descripcion', 'Motivo'];
+$widths = [18, 24, 86, 52];
+$aligns = ['L', 'L', 'L', 'L'];
+starlim_pdf_table_header($pdf, $headers, $widths, $aligns);
 
-$y_tabla = max($y_izq, $y_der) + 4;
-$pdf->SetDrawColor(180, 180, 180);
-$pdf->Line(10, $y_tabla - 2, 200, $y_tabla - 2);
-$pdf->SetDrawColor(0, 0, 0);
+$totalUnidades = 0;
+$pdf->SetFont('Arial', '', 8.7);
+foreach ($items as $item) {
+    $totalUnidades += (int)$item['cantidad'];
+    $nombre = (string)$item['nombre'];
+    $motivo = (string)($item['motivo'] ?: '-');
+    $rowH = max(
+        9,
+        (int)ceil($pdf->GetStringWidth(p($nombre)) / 82) * 5.2,
+        (int)ceil($pdf->GetStringWidth(p($motivo)) / 49) * 5.2
+    );
 
-/* ── Tabla: qué se devuelve ─────────────────────────────────────── */
-$cw = [22, 96, 30, 42];
-$ch = 6;
-
-$thead = function () use ($pdf, $cw, $ch) {
-    $pdf->SetFont('Arial', 'B', 9);
-    $pdf->SetFillColor(230, 230, 230);
-    $pdf->SetTextColor(0, 0, 0);
-    $pdf->Cell($cw[0], $ch + 1, 'Codigo',           1, 0, 'C', true);
-    $pdf->Cell($cw[1], $ch + 1, 'Producto',         1, 0, 'C', true);
-    $pdf->Cell($cw[2], $ch + 1, 'Cant. a devolver', 1, 0, 'C', true);
-    $pdf->Cell($cw[3], $ch + 1, 'Motivo',           1, 1, 'C', true);
-    $pdf->SetFont('Arial', '', 9);
-    $pdf->SetFillColor(255, 255, 255);
-};
-
-$pdf->SetXY(10, $y_tabla);
-$thead();
-
-foreach ($items as $it) {
-    $nombre  = p($it['nombre']);
-    $motivo  = p($it['motivo'] ?: '-');
-    $n_nom   = max(1, ceil($pdf->GetStringWidth($nombre) / ($cw[1] - 3)));
-    $n_mot   = max(1, ceil($pdf->GetStringWidth($motivo) / ($cw[3] - 3)));
-    $row_h   = max(8, max($n_nom, $n_mot) * $ch);
-
-    if ($pdf->GetY() + $row_h > $pdf->GetPageHeight() - 45) {
+    if ($pdf->GetY() + $rowH > 252) {
         $pdf->AddPage();
-        $pdf->SetXY(10, 15);
-        $thead();
+        starlim_pdf_table_header($pdf, $headers, $widths, $aligns);
+        $pdf->SetFont('Arial', '', 8.7);
     }
 
-    $x = 10;
+    $x = 15;
     $y = $pdf->GetY();
+    $pdf->SetDrawColor(236, 239, 237);
 
+    starlim_pdf_set_text($pdf, 'body');
     $pdf->SetXY($x, $y);
-    foreach ($cw as $w) $pdf->Cell($w, $row_h, '', 1, 0, 'C');
-    $pdf->Ln();
+    $pdf->Cell($widths[0], $rowH, (string)(int)$item['cantidad'], 0, 0, 'L');
+    $x += $widths[0];
 
+    starlim_pdf_set_text($pdf, 'soft');
     $pdf->SetXY($x, $y);
-    $pdf->Cell($cw[0], $row_h, (string)$it['codigo'], 0, 0, 'C');
-    $pdf->SetXY($x + $cw[0], $y + ($row_h - $n_nom * $ch) / 2);
-    $pdf->MultiCell($cw[1], $ch, $nombre, 0, 'L');
-    $pdf->SetXY($x + $cw[0] + $cw[1], $y);
-    $pdf->Cell($cw[2], $row_h, (string)$it['cantidad'], 0, 0, 'C');
-    $pdf->SetXY($x + $cw[0] + $cw[1] + $cw[2], $y + ($row_h - $n_mot * $ch) / 2);
-    $pdf->MultiCell($cw[3], $ch, $motivo, 0, 'L');
+    $pdf->Cell($widths[1], $rowH, p((string)$item['codigo']), 0, 0, 'L');
+    $x += $widths[1];
 
-    $pdf->SetXY(10, $y + $row_h);
+    starlim_pdf_set_text($pdf, 'body');
+    $pdf->SetXY($x, $y + 1.2);
+    $pdf->MultiCell($widths[2] - 2, 5, p(sd_short($nombre, 96)), 0, 'L');
+    $x += $widths[2];
+
+    $pdf->SetXY($x, $y + 1.2);
+    starlim_pdf_set_text($pdf, 'muted');
+    $pdf->MultiCell($widths[3] - 2, 5, p(sd_short($motivo, 70)), 0, 'L');
+
+    $pdf->Line(15, $y + $rowH, 195, $y + $rowH);
+    $pdf->SetY($y + $rowH);
 }
 
-/* ── Motivo general ─────────────────────────────────────────────── */
-$y_obs = $pdf->GetY() + 6;
-if ($y_obs + 26 > $pdf->GetPageHeight() - 30) { $pdf->AddPage(); $y_obs = 15; }
-$pdf->SetDrawColor(0, 0, 0);
-$pdf->SetLineWidth(0.3);
-$pdf->RoundedRect(10, $y_obs, 190, 24, 3);
-$pdf->SetFont('Arial', 'B', 8);
-$pdf->SetXY(10, $y_obs + 1);
-$pdf->Cell(190, 6, p('MOTIVO GENERAL DE LA DEVOLUCION'), 0, 1, 'C');
-$pdf->Line(10, $y_obs + 7, 200, $y_obs + 7);
-$pdf->SetFont('Arial', '', 8);
-$pdf->SetXY(11, $y_obs + 8);
-$pdf->MultiCell(188, 5, p($motivo_general ?: '-'), 0, 'L');
+$pdf->SetDrawColor(31, 36, 33);
+$pdf->SetLineWidth(0.55);
+$pdf->Line(15, $pdf->GetY() + 2, 195, $pdf->GetY() + 2);
+$pdf->SetY($pdf->GetY() + 4);
+$pdf->SetFont('Arial', 'B', 9);
+starlim_pdf_set_text($pdf, 'body');
+$pdf->Cell(18, 6, (string)$totalUnidades, 0, 0, 'L');
+$pdf->Cell(162, 6, p('TOTAL DE UNIDADES A DEVOLVER'), 0, 1, 'L');
 
-/* ── Firmas ─────────────────────────────────────────────────────── */
-$y_firma = $y_obs + 24 + 16;
-if ($y_firma > $pdf->GetPageHeight() - 18) { $pdf->AddPage(); $y_firma = 40; }
-$pdf->SetDrawColor(180, 180, 180);
-$pdf->SetLineWidth(0.3);
-$pdf->Line(10,  $y_firma, 90,  $y_firma);
-$pdf->Line(120, $y_firma, 200, $y_firma);
-$pdf->SetFont('Arial', '', 7);
-$pdf->SetTextColor(100, 100, 100);
-$pdf->SetXY(10, $y_firma + 1);
-$pdf->Cell(80, 4, p('Entregó — Star Lim'), 0, 0, 'C');
-$pdf->SetXY(120, $y_firma + 1);
-$pdf->Cell(80, 4, p('Recibió — Proveedor (firma y aclaración)'), 0, 0, 'C');
+$boxY = $pdf->GetY() + 8;
+if ($boxY + 36 > 260) {
+    $pdf->AddPage();
+    $boxY = 22;
+}
+$pdf->SetDrawColor(205, 214, 228);
+$pdf->SetFillColor(238, 242, 248);
+$pdf->RoundedRect(15, $boxY, 180, 30, 2.5, 'DF');
+$pdf->SetXY(20, $boxY + 5);
+starlim_pdf_section_title($pdf, 'Accion solicitada', 20);
+$pdf->SetXY(20, $boxY + 11);
+$pdf->SetFont('Arial', '', 8.5);
+starlim_pdf_set_text($pdf, 'body');
+$accion = $motivo_general !== ''
+    ? $motivo_general
+    : 'Reposicion de mercaderia o nota de credito por los bienes devueltos. Coordinar retiro y control con compras.';
+$pdf->MultiCell(170, 4.8, p($accion), 0, 'L');
 
-/* ── Salida ─────────────────────────────────────────────────────── */
+$sigY = $boxY + 52;
+if ($sigY > 270) {
+    $pdf->AddPage();
+    $sigY = 58;
+}
+starlim_pdf_signature_pair($pdf, 'Autorizo - Starlim', 'Retiro - proveedor / transporte', $sigY);
+
 $pdf->Output('I', 'Solicitud_devolucion_' . $nro . '.pdf');

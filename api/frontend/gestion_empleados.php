@@ -1,22 +1,33 @@
 <?php
-$PERMITIDOS = ['Jefe1', 'Admin'];
+$PERMITIDOS = ['Empleado', 'Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 
 include '../php/conexion_starlim_be.php';
 require_once __DIR__ . '/../php/empleados_lib.php';
+require_once __DIR__ . '/../php/tenant.php';
+require_once __DIR__ . '/../php/admin_permissions.php';
 
 $pdo = $conexion->getPDO();
+$empresaId = starlim_bootstrap_tenant_context($conexion);
+$empresaNombre = (string)($_SESSION['empresa_nombre'] ?? 'Starlim');
 starlim_empleados_ensure_schema($pdo);
+starlim_admin_require($conexion, 'admin.usuarios', 'ver');
+$canEditAdminUsers = starlim_admin_can($conexion, 'admin.usuarios', 'editar');
 
-$adminWhere = (($_SESSION['rango'] ?? '') === 'Admin') ? '' : "AND rango <> 'Admin'";
-$empleados = $pdo->query("
-    SELECT id, nombre_completo, nombre, apellido, dni, telefono, correo, usuario,
-           rango, cargo, activo, fecha_ingreso, observaciones
-    FROM usuarios
-    WHERE rango NOT IN ('Minorista', 'Mayorista')
+$adminWhere = (($_SESSION['rango'] ?? '') === 'Admin') ? '' : "AND COALESCE(ue.rango, u.rango) <> 'Admin'";
+$empleadosStmt = $pdo->prepare("
+    SELECT u.id, u.nombre_completo, u.nombre, u.apellido, u.dni, u.telefono, u.correo, u.usuario,
+           COALESCE(ue.rango, u.rango) AS rango, u.cargo, u.activo, u.fecha_ingreso, u.observaciones
+    FROM usuarios u
+    JOIN usuario_empresa ue ON ue.id_usuario = u.id
+    WHERE ue.empresa_id = ?
+      AND ue.activo = TRUE
+      AND COALESCE(ue.rango, u.rango) NOT IN ('Minorista', 'Mayorista')
       $adminWhere
-    ORDER BY activo DESC, nombre_completo ASC, usuario ASC
-")->fetchAll(PDO::FETCH_ASSOC);
+    ORDER BY u.activo DESC, u.nombre_completo ASC, u.usuario ASC
+");
+$empleadosStmt->execute([$empresaId]);
+$empleados = $empleadosStmt->fetchAll(PDO::FETCH_ASSOC);
 
 $permisos = starlim_empleados_permisos($pdo);
 $permisosPorUsuario = starlim_empleados_permisos_usuario($pdo);
@@ -47,7 +58,7 @@ function emp_nombre(array $e): string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestion de Empleados - Star Lim</title>
+    <title>Gestion de Empleados - Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">
@@ -92,6 +103,11 @@ function emp_nombre(array $e): string {
         .emp-btn--toggle { background:#475467; color:#fff; }
         .emp-btn--danger { background:#dc2626; color:#fff; }
         .emp-empty { padding:28px; text-align:center; color:#98a2b3; font-style:italic; }
+        .emp-readonly .emp-create,
+        .emp-readonly .emp-actions { display:none !important; }
+        .emp-readonly .emp-card-body input,
+        .emp-readonly .emp-card-body select,
+        .emp-readonly .emp-card-body textarea { pointer-events:none; opacity:.78; }
         @media (max-width: 900px) {
             .emp-card-summary { grid-template-columns:1fr; }
             .emp-meta, .emp-badge { justify-self:start; }
@@ -99,9 +115,9 @@ function emp_nombre(array $e): string {
     </style>
     <link rel="stylesheet" href="../css/theme.css">
 </head>
-<body>
+<body class="<?= $canEditAdminUsers ? '' : 'emp-readonly' ?>">
 
-<?php $NAV_ACTIVA = 'bd'; include __DIR__ . '/partials/nav.php'; ?>
+<?php $NAV_ACTIVA = 'admin'; $ADMIN_ACTIVA = 'admin.usuarios'; include __DIR__ . '/partials/nav.php'; ?>
 
 <main class="dash-main">
     <div class="ventas-layout">
@@ -120,6 +136,7 @@ function emp_nombre(array $e): string {
                 <div class="emp-msg <?= $okMsg ? 'emp-msg--ok' : 'emp-msg--error' ?>"><?= emp_h($_GET['msg']) ?></div>
             <?php endif; ?>
 
+            <?php if ($canEditAdminUsers): ?>
             <details class="dash-panel emp-create">
                 <summary><span class="emp-create-title">+ Nuevo empleado</span></summary>
                 <form class="emp-form" action="../php/empleados_be.php" method="POST">
@@ -160,6 +177,7 @@ function emp_nombre(array $e): string {
                     <div class="emp-actions"><button class="emp-btn emp-btn--save" type="submit">Crear empleado</button></div>
                 </form>
             </details>
+            <?php endif; ?>
 
             <section class="emp-list" id="emp-list">
                 <?php if (empty($empleados)): ?>

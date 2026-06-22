@@ -1,6 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -26,13 +28,13 @@ if (mb_strlen($nombre) > 100) {
     exit();
 }
 
-$stmt = $conexion->prepare("UPDATE margenes SET nombre = ? WHERE codigo = ?");
+$stmt = $conexion->prepare("UPDATE margenes SET nombre = ? WHERE codigo = ? AND empresa_id = ?");
 if (!$stmt) {
     echo json_encode(['error' => 'Error interno: ' . $conexion->error]);
     exit();
 }
 
-$stmt->bind_param('ss', $nombre, $codigo);
+$stmt->bind_param('ssi', $nombre, $codigo, $empresaId);
 
 if ($stmt->execute() && $stmt->affected_rows > 0) {
     echo json_encode(['ok' => true]);

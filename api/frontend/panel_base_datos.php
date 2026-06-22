@@ -5,50 +5,58 @@
  */
 require __DIR__ . '/partials/guard.php';
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
+$canViewFinancialData = starlim_admin_is_admin();
 
 $bd_stats = ['clientes' => 0, 'productos' => 0, 'proveedores' => 0];
-$r = $conexion->query("SELECT COUNT(*) AS c FROM clientes WHERE estado = 'Activo' OR activo = 'true'");
+$r = $conexion->query("SELECT COUNT(*) AS c FROM clientes WHERE empresa_id = $empresaId AND (estado = 'Activo' OR activo = 'true')");
 if ($r) $bd_stats['clientes'] = (int)$r->fetch_assoc()['c'];
-$r = $conexion->query("SELECT COUNT(*) AS c FROM productos");
+$r = $conexion->query("SELECT COUNT(*) AS c FROM productos WHERE empresa_id = $empresaId");
 if ($r) $bd_stats['productos'] = (int)$r->fetch_assoc()['c'];
-$r = $conexion->query("SELECT COUNT(*) AS c FROM proveedores");
+$r = $conexion->query("SELECT COUNT(*) AS c FROM proveedores WHERE empresa_id = $empresaId");
 if ($r) $bd_stats['proveedores'] = (int)$r->fetch_assoc()['c'];
 
 $top_clientes = [];
-$r = $conexion->query("
-    SELECT COALESCE(NULLIF(nombre_cliente,''), dni_cliente, 'Sin cliente') AS nombre,
-           COALESCE(SUM(monto),0) AS total
-    FROM ventas
-    WHERE COALESCE(estado_pedido,'entregado') = 'entregado'
-    GROUP BY COALESCE(NULLIF(nombre_cliente,''), dni_cliente, 'Sin cliente')
-    ORDER BY total DESC
-    LIMIT 3
-");
-if ($r) while ($row = $r->fetch_assoc()) $top_clientes[] = $row;
-
-$top_proveedores = [];
-$compras_ok = $conexion->query("SHOW TABLES LIKE 'compras_registro'")->num_rows > 0;
-if ($compras_ok) {
+if ($canViewFinancialData) {
     $r = $conexion->query("
-        SELECT COALESCE(p.nombre, 'Sin proveedor') AS nombre,
-               COALESCE(SUM(cr.total),0) AS total
-        FROM compras_registro cr
-        LEFT JOIN proveedores p ON p.id = cr.id_proveedor
-        GROUP BY COALESCE(p.nombre, 'Sin proveedor')
+        SELECT COALESCE(NULLIF(nombre_cliente,''), dni_cliente, 'Sin cliente') AS nombre,
+               COALESCE(SUM(monto),0) AS total
+        FROM ventas
+        WHERE empresa_id = $empresaId AND COALESCE(estado_pedido,'entregado') = 'entregado'
+        GROUP BY COALESCE(NULLIF(nombre_cliente,''), dni_cliente, 'Sin cliente')
         ORDER BY total DESC
         LIMIT 3
     ");
-} else {
-    $r = $conexion->query("
-        SELECT proveedor AS nombre, COUNT(*) AS total
-        FROM productos
-        WHERE COALESCE(proveedor,'') <> ''
-        GROUP BY proveedor
-        ORDER BY COUNT(*) DESC
-        LIMIT 3
-    ");
+    if ($r) while ($row = $r->fetch_assoc()) $top_clientes[] = $row;
 }
-if ($r) while ($row = $r->fetch_assoc()) $top_proveedores[] = $row;
+
+$top_proveedores = [];
+$compras_ok = false;
+if ($canViewFinancialData) {
+    $compras_ok = $conexion->query("SHOW TABLES LIKE 'compras_registro'")->num_rows > 0;
+    if ($compras_ok) {
+        $r = $conexion->query("
+            SELECT COALESCE(p.nombre, 'Sin proveedor') AS nombre,
+                   COALESCE(SUM(cr.total),0) AS total
+            FROM compras_registro cr
+            LEFT JOIN proveedores p ON p.id = cr.id_proveedor AND p.empresa_id = cr.empresa_id
+            WHERE cr.empresa_id = $empresaId
+            GROUP BY COALESCE(p.nombre, 'Sin proveedor')
+            ORDER BY total DESC
+            LIMIT 3
+        ");
+    } else {
+        $r = $conexion->query("
+            SELECT proveedor AS nombre, COUNT(*) AS total
+            FROM productos
+            WHERE empresa_id = $empresaId AND COALESCE(proveedor,'') <> ''
+            GROUP BY proveedor
+            ORDER BY COUNT(*) DESC
+            LIMIT 3
+        ");
+    }
+    if ($r) while ($row = $r->fetch_assoc()) $top_proveedores[] = $row;
+}
 
 function bd_money(float $v): string {
     return '$' . number_format($v, 2, ',', '.');
@@ -68,7 +76,7 @@ $bases[] = ['proveedores.php',  'Proveedores', 'Base de proveedores: alta, edici
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bases de Datos — Star Lim</title>
+    <title>Bases de Datos — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">
@@ -112,26 +120,28 @@ $bases[] = ['proveedores.php',  'Proveedores', 'Base de proveedores: alta, edici
                     <span class="stat-value"><?= number_format($bd_stats['proveedores'], 0, ',', '.') ?></span>
                 </div>
             </div>
-            <div class="dash-grid" style="margin-top:14px;">
-                <div>
-                    <h3 class="panel-title" style="font-size:14px;">Top 3 clientes</h3>
-                    <div class="bd-top-list">
-                        <?php if (empty($top_clientes)): ?><div class="bd-top-row"><span>Sin ventas registradas</span></div><?php endif; ?>
-                        <?php foreach ($top_clientes as $tc): ?>
-                            <div class="bd-top-row"><strong><?= htmlspecialchars($tc['nombre']) ?></strong><span><?= bd_money((float)$tc['total']) ?></span></div>
-                        <?php endforeach; ?>
+            <?php if ($canViewFinancialData): ?>
+                <div class="dash-grid" style="margin-top:14px;">
+                    <div>
+                        <h3 class="panel-title" style="font-size:14px;">Top 3 clientes</h3>
+                        <div class="bd-top-list">
+                            <?php if (empty($top_clientes)): ?><div class="bd-top-row"><span>Sin ventas registradas</span></div><?php endif; ?>
+                            <?php foreach ($top_clientes as $tc): ?>
+                                <div class="bd-top-row"><strong><?= htmlspecialchars($tc['nombre']) ?></strong><span><?= bd_money((float)$tc['total']) ?></span></div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="panel-title" style="font-size:14px;">Top 3 proveedores</h3>
+                        <div class="bd-top-list">
+                            <?php if (empty($top_proveedores)): ?><div class="bd-top-row"><span>Sin proveedores registrados</span></div><?php endif; ?>
+                            <?php foreach ($top_proveedores as $tp): ?>
+                                <div class="bd-top-row"><strong><?= htmlspecialchars($tp['nombre']) ?></strong><span><?= $compras_ok ? bd_money((float)$tp['total']) : number_format((float)$tp['total'], 0, ',', '.') . ' productos' ?></span></div>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
                 </div>
-                <div>
-                    <h3 class="panel-title" style="font-size:14px;">Top 3 proveedores</h3>
-                    <div class="bd-top-list">
-                        <?php if (empty($top_proveedores)): ?><div class="bd-top-row"><span>Sin proveedores registrados</span></div><?php endif; ?>
-                        <?php foreach ($top_proveedores as $tp): ?>
-                            <div class="bd-top-row"><strong><?= htmlspecialchars($tp['nombre']) ?></strong><span><?= $compras_ok ? bd_money((float)$tp['total']) : number_format((float)$tp['total'], 0, ',', '.') . ' productos' ?></span></div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            </div>
+            <?php endif; ?>
         </section>
 
         <div class="bd-hub">

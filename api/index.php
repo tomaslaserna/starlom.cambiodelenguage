@@ -2,7 +2,7 @@
 /**
  * Front controller — single Vercel lambda.
  * Routes every PHP request to the right handler under api/frontend/, api/php/,
- * or api/facturacion/ using PHP's native include mechanism.
+ * or api/integracion/ using PHP's native include mechanism.
  *
  * Why a front controller instead of 313 separate lambdas:
  * Vercel Hobby plan rejects deployments with more than ~12 serverless functions.
@@ -22,7 +22,7 @@ if (str_contains($uri, '/partials/')) {
 }
 if ($uri === '/' || $uri === '') {
     $file = $base . '/frontend/index.php';
-} elseif (preg_match('#^/(frontend|php|facturacion|integracion)/([a-zA-Z0-9_./-]+\.php)$#', $uri, $m)) {
+} elseif (preg_match('#^/(frontend|php|integracion)/([a-zA-Z0-9_./-]+\.php)$#', $uri, $m)) {
     $file = $base . '/' . $m[1] . '/' . $m[2];
 } elseif (preg_match('#^/([a-zA-Z0-9_.-]+\.php)$#', $uri, $m)) {
     // Links relativos desde la home ("sign.php") caen en la raíz del sitio;
@@ -54,7 +54,6 @@ set_include_path(
     dirname($file)          . PATH_SEPARATOR .
     $base . '/php'          . PATH_SEPARATOR .
     $base . '/frontend'     . PATH_SEPARATOR .
-    $base . '/facturacion'  . PATH_SEPARATOR .
     get_include_path()
 );
 

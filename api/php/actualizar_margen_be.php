@@ -1,9 +1,11 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 ob_start();
 ini_set('display_errors', '0');
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -45,9 +47,9 @@ if (empty($sets)) {
     exit();
 }
 
-$query = "UPDATE margenes SET " . implode(', ', $sets) . " WHERE codigo = ?";
+$query = "UPDATE margenes SET " . implode(', ', $sets) . " WHERE codigo = ? AND empresa_id = ?";
 $stmt  = $conexion->prepare($query);
-$stmt->bind_param('s', $codigo);
+$stmt->bind_param('si', $codigo, $empresaId);
 $stmt->execute();
 
 if ($stmt->affected_rows > 0) {

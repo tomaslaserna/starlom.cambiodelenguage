@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 
 if (!isset($_SESSION['usuario'])) {
     http_response_code(401);
@@ -7,8 +8,10 @@ if (!isset($_SESSION['usuario'])) {
 }
 
 include 'conexion_starlim_be.php';
+require_once __DIR__ . '/tenant.php';
 require_once 'presupuesto_pdf_lib.php';
 // Esquema de presupuestos gestionado en supabase_migration.sql + db_fixes.sql
+$empresa_id = starlim_bootstrap_tenant_context($conexion);
 
 $raw  = file_get_contents('php://input');
 $data = json_decode($raw, true);
@@ -67,23 +70,23 @@ $ins = $conexion->prepare(
          cliente_telefono, cliente_cond_iva, cliente_cuit,
          lista_activa, descuento_pct, incluir_iva,
          neto_agravado, desc_monto, subtotal, iva_monto, total,
-         productos_json, creado_por)
+         productos_json, creado_por, empresa_id)
      VALUES
         (CURRENT_DATE, CURRENT_DATE + (? || ' days')::interval,
          ?, ?, ?,
          ?, ?, ?,
          ?, ?, ?,
          ?, ?, ?, ?, ?,
-         ?, ?)"
+         ?, ?, ?)"
 );
 $ins->bind_param(
-    'issssssididddddss',
+    'issssssididddddssi',
     $vigencia,
     $p_nombre, $p_razon_social, $p_domicilio,
     $p_telefono, $p_cond_iva, $p_cuit,
     $p_lista_act, $p_desc_pct, $p_con_iva,
     $p_neto, $p_desc_monto, $p_subtotal, $p_iva_monto, $p_total,
-    $p_prods_json, $p_usuario
+    $p_prods_json, $p_usuario, $empresa_id
 );
 $ins->execute();
 $presupuesto_id = (int)$conexion->insert_id;

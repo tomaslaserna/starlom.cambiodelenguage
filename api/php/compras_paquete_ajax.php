@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 header('Content-Type: application/json; charset=utf-8');
 
 $rango   = $_SESSION['rango']   ?? '';
@@ -14,6 +15,7 @@ if (!in_array($rango, $allowed, true)) {
 }
 
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $accion = trim($_POST['accion'] ?? '');
 $id     = (int)($_POST['id']    ?? 0);
@@ -24,10 +26,10 @@ if (!$id) { echo json_encode(['ok' => false, 'msg' => 'ID inválido']); exit; }
 $stmt = $conexion->prepare(
     "SELECT cr.*, COALESCE(pv.nombre,'') AS prov_nombre
      FROM compras_registro cr
-     LEFT JOIN proveedores pv ON pv.id = cr.id_proveedor
-     WHERE cr.id = ?"
+     LEFT JOIN proveedores pv ON pv.id = cr.id_proveedor AND pv.empresa_id = cr.empresa_id
+     WHERE cr.id = ? AND cr.empresa_id = ?"
 );
-$stmt->bind_param('i', $id);
+$stmt->bind_param('ii', $id, $empresaId);
 $stmt->execute();
 $cr = $stmt->get_result()->fetch_assoc();
 $stmt->close();
@@ -39,14 +41,24 @@ if ($cr['estado'] !== 'recibida') {
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 function enviarMensaje($cx, $de, $para, $asunto, $cuerpo, $tipo = 'normal') {
-    $s = $cx->prepare("INSERT INTO mensajes (de, para, asunto, cuerpo, tipo) VALUES (?,?,?,?,?)");
-    $s->bind_param('sssss', $de, $para, $asunto, $cuerpo, $tipo);
+    $empresaId = function_exists('starlim_current_empresa_id') ? starlim_current_empresa_id($cx, false) : 1;
+    $s = $cx->prepare("INSERT INTO mensajes (de, para, asunto, cuerpo, tipo, empresa_id) VALUES (?,?,?,?,?,?)");
+    $s->bind_param('sssssi', $de, $para, $asunto, $cuerpo, $tipo, $empresaId);
     $s->execute(); $s->close();
 }
 
 function getJefes($cx) {
+    $empresaId = function_exists('starlim_current_empresa_id') ? starlim_current_empresa_id($cx, false) : 1;
     $jefes = [];
-    $r = $cx->query("SELECT usuario FROM usuarios WHERE rango IN ('Jefe','Jefe1','Admin') ORDER BY usuario ASC");
+    $r = $cx->query("
+        SELECT u.usuario
+        FROM usuarios u
+        JOIN usuario_empresa ue ON ue.id_usuario = u.id
+        WHERE ue.empresa_id = $empresaId
+          AND ue.activo = TRUE
+          AND COALESCE(ue.rango, u.rango) IN ('Jefe','Jefe1','Admin')
+        ORDER BY u.usuario ASC
+    ");
     if ($r) while ($row = $r->fetch_assoc()) $jefes[] = $row['usuario'];
     return $jefes;
 }
@@ -67,9 +79,9 @@ function buildFallaCuerpo($empleado, $falla, $cr) {
 /* ── Acción: marcar revisado + actualizar stock completo ──────────── */
 if ($accion === 'marcar_revisado') {
     $s = $conexion->prepare(
-        "UPDATE compras_registro SET estado_paquete = 'revisado', falla_descripcion = NULL WHERE id = ?"
+        "UPDATE compras_registro SET estado_paquete = 'revisado', falla_descripcion = NULL WHERE id = ? AND empresa_id = ?"
     );
-    $s->bind_param('i', $id); $s->execute(); $s->close();
+    $s->bind_param('ii', $id, $empresaId); $s->execute(); $s->close();
 
     /* Sumar al stock la cantidad completa de cada producto del pedido */
     $prods = json_decode($_POST['productos'] ?? '[]', true);
@@ -78,7 +90,7 @@ if ($accion === 'marcar_revisado') {
             $id_prod = (int)($p['id'] ?? 0);
             $cant    = max(0, (int)($p['cantidad'] ?? 0));
             if ($id_prod > 0 && $cant > 0)
-                $conexion->query("UPDATE productos SET stock = stock + {$cant} WHERE id = {$id_prod}");
+                $conexion->query("UPDATE productos SET stock = stock + {$cant} WHERE id = {$id_prod} AND empresa_id = {$empresaId}");
         }
     }
 
@@ -91,9 +103,9 @@ if ($accion === 'reportar_falla') {
     if ($falla === '') { echo json_encode(['ok' => false, 'msg' => 'Debe describir la falla']); exit; }
 
     $s = $conexion->prepare(
-        "UPDATE compras_registro SET estado_paquete = 'falla', falla_descripcion = ? WHERE id = ?"
+        "UPDATE compras_registro SET estado_paquete = 'falla', falla_descripcion = ? WHERE id = ? AND empresa_id = ?"
     );
-    $s->bind_param('si', $falla, $id); $s->execute(); $s->close();
+    $s->bind_param('sii', $falla, $id, $empresaId); $s->execute(); $s->close();
 
     /* Sumar al stock solo lo que llegó (cantidad ingresada en el stepper) */
     $prods_llego = json_decode($_POST['productos_llego'] ?? '[]', true);
@@ -102,7 +114,7 @@ if ($accion === 'reportar_falla') {
             $id_prod = (int)($p['id'] ?? 0);
             $llego   = max(0, (int)($p['llego'] ?? 0));
             if ($id_prod > 0 && $llego > 0)
-                $conexion->query("UPDATE productos SET stock = stock + {$llego} WHERE id = {$id_prod}");
+                $conexion->query("UPDATE productos SET stock = stock + {$llego} WHERE id = {$id_prod} AND empresa_id = {$empresaId}");
         }
     }
 
@@ -123,9 +135,9 @@ if ($accion === 'confirmar_falla') {
     if ($falla === '') { echo json_encode(['ok' => false, 'msg' => 'Debe describir la falla']); exit; }
 
     $s = $conexion->prepare(
-        "UPDATE compras_registro SET estado_paquete = 'falla', falla_descripcion = ? WHERE id = ?"
+        "UPDATE compras_registro SET estado_paquete = 'falla', falla_descripcion = ? WHERE id = ? AND empresa_id = ?"
     );
-    $s->bind_param('si', $falla, $id); $s->execute(); $s->close();
+    $s->bind_param('sii', $falla, $id, $empresaId); $s->execute(); $s->close();
 
     /* Sumar al stock solo lo que llegó */
     $prods_llego = json_decode($_POST['productos_llego'] ?? '[]', true);
@@ -134,7 +146,7 @@ if ($accion === 'confirmar_falla') {
             $id_prod = (int)($p['id'] ?? 0);
             $llego   = max(0, (int)($p['llego'] ?? 0));
             if ($id_prod > 0 && $llego > 0)
-                $conexion->query("UPDATE productos SET stock = stock + {$llego} WHERE id = {$id_prod}");
+                $conexion->query("UPDATE productos SET stock = stock + {$llego} WHERE id = {$id_prod} AND empresa_id = {$empresaId}");
         }
     }
 
@@ -165,26 +177,26 @@ if ($accion === 'crear_tarea_falla') {
 
     /* Guardar falla en la compra */
     $s = $conexion->prepare(
-        "UPDATE compras_registro SET estado_paquete = 'falla', falla_descripcion = ? WHERE id = ?"
+        "UPDATE compras_registro SET estado_paquete = 'falla', falla_descripcion = ? WHERE id = ? AND empresa_id = ?"
     );
-    $s->bind_param('si', $falla, $id); $s->execute(); $s->close();
+    $s->bind_param('sii', $falla, $id, $empresaId); $s->execute(); $s->close();
 
     /* Crear tarea */
     if ($asignado_a === $usuario) {
         /* Tarea personal */
         $st = $conexion->prepare(
-            "INSERT INTO recordatorios (titulo, descripcion, prioridad, fecha_limite, usuario)
-             VALUES (?,?,?,?,?)"
+            "INSERT INTO recordatorios (titulo, descripcion, prioridad, fecha_limite, usuario, empresa_id)
+             VALUES (?,?,?,?,?,?)"
         );
-        $st->bind_param('sssss', $titulo, $desc, $prioridad, $fecha_lim, $usuario);
+        $st->bind_param('sssssi', $titulo, $desc, $prioridad, $fecha_lim, $usuario, $empresaId);
         $st->execute(); $st->close();
     } else {
         /* Tarea asignada a otro jefe */
         $st = $conexion->prepare(
-            "INSERT INTO tareas_asignadas (titulo, descripcion, prioridad, fecha_limite, asignado_por, asignado_a)
-             VALUES (?,?,?,?,?,?)"
+            "INSERT INTO tareas_asignadas (titulo, descripcion, prioridad, fecha_limite, asignado_por, asignado_a, empresa_id)
+             VALUES (?,?,?,?,?,?,?)"
         );
-        $st->bind_param('ssssss', $titulo, $desc, $prioridad, $fecha_lim, $usuario, $asignado_a);
+        $st->bind_param('ssssssi', $titulo, $desc, $prioridad, $fecha_lim, $usuario, $asignado_a, $empresaId);
         $st->execute(); $st->close();
 
         /* Notificar al asignado */
@@ -200,7 +212,7 @@ if ($accion === 'crear_tarea_falla') {
             $id_prod = (int)($p['id'] ?? 0);
             $llego   = max(0, (int)($p['llego'] ?? 0));
             if ($id_prod > 0 && $llego > 0)
-                $conexion->query("UPDATE productos SET stock = stock + {$llego} WHERE id = {$id_prod}");
+                $conexion->query("UPDATE productos SET stock = stock + {$llego} WHERE id = {$id_prod} AND empresa_id = {$empresaId}");
         }
     }
 

@@ -82,6 +82,24 @@
 }
 .es-search-clear:hover { opacity: 1; }
 
+.es-search-submit {
+    border: 1px solid #2563eb;
+    border-radius: 8px;
+    background: #2563eb;
+    color: #fff;
+    min-height: 38px;
+    padding: 0 14px;
+    font-family: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.es-search-submit:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+}
+
 .es-search-info {
     font-size: 0.8rem;
     color: var(--es-muted);

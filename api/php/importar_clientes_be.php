@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 // ══════════════════════════════════════════════════════════════════════════════
 //  SIEMPRE responde JSON, aunque PHP tenga un error fatal.
 // ══════════════════════════════════════════════════════════════════════════════
@@ -29,8 +30,9 @@ set_error_handler(function ($errno, $errstr, $errfile, $errline) {
 
 // ══════════════════════════════════════════════════════════════════════════════
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 // Forzar charset UTF-8 también con SET NAMES (doble seguro)
 $conexion->query("SET NAMES 'utf8mb4'");
@@ -75,7 +77,7 @@ function archivoAUTF8($rutaArchivo) {
 }
 
 function limpiar($conn, $val) {
-    return trim((string)($val ?? ''));
+    return $conn->real_escape_string(trim((string)($val ?? '')));
 }
 
 function parsearFecha($val) {
@@ -210,7 +212,7 @@ try {
         }
 
         if ($codigo_cliente !== '') {
-            $chk = $conexion->query("SELECT id FROM clientes WHERE codigo_cliente = '$codigo_cliente' LIMIT 1");
+            $chk = $conexion->query("SELECT id FROM clientes WHERE empresa_id = $empresaId AND codigo_cliente = '$codigo_cliente' LIMIT 1");
             if ($chk->num_rows > 0) {
                 $errores[] = "Fila $filaNum: '$codigo_cliente' ya existe — omitido.";
                 $omitidos++;
@@ -228,12 +230,12 @@ try {
             codigo_cliente, nombre_cliente, razon_social, vendedor_cl,
             tipo_id, nro_id, cond_iva, telefono, estado, domicilio,
             lista_precios, horarios, observacion, comprobante,
-            ultima_compra, antiguedad_uc, promedio_compra, dia_recompra
+            ultima_compra, antiguedad_uc, promedio_compra, dia_recompra, empresa_id
         ) VALUES (
             '$codigo_cliente', '$nombre_cliente', '$razon_social', '$vendedor_cl',
             'CUIT', '$nro_id', '$cond_iva', $telefono, '$estado', '$domicilio',
             '$lista_precios', '$horarios', '$observacion', $comprobante_sql,
-            $ultima_compra, $antiguedad_sql, $promedio_sql, $dia_recompra
+            $ultima_compra, $antiguedad_sql, $promedio_sql, $dia_recompra, $empresaId
         )";
 
         if ($conexion->query($query)) {

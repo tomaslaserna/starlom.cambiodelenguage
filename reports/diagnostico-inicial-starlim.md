@@ -1,0 +1,201 @@
+# Diagnostico inicial Starlim
+
+- Fecha: 2026-06-20T21:27:01.315841
+- Rama actual: security/hardening-2026-06-19
+- Commit actual: 1e5d62aeadbaab4b9104c08f1faeb2746cc06664
+- Estado Git: 161 entradas modificadas/no trackeadas
+- Stack detectado: PHP serverless en Vercel, front controller api/index.php, Supabase/Postgres via PDO, sesiones PHP persistidas en Postgres.
+- Configuracion Vercel: runtime vercel-php@0.7.2
+- PHP: 255 archivos
+- JS: 10 archivos
+- CSS: 20 archivos
+- Frontend routes: 48
+- API PHP endpoints: 85
+
+## Rutas frontend
+- `/api/frontend/actualizar_codigos.php`
+- `/api/frontend/admin_balance.php`
+- `/api/frontend/admin_calendario.php`
+- `/api/frontend/admin_cashflow.php`
+- `/api/frontend/admin_conciliacion_bancaria.php`
+- `/api/frontend/admin_cuentas_por_pagar.php`
+- `/api/frontend/admin_dividendos.php`
+- `/api/frontend/admin_movimientos.php`
+- `/api/frontend/admin_obligaciones_fiscales.php`
+- `/api/frontend/admin_resultados.php`
+- `/api/frontend/admin_sueldos.php`
+- `/api/frontend/admin_tesoreria.php`
+- `/api/frontend/carga_masiva.php`
+- `/api/frontend/clientes.php`
+- `/api/frontend/compras.php`
+- `/api/frontend/confirmacion_factura.php`
+- `/api/frontend/confirmacion_remito.php`
+- `/api/frontend/edit_stock.php`
+- `/api/frontend/factura_manual.php`
+- `/api/frontend/facturacion.php`
+- `/api/frontend/gestion_empleados.php`
+- `/api/frontend/gestion_margenes.php`
+- `/api/frontend/importar_clientes.php`
+- `/api/frontend/importar_precios.php`
+- `/api/frontend/importar_productos.php`
+- `/api/frontend/index.php`
+- `/api/frontend/margenes.php`
+- `/api/frontend/new_stock.php`
+- `/api/frontend/panel_base_datos.php`
+- `/api/frontend/panel_cobros_pagos.php`
+- `/api/frontend/panel_empleados.php`
+- `/api/frontend/pedidos.php`
+- `/api/frontend/planilla_admin.php`
+- `/api/frontend/presupuestar.php`
+- `/api/frontend/presupuestos.php`
+- `/api/frontend/proceso_ventas.php`
+- `/api/frontend/productos.php`
+- `/api/frontend/proveedores.php`
+- `/api/frontend/recontar_stock.php`
+- `/api/frontend/recordatorios.php`
+- `/api/frontend/registro_stock.php`
+- `/api/frontend/seguimiento_clientes.php`
+- `/api/frontend/sign.php`
+- `/api/frontend/stock.php`
+- `/api/frontend/ventas.php`
+- `/api/frontend/ventas_registradas.php`
+- `/api/frontend/ver_precios.php`
+- `/api/frontend/view_producto.php`
+
+## Endpoints backend
+- `/php/aceptar_presupuesto.php`
+- `/php/actualizar_campo_venta.php`
+- `/php/actualizar_cobro_venta.php`
+- `/php/actualizar_codigos_be.php`
+- `/php/actualizar_estado_pedido.php`
+- `/php/actualizar_lista_margen_be.php`
+- `/php/actualizar_margen_be.php`
+- `/php/actualizar_nombre_margen_be.php`
+- `/php/actualizar_producto_ajax.php`
+- `/php/actualizar_rango_be.php`
+- `/php/actualizar_stock_be.php`
+- `/php/actualizar_telefono_empleado.php`
+- `/php/admin_permissions.php`
+- `/php/admin_reports.php`
+- `/php/aplicar_reconteo.php`
+- `/php/auth.php`
+- `/php/billing_lib.php`
+- `/php/billing_prepare_draft.php`
+- `/php/cambiar_pass_masiva_be.php`
+- `/php/carga_masiva_be.php`
+- `/php/cerrar_sesion.php`
+- `/php/clientes_be.php`
+- `/php/cobros_aprobacion_lib.php`
+- `/php/completar_tarea_ajax.php`
+- `/php/compras_foto_recibo.php`
+- `/php/compras_paquete_ajax.php`
+- `/php/comprobante_pdf_lib.php`
+- `/php/conexion_starlim_be.php`
+- `/php/crear_empleado_be.php`
+- `/php/crear_lista_precio_be.php`
+- `/php/crear_margen_be.php`
+- `/php/crear_nota_venta.php`
+- `/php/crear_reparto.php`
+- `/php/crear_rubro_be.php`
+- `/php/db_compat.php`
+- `/php/denegar_presupuesto.php`
+- `/php/eliminar_lista_precio_be.php`
+- `/php/eliminar_margen_be.php`
+- `/php/emitir_factura_manual.php`
+- `/php/empleados_be.php`
+- `/php/empleados_lib.php`
+- `/php/enviar_mensaje.php`
+- `/php/generar_pdf_comprobante.php`
+- `/php/generar_pdf_cuenta_corriente.php`
+- `/php/generar_pdf_factura.php`
+- `/php/generar_pdf_orden_compra.php`
+- `/php/generar_pdf_precios.php`
+- `/php/generar_pdf_registro_pago.php`
+- `/php/generar_pdf_remito.php`
+- `/php/generar_pdf_solicitud_devolucion.php`
+- `/php/generar_pdf_solicitud_pedido.php`
+- `/php/generar_presupuesto.php`
+- `/php/generar_remito_venta.php`
+- `/php/get_cliente.php`
+- `/php/get_clientes.php`
+- `/php/get_comprobantes_venta.php`
+- `/php/get_detalle_remito.php`
+- `/php/get_detalle_venta.php`
+- `/php/get_facturas_cliente.php`
+- `/php/get_resumen_global.php`
+- `/php/get_vendedores.php`
+- `/php/importar_clientes_be.php`
+- `/php/importar_precios_be.php`
+- `/php/importar_productos_be.php`
+- `/php/integracion_eventos.php`
+- `/php/login_usuario_be.php`
+- `/php/marcar_mensajes_leidos.php`
+- `/php/modo_admin_ventas_be.php`
+- `/php/nav_mensajes.php`
+- `/php/nav_mensajes_data.php`
+- `/php/pedido_stock.php`
+- `/php/presupuesto_pdf_lib.php`
+- `/php/procesar_pago.php`
+- `/php/proveedores_be.php`
+- `/php/registro_usuario_be.php`
+- `/php/resolver_solicitud_factura.php`
+- `/php/security_headers.php`
+- `/php/seguimiento_lib.php`
+- `/php/session_bootstrap.php`
+- `/php/session_keepalive.php`
+- `/php/solicitar_factura.php`
+- `/php/stock_upload_be.php`
+- `/php/storage_supabase.php`
+- `/php/tenant.php`
+- `/php/ver_presupuesto_pdf.php`
+- `/integracion/_auth.php`
+- `/integracion/clientes.php`
+- `/integracion/eventos.php`
+- `/integracion/metricas.php`
+- `/integracion/pedidos.php`
+- `/integracion/stock.php`
+
+## Variables de entorno necesarias (solo nombres)
+- `HTTPS`
+- `HTTP_AUTHORIZATION`
+- `HTTP_HOST`
+- `HTTP_REFERER`
+- `HTTP_USER_AGENT`
+- `HTTP_X_API_KEY`
+- `HTTP_X_EMPRESA_ID`
+- `HTTP_X_FORWARDED_FOR`
+- `HTTP_X_FORWARDED_PROTO`
+- `HTTP_X_FORWARDED_SSL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `PHP_SELF`
+- `REDIRECT_HTTP_AUTHORIZATION`
+- `REMOTE_ADDR`
+- `REQUEST_METHOD`
+- `REQUEST_URI`
+- `SCRIPT_FILENAME`
+- `SCRIPT_NAME`
+- `STARLIM_API_ALLOW_EMPRESA_HEADER`
+- `STARLIM_API_EMPRESA_ID`
+- `STARLIM_API_KEY`
+- `STARLIM_PEPPER`
+- `STARLIM_WEBHOOK_URL`
+- `SUPABASE_DB_HOST`
+- `SUPABASE_DB_NAME`
+- `SUPABASE_DB_PASS`
+- `SUPABASE_DB_PORT`
+- `SUPABASE_DB_USER`
+
+## Archivos relacionados con backend/sesion/permisos
+- `api/index.php`: front controller de Vercel.
+- `api/php/conexion_starlim_be.php`: conexion Supabase/Postgres y session handler.
+- `api/php/session_bootstrap.php`: bootstrap central de sesiones y tenant.
+- `api/php/auth.php`: helpers de sesion, permisos y password.
+- `api/php/tenant.php`: contexto multiempresa.
+- `api/frontend/partials/guard.php`: guarda de paginas protegidas.
+
+## Riesgos o inconsistencias antes de tocar codigo
+- No hay credenciales ni tenant de staging para E2E autenticado/escritura; los flujos sensibles quedan BLOCKED por seguridad.
+- Vercel Firewall/Challenge mitigo requests automatizadas; esas respuestas no validan PHP ni Supabase y se clasifican como BLOCKED.
+- Hay candidatos de secretos o patrones sensibles que requieren revision manual sin imprimir valores.
+- PHP CLI no esta disponible en PATH; la sintaxis PHP no pudo validarse localmente.

@@ -2,15 +2,20 @@
     require __DIR__ . '/partials/guard.php';
 
     include '../php/conexion_starlim_be.php';
+    $empresaId = starlim_bootstrap_tenant_context($conexion);
 
     /* Esquema gestionado en supabase_migration.sql + db_fixes.sql */
 
     /* ── Lista de usuarios para asignar ──────────────────────────────── */
     $empleados = [];
     $re = $conexion->query(
-        "SELECT usuario FROM usuarios
-         WHERE rango NOT IN ('Minorista', 'Mayorista')
-         ORDER BY usuario ASC"
+        "SELECT u.usuario
+         FROM usuarios u
+         JOIN usuario_empresa ue ON ue.id_usuario = u.id
+         WHERE ue.empresa_id = $empresaId
+           AND ue.activo = TRUE
+           AND COALESCE(ue.rango, u.rango) NOT IN ('Minorista', 'Mayorista')
+         ORDER BY u.usuario ASC"
     );
     if ($re) {
         while ($e = $re->fetch_assoc()) {
@@ -36,10 +41,10 @@
 
             if ($titulo !== '') {
                 $stmt = $conexion->prepare(
-                    "INSERT INTO recordatorios (titulo, descripcion, prioridad, fecha_limite, fecha_envio, usuario)
-                     VALUES (?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO recordatorios (titulo, descripcion, prioridad, fecha_limite, fecha_envio, usuario, empresa_id)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)"
                 );
-                $stmt->bind_param('ssssss', $titulo, $descripcion, $prioridad, $fecha_limite, $fecha_envio, $usuario);
+                $stmt->bind_param('ssssssi', $titulo, $descripcion, $prioridad, $fecha_limite, $fecha_envio, $usuario, $empresaId);
                 $stmt->execute();
                 $stmt->close();
             }
@@ -50,9 +55,9 @@
             if ($id > 0) {
                 $stmt = $conexion->prepare(
                     "UPDATE recordatorios SET completado = 1
-                     WHERE id = ? AND (usuario = '' OR usuario = ?)"
+                     WHERE id = ? AND empresa_id = ? AND (usuario = '' OR usuario = ?)"
                 );
-                $stmt->bind_param('is', $id, $usuario);
+                $stmt->bind_param('iis', $id, $empresaId, $usuario);
                 $stmt->execute();
                 $stmt->close();
             }
@@ -72,16 +77,22 @@
             $asignado_a  = trim($_POST['asignado_a'] ?? '');
 
             if ($titulo !== '' && $asignado_a !== '') {
-                $chk = $conexion->prepare("SELECT id FROM usuarios WHERE usuario = ?");
-                $chk->bind_param('s', $asignado_a);
+                $chk = $conexion->prepare("
+                    SELECT u.id
+                    FROM usuarios u
+                    JOIN usuario_empresa ue ON ue.id_usuario = u.id
+                    WHERE u.usuario = ? AND ue.empresa_id = ? AND ue.activo = TRUE
+                    LIMIT 1
+                ");
+                $chk->bind_param('si', $asignado_a, $empresaId);
                 $chk->execute();
                 if ($chk->get_result()->num_rows > 0) {
                     $stmt = $conexion->prepare(
                         "INSERT INTO tareas_asignadas
-                            (titulo, descripcion, prioridad, fecha_limite, fecha_envio, asignado_por, asignado_a)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)"
+                            (titulo, descripcion, prioridad, fecha_limite, fecha_envio, asignado_por, asignado_a, empresa_id)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
                     );
-                    $stmt->bind_param('sssssss', $titulo, $descripcion, $prioridad, $fecha_limite, $fecha_envio, $usuario, $asignado_a);
+                    $stmt->bind_param('sssssssi', $titulo, $descripcion, $prioridad, $fecha_limite, $fecha_envio, $usuario, $asignado_a, $empresaId);
                     $stmt->execute();
                     $stmt->close();
 
@@ -93,9 +104,9 @@
                     }
                     $tipo_msg = 'tarea_asignada';
                     $nm = $conexion->prepare(
-                        "INSERT INTO mensajes (de, para, asunto, cuerpo, tipo) VALUES (?, ?, ?, ?, ?)"
+                        "INSERT INTO mensajes (de, para, asunto, cuerpo, tipo, empresa_id) VALUES (?, ?, ?, ?, ?, ?)"
                     );
-                    $nm->bind_param('sssss', $usuario, $asignado_a, $asunto_msg, $cuerpo_msg, $tipo_msg);
+                    $nm->bind_param('sssssi', $usuario, $asignado_a, $asunto_msg, $cuerpo_msg, $tipo_msg, $empresaId);
                     $nm->execute();
                     $nm->close();
                 }
@@ -133,12 +144,13 @@
             "SELECT id, titulo, descripcion, prioridad, fecha_creacion, fecha_limite
              FROM recordatorios
              WHERE completado = 0
+               AND empresa_id = ?
                AND (usuario = '' OR usuario = ?)
                AND (fecha_envio IS NULL OR fecha_envio <= NOW())
                AND titulo LIKE ?
              ORDER BY $orderBy"
         );
-        $stmt->bind_param('ss', $usuario, $like);
+        $stmt->bind_param('iss', $empresaId, $usuario, $like);
         $stmt->execute();
         $r = $stmt->get_result();
         $stmt->close();
@@ -147,11 +159,12 @@
             "SELECT id, titulo, descripcion, prioridad, fecha_creacion, fecha_limite
              FROM recordatorios
              WHERE completado = 0
+               AND empresa_id = ?
                AND (usuario = '' OR usuario = ?)
                AND (fecha_envio IS NULL OR fecha_envio <= NOW())
              ORDER BY $orderBy"
         );
-        $stmt->bind_param('s', $usuario);
+        $stmt->bind_param('is', $empresaId, $usuario);
         $stmt->execute();
         $r = $stmt->get_result();
         $stmt->close();
@@ -172,13 +185,13 @@
     $stmt = $conexion->prepare(
         "SELECT id, titulo, descripcion, prioridad, fecha_creacion, fecha_limite, asignado_por
          FROM tareas_asignadas
-         WHERE asignado_a = ? AND completado = 0
+         WHERE empresa_id = ? AND asignado_a = ? AND completado = 0
            AND (fecha_envio IS NULL OR fecha_envio <= NOW())
          ORDER BY CASE WHEN fecha_limite IS NOT NULL AND fecha_limite < NOW() THEN 0 ELSE 1 END,
                   CASE WHEN prioridad = 'urgente' THEN 0 WHEN prioridad = 'alta' THEN 1 ELSE 2 END,
                   fecha_creacion DESC"
     );
-    $stmt->bind_param('s', $usuario);
+    $stmt->bind_param('is', $empresaId, $usuario);
     $stmt->execute();
     $rr = $stmt->get_result();
     $stmt->close();
@@ -199,13 +212,13 @@
         "SELECT id, titulo, descripcion, prioridad, fecha_creacion, fecha_limite,
                 asignado_a, completado, mensaje_completado, fecha_completado
          FROM tareas_asignadas
-         WHERE asignado_por = ?
+         WHERE empresa_id = ? AND asignado_por = ?
          ORDER BY completado ASC,
                   CASE WHEN fecha_limite IS NOT NULL AND fecha_limite < NOW() THEN 0 ELSE 1 END,
                   CASE WHEN prioridad = 'urgente' THEN 0 WHEN prioridad = 'alta' THEN 1 ELSE 2 END,
                   fecha_creacion DESC"
     );
-    $stmt->bind_param('s', $usuario);
+    $stmt->bind_param('is', $empresaId, $usuario);
     $stmt->execute();
     $ra = $stmt->get_result();
     $stmt->close();
@@ -231,7 +244,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tareas — Star Lim</title>
+    <title>Tareas — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_ventas.css">

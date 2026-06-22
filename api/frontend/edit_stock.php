@@ -3,6 +3,7 @@ $PERMITIDOS = ['Empleado_1', 'Empleado_2', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $limite_pag       = 50;
 $pagina           = max(1, intval($_GET['pagina'] ?? 1));
@@ -10,22 +11,55 @@ $buscar           = trim($_GET['buscar']    ?? '');
 $filtro_proveedor = trim($_GET['proveedor'] ?? '');
 $filtro_rubro     = trim($_GET['rubro']     ?? '');
 
+function edit_stock_normalizar_busqueda(string $valor): string
+{
+    $valor = trim($valor);
+    if (function_exists('iconv')) {
+        $convertido = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $valor);
+        if (is_string($convertido) && $convertido !== '') $valor = $convertido;
+    } else {
+        $valor = strtr($valor, [
+            'á'=>'a','à'=>'a','â'=>'a','ä'=>'a','ã'=>'a','å'=>'a',
+            'é'=>'e','è'=>'e','ê'=>'e','ë'=>'e',
+            'í'=>'i','ì'=>'i','î'=>'i','ï'=>'i',
+            'ó'=>'o','ò'=>'o','ô'=>'o','ö'=>'o','õ'=>'o',
+            'ú'=>'u','ù'=>'u','û'=>'u','ü'=>'u',
+            'ñ'=>'n','ç'=>'c',
+            'Á'=>'A','À'=>'A','Â'=>'A','Ä'=>'A','Ã'=>'A','Å'=>'A',
+            'É'=>'E','È'=>'E','Ê'=>'E','Ë'=>'E',
+            'Í'=>'I','Ì'=>'I','Î'=>'I','Ï'=>'I',
+            'Ó'=>'O','Ò'=>'O','Ô'=>'O','Ö'=>'O','Õ'=>'O',
+            'Ú'=>'U','Ù'=>'U','Û'=>'U','Ü'=>'U',
+            'Ñ'=>'N','Ç'=>'C',
+        ]);
+    }
+    return strtolower($valor);
+}
+
+function edit_stock_sql_normalizado(string $campo): string
+{
+    $origen = 'áàâäãåéèêëíìîïóòôöõúùûüñçÁÀÂÄÃÅÉÈÊËÍÌÎÏÓÒÔÖÕÚÙÛÜÑÇ';
+    $destino = 'aaaaaaeeeeiiiiooooouuuuncAAAAAAEEEEIIIIOOOOOUUUUNC';
+    return "lower(translate(COALESCE(($campo)::text, ''), '$origen', '$destino'))";
+}
+
 /* ── Construir WHERE dinámico ───────────────────────────────────── */
-$conditions = [];
+$conditions = ["empresa_id = $empresaId"];
 if ($buscar !== '') {
-    $s = $buscar;
+    $s = $conexion->real_escape_string(edit_stock_normalizar_busqueda($buscar));
     $l = '%' . str_replace(['%', '_'], ['\%', '\_'], $s) . '%';
-    $conditions[] = "(nombre LIKE '$l' OR CAST(id AS CHAR) LIKE '$l')";
+    $nombre_normalizado = edit_stock_sql_normalizado('nombre');
+    $conditions[] = "($nombre_normalizado LIKE '$l' OR id::text LIKE '$l')";
 }
 if ($filtro_proveedor !== '') {
-    $sp = $filtro_proveedor;
+    $sp = $conexion->real_escape_string($filtro_proveedor);
     $conditions[] = "proveedor = '$sp'";
 }
 if ($filtro_rubro !== '') {
     $sr = preg_replace('/[^A-Za-z]/', '', $filtro_rubro);
     if ($sr !== '') $conditions[] = "codigo LIKE '" . $sr . "%'";
 }
-$where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
+$where = 'WHERE ' . implode(' AND ', $conditions);
 
 /* ── String de parámetros para paginación ───────────────────────── */
 $q_params = [];
@@ -50,7 +84,7 @@ $res = $conexion->query("SELECT id, codigo, nombre, descripcion, costo AS precio
 /* ── Datos para dropdowns de filtro ─────────────────────────────── */
 $proveedores_filtro = [];
 $r_pf = $conexion->query("SELECT DISTINCT proveedor FROM productos
-     WHERE TRIM(COALESCE(proveedor,'')) != ''
+     WHERE empresa_id = $empresaId AND TRIM(COALESCE(proveedor,'')) != ''
      ORDER BY proveedor ASC"
 );
 if ($r_pf) while ($r = $r_pf->fetch_assoc()) $proveedores_filtro[] = $r['proveedor'];
@@ -58,7 +92,7 @@ if ($r_pf) while ($r = $r_pf->fetch_assoc()) $proveedores_filtro[] = $r['proveed
 $rubros_filtro = [];
 $chk_rubros = $conexion->query("SHOW TABLES LIKE 'rubros'");
 if ($chk_rubros && $chk_rubros->num_rows > 0) {
-    $r_rf = $conexion->query("SELECT codigo, nombre FROM rubros ORDER BY codigo ASC");
+    $r_rf = $conexion->query("SELECT codigo, nombre FROM rubros WHERE empresa_id = $empresaId ORDER BY codigo ASC");
     if ($r_rf) while ($r = $r_rf->fetch_assoc()) $rubros_filtro[] = $r;
 }
 
@@ -68,7 +102,7 @@ while ($row = $res->fetch_assoc()) {
 }
 
 // Cargar lista de categorías para el select del modal
-$mar_res = $conexion->query("SELECT codigo, nombre FROM margenes ORDER BY codigo");
+$mar_res = $conexion->query("SELECT codigo, nombre FROM margenes WHERE empresa_id = $empresaId ORDER BY codigo");
 $margenes_modal = [];
 while ($m = $mar_res->fetch_assoc()) {
     $margenes_modal[] = $m;
@@ -77,7 +111,7 @@ while ($m = $mar_res->fetch_assoc()) {
 <!DOCTYPE html>
 <html class="cambio-pagina" lang="es">
 <head>
-    <title>Gestión de Stock - Star Lim</title>
+    <title>Gestión de Stock - Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">
@@ -237,6 +271,7 @@ while ($m = $mar_res->fetch_assoc()) {
                class="es-search-clear" title="Limpiar búsqueda">&#10005;</a>
             <?php endif; ?>
         </div>
+        <button class="es-search-submit" id="buscar-submit" type="button">Buscar</button>
         <span class="es-search-info">
             <?php
                 $info_partes = [];
@@ -469,11 +504,13 @@ function applyFilters() {
     window.location.href = url.toString();
 }
 
-/* ── Búsqueda con debounce (server-side) ─────────────── */
-let searchTimer;
-document.getElementById('buscar-input').addEventListener('input', function () {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(applyFilters, 500);
+/* Busqueda manual: no recarga mientras el usuario esta escribiendo. */
+const buscarInput = document.getElementById('buscar-input');
+document.getElementById('buscar-submit')?.addEventListener('click', applyFilters);
+buscarInput?.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    applyFilters();
 });
 
 document.getElementById('filtro-proveedor')?.addEventListener('change', applyFilters);

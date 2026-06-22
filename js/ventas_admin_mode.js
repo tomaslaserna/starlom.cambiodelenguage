@@ -9,10 +9,6 @@
 (() => {
     const BE = '../php/modo_admin_ventas_be.php';
 
-    const COBRO_OPTS = {
-        pendiente: 'Pendiente', en_proceso: 'En proceso', recibido: 'Recibido',
-        vencido: 'Vencido', cancelado: 'Cancelado',
-    };
     const PEDIDO_OPTS = {
         recibido: 'Recibido', en_proceso: 'En proceso', pendiente_entrega: 'Pendiente de entrega', entregado: 'Entregado',
     };
@@ -93,8 +89,6 @@
                     <input class="vam-input" id="vam-f-fecha" type="date" value="${esc(v.fecha)}"></div>
                 <div><label class="vam-label">Monto ($)</label>
                     <input class="vam-input" id="vam-f-monto" type="number" min="0" step="0.01" value="${esc(v.monto)}"></div>
-                <div><label class="vam-label">Estado de cobro</label>
-                    ${selectHtml('vam-f-estado_cobro', COBRO_OPTS, v.estado_cobro)}</div>
                 <div><label class="vam-label">Estado de pedido</label>
                     ${selectHtml('vam-f-estado_pedido', PEDIDO_OPTS, v.estado_pedido)}</div>
                 <div><label class="vam-label">Seguimiento</label>
@@ -113,7 +107,7 @@
 
         m.querySelector('#vam-btn-guardar').addEventListener('click', async function () {
             const campos = ['nombre_cliente', 'dni_cliente', 'nro_comprobante', 'tipo_cbte', 'fecha',
-                            'monto', 'estado_cobro', 'estado_pedido', 'seguimiento', 'condicion_pago', 'vendedor'];
+                            'monto', 'estado_pedido', 'seguimiento', 'condicion_pago', 'vendedor'];
             const payload = { id_venta: idVenta };
             campos.forEach(c => payload[c] = m.querySelector(`#vam-f-${c}`).value);
 

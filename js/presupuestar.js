@@ -143,7 +143,7 @@ $('pp-whatsapp').addEventListener('click', function () {
     let tel = ($('pp-telefono').value || '').replace(/[^0-9]/g, '');
     const dPct = Math.min(100, Math.max(0, parseFloat($('pp-descuento').value) || 0));
     let neto = 0;
-    const lineas = ['*Presupuesto Star Lim*', ''];
+    const lineas = ['*Presupuesto Starlim*', ''];
     carrito.forEach(it => {
         const sub = it.precio * (1 - (it.bonif || 0) / 100) * it.cantidad;
         neto += sub;

@@ -1,8 +1,9 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 ob_start();
 ini_set('display_errors', '0');
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
 
 header('Content-Type: application/json; charset=utf-8');

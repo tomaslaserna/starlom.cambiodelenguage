@@ -21,9 +21,10 @@ $limite   = max(1, min(500, (int) ($_GET['limite'] ?? 100)));
 $tipo     = trim($_GET['tipo'] ?? '');
 
 $pdo = $conexion->getPDO();
+$empresa_id = (int)($GLOBALS['STARLIM_EMPRESA_ID'] ?? 1);
 
-$where  = ['id > ?'];
-$params = [$desde_id];
+$where  = ['empresa_id = ?', 'id > ?'];
+$params = [$empresa_id, $desde_id];
 if ($tipo !== '') { $where[] = 'tipo = ?'; $params[] = $tipo; }
 
 $stmt = $pdo->prepare(

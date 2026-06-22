@@ -4,6 +4,16 @@
 api/uploads/comprobantes/*
 api/uploads/recibos/*
 api/phpqrcode/cache/**
+api/facturacion/**
+!api/facturacion/
+!api/facturacion/generar_factura.php
+!api/facturacion/src/
+!api/facturacion/src/afip.php-master/
+!api/facturacion/src/afip.php-master/src/
+!api/facturacion/src/afip.php-master/src/**
+!api/facturacion/certificados/
+!api/facturacion/certificados/certificado_afip_test.pem
+!api/facturacion/certificados/starlimkeytest.key
 api/facturacion/src/afip.php-master/examples/
 # Solo se deployan los certificados de PRUEBA (homologación). El certificado
 # de producción NUNCA va al repo ni al deploy: cargarlo en las env vars

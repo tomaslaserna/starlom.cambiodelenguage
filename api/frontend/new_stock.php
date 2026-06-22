@@ -3,9 +3,10 @@ $PERMITIDOS = ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 // Cargar categorías de precio (margenes)
-$mar_res = $conexion->query("SELECT * FROM margenes ORDER BY codigo");
+$mar_res = $conexion->query("SELECT * FROM margenes WHERE empresa_id = $empresaId ORDER BY codigo");
 $margenes_list = [];
 while ($m = $mar_res->fetch_assoc()) {
     $margenes_list[] = $m;
@@ -20,7 +21,7 @@ $status_name = $_GET['nombre']  ?? '';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nuevo Stock — Star Lim</title>
+    <title>Nuevo Stock — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">

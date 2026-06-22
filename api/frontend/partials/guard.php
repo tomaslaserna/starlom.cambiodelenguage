@@ -1,27 +1,18 @@
 <?php
+require_once __DIR__ . '/../../php/session_bootstrap.php';
+require_once __DIR__ . '/../../php/auth.php';
+require_once __DIR__ . '/../../php/admin_permissions.php';
+
 /**
- * guard.php — Guardia de sesión compartida de las páginas del panel.
+ * Shared session and authorization guard for staff panel pages.
  *
- * Uso (primeras líneas de cada página):
+ * Optional page contract:
+ *   $PERMITIDOS = ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
  *
- *   $PERMITIDOS = ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'];   // opcional
- *   require __DIR__ . '/partials/guard.php';
- *
- * Si no se define $PERMITIDOS, permite a todo el staff.
- *
- * Deja definidos para la página y la nav:
- *   $usuario, $rango (normalizado),
- *   $canVentas, $canBD, $canStock, $canEmpleados, $canRangos
- *
- * Comportamiento ante falta de acceso:
- *   - sin sesión        → sign.php
- *   - staff sin permiso → panel_empleados.php (sin cerrar la sesión)
- *   - cliente (tienda)  → index.php (sin cerrar la sesión)
+ * If $PERMITIDOS is not defined, every staff role can enter.
  */
 
-require_once __DIR__ . '/../../php/auth.php';
-
-if (session_status() === PHP_SESSION_NONE) session_start();
+starlim_session_start();
 
 if (!isset($_SESSION['usuario'], $_SESSION['rango'])) {
     session_destroy();
@@ -30,7 +21,11 @@ if (!isset($_SESSION['usuario'], $_SESSION['rango'])) {
 }
 
 $usuario = $_SESSION['usuario'];
-$rango   = starlim_normalizar_rango($_SESSION['rango']);
+$rango = starlim_normalizar_rango($_SESSION['rango']);
+$empresaId = isset($_SESSION['empresa_id']) && ctype_digit((string)$_SESSION['empresa_id'])
+    ? (int)$_SESSION['empresa_id']
+    : 1;
+$empresaNombre = (string)($_SESSION['empresa_nombre'] ?? 'Starlim');
 
 if (!starlim_es_staff($rango)) {
     header('Location: index.php?no_access=1');
@@ -39,12 +34,12 @@ if (!starlim_es_staff($rango)) {
 
 $PERMITIDOS = $PERMITIDOS ?? STARLIM_RANGOS_STAFF;
 if (!in_array($rango, $PERMITIDOS, true)) {
-    header('Location: panel_empleados.php?no_access=1');
+    header('Location: pedidos.php?no_access=1');
     exit;
 }
 
-$canVentas    = in_array($rango, ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'], true);
-$canBD        = in_array($rango, ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'], true);
-$canStock     = in_array($rango, ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'], true);
+$canVentas = in_array($rango, ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'], true);
+$canBD = in_array($rango, ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'], true);
+$canStock = in_array($rango, ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'], true);
 $canEmpleados = in_array($rango, ['Jefe', 'Jefe1', 'Admin'], true);
-$canRangos    = in_array($rango, ['Jefe1', 'Admin'], true);
+$canRangos = in_array($rango, ['Jefe1', 'Admin'], true);

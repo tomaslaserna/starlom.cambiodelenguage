@@ -1,11 +1,12 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 /**
  * generar_pdf_precios.php — PDF de una lista de precios completa, para que el
  * vendedor la descargue y se la mande al cliente.
  *   ?lista=0..5   (0–3 = Lista 0–3, 4 = Lista 4 (+10%), 5 = Minorista)
  *   ?view=1       abre en el navegador (si no, descarga)
  */
-session_start();
+starlim_session_start();
 require_once __DIR__ . '/auth.php';
 if (!isset($_SESSION['usuario']) || !starlim_es_staff(starlim_normalizar_rango($_SESSION['rango'] ?? ''))) {
     header('Location: ../frontend/sign.php'); die();
@@ -13,6 +14,7 @@ if (!isset($_SESSION['usuario']) || !starlim_es_staff(starlim_normalizar_rango($
 
 include 'conexion_starlim_be.php';
 require_once '../fpdf186/fpdf.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $lista = (int)($_GET['lista'] ?? 0);
 if ($lista < 0 || $lista > 5) $lista = 0;
@@ -30,7 +32,7 @@ $cols = [
 
 $res = $conexion->query(
     "SELECT nombre, $expr AS precio FROM vista_precios
-     WHERE precio_1 IS NOT NULL AND $expr > 0
+     WHERE empresa_id = $empresaId AND precio_1 IS NOT NULL AND $expr > 0
      ORDER BY nombre ASC"
 );
 $prods = [];
@@ -53,7 +55,7 @@ class PreciosPDF extends FPDF {
         $this->SetFont('Arial', '', 10); $this->SetTextColor(80, 80, 80);
         $this->Cell(80, 5, p($this->etiqueta), 0, 2, 'R');
         $this->SetFont('Arial', '', 8);
-        $this->Cell(80, 5, p('Star Lim — ' . date('d/m/Y')), 0, 0, 'R');
+        $this->Cell(80, 5, p('Starlim — ' . date('d/m/Y')), 0, 0, 'R');
         $this->Ln(14);
         // Encabezado de tabla
         $this->SetFont('Arial', 'B', 9); $this->SetTextColor(255, 255, 255); $this->SetFillColor(37, 99, 235);

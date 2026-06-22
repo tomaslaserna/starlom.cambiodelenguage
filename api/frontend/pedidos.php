@@ -11,6 +11,7 @@
  */
 require __DIR__ . '/partials/guard.php';
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $ve_montos = in_array($rango, ['Empleado_2', 'Jefe', 'Jefe1', 'Admin'], true);
 $vista = ($_GET['vista'] ?? 'activos') === 'entregados' ? 'entregados' : 'activos';
@@ -30,11 +31,11 @@ $res = $conexion->query(
             rp.id_reparto, rep.repartidor_nombre
      FROM ventas v
      LEFT JOIN LATERAL (
-         SELECT id, nro_remito FROM remitos WHERE id_venta = v.id ORDER BY id LIMIT 1
+         SELECT id, nro_remito FROM remitos WHERE id_venta = v.id AND empresa_id = v.empresa_id ORDER BY id LIMIT 1
      ) r ON TRUE
-     LEFT JOIN reparto_pedidos rp ON rp.id_venta = v.id
-     LEFT JOIN repartos rep       ON rep.id = rp.id_reparto
-     WHERE $where_pedidos
+     LEFT JOIN reparto_pedidos rp ON rp.id_venta = v.id AND rp.empresa_id = v.empresa_id
+     LEFT JOIN repartos rep       ON rep.id = rp.id_reparto AND rep.empresa_id = v.empresa_id
+     WHERE v.empresa_id = $empresaId AND $where_pedidos
      ORDER BY $order_pedidos"
 );
 if ($res) while ($row = $res->fetch_assoc()) $pedidos[] = $row;
@@ -42,9 +43,14 @@ if ($res) while ($row = $res->fetch_assoc()) $pedidos[] = $row;
 /* ── Repartidores: empleados con teléfono cargado (logística = todo el staff) */
 $repartidores = [];
 $rr = $conexion->query(
-    "SELECT id, nombre_completo, telefono FROM usuarios
-     WHERE COALESCE(telefono,'') <> '' AND rango NOT IN ('Minorista','Mayorista')
-     ORDER BY nombre_completo"
+    "SELECT u.id, u.nombre_completo, u.telefono
+     FROM usuarios u
+     JOIN usuario_empresa ue ON ue.id_usuario = u.id
+     WHERE ue.empresa_id = $empresaId
+       AND ue.activo = TRUE
+       AND COALESCE(u.telefono,'') <> ''
+       AND COALESCE(ue.rango, u.rango) NOT IN ('Minorista','Mayorista')
+     ORDER BY u.nombre_completo"
 );
 if ($rr) while ($row = $rr->fetch_assoc()) $repartidores[] = $row;
 
@@ -54,7 +60,7 @@ if ($pedidos) {
     $ids = implode(',', array_map(fn($p) => (int)$p['id'], $pedidos));
     $rd  = $conexion->query(
         "SELECT id_venta, nombre_producto, cantidad, precio_unit, subtotal
-         FROM detalle_ventas WHERE id_venta IN ($ids) ORDER BY id"
+         FROM detalle_ventas WHERE empresa_id = $empresaId AND id_venta IN ($ids) ORDER BY id"
     );
     if ($rd) while ($d = $rd->fetch_assoc()) {
         $fila = ['nombre' => $d['nombre_producto'], 'cantidad' => (int)$d['cantidad']];
@@ -91,7 +97,7 @@ $SIGUIENTE = [
     'en_proceso'        => ['pendiente_entrega', 'Armado listo'],
     'pendiente_entrega' => ['entregado', 'Marcar entregado'],
 ];
-$COMPROBANTE_LBL = ['remito' => 'Remito', 'factura_a' => 'Factura A', 'factura_b' => 'Factura B'];
+$COMPROBANTE_LBL = ['remito' => 'Remito'];
 
 $stats = ['recibido' => 0, 'en_proceso' => 0, 'pendiente_entrega' => 0];
 foreach ($pedidos as $p) $stats[$p['estado_pedido']] = ($stats[$p['estado_pedido']] ?? 0) + 1;
@@ -101,7 +107,7 @@ foreach ($pedidos as $p) $stats[$p['estado_pedido']] = ($stats[$p['estado_pedido
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pedidos — Star Lim</title>
+    <title>Pedidos — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <style>

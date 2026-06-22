@@ -1,9 +1,11 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 ob_start();
 ini_set('display_errors', '0');
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -20,9 +22,12 @@ $conexion->query("CREATE TABLE IF NOT EXISTS margenes_listas (
         codigo        VARCHAR(10)    NOT NULL,
         lista_id      INT            NOT NULL,
         multiplicador DECIMAL(5,2)   NOT NULL DEFAULT 1.00,
+        empresa_id BIGINT            NOT NULL DEFAULT 1,
         PRIMARY KEY (codigo, lista_id)
     )"
 );
+$conexion->query("ALTER TABLE margenes_listas ADD COLUMN IF NOT EXISTS empresa_id BIGINT NOT NULL DEFAULT 1");
+$conexion->query("CREATE INDEX IF NOT EXISTS idx_margenes_listas_empresa ON margenes_listas(empresa_id)");
 
 /* ── Datos entrantes ──────────────────────────────────── */
 $datos = json_decode(file_get_contents('php://input'), true);
@@ -48,8 +53,8 @@ if ($multiplicador < 1.0 || $multiplicador > 9.99) {
 }
 
 /* ── Verificar que codigo exista en margenes ─────────── */
-$chk = $conexion->prepare("SELECT codigo FROM margenes WHERE codigo = ?");
-$chk->bind_param('s', $codigo);
+$chk = $conexion->prepare("SELECT codigo FROM margenes WHERE codigo = ? AND empresa_id = ?");
+$chk->bind_param('si', $codigo, $empresaId);
 $chk->execute();
 if ($chk->get_result()->num_rows === 0) {
     ob_end_clean();
@@ -59,8 +64,8 @@ if ($chk->get_result()->num_rows === 0) {
 $chk->close();
 
 /* ── Verificar que la lista exista y esté activa ─────── */
-$chkL = $conexion->prepare("SELECT id FROM listas_precio WHERE id = ? AND activa = 1");
-$chkL->bind_param('i', $lista_id);
+$chkL = $conexion->prepare("SELECT id FROM listas_precio WHERE id = ? AND empresa_id = ? AND activa = 1");
+$chkL->bind_param('ii', $lista_id, $empresaId);
 $chkL->execute();
 if ($chkL->get_result()->num_rows === 0) {
     ob_end_clean();
@@ -71,16 +76,16 @@ $chkL->close();
 
 /* ── Upsert (sintaxis Postgres) ───────────────────────── */
 $stmt = $conexion->prepare(
-    "INSERT INTO margenes_listas (codigo, lista_id, multiplicador)
-     VALUES (?, ?, ?)
-     ON CONFLICT (codigo, lista_id) DO UPDATE SET multiplicador = EXCLUDED.multiplicador"
+    "INSERT INTO margenes_listas (codigo, lista_id, multiplicador, empresa_id)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT (codigo, lista_id) DO UPDATE SET multiplicador = EXCLUDED.multiplicador, empresa_id = EXCLUDED.empresa_id"
 );
 if (!$stmt) {
     ob_end_clean();
     echo json_encode(['error' => 'Error interno: ' . $conexion->error]);
     exit();
 }
-$stmt->bind_param('sid', $codigo, $lista_id, $multiplicador);
+$stmt->bind_param('sidi', $codigo, $lista_id, $multiplicador, $empresaId);
 
 if ($stmt->execute()) {
     ob_end_clean();

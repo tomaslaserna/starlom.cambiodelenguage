@@ -147,35 +147,17 @@ function formatoPeso(numero) {
 }
 
 // ── Tipo de cliente ────────────────────────────────────
-document.querySelectorAll('input[name="tipo_cliente"]').forEach(radio => {
-    radio.addEventListener('change', function () {
-        const esSF = this.value === 'sin_factura';
+function configurarModoRemito() {
+    document.getElementById('tipo-cbte').value = '6';
+    document.getElementById('tipo-cliente-hidden').value = 'sin_factura';
+    document.getElementById('nro-doc').required = false;
+    document.getElementById('btn-emitir').textContent = 'Cargar pedido';
+    document.getElementById('preview-tipo-cbte').textContent = 'Remito';
+    document.getElementById('fila-iva').style.display = 'none';
+    document.getElementById('preview-fila-iva').style.display = 'none';
+}
 
-        document.getElementById('select-tipo-comprobante').value = '';
-        document.getElementById('nro-doc').required = !esSF;
-        document.getElementById('tipo-cliente-hidden').value = this.value;
-        document.getElementById('btn-emitir').textContent = 'Cargar pedido';
-        document.getElementById('preview-tipo-cbte').textContent = esSF ? 'Remito' : document.getElementById('preview-tipo-cbte').textContent;
-
-        if (esSF) {
-            document.getElementById('fila-iva').style.display         = 'none';
-            document.getElementById('preview-fila-iva').style.display = 'none';
-        } else {
-            // Al volver a factura, restaurar IVA según el tipo de comprobante seleccionado
-            const config = mapaTipoCbte[document.getElementById('select-tipo-comprobante')?.value];
-            if (config) {
-                document.getElementById('fila-iva').style.display         = config.iva ? 'flex' : 'none';
-                document.getElementById('preview-fila-iva').style.display = config.iva ? 'flex' : 'none';
-            }
-        }
-
-        recalcularTotales();
-    });
-});
-
-// Inicializar ocultando la fila de IVA (arranca en Consumidor Final)
-document.getElementById('fila-iva').style.display        = 'none';
-document.getElementById('preview-fila-iva').style.display = 'none';
+configurarModoRemito();
 
 // ── Preview: datos del cliente ─────────────────────────
 document.getElementById('nro-doc')?.addEventListener('input', function () {
@@ -330,9 +312,8 @@ function eliminarProducto(index) {
 
 // ── Recalcular totales ─────────────────────────────────
 function recalcularTotales() {
-    const esRI     = document.getElementById('tipo-cliente-hidden')?.value === 'responsable_inscripto';
     const subtotal = productosEnFactura.reduce((acc, p) => acc + p.precio * (1 - (p.descuento || 0) / 100) * p.cantidad, 0);
-    const iva      = esRI ? subtotal * 0.21 : 0;
+    const iva      = 0;
     const total    = subtotal + iva;
 
     // Actualizar formulario
@@ -362,17 +343,8 @@ document.getElementById('form-factura')?.addEventListener('submit', function (e)
         document.getElementById('input-cliente').focus();
         return;
     }
-
-    const esSF    = document.getElementById('tipo-cliente-hidden').value === 'sin_factura';
-    const tipoId  = document.getElementById('display-tipo-id').value;
-    const nroId   = document.getElementById('display-nro-id').value;
-
-    if (!esSF && tipoId && nroId && !validarDocumento(tipoId, nroId)) {
-        e.preventDefault();
-        mostrarErrorDoc(`${tipoId} inválido — corregí el documento del cliente antes de emitir.`);
-        document.getElementById('display-nro-id').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
 });
+
 
 // ── Guardar productos en JSON para el backend ──────────
 function actualizarJSON() {
@@ -459,39 +431,7 @@ document.getElementById('input-cliente')?.addEventListener('input', function () 
     document.getElementById('nro-doc').value  = nroId;
     document.getElementById('tipo-doc').value = tipoId === 'CUIT' ? '80' : '96';
 
-    const esRI = condIva === 'Responsable Inscripto';
-    // tipo-cbte se sincroniza más abajo desde configActual para respetar NC/ND
-    document.getElementById('tipo-cliente-hidden').value = esRI ? 'responsable_inscripto' : 'consumidor_final';
-    document.getElementById('nro-doc').required          = true;
-
-    document.getElementById('preview-cliente').textContent = cliente.nombre_cliente;
-    document.getElementById('preview-doc').textContent     = tipoId + ': ' + nroId;
-    document.getElementById('nombre-cliente').value        = cliente.nombre_cliente;
-
-    const selectTipo = document.getElementById('select-tipo-comprobante');
-    const valActual  = selectTipo.value;
-    if (esRI) {
-        if (!valActual || valActual.endsWith('_b')) {
-            selectTipo.value = valActual ? valActual.replace('_b', '_a') : 'factura_a';
-        }
-    } else {
-        if (!valActual || valActual.endsWith('_a')) {
-            selectTipo.value = valActual ? valActual.replace('_a', '_b') : 'factura_b';
-        }
-    }
-
-    const configActual = mapaTipoCbte[selectTipo.value];
-
-    document.getElementById('preview-tipo-cbte').textContent = configActual ? configActual.badge : (esRI ? 'Factura A' : 'Factura B');
-
-    // Sincronizar tipo-cbte con el comprobante efectivamente seleccionado
-    document.getElementById('tipo-cbte').value           = configActual ? configActual.cbte : (esRI ? '1' : '6');
-    document.getElementById('tipo-cliente-hidden').value = configActual
-        ? (configActual.iva ? 'responsable_inscripto' : 'consumidor_final')
-        : (esRI ? 'responsable_inscripto' : 'consumidor_final');
-
-    document.getElementById('fila-iva').style.display         = esRI ? 'flex' : 'none';
-    document.getElementById('preview-fila-iva').style.display = esRI ? 'flex' : 'none';
+    configurarModoRemito();
 
     const selectLista = document.querySelector('[name="lista_precios"]');
     if (selectLista) {
@@ -511,34 +451,28 @@ document.querySelector('[name="fecha"]')?.addEventListener('change', function ()
     if (clienteSeleccionadoActual) setVencimientoPorCliente(clienteSeleccionadoActual);
 });
 
-// ── Selector de comprobante deseado ────────────────────
-// (Preferencia del pedido: la factura real se emite desde Ventas post-entrega.)
-const mapaTipoCbte = {
-    'factura_a': { cbte: '1', doc: '80', badge: 'Factura A', iva: true  },
-    'factura_b': { cbte: '6', doc: '96', badge: 'Factura B', iva: false },
-};
-
-document.getElementById('select-tipo-comprobante')?.addEventListener('change', function () {
-    const config = mapaTipoCbte[this.value];
-    if (!config) return;
-
-    document.getElementById('radio-sf').checked = false;
-
-    document.getElementById('tipo-cbte').value           = config.cbte;
-    document.getElementById('tipo-cliente-hidden').value = config.iva ? 'responsable_inscripto' : 'consumidor_final';
-    document.getElementById('preview-tipo-cbte').textContent = config.badge;
-    document.getElementById('fila-iva').style.display         = config.iva ? 'flex' : 'none';
-    document.getElementById('preview-fila-iva').style.display = config.iva ? 'flex' : 'none';
-
-    recalcularTotales();
-});
 
 // ── Filtrado de clientes por vendedor ─────────────────
+function normalizarVendedor(valor) {
+    return String(valor || '')
+        .trim()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('es-AR');
+}
+
+function vendedorTieneClientes(vendedor) {
+    const key = normalizarVendedor(vendedor);
+    return key !== '' && CLIENTES_DB.some(c => normalizarVendedor(c.vendedor_cl) === key);
+}
+
 function filtrarClientesPorVendedor(vendedor) {
     const datalist = document.getElementById('lista-clientes');
     datalist.innerHTML = '';
-    const filtrados = vendedor
-        ? CLIENTES_DB.filter(c => c.vendedor_cl === vendedor)
+    const debeFiltrar = vendedorTieneClientes(vendedor);
+    const vendedorKey = normalizarVendedor(vendedor);
+    const filtrados = debeFiltrar
+        ? CLIENTES_DB.filter(c => normalizarVendedor(c.vendedor_cl) === vendedorKey)
         : CLIENTES_DB;
     filtrados.forEach(c => {
         const opt = document.createElement('option');
@@ -551,11 +485,11 @@ document.getElementById('select-vendedor')?.addEventListener('change', function 
     filtrarClientesPorVendedor(this.value);
 
     const inputCliente = document.getElementById('input-cliente');
-    if (inputCliente.value && this.value) {
+    if (inputCliente.value && this.value && vendedorTieneClientes(this.value)) {
         const clienteActual = CLIENTES_DB.find(c =>
             c.nombre_cliente + ' (' + c.tipo_id + ': ' + c.nro_id + ')' === inputCliente.value
         );
-        if (clienteActual && clienteActual.vendedor_cl !== this.value) {
+        if (clienteActual && normalizarVendedor(clienteActual.vendedor_cl) !== normalizarVendedor(this.value)) {
             inputCliente.value = '';
             inputCliente.dispatchEvent(new Event('input'));
         }
@@ -563,6 +497,12 @@ document.getElementById('select-vendedor')?.addEventListener('change', function 
 });
 
 // ── Lista de precios → actualizar precios de productos ────
+document.querySelector('[name="id_operador"]')?.addEventListener('change', function () {
+    const selected = this.options[this.selectedIndex];
+    const operadorNombre = document.getElementById('operador-nombre');
+    if (operadorNombre) operadorNombre.value = selected?.dataset?.operadorNombre || '';
+});
+
 const _selectLista = document.querySelector('[name="lista_precios"]');
 _selectLista?.addEventListener('change', function () {
     actualizarPreciosPorLista(this.value);

@@ -1,12 +1,23 @@
 <?php
-session_start();
-if (!isset($_SESSION['usuario'])) { http_response_code(403); die(); }
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
+header('Content-Type: application/json; charset=utf-8');
 
-$rango = $_SESSION['rango'];
-if (!in_array($rango, ['Jefe', 'Jefe1', 'Admin'], true)) { http_response_code(403); die(); }
+if (!isset($_SESSION['usuario'])) {
+    http_response_code(401);
+    echo json_encode(['ok' => false, 'error' => 'SESSION_EXPIRED']);
+    exit;
+}
+
+$rango = starlim_normalizar_rango((string)($_SESSION['rango'] ?? ''));
+if (!in_array($rango, ['Jefe', 'Jefe1', 'Admin'], true)) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'FORBIDDEN']);
+    exit;
+}
 
 include 'conexion_starlim_be.php';
-header('Content-Type: application/json; charset=utf-8');
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $periodo = trim($_GET['periodo'] ?? 'mes');
 if (!in_array($periodo, ['mes', 'anio', 'todos'], true)) $periodo = 'mes';
@@ -42,7 +53,9 @@ FROM (
         COALESCE(v.cae, '') <> '' AS con_factura,
         1 AS is_venta
     FROM ventas v
-    WHERE COALESCE(v.estado_pedido, 'entregado') = 'entregado' AND $where_v
+    WHERE v.empresa_id = $empresaId
+      AND COALESCE(v.estado_pedido, 'entregado') = 'entregado'
+      AND $where_v
 
     UNION ALL
 
@@ -51,7 +64,10 @@ FROM (
         FALSE AS con_factura,
         0     AS is_venta
     FROM remitos r
-    WHERE r.id_venta IS NULL AND COALESCE(r.estado_pedido, 'entregado') = 'entregado' AND $where_r
+    WHERE r.empresa_id = $empresaId
+      AND r.id_venta IS NULL
+      AND COALESCE(r.estado_pedido, 'entregado') = 'entregado'
+      AND $where_r
 ) AS combined";
 
 $res = $conexion->query($sql);
@@ -62,10 +78,11 @@ $row = $res->fetch_assoc();
 // Solo deben dinero las ventas ENTREGADAS (un pedido sin entregar no es deuda).
 $res2 = $conexion->query("
 SELECT
-    COALESCE(SUM(CASE WHEN COALESCE(estado_cobro,'pendiente') IN ('pendiente','en_proceso') THEN monto ELSE 0 END), 0) AS pendiente,
+    COALESCE(SUM(CASE WHEN COALESCE(estado_cobro,'pendiente') IN ('pendiente','en_proceso','pendiente_aprobacion') THEN monto ELSE 0 END), 0) AS pendiente,
     COALESCE(SUM(CASE WHEN estado_cobro = 'vencido' THEN monto ELSE 0 END), 0) AS vencido
 FROM ventas
-WHERE COALESCE(estado_pedido, 'entregado') = 'entregado'");
+WHERE empresa_id = $empresaId
+  AND COALESCE(estado_pedido, 'entregado') = 'entregado'");
 $row2 = $res2->fetch_assoc();
 
 echo json_encode([

@@ -1,6 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/../php/session_bootstrap.php';
+starlim_session_start();
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $rango = $_SESSION['rango'] ?? "";
 $usuario = $_SESSION['usuario'] ?? "";
@@ -13,7 +15,7 @@ $fila = null;
 
 if (isset($_GET['id'])) {
     $id_producto = (int)($_GET['id'] ?? 0);
-    $query = "SELECT *, costo AS precio, stock AS cantidad FROM productos WHERE id = $id_producto";
+    $query = "SELECT *, costo AS precio, stock AS cantidad FROM productos WHERE id = $id_producto AND empresa_id = $empresaId";
     $resultado = $conexion->query($query);
     $fila = $resultado->fetch_assoc();
 }

@@ -1,6 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -18,8 +20,8 @@ if ($codigo === '') {
 }
 
 // Seguridad: no eliminar si hay productos usando este código
-$chk = $conexion->prepare("SELECT COUNT(*) AS n FROM productos WHERE codigo = ?");
-$chk->bind_param('s', $codigo);
+$chk = $conexion->prepare("SELECT COUNT(*) AS n FROM productos WHERE codigo = ? AND empresa_id = ?");
+$chk->bind_param('si', $codigo, $empresaId);
 $chk->execute();
 $n = (int)$chk->get_result()->fetch_assoc()['n'];
 $chk->close();
@@ -29,8 +31,8 @@ if ($n > 0) {
     exit();
 }
 
-$stmt = $conexion->prepare("DELETE FROM margenes WHERE codigo = ?");
-$stmt->bind_param('s', $codigo);
+$stmt = $conexion->prepare("DELETE FROM margenes WHERE codigo = ? AND empresa_id = ?");
+$stmt->bind_param('si', $codigo, $empresaId);
 
 if ($stmt->execute() && $stmt->affected_rows > 0) {
     echo json_encode(['ok' => true]);

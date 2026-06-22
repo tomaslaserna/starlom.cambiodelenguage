@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 /**
  * actualizar_estado_pedido.php — Avance del ciclo de pedido desde la pantalla
  * Pedidos (depósito y logística: TODO el staff puede operar).
@@ -11,11 +12,12 @@
  *                      sincroniza el remito y la venta pasa a verse en Ventas.
  *   accion=observacion id_venta, observacion → actualiza la nota del pedido.
  */
-session_start();
+starlim_session_start();
 if (!isset($_SESSION['usuario'])) { http_response_code(403); die(); }
 
 include 'conexion_starlim_be.php';
 require_once 'auth.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -41,8 +43,8 @@ if ($id_venta <= 0) {
 if ($accion === 'observacion') {
     $obs = trim($_POST['observacion'] ?? '');
     if (mb_strlen($obs) > 2000) $obs = mb_substr($obs, 0, 2000);
-    $stmt = $conexion->prepare("UPDATE ventas SET observacion = ? WHERE id = ?");
-    $stmt->bind_param('si', $obs, $id_venta);
+    $stmt = $conexion->prepare("UPDATE ventas SET observacion = ? WHERE id = ? AND empresa_id = ?");
+    $stmt->bind_param('sii', $obs, $id_venta, $empresaId);
     $stmt->execute();
     $stmt->close();
     echo json_encode(['ok' => true]);
@@ -57,8 +59,8 @@ if (!isset(ORDEN_ESTADOS[$nuevo])) {
     exit;
 }
 
-$stmt = $conexion->prepare("SELECT estado_pedido FROM ventas WHERE id = ?");
-$stmt->bind_param('i', $id_venta);
+$stmt = $conexion->prepare("SELECT estado_pedido FROM ventas WHERE id = ? AND empresa_id = ?");
+$stmt->bind_param('ii', $id_venta, $empresaId);
 $stmt->execute();
 $venta = $stmt->get_result()->fetch_assoc();
 $stmt->close();
@@ -78,14 +80,14 @@ if (ORDEN_ESTADOS[$nuevo] <= ORDEN_ESTADOS[$actual]) {
     exit;
 }
 
-$stmt = $conexion->prepare("UPDATE ventas SET estado_pedido = ? WHERE id = ?");
-$stmt->bind_param('si', $nuevo, $id_venta);
+$stmt = $conexion->prepare("UPDATE ventas SET estado_pedido = ? WHERE id = ? AND empresa_id = ?");
+$stmt->bind_param('sii', $nuevo, $id_venta, $empresaId);
 $stmt->execute();
 $stmt->close();
 
 // Mantener el remito del pedido en el mismo estado
-$stmt = $conexion->prepare("UPDATE remitos SET estado_pedido = ? WHERE id_venta = ?");
-$stmt->bind_param('si', $nuevo, $id_venta);
+$stmt = $conexion->prepare("UPDATE remitos SET estado_pedido = ? WHERE id_venta = ? AND empresa_id = ?");
+$stmt->bind_param('sii', $nuevo, $id_venta, $empresaId);
 $stmt->execute();
 $stmt->close();
 

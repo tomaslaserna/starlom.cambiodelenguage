@@ -3,6 +3,7 @@ $PERMITIDOS = ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $is_admin = ($rango === 'Admin');
 
@@ -10,8 +11,9 @@ $is_admin = ($rango === 'Admin');
 
 /* ── Cargar márgenes con conteo de productos ─────────── */
 $res = $conexion->query("SELECT m.*,
-            (SELECT COUNT(*) FROM productos p WHERE p.codigo = m.codigo) AS num_productos
+            (SELECT COUNT(*) FROM productos p WHERE p.codigo = m.codigo AND p.empresa_id = m.empresa_id) AS num_productos
      FROM margenes m
+     WHERE m.empresa_id = $empresaId
      ORDER BY m.codigo ASC"
 );
 $margenes = [];
@@ -29,7 +31,7 @@ $cols = [
 ];
 
 /* ── Cargar rubros ───────────────────────────────────── */
-$resR = $conexion->query("SELECT codigo, nombre FROM rubros ORDER BY codigo ASC");
+$resR = $conexion->query("SELECT codigo, nombre FROM rubros WHERE empresa_id = $empresaId ORDER BY codigo ASC");
 $rubrosDB = [];
 while ($r = $resR->fetch_assoc()) {
     $rubrosDB[$r['codigo']] = $r['nombre'];
@@ -46,7 +48,7 @@ foreach ($margenes as $m) {
 ksort($grupos);
 
 /* ── Cargar listas personalizadas activas ────────────── */
-$resL = $conexion->query("SELECT id, nombre FROM listas_precio WHERE activa = 1 ORDER BY orden ASC, id ASC"
+$resL = $conexion->query("SELECT id, nombre FROM listas_precio WHERE empresa_id = $empresaId AND activa = 1 ORDER BY orden ASC, id ASC"
 );
 $listasCustom = [];
 while ($l = $resL->fetch_assoc()) {
@@ -59,7 +61,8 @@ $listasMult = [];
 if (!empty($listasCustom)) {
     $resML = $conexion->query("SELECT ml.codigo, ml.lista_id, ml.multiplicador
          FROM margenes_listas ml
-         INNER JOIN listas_precio lp ON lp.id = ml.lista_id AND lp.activa = 1
+         INNER JOIN listas_precio lp ON lp.id = ml.lista_id AND lp.empresa_id = ml.empresa_id AND lp.activa = 1
+         WHERE ml.empresa_id = $empresaId
          ORDER BY ml.lista_id ASC"
     );
     while ($ml = $resML->fetch_assoc()) {
@@ -70,7 +73,7 @@ if (!empty($listasCustom)) {
 <!DOCTYPE html>
 <html class="cambio-pagina" lang="es">
 <head>
-    <title>Márgenes — Star Lim</title>
+    <title>Márgenes — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">

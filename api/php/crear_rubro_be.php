@@ -1,9 +1,11 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 ob_start();
 ini_set('display_errors', '0');
 
-session_start();
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -21,6 +23,8 @@ $conexion->query("CREATE TABLE IF NOT EXISTS rubros (
         nombre VARCHAR(100) NOT NULL DEFAULT ''
     )"
 );
+$conexion->query("ALTER TABLE rubros ADD COLUMN IF NOT EXISTS empresa_id BIGINT NOT NULL DEFAULT 1");
+$conexion->query("CREATE INDEX IF NOT EXISTS idx_rubros_empresa ON rubros(empresa_id)");
 
 /* ── Datos entrantes ──────────────────────────────────── */
 $datos  = json_decode(file_get_contents('php://input'), true);
@@ -50,16 +54,16 @@ if (mb_strlen($nombre) > 100) {
 
 /* ── Upsert (sintaxis Postgres) ───────────────────────── */
 $stmt = $conexion->prepare(
-    "INSERT INTO rubros (codigo, nombre)
-     VALUES (?, ?)
-     ON CONFLICT (codigo) DO UPDATE SET nombre = EXCLUDED.nombre"
+    "INSERT INTO rubros (codigo, nombre, empresa_id)
+     VALUES (?, ?, ?)
+     ON CONFLICT (codigo) DO UPDATE SET nombre = EXCLUDED.nombre, empresa_id = EXCLUDED.empresa_id"
 );
 if (!$stmt) {
     ob_end_clean();
     echo json_encode(['error' => 'Error interno: ' . $conexion->error]);
     exit();
 }
-$stmt->bind_param('ss', $codigo, $nombre);
+$stmt->bind_param('ssi', $codigo, $nombre, $empresaId);
 
 if ($stmt->execute()) {
     ob_end_clean();

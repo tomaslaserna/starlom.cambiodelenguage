@@ -1,6 +1,6 @@
-
 <?php
-    session_start();
+require_once __DIR__ . '/../php/session_bootstrap.php';
+    starlim_session_start();
 
     if (!isset($_SESSION['usuario'])) {
         $rango = "x";

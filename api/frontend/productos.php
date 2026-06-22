@@ -1,5 +1,6 @@
 <?php
-    session_start();
+require_once __DIR__ . '/../php/session_bootstrap.php';
+    starlim_session_start();
 
     if (!isset($_SESSION['usuario'])) {
         $rango = "x";
@@ -38,7 +39,7 @@
     <div class="space"></div>
     <header class="header">
         <div class="menu">
-            <a href="#" class="logo">Star Lim</a>
+            <a href="#" class="logo">Starlim</a>
             <input type="checkbox" id="menu">
                 <label for="menu" class="menu-icono">
                     <span></span>

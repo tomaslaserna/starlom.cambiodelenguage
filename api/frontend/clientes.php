@@ -6,12 +6,13 @@
 $PERMITIDOS = ['Empleado_1', 'Empleado_2', 'Jefe', 'Jefe1', 'Admin'];
 require __DIR__ . '/partials/guard.php';
 include '../php/conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 $clientes = [];
 $res = $conexion->query(
     "SELECT id, nombre_cliente, razon_social, tipo_id, nro_id, cond_iva, telefono,
             domicilio, ciudad, provincia, lista_precios, estado, vendedor_cl, observacion
-     FROM clientes ORDER BY nombre_cliente ASC"
+     FROM clientes WHERE empresa_id = $empresaId ORDER BY nombre_cliente ASC"
 );
 if ($res) while ($r = $res->fetch_assoc()) $clientes[] = $r;
 
@@ -19,7 +20,7 @@ if ($res) while ($r = $res->fetch_assoc()) $clientes[] = $r;
 // (db_fixes.sql) aún no corrió, la página sigue funcionando sin romperse.
 $plazos_cl = [];
 try {
-    $rpl = $conexion->query("SELECT id, plazo_pago_dias FROM clientes");
+    $rpl = $conexion->query("SELECT id, plazo_pago_dias FROM clientes WHERE empresa_id = $empresaId");
     if ($rpl) while ($row = $rpl->fetch_assoc()) $plazos_cl[(int)$row['id']] = (int)$row['plazo_pago_dias'];
 } catch (Throwable $e) { $plazos_cl = []; }
 foreach ($clientes as &$c) $c['plazo_pago_dias'] = $plazos_cl[(int)$c['id']] ?? 0;
@@ -40,7 +41,7 @@ $inactivos  = $cuenta['En Riesgo'] + $cuenta['Perdido'];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clientes — Star Lim</title>
+    <title>Clientes — Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <link rel="stylesheet" href="../css/styleEmpleado.css">
     <link rel="stylesheet" href="../css/panel_bd.css">

@@ -10,25 +10,27 @@
 
 function starlim_descontar_stock_venta($conexion, int $id_venta): bool
 {
+    $empresaId = function_exists('starlim_current_empresa_id') ? starlim_current_empresa_id($conexion, false) : 1;
+
     // Claim atómico del flag: si otro request ya lo tomó, no hacemos nada.
     $claim = $conexion->prepare(
         "UPDATE ventas SET stock_descontado = 1
-         WHERE id = ? AND COALESCE(stock_descontado, 0) = 0"
+         WHERE id = ? AND empresa_id = ? AND COALESCE(stock_descontado, 0) = 0"
     );
-    $claim->bind_param('i', $id_venta);
+    $claim->bind_param('ii', $id_venta, $empresaId);
     $claim->execute();
     $gano = $claim->affected_rows > 0;
     $claim->close();
 
     if (!$gano) return false;
 
-    $det = $conexion->prepare("SELECT id_producto, cantidad FROM detalle_ventas WHERE id_venta = ?");
-    $det->bind_param('i', $id_venta);
+    $det = $conexion->prepare("SELECT id_producto, cantidad FROM detalle_ventas WHERE id_venta = ? AND empresa_id = ?");
+    $det->bind_param('ii', $id_venta, $empresaId);
     $det->execute();
     $det_res = $det->get_result();
     while ($d = $det_res->fetch_assoc()) {
-        $upd = $conexion->prepare("UPDATE productos SET stock = stock - ? WHERE id = ?");
-        $upd->bind_param('ii', $d['cantidad'], $d['id_producto']);
+        $upd = $conexion->prepare("UPDATE productos SET stock = stock - ? WHERE id = ? AND empresa_id = ?");
+        $upd->bind_param('iii', $d['cantidad'], $d['id_producto'], $empresaId);
         $upd->execute();
         $upd->close();
     }

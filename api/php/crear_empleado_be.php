@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 /**
  * crear_empleado_be.php — Alta de empleados/usuarios desde Gestión de Empleados.
  * Solo Jefe1 / Admin. Reutiliza el hash de contraseñas de auth.php.
@@ -8,7 +9,7 @@
  */
 require_once __DIR__ . '/auth.php';
 include 'conexion_starlim_be.php';
-if (session_status() === PHP_SESSION_NONE) session_start();
+starlim_session_start();
 
 $rango_actual = starlim_normalizar_rango($_SESSION['rango'] ?? '');
 if (!isset($_SESSION['usuario']) || !in_array($rango_actual, ['Jefe1', 'Admin'], true)) {

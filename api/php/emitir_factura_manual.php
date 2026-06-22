@@ -1,18 +1,14 @@
 <?php
+require_once __DIR__ . '/session_bootstrap.php';
 /**
- * emitir_factura_manual.php — Carga de PEDIDOS (circuito jun 2026).
+ * emitir_factura_manual.php - Carga de pedidos/remitos.
  *
- * Antes este script emitía la factura ARCA y descontaba stock al cargar.
- * Ahora la carga SIEMPRE crea un pedido: venta con estado_pedido='recibido'
- * + remito + detalles. El stock se descuenta recién al marcarse 'entregado'
- * (actualizar_estado_pedido.php) y la factura se emite después de la entrega
- * vía solicitudes_factura (solicitar_factura.php / resolver_solicitud_factura.php).
- *
- * El tipo de comprobante elegido en el form se guarda como preferencia en
- * ventas.comprobante_deseado ('remito' | 'factura_a' | 'factura_b').
+ * La app no emite facturas fiscales online. Este script siempre crea un
+ * pedido con remito operativo; el stock se descuenta recien al marcarse
+ * entregado en actualizar_estado_pedido.php.
  */
 ini_set('display_errors', 0);
-session_start();
+starlim_session_start();
 
 // Verificar permisos
 if (!isset($_SESSION['usuario'])) {
@@ -26,12 +22,14 @@ if ($rango !== 'Empleado_2' && $rango !== 'Jefe' && $rango !== 'Jefe1' && $rango
 }
 
 include 'conexion_starlim_be.php';
+require_once __DIR__ . '/tenant.php';
+$empresa_id = starlim_bootstrap_tenant_context($conexion);
 
 // ── Página de advertencia de stock con opción de continuar ──
 function mostrarAdvertenciaStock(array $advertencias) {
     $msg = nl2br(htmlspecialchars(implode("\n", $advertencias)));
     echo '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
-        <title>Advertencia de stock — Star Lim</title>
+        <title>Advertencia de stock — Starlim</title>
         <style>
             body{font-family:sans-serif;background:#1a1a1a;color:#e0e0e0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}
             .card{background:#2a2a2a;border-radius:12px;padding:2rem 2.5rem;max-width:520px;width:100%;box-shadow:0 4px 24px #0006;}
@@ -67,20 +65,19 @@ function mostrarAdvertenciaStock(array $advertencias) {
 }
 
 // ── Función para crear remito ──────────────────────────
-function crearRemito($conexion, $id_venta, $nombre_cliente, $nro_doc, $fecha, $id_operador, $deposito, $sucursal_cliente, $provincia, $observacion, $condicion_pago, $monto, $productos, $vendedor = '', $lista_precios = '') {
-    $res = $conexion->query("SELECT COALESCE(MAX(nro_remito), 0) + 1 AS siguiente FROM remitos");
-    $row = $res->fetch_assoc();
-    $nro_remito = intval($row['siguiente']);
+function crearRemito($conexion, $id_venta, $nombre_cliente, $nro_doc, $fecha, $id_operador, $deposito, $sucursal_cliente, $provincia, $observacion, $condicion_pago, $monto, $productos, $vendedor = '', $lista_precios = '', ?int $empresa_id = null) {
+    $empresa_id = $empresa_id ?? starlim_current_empresa_id($conexion, false);
+    $nro_remito = starlim_next_sequence($conexion, 'nro_remito', $empresa_id);
 
     $stmt = $conexion->prepare(
-        "INSERT INTO remitos (id_venta, nro_remito, nombre_cliente, lista_precios, dni_cliente, fecha, id_operador, deposito, sucursal_cliente, provincia, observacion, condicion_pago, monto, vendedor, estado_pedido)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recibido')"
+        "INSERT INTO remitos (id_venta, nro_remito, nombre_cliente, lista_precios, dni_cliente, fecha, id_operador, deposito, sucursal_cliente, provincia, observacion, condicion_pago, monto, vendedor, estado_pedido, empresa_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'recibido', ?)"
     );
     if (!$stmt) die("Error remito: " . $conexion->error);
-    $stmt->bind_param("iissssisssssds",
+    $stmt->bind_param("iissssisssssdsi",
         $id_venta, $nro_remito, $nombre_cliente, $lista_precios, $nro_doc, $fecha,
         $id_operador, $deposito, $sucursal_cliente, $provincia,
-        $observacion, $condicion_pago, $monto, $vendedor
+        $observacion, $condicion_pago, $monto, $vendedor, $empresa_id
     );
     $stmt->execute();
     $id_remito = $conexion->insert_id;
@@ -95,10 +92,10 @@ function crearRemito($conexion, $id_venta, $nombre_cliente, $nro_doc, $fecha, $i
         $subtotal_p      = round($precio_unit * (1 - $descuento / 100) * $cantidad, 2);
 
         $stmt2 = $conexion->prepare(
-            "INSERT INTO detalle_remitos (id_remito, id_producto, nombre_producto, cantidad, precio_unit, descuento, subtotal)
-             VALUES (?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO detalle_remitos (id_remito, id_producto, nombre_producto, cantidad, precio_unit, descuento, subtotal, empresa_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
         );
-        $stmt2->bind_param("iisiddd", $id_remito, $id_producto, $nombre_producto, $cantidad, $precio_unit, $descuento, $subtotal_p);
+        $stmt2->bind_param("iisidddi", $id_remito, $id_producto, $nombre_producto, $cantidad, $precio_unit, $descuento, $subtotal_p, $empresa_id);
         $stmt2->execute();
         $stmt2->close();
     }
@@ -108,14 +105,19 @@ function crearRemito($conexion, $id_venta, $nombre_cliente, $nro_doc, $fecha, $i
 
 // ── Recibir datos ──────────────────────────────────────
 $skip_stock_check = !empty($_POST['skip_stock_check']) && $_POST['skip_stock_check'] === '1';
-$tipo_cliente     = $_POST['tipo_cliente_hidden'] ?? '';
+$tipo_cliente     = 'sin_factura';
 $nro_doc          = preg_replace('/[^0-9]/', '', trim($_POST['nro_doc'] ?? ''));
 $razon_social     = trim($_POST['razon_social'] ?? '');
 $nombre_cliente   = trim($_POST['nombre_cliente'] ?? '');
 $tipo_cbte        = intval($_POST['tipo_cbte'] ?? 6);
 $condicion_pago   = trim($_POST['condicion_pago'] ?? '');
-$id_vendedor      = intval($_POST['id_operador'] ?? 0) ?: null;
+$id_operador_raw  = trim((string)($_POST['id_operador'] ?? ''));
+$id_vendedor      = ctype_digit($id_operador_raw) && (int)$id_operador_raw > 0 ? (int)$id_operador_raw : null;
 $operador         = trim($_POST['vendedor_cl'] ?? '');
+$operador_nombre  = trim($_POST['operador_nombre'] ?? '');
+if ($operador === '' && $operador_nombre !== '') {
+    $operador = $operador_nombre;
+}
 $fecha            = trim($_POST['fecha'] ?? '');
 $vencimiento_cobro_raw = trim($_POST['vencimiento'] ?? '');
 $deposito         = trim($_POST['deposito'] ?? '');
@@ -142,21 +144,13 @@ if (in_array($tipo_cbte, [2, 3, 7, 8], true)) {
     die("Las notas de crédito/débito se emiten desde Ventas registradas, sobre una venta ya entregada.");
 }
 
-// Preferencia de comprobante para la facturación post-entrega
-if ($tipo_cliente === 'sin_factura') {
-    $comprobante_deseado = 'remito';
-} else {
-    $comprobante_deseado = ($tipo_cbte === 1) ? 'factura_a' : 'factura_b';
-}
+$comprobante_deseado = 'remito';
 
 // Validaciones básicas
 if (empty($productos)) {
     die("Error: No hay productos en el pedido.");
 }
 
-if ($tipo_cliente !== 'sin_factura' && $nro_doc === '') {
-    die("Error: Falta el número de documento del cliente.");
-}
 
 // ── Validar stock DISPONIBLE (real menos reservado por otros pedidos) ──
 if (!$skip_stock_check) {
@@ -182,18 +176,18 @@ $stmt = $conexion->prepare(
     "INSERT INTO ventas (id_producto, dni_cliente, nombre_cliente, lista_precios, monto, monto_neto, monto_iva,
                          tipo_cbte, cae, vencimiento_cae, nro_comprobante, condicion_pago, id_operador, fecha, vendedor,
                          estado_pedido, estado_cobro, seguimiento, stock_descontado, observacion, comprobante_deseado,
-                         vencimiento_cobro)
-     VALUES (NULL, ?, ?, ?, ?, ?, ?, 6, '', '', 0, ?, ?, ?, ?, 'recibido', 'pendiente', 'no_facturada', 0, ?, ?, ?)"
+                         vencimiento_cobro, empresa_id)
+     VALUES (NULL, ?, ?, ?, ?, ?, ?, 6, '', '', 0, ?, ?, ?, ?, 'recibido', 'pendiente', 'no_facturada', 0, ?, ?, ?, ?)"
 );
 if (!$stmt) {
     echo "<script>alert(" . json_encode('Error al guardar el pedido: ' . $conexion->error) . ");history.back();</script>";
     die();
 }
-$stmt->bind_param("sssdddsisssss",
+$stmt->bind_param("sssdddsisssssi",
     $nro_doc, $nombre_cliente, $lista_precios,
     $monto_total, $monto_neto, $monto_iva,
     $condicion_pago, $id_vendedor, $fecha_venta, $operador,
-    $observacion, $comprobante_deseado, $vencimiento_cobro
+    $observacion, $comprobante_deseado, $vencimiento_cobro, $empresa_id
 );
 $stmt->execute();
 $id_venta = $conexion->insert_id;
@@ -209,20 +203,20 @@ foreach ($productos as $p) {
     $subtotal_p      = round($precio_unit * (1 - $descuento / 100) * $cantidad, 2);
 
     $stmt2 = $conexion->prepare(
-        "INSERT INTO detalle_ventas (id_venta, id_producto, nombre_producto, cantidad, precio_unit, descuento, subtotal)
-         VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO detalle_ventas (id_venta, id_producto, nombre_producto, cantidad, precio_unit, descuento, subtotal, empresa_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     );
-    $stmt2->bind_param("iisiddd", $id_venta, $id_producto, $nombre_producto, $cantidad, $precio_unit, $descuento, $subtotal_p);
+    $stmt2->bind_param("iisidddi", $id_venta, $id_producto, $nombre_producto, $cantidad, $precio_unit, $descuento, $subtotal_p, $empresa_id);
     $stmt2->execute();
     $stmt2->close();
 }
 
 // Remito del pedido (la "hoja de armado" que ve depósito)
-$remito = crearRemito($conexion, $id_venta, $nombre_cliente, $nro_doc, $fecha_venta, $id_vendedor, $deposito, $sucursal_cliente, $provincia, $observacion, $condicion_pago, $monto_total, $productos, $operador, $lista_precios);
+$remito = crearRemito($conexion, $id_venta, $nombre_cliente, $nro_doc, $fecha_venta, $id_vendedor, $deposito, $sucursal_cliente, $provincia, $observacion, $condicion_pago, $monto_total, $productos, $operador, $lista_precios, $empresa_id);
 
 // El pedido se identifica por el nro de remito hasta que se facture
-$updNro = $conexion->prepare("UPDATE ventas SET nro_comprobante = ? WHERE id = ?");
-$updNro->bind_param("ii", $remito['nro'], $id_venta);
+$updNro = $conexion->prepare("UPDATE ventas SET nro_comprobante = ? WHERE id = ? AND empresa_id = ?");
+$updNro->bind_param("iii", $remito['nro'], $id_venta, $empresa_id);
 $updNro->execute();
 $updNro->close();
 

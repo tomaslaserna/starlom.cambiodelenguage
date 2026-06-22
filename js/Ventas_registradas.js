@@ -61,7 +61,11 @@ async function fetchGlobalResumen() {
     const periodo = document.getElementById('rg-periodo-select')?.value || 'mes';
 
     try {
-        const res = await fetch(`../php/get_resumen_global.php?periodo=${encodeURIComponent(periodo)}`);
+        const res = await fetch(`../php/get_resumen_global.php?periodo=${encodeURIComponent(periodo)}`, {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json' },
+        });
         if (!res.ok) return;
         const data = await res.json();
         renderGlobalResumen(data);
@@ -181,7 +185,7 @@ function buildParams() {
     if (nroFac) p.set('nro_factura', nroFac);
 
     const tipo = document.getElementById('filtro-tipo-factura').value;
-    if (tipo) p.set('tipo_factura', tipo);
+    if (tipo && tipo !== 'all') p.set('tipo_factura', tipo);
 
     const dia  = document.getElementById('filtro-dia-factura').value.trim();
     const mes  = document.getElementById('filtro-mes-factura').value.trim();
@@ -194,7 +198,7 @@ function buildParams() {
     if (seguimiento) p.set('seguimiento', seguimiento);
 
     const lista = document.getElementById('filtro-lista-precios').value;
-    if (lista) p.set('lista_precios', lista);
+    if (lista && lista !== 'all') p.set('lista_precios', lista);
 
     p.set('pagina', paginaActual);
     p.set('limite', LIMITE_PAG);
@@ -210,8 +214,29 @@ async function doFetch() {
     tbody.innerHTML = `<tr><td colspan="8" class="tabla-vacia tabla-cargando">Cargando…</td></tr>`;
 
     try {
-        const res      = await fetch(`../php/get_facturas_cliente.php?${params}`);
-        const json     = await res.json();
+        const res = await fetch(`../php/get_facturas_cliente.php?${params}`, {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json' },
+        });
+        const raw = await res.text();
+        let json;
+        try {
+            json = raw ? JSON.parse(raw) : {};
+        } catch {
+            throw new Error('Respuesta no JSON del servidor');
+        }
+
+        if (res.status === 401) {
+            tbody.innerHTML = `<tr><td colspan="8" class="tabla-vacia tabla-error">Tu sesiÃ³n venciÃ³. IniciÃ¡ sesiÃ³n para continuar.</td></tr>`;
+            setTimeout(() => { window.location.href = 'sign.php?expired=1'; }, 900);
+            renderPaginacion(0, 1);
+            return;
+        }
+        if (!res.ok || json.ok === false) {
+            throw new Error(json.error || `HTTP ${res.status}`);
+        }
+
         const facturas = Array.isArray(json) ? json : (json.data ?? []);
         const total    = json.total ?? facturas.length;
         renderTable(facturas);
@@ -235,6 +260,10 @@ function fmtMoney(n) {
     return Number(n).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function isCobroPendiente(estado) {
+    return estado === 'pendiente' || estado === 'en_proceso' || estado === 'pendiente_aprobacion';
+}
+
 function getGrupo(fecha, divisor) {
     const parts = fecha.split('-');
     if (parts.length < 3) return '';
@@ -256,7 +285,7 @@ function computeGroupStats(gFacturas) {
     const facturadas   = gFacturas.filter(f => f.con_factura).reduce((s, f) => s + f.monto, 0);
     const noFacturadas = gFacturas.filter(f => !f.con_factura).reduce((s, f) => s + f.monto, 0);
     const pendiente    = gFacturas
-        .filter(f => f.estado_cobro === 'pendiente' || f.estado_cobro === 'en_proceso')
+        .filter(f => isCobroPendiente(f.estado_cobro))
         .reduce((s, f) => s + f.monto, 0);
     const vencido      = gFacturas
         .filter(f => f.estado_cobro === 'vencido')
@@ -329,7 +358,9 @@ function renderTable(facturas) {
                 : '';
             const remitoBtn  = f.id_remito
                 ? `<a href="../php/generar_pdf_remito.php?id_remito=${f.id_remito}&view=1"
-                      target="_blank" class="btn-pdf btn-pdf-rem" title="Ver remito N° ${esc(f.nro_remito)}">Remito</a>`
+                      target="_blank" class="btn-pdf btn-pdf-rem" title="Ver remito N° ${esc(f.nro_remito)}">Remito</a>
+                   <a href="../php/generar_pdf_remito.php?id_remito=${f.id_remito}&view=1&precios=1"
+                      target="_blank" class="btn-pdf btn-pdf-rem" title="Ver remito valorizado N° ${esc(f.nro_remito)}">Remito $</a>`
                 : '';
             const genRemitoBtn = (!esRemito && !f.id_remito)
                 ? `<button class="btn-pdf btn-gen-remito" data-id="${f.id}">Generar remito</button>`
@@ -438,7 +469,7 @@ function renderResumen(facturas) {
     const facturadas   = facturas.filter(f => f.con_factura).reduce((s, f) => s + f.monto, 0);
     const noFacturadas = facturas.filter(f => !f.con_factura).reduce((s, f) => s + f.monto, 0);
     const pendiente    = facturas
-        .filter(f => f.estado_cobro === 'pendiente' || f.estado_cobro === 'en_proceso')
+        .filter(f => isCobroPendiente(f.estado_cobro))
         .reduce((s, f) => s + f.monto, 0);
     const vencido      = facturas
         .filter(f => f.estado_cobro === 'vencido')
@@ -536,7 +567,11 @@ async function onExpandClick(e) {
         const url  = tipo === 'remito'
             ? `../php/get_detalle_remito.php?id_remito=${id}`
             : `../php/get_detalle_venta.php?id_venta=${id}`;
-        const res  = await fetch(url);
+        const res  = await fetch(url, {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json' },
+        });
         const data = await res.json();
 
         if (!data.length) {
@@ -576,7 +611,13 @@ async function onGenRemitoClick(e) {
     body.append('id_venta', id);
 
     try {
-        const res  = await fetch('../php/generar_remito_venta.php', { method: 'POST', body });
+        const res  = await fetch('../php/generar_remito_venta.php', {
+            method: 'POST',
+            body,
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json' },
+        });
         const data = await res.json();
 
         if (data.ok) {

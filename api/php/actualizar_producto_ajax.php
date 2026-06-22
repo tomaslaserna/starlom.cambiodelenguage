@@ -1,6 +1,8 @@
 <?php
-session_start();
+require_once __DIR__ . '/session_bootstrap.php';
+starlim_session_start();
 include 'conexion_starlim_be.php';
+$empresaId = starlim_bootstrap_tenant_context($conexion);
 
 header('Content-Type: application/json');
 
@@ -45,13 +47,15 @@ $conexion->query("CREATE TABLE IF NOT EXISTS stock_modificaciones (
     producto_nombre VARCHAR(255) NOT NULL,
     cambios TEXT NOT NULL,
     justificacion TEXT NOT NULL,
+    empresa_id BIGINT NOT NULL DEFAULT 1,
     fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
 $conexion->query("CREATE INDEX IF NOT EXISTS idx_stock_modificaciones_fecha ON stock_modificaciones (fecha)");
 $conexion->query("CREATE INDEX IF NOT EXISTS idx_stock_modificaciones_prod ON stock_modificaciones (producto_id)");
+$conexion->query("CREATE INDEX IF NOT EXISTS idx_stock_modificaciones_empresa ON stock_modificaciones (empresa_id)");
 
 // Leer valores actuales antes de modificar
-$r = $conexion->query("SELECT nombre, costo, descripcion, stock, codigo, imagen FROM productos WHERE id = " . intval($id) . " LIMIT 1");
+$r = $conexion->query("SELECT nombre, costo, descripcion, stock, codigo, imagen FROM productos WHERE id = " . intval($id) . " AND empresa_id = " . intval($empresaId) . " LIMIT 1");
 if (!$r || !($old = $r->fetch_assoc())) {
     echo json_encode(['ok' => false, 'msg' => 'Producto no encontrado']);
     exit();
@@ -59,13 +63,13 @@ if (!$r || !($old = $r->fetch_assoc())) {
 
 // Actualizar el producto
 $stmt = $conexion->prepare(
-    "UPDATE productos SET nombre=?, costo=?, descripcion=?, stock=?, codigo=?, imagen=? WHERE id=?"
+    "UPDATE productos SET nombre=?, costo=?, descripcion=?, stock=?, codigo=?, imagen=? WHERE id=? AND empresa_id=?"
 );
 if (!$stmt) {
     echo json_encode(['ok' => false, 'msg' => 'Error interno del servidor']);
     exit();
 }
-$stmt->bind_param('sdsissi', $nombre, $precio, $descripcion, $cantidad, $codigo, $imagen, $id);
+$stmt->bind_param('sdsissii', $nombre, $precio, $descripcion, $cantidad, $codigo, $imagen, $id, $empresaId);
 if (!$stmt->execute()) {
     echo json_encode(['ok' => false, 'msg' => 'Error al actualizar el producto']);
     $stmt->close();
@@ -109,11 +113,11 @@ if (!empty($cambios)) {
     $nombre_prod  = $old['nombre'];
     $cambios_json = json_encode($cambios, JSON_UNESCAPED_UNICODE);
     $stmt2 = $conexion->prepare(
-        "INSERT INTO stock_modificaciones (empleado, producto_id, producto_nombre, cambios, justificacion)
-         VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO stock_modificaciones (empleado, producto_id, producto_nombre, cambios, justificacion, empresa_id)
+         VALUES (?, ?, ?, ?, ?, ?)"
     );
     if ($stmt2) {
-        $stmt2->bind_param('sisss', $usuario, $id, $nombre_prod, $cambios_json, $justificacion);
+        $stmt2->bind_param('sisssi', $usuario, $id, $nombre_prod, $cambios_json, $justificacion, $empresaId);
         $stmt2->execute();
         $stmt2->close();
     }

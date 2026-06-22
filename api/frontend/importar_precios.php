@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/../php/session_bootstrap.php';
+starlim_session_start();
 include '../php/conexion_starlim_be.php';
 
 if (!isset($_SESSION['rango']) || $_SESSION['rango'] !== 'Admin') {
@@ -12,7 +13,7 @@ if (!isset($_SESSION['rango']) || $_SESSION['rango'] !== 'Admin') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Importar Lista de Precios - Star Lim</title>
+    <title>Importar Lista de Precios - Starlim</title>
     <link rel="stylesheet" href="../css/global.css">
     <style>
         .import-container { max-width: 780px; margin: 40px auto; padding: 0 20px; }
