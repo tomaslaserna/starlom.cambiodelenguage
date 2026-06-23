@@ -1,4 +1,25 @@
 import { ModulePage } from "@/components/module-page";
+import { SectionTabs } from "@/components/section-tabs";
+import {
+  Button,
+  ButtonLink,
+  Card,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Select,
+  StatCard,
+  StatusBadge,
+  Toolbar,
+  type StatusBadgeTone,
+} from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { listQuotes } from "@/lib/quotes";
 import { requireStaffSession } from "@/lib/auth";
@@ -26,6 +47,19 @@ function matchesQuery(item: Awaited<ReturnType<typeof listQuotes>>[number], quer
     .includes(query);
 }
 
+function statusLabel(value: string) {
+  const normalized = value.replaceAll("_", " ").trim();
+  if (!normalized) return "-";
+  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function quoteStatusTone(value: string): StatusBadgeTone {
+  if (value === "aceptada") return "success";
+  if (value === "rechazada") return "danger";
+  if (value === "pendiente") return "warning";
+  return "neutral";
+}
+
 export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const session = await requireStaffSession();
   const params = await searchParams;
@@ -45,129 +79,154 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       title="Presupuestos"
     >
       <div className="grid gap-5">
-        <form
-          action="/quotes"
-          className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 md:grid-cols-[1fr_220px_auto] md:items-center"
-        >
-          <input
-            className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 text-sm outline-none focus:border-[color:var(--accent)]"
-            defaultValue={params.q ?? ""}
-            name="q"
-            placeholder="Buscar cliente, razon social, CUIT o creador"
-          />
-          <select
-            className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 text-sm outline-none focus:border-[color:var(--accent)]"
-            defaultValue={status}
-            name="status"
+        <PageHeader
+          description="Seguimiento de presupuestos comerciales, vencimientos, importes y conversion a pedido."
+          title="Presupuestos"
+        />
+
+        <SectionTabs
+          tabs={[
+            { href: "/sales", label: "Resumen" },
+            { href: "/orders/new", label: "Cargar pedido" },
+            { href: "/quotes", label: "Presupuestos", active: true },
+          ]}
+        />
+
+        <Toolbar ariaLabel="Filtros de presupuestos">
+          <form
+            action="/quotes"
+            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_220px_auto] lg:items-end"
           >
-            {quoteStates.map((state) => (
-              <option key={state.value} value={state.value}>
-                {state.label}
-              </option>
-            ))}
-          </select>
-          <button className="min-h-11 rounded-md bg-[color:var(--accent)] px-4 text-sm font-semibold text-white hover:bg-[color:var(--accent-strong)]">
-            Filtrar
-          </button>
-        </form>
+            <Field htmlFor="quotes-query" label="Buscar">
+              <Input
+                defaultValue={params.q ?? ""}
+                id="quotes-query"
+                name="q"
+                placeholder="Cliente, razon social, CUIT o creador"
+                type="search"
+              />
+            </Field>
+            <Field htmlFor="quotes-status" label="Estado">
+              <Select defaultValue={status} id="quotes-status" name="status">
+                {quoteStates.map((state) => (
+                  <option key={state.value} value={state.value}>
+                    {state.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Button type="submit">Filtrar</Button>
+          </form>
+        </Toolbar>
 
         <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Presupuestos</div>
-            <div className="mt-2 text-2xl font-semibold">{quotes.length}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Total filtrado</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(total)}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Vencidos en filtro</div>
-            <div className="mt-2 text-2xl font-semibold">{expired}</div>
-          </div>
+          <StatCard className="p-3" label="Presupuestos filtrados" value={quotes.length} />
+          <StatCard className="p-3" label="Total filtrado" value={formatCurrency(total)} />
+          <StatCard className="p-3" label="Vencidos en filtro" value={expired} />
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
-              <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Presupuesto</th>
-                  <th className="px-4 py-3 font-semibold">Cliente</th>
-                  <th className="px-4 py-3 font-semibold">Emision</th>
-                  <th className="px-4 py-3 font-semibold">Vencimiento</th>
-                  <th className="px-4 py-3 font-semibold">Estado</th>
-                  <th className="px-4 py-3 text-right font-semibold">Neto</th>
-                  <th className="px-4 py-3 text-right font-semibold">IVA</th>
-                  <th className="px-4 py-3 text-right font-semibold">Total</th>
-                  <th className="px-4 py-3 font-semibold">Accion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {quotes.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-[color:var(--muted)]" colSpan={9}>
-                      No hay presupuestos para los filtros actuales.
-                    </td>
-                  </tr>
-                ) : (
-                  quotes.map((quote) => (
-                    <tr className="border-t border-[color:var(--border)]" key={quote.id}>
-                      <td className="px-4 py-4">
-                        <div className="font-mono text-xs">#{quote.id}</div>
-                        <div className="text-xs text-[color:var(--muted)]">{quote.createdBy || "-"}</div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="font-medium">
-                          {quote.customer.name || quote.customer.businessName || "Sin cliente"}
-                        </div>
-                        <div className="font-mono text-xs text-[color:var(--muted)]">
-                          {quote.customer.taxId || "-"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">{formatDate(quote.issueDate)}</td>
-                      <td className="px-4 py-4">{formatDate(quote.expirationDate)}</td>
-                      <td className="px-4 py-4">
-                        <span className="rounded-md border border-[color:var(--border)] px-2 py-1 text-xs">
-                          {quote.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">
-                        {formatCurrency(quote.subtotal)}
-                      </td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">
-                        {formatCurrency(quote.vatAmount)}
-                      </td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">
-                        {formatCurrency(quote.total)}
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="grid min-w-[120px] gap-2">
-                          <a
-                            className="min-h-10 rounded-md border border-[color:var(--border)] px-3 py-2 text-center text-xs font-semibold hover:bg-[color:var(--panel-subtle)]"
-                            href={`/api/pdfs/quotes/${quote.id}`}
-                            target="_blank"
-                          >
-                            PDF
-                          </a>
-                          {quote.status === "pendiente" ? (
-                            <form action={acceptQuoteAction}>
-                              <input name="id" type="hidden" value={quote.id} />
-                              <button className="min-h-10 w-full rounded-md bg-[color:var(--accent)] px-3 text-xs font-semibold text-white hover:bg-[color:var(--accent-strong)]">
-                                Aceptar
-                              </button>
-                            </form>
-                          ) : (
-                            <span className="text-xs text-[color:var(--muted)]">Sin accion</span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <Card className="overflow-hidden">
+          <DataTable
+            caption="Listado de presupuestos filtrados"
+            className="rounded-none border-0 shadow-none"
+            minWidth="1040px"
+            tableLabel="Presupuestos"
+          >
+            <DataTableHeader>
+              <DataTableRow className="hover:bg-transparent">
+                <DataTableHead>Presupuesto</DataTableHead>
+                <DataTableHead>Cliente</DataTableHead>
+                <DataTableHead>Emision</DataTableHead>
+                <DataTableHead>Vencimiento</DataTableHead>
+                <DataTableHead>Estado</DataTableHead>
+                <DataTableHead align="right">Neto</DataTableHead>
+                <DataTableHead align="right">IVA</DataTableHead>
+                <DataTableHead align="right">Total</DataTableHead>
+                <DataTableHead>Accion</DataTableHead>
+              </DataTableRow>
+            </DataTableHeader>
+            <DataTableBody>
+              {quotes.length === 0 ? (
+                <DataTableRow className="hover:bg-transparent">
+                  <DataTableCell colSpan={9}>
+                    <EmptyState
+                      description="Ajusta la busqueda o cambia el estado para encontrar presupuestos."
+                      title="No hay presupuestos para los filtros actuales"
+                    />
+                  </DataTableCell>
+                </DataTableRow>
+              ) : (
+                quotes.map((quote) => (
+                  <DataTableRow key={quote.id}>
+                    <DataTableCell>
+                      <div className="font-mono text-xs">#{quote.id}</div>
+                      <div className="mt-1 text-xs text-[color:var(--muted)]">{quote.createdBy || "-"}</div>
+                    </DataTableCell>
+                    <DataTableCell>
+                      <div className="font-medium">
+                        {quote.customer.name || quote.customer.businessName || "Sin cliente"}
+                      </div>
+                      <div className="mt-1 font-mono text-xs text-[color:var(--muted)]">
+                        {quote.customer.taxId || "-"}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap">{formatDate(quote.issueDate)}</DataTableCell>
+                    <DataTableCell className="whitespace-nowrap">
+                      <div>{formatDate(quote.expirationDate)}</div>
+                      {quote.valid === false ? (
+                        <div className="mt-1 text-xs text-[color:var(--danger)]">Vencido</div>
+                      ) : null}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <StatusBadge tone={quoteStatusTone(quote.status)}>
+                        {statusLabel(quote.status)}
+                      </StatusBadge>
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                      {formatCurrency(quote.subtotal)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                      {formatCurrency(quote.vatAmount)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                      {formatCurrency(quote.total)}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <div className="grid min-w-[132px] gap-2">
+                        <ButtonLink
+                          aria-label={`Abrir PDF del presupuesto ${quote.id}`}
+                          href={`/api/pdfs/quotes/${quote.id}`}
+                          prefetch={false}
+                          rel="noreferrer"
+                          size="sm"
+                          target="_blank"
+                          variant="secondary"
+                        >
+                          PDF
+                        </ButtonLink>
+                        {quote.status === "pendiente" ? (
+                          <form action={acceptQuoteAction}>
+                            <input name="id" type="hidden" value={quote.id} />
+                            <Button
+                              aria-label={`Aceptar presupuesto ${quote.id}`}
+                              className="w-full"
+                              size="sm"
+                              type="submit"
+                            >
+                              Aceptar
+                            </Button>
+                          </form>
+                        ) : (
+                          <span className="text-xs text-[color:var(--muted)]">Sin accion</span>
+                        )}
+                      </div>
+                    </DataTableCell>
+                  </DataTableRow>
+                ))
+              )}
+            </DataTableBody>
+          </DataTable>
+        </Card>
       </div>
     </ModulePage>
   );
