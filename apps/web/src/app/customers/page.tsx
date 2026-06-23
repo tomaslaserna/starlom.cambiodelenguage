@@ -1,6 +1,23 @@
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
-import { SearchBar } from "@/components/search-bar";
+import {
+  Button,
+  Card,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  StatCard,
+  StatusBadge,
+  Toolbar,
+  type StatusBadgeTone,
+} from "@/components/ui";
 import { listCustomers } from "@/lib/catalog";
 import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
@@ -11,6 +28,14 @@ type CustomersPageProps = {
     page?: string;
   }>;
 };
+
+function customerStatusTone(status: string): StatusBadgeTone {
+  const normalized = status.trim().toLowerCase();
+  if (normalized === "activo") return "success";
+  if (normalized === "en riesgo" || normalized === "riesgo") return "warning";
+  if (normalized === "perdido") return "danger";
+  return "neutral";
+}
 
 export default async function CustomersPage({ searchParams }: CustomersPageProps) {
   const session = await requireStaffSession();
@@ -30,67 +55,106 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
       title="Clientes"
     >
       <div className="grid gap-5">
-        <div className="grid gap-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 md:grid-cols-[1fr_auto] md:items-center">
-          <SearchBar action="/customers" placeholder="Buscar por nombre, razon social, CUIT o telefono" query={result.meta.query} />
-          <div className="rounded-md bg-[color:var(--panel-subtle)] px-3 py-2 text-sm">
-            <span className="font-semibold">{formatNumber(result.meta.total)}</span>{" "}
-            <span className="text-[color:var(--muted)]">clientes</span>
-          </div>
+        <PageHeader
+          description="Base comercial de clientes con identificacion fiscal, contacto y segmentacion operativa."
+          title="Clientes"
+        />
+
+        <Toolbar ariaLabel="Busqueda de clientes">
+          <form
+            action="/customers"
+            aria-label="Busqueda"
+            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto] lg:items-end"
+          >
+            <Field htmlFor="customers-query" label="Buscar">
+              <Input
+                defaultValue={result.meta.query}
+                id="customers-query"
+                name="q"
+                placeholder="Nombre, razon social, CUIT o telefono"
+                type="search"
+              />
+            </Field>
+            <Button type="submit">Buscar</Button>
+          </form>
+        </Toolbar>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            className="p-3"
+            detail={`Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`}
+            label="Clientes encontrados"
+            value={formatNumber(result.meta.total)}
+          />
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] border-collapse text-left text-sm">
-              <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Cliente</th>
-                  <th className="px-4 py-3 font-semibold">Identificacion</th>
-                  <th className="px-4 py-3 font-semibold">Contacto</th>
-                  <th className="px-4 py-3 font-semibold">Ubicacion</th>
-                  <th className="px-4 py-3 font-semibold">Lista</th>
-                  <th className="px-4 py-3 font-semibold">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.data.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-[color:var(--muted)]" colSpan={6}>
-                      No hay clientes para la busqueda actual.
-                    </td>
-                  </tr>
-                ) : (
-                  result.data.map((customer) => (
-                    <tr className="border-t border-[color:var(--border)]" key={customer.id}>
-                      <td className="px-4 py-4">
-                        <div className="font-medium">{customer.name || "Sin nombre"}</div>
-                        <div className="text-xs text-[color:var(--muted)]">{customer.businessName || customer.code || `ID ${customer.id}`}</div>
-                      </td>
-                      <td className="px-4 py-4 font-mono text-xs">
-                        {customer.taxIdType || "ID"} {customer.taxId || "-"}
-                      </td>
-                      <td className="px-4 py-4">{customer.phone || "-"}</td>
-                      <td className="px-4 py-4 text-[color:var(--muted)]">
+        <Card className="overflow-hidden">
+          <DataTable
+            caption="Listado paginado de clientes"
+            className="rounded-none border-0 shadow-none"
+            minWidth="980px"
+            tableLabel="Clientes"
+          >
+            <DataTableHeader>
+              <DataTableRow className="hover:bg-transparent">
+                <DataTableHead>Cliente</DataTableHead>
+                <DataTableHead>Identificacion</DataTableHead>
+                <DataTableHead>Contacto</DataTableHead>
+                <DataTableHead>Ubicacion</DataTableHead>
+                <DataTableHead>Lista</DataTableHead>
+                <DataTableHead>Estado</DataTableHead>
+              </DataTableRow>
+            </DataTableHeader>
+            <DataTableBody>
+              {result.data.length === 0 ? (
+                <DataTableRow className="hover:bg-transparent">
+                  <DataTableCell colSpan={6}>
+                    <EmptyState
+                      description="Ajusta la busqueda para encontrar clientes por nombre, razon social, CUIT o telefono."
+                      title="No hay clientes para la busqueda actual"
+                    />
+                  </DataTableCell>
+                </DataTableRow>
+              ) : (
+                result.data.map((customer) => (
+                  <DataTableRow key={customer.id}>
+                    <DataTableCell>
+                      <div className="max-w-[260px] break-words font-medium">
+                        {customer.name || "Sin nombre"}
+                      </div>
+                      <div className="mt-1 max-w-[260px] break-words text-xs text-[color:var(--muted)]">
+                        {customer.businessName || customer.code || `ID ${customer.id}`}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap font-mono text-xs">
+                      {customer.taxIdType || "ID"} {customer.taxId || "-"}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <div className="max-w-[180px] break-words">{customer.phone || "-"}</div>
+                    </DataTableCell>
+                    <DataTableCell className="text-[color:var(--muted)]">
+                      <div className="max-w-[220px] break-words">
                         {[customer.city, customer.province].filter(Boolean).join(", ") || "-"}
-                      </td>
-                      <td className="px-4 py-4">{customer.priceList || "-"}</td>
-                      <td className="px-4 py-4">
-                        <span className="rounded-md border border-[color:var(--border)] px-2 py-1 text-xs">
-                          {customer.status || "Sin estado"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell>{customer.priceList || "-"}</DataTableCell>
+                    <DataTableCell>
+                      <StatusBadge tone={customerStatusTone(customer.status)}>
+                        {customer.status || "Sin estado"}
+                      </StatusBadge>
+                    </DataTableCell>
+                  </DataTableRow>
+                ))
+              )}
+            </DataTableBody>
+          </DataTable>
           <PaginationLinks
             basePath="/customers"
             page={result.meta.page}
             query={result.meta.query}
             totalPages={result.meta.totalPages}
           />
-        </div>
+        </Card>
       </div>
     </ModulePage>
   );
