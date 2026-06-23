@@ -3,6 +3,29 @@ import { ApiError } from "@/lib/api-response";
 import { listPendingCollections } from "@/lib/collections";
 import { queryWithCompanyContext } from "@/lib/db";
 import { executeSupplierPayment } from "@/lib/purchases";
+import { sessionAllows, type Permission } from "@/lib/route-auth";
+
+export const COLLECTION_APPROVAL_PERMISSION = {
+  resource: "cobranzas",
+  action: "aprobar",
+} satisfies Permission;
+
+export type ApprovalSource = "collection" | "request";
+
+export type ApprovalCenterAccess = {
+  collections: boolean;
+  requests: boolean;
+};
+
+type ApprovalRequestRow = {
+  id: number;
+  tipo: string;
+  titulo: string;
+  detalle: string;
+  monto: string;
+  solicitante: string;
+  created_at: string;
+};
 
 export type ApprovalItem = {
   id: number;
@@ -12,30 +35,62 @@ export type ApprovalItem = {
   amount: number;
   requester: string;
   createdAt: string | null;
-  source: "collection" | "request";
+  source: ApprovalSource;
 };
 
-export async function listApprovalCenter(companyId: number) {
+export function parseApprovalSource(value: FormDataEntryValue | null): ApprovalSource {
+  if (typeof value !== "string") {
+    throw new ApiError(400, "Tipo de solicitud invalido");
+  }
+
+  switch (value) {
+    case "collection":
+      return "collection";
+    case "request":
+      return "request";
+    default:
+      throw new ApiError(400, "Tipo de solicitud invalido");
+  }
+}
+
+export function canResolveGenericApproval(session: AuthSession) {
+  return session.role === "Admin" || session.role === "Jefe1";
+}
+
+export async function approvalCenterAccessForSession(session: AuthSession): Promise<ApprovalCenterAccess> {
+  return {
+    collections: await sessionAllows(session, [COLLECTION_APPROVAL_PERMISSION]),
+    requests: canResolveGenericApproval(session),
+  };
+}
+
+export function canOperateApprovalSource(access: ApprovalCenterAccess, source: ApprovalSource) {
+  switch (source) {
+    case "collection":
+      return access.collections;
+    case "request":
+      return access.requests;
+  }
+}
+
+async function listPendingApprovalRequests(companyId: number) {
+  const result = await queryWithCompanyContext<ApprovalRequestRow>(
+    companyId,
+    `
+      SELECT id, tipo, titulo, detalle, monto::text, solicitante, created_at::text
+      FROM app_solicitudes
+      WHERE empresa_id = $1 AND estado = 'pendiente'
+      ORDER BY created_at DESC, id DESC
+    `,
+    [companyId],
+  );
+  return result.rows;
+}
+
+export async function listApprovalCenter(companyId: number, access: ApprovalCenterAccess) {
   const [collections, requests] = await Promise.all([
-    listPendingCollections(companyId),
-    queryWithCompanyContext<{
-      id: number;
-      tipo: string;
-      titulo: string;
-      detalle: string;
-      monto: string;
-      solicitante: string;
-      created_at: string;
-    }>(
-      companyId,
-      `
-        SELECT id, tipo, titulo, detalle, monto::text, solicitante, created_at::text
-        FROM app_solicitudes
-        WHERE empresa_id = $1 AND estado = 'pendiente'
-        ORDER BY created_at DESC, id DESC
-      `,
-      [companyId],
-    ),
+    access.collections ? listPendingCollections(companyId) : Promise.resolve([]),
+    access.requests ? listPendingApprovalRequests(companyId) : Promise.resolve([]),
   ]);
 
   const collectionItems: ApprovalItem[] = collections.map((item) => ({
@@ -51,7 +106,7 @@ export async function listApprovalCenter(companyId: number) {
     source: "collection",
   }));
 
-  const requestItems: ApprovalItem[] = requests.rows.map((row) => ({
+  const requestItems: ApprovalItem[] = requests.map((row) => ({
     id: row.id,
     type: row.tipo,
     title: row.titulo || row.tipo,
@@ -83,7 +138,7 @@ export async function resolveGenericApproval(
   nextState: "aprobada" | "rechazada",
   reason = "",
 ) {
-  if (session.role !== "Admin" && session.role !== "Jefe1") {
+  if (!canResolveGenericApproval(session)) {
     throw new ApiError(403, "Sin permiso para resolver solicitudes");
   }
 

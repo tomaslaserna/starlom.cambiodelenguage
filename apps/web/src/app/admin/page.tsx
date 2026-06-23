@@ -1,12 +1,13 @@
 import { ModulePage } from "@/components/module-page";
 import Link from "next/link";
-import { listApprovalCenter } from "@/lib/approvals";
+import { approvalCenterAccessForSession, listApprovalCenter } from "@/lib/approvals";
 import { formatCurrency } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 
 export default async function AdminPage() {
   const session = await requireStaffSession();
-  const approvals = await listApprovalCenter(session.companyId);
+  const approvalAccess = await approvalCenterAccessForSession(session);
+  const approvals = await listApprovalCenter(session.companyId, approvalAccess);
 
   return (
     <ModulePage

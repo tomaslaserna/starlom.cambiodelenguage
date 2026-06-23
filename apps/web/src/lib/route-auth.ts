@@ -2,7 +2,7 @@ import { currentSession, isStaffRole, type AuthSession } from "@/lib/auth";
 import { getDbPool } from "@/lib/db";
 import { ApiError } from "@/lib/api-response";
 
-type Permission = {
+export type Permission = {
   resource: string;
   action: string;
 };
@@ -122,14 +122,24 @@ async function databaseAllows(session: AuthSession, permissions: Permission[]) {
   return Boolean(result.rows[0]);
 }
 
+export async function sessionAllows(session: AuthSession, permissions: Permission[] = []) {
+  if (!isStaffRole(session.role)) return false;
+  if (!permissions.length) return true;
+  return legacyRoleAllows(session, permissions) || (await databaseAllows(session, permissions));
+}
+
+export async function requireSessionPermission(session: AuthSession, permissions: Permission[]) {
+  const allowed = await sessionAllows(session, permissions);
+  if (!allowed) throw new ApiError(403, "Sin permiso");
+  return session;
+}
+
 export async function requireApiSession(permissions: Permission[] = []) {
   const session = await currentSession();
   if (!session) throw new ApiError(401, "No autenticado");
   if (!isStaffRole(session.role)) throw new ApiError(403, "Sin permiso");
 
-  const allowed =
-    legacyRoleAllows(session, permissions) || (await databaseAllows(session, permissions));
-  if (!allowed) throw new ApiError(403, "Sin permiso");
+  await requireSessionPermission(session, permissions);
 
   return session;
 }

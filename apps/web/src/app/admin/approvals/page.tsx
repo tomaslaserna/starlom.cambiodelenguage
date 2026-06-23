@@ -16,21 +16,27 @@ import {
   type StatusBadgeTone,
 } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { listApprovalCenter } from "@/lib/approvals";
+import {
+  approvalCenterAccessForSession,
+  canOperateApprovalSource,
+  listApprovalCenter,
+  type ApprovalSource,
+} from "@/lib/approvals";
 import { requireStaffSession } from "@/lib/auth";
 import { approveApprovalAction, rejectApprovalAction } from "@/app/admin/approvals/actions";
 
-function sourceLabel(source: "collection" | "request") {
+function sourceLabel(source: ApprovalSource) {
   return source === "collection" ? "Cobro" : "Solicitud interna";
 }
 
-function sourceTone(source: "collection" | "request"): StatusBadgeTone {
+function sourceTone(source: ApprovalSource): StatusBadgeTone {
   return source === "collection" ? "accent" : "info";
 }
 
 export default async function ApprovalsPage() {
   const session = await requireStaffSession();
-  const approvals = await listApprovalCenter(session.companyId);
+  const approvalAccess = await approvalCenterAccessForSession(session);
+  const approvals = await listApprovalCenter(session.companyId, approvalAccess);
 
   return (
     <ModulePage
@@ -83,6 +89,7 @@ export default async function ApprovalsPage() {
               ) : (
                 approvals.items.map((item) => {
                   const reasonInputId = `approval-${item.source}-${item.id}-reason`;
+                  const canOperateItem = canOperateApprovalSource(approvalAccess, item.source);
 
                   return (
                     <DataTableRow key={`${item.source}-${item.id}`}>
@@ -107,46 +114,50 @@ export default async function ApprovalsPage() {
                         {formatCurrency(item.amount)}
                       </DataTableCell>
                       <DataTableCell>
-                        <div className="grid min-w-[300px] gap-2">
-                          <form action={approveApprovalAction}>
-                            <input name="id" type="hidden" value={item.id} />
-                            <input name="source" type="hidden" value={item.source} />
-                            <Button
-                              aria-label={`Aprobar solicitud ${item.id}`}
-                              className="w-full text-xs"
-                              size="sm"
-                              type="submit"
-                            >
-                              Aprobar
-                            </Button>
-                          </form>
-                          <form action={rejectApprovalAction} className="flex min-w-0 gap-2">
-                            <input name="id" type="hidden" value={item.id} />
-                            <input name="source" type="hidden" value={item.source} />
-                            <label className="sr-only" htmlFor={reasonInputId}>
-                              Motivo de rechazo de la solicitud {item.id}
-                            </label>
-                            <Input
-                              aria-describedby={`${reasonInputId}-hint`}
-                              className="min-h-9 flex-1 px-2 text-xs"
-                              id={reasonInputId}
-                              name="reason"
-                              placeholder="Motivo de rechazo"
-                            />
-                            <span className="sr-only" id={`${reasonInputId}-hint`}>
-                              Este motivo se envia junto con el rechazo de la solicitud.
-                            </span>
-                            <Button
-                              aria-label={`Rechazar solicitud ${item.id}`}
-                              className="min-h-9 px-3 text-xs"
-                              size="sm"
-                              type="submit"
-                              variant="outline"
-                            >
-                              Rechazar
-                            </Button>
-                          </form>
-                        </div>
+                        {canOperateItem ? (
+                          <div className="grid min-w-[300px] gap-2">
+                            <form action={approveApprovalAction}>
+                              <input name="id" type="hidden" value={item.id} />
+                              <input name="source" type="hidden" value={item.source} />
+                              <Button
+                                aria-label={`Aprobar solicitud ${item.id}`}
+                                className="w-full text-xs"
+                                size="sm"
+                                type="submit"
+                              >
+                                Aprobar
+                              </Button>
+                            </form>
+                            <form action={rejectApprovalAction} className="flex min-w-0 gap-2">
+                              <input name="id" type="hidden" value={item.id} />
+                              <input name="source" type="hidden" value={item.source} />
+                              <label className="sr-only" htmlFor={reasonInputId}>
+                                Motivo de rechazo de la solicitud {item.id}
+                              </label>
+                              <Input
+                                aria-describedby={`${reasonInputId}-hint`}
+                                className="min-h-9 flex-1 px-2 text-xs"
+                                id={reasonInputId}
+                                name="reason"
+                                placeholder="Motivo de rechazo"
+                              />
+                              <span className="sr-only" id={`${reasonInputId}-hint`}>
+                                Este motivo se envia junto con el rechazo de la solicitud.
+                              </span>
+                              <Button
+                                aria-label={`Rechazar solicitud ${item.id}`}
+                                className="min-h-9 px-3 text-xs"
+                                size="sm"
+                                type="submit"
+                                variant="outline"
+                              >
+                                Rechazar
+                              </Button>
+                            </form>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[color:var(--muted)]">Sin permiso</span>
+                        )}
                       </DataTableCell>
                     </DataTableRow>
                   );
