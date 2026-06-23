@@ -1,5 +1,23 @@
 import { ModulePage } from "@/components/module-page";
-import { SearchBar } from "@/components/search-bar";
+import {
+  Button,
+  ButtonLink,
+  Card,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  StatCard,
+  StatusBadge,
+  Toolbar,
+  type StatusBadgeTone,
+} from "@/components/ui";
 import { listPendingCollections } from "@/lib/collections";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
@@ -30,6 +48,18 @@ function matchesQuery(item: Awaited<ReturnType<typeof listPendingCollections>>[n
   return haystack.includes(query);
 }
 
+function statusLabel(value: string) {
+  const normalized = value.replaceAll("_", " ").trim();
+  if (!normalized) return "-";
+  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function collectionStatusTone(value: string): StatusBadgeTone {
+  if (value === "recibido") return "success";
+  if (value === "pendiente_aprobacion" || value === "en_proceso") return "warning";
+  return "neutral";
+}
+
 export default async function CollectionsPage({ searchParams }: CollectionsPageProps) {
   const session = await requireStaffSession();
   const params = await searchParams;
@@ -46,116 +76,167 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
       title="Cobros"
     >
       <div className="grid gap-5">
-        <div className="grid gap-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 md:grid-cols-[1fr_auto] md:items-center">
-          <SearchBar
+        <PageHeader
+          description="Revision de cobros registrados por usuarios antes de impactar cuentas corrientes y tesoreria."
+          title="Cobranzas"
+        />
+
+        <Toolbar ariaLabel="Busqueda de cobros pendientes">
+          <form
             action="/collections"
-            placeholder="Buscar cliente, CUIT, operacion o responsable"
-            query={params.q ?? ""}
-          />
-          <div className="rounded-md bg-[color:var(--panel-subtle)] px-3 py-2 text-sm">
-            <span className="font-semibold">{collections.length}</span>{" "}
-            <span className="text-[color:var(--muted)]">pendientes</span>
-          </div>
-        </div>
+            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto] lg:items-end"
+          >
+            <Field htmlFor="collections-query" label="Buscar">
+              <Input
+                defaultValue={params.q ?? ""}
+                id="collections-query"
+                name="q"
+                placeholder="Cliente, CUIT, operacion o responsable"
+                type="search"
+              />
+            </Field>
+            <Button type="submit">Buscar</Button>
+          </form>
+        </Toolbar>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Monto pendiente de aprobacion</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(totalPending)}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Cola total sin filtro</div>
-            <div className="mt-2 text-2xl font-semibold">{allCollections.length}</div>
-          </div>
+          <StatCard className="p-3" label="Monto pendiente de aprobacion" value={formatCurrency(totalPending)} />
+          <StatCard
+            className="p-3"
+            detail={`${collections.length} visibles con la busqueda actual`}
+            label="Cola total sin filtro"
+            value={allCollections.length}
+          />
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] border-collapse text-left text-sm">
-              <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Venta</th>
-                  <th className="px-4 py-3 font-semibold">Cliente</th>
-                  <th className="px-4 py-3 font-semibold">Metodo</th>
-                  <th className="px-4 py-3 font-semibold">Destino</th>
-                  <th className="px-4 py-3 font-semibold">Fecha cobro</th>
-                  <th className="px-4 py-3 font-semibold">Registrado por</th>
-                  <th className="px-4 py-3 font-semibold">Comprobantes</th>
-                  <th className="px-4 py-3 text-right font-semibold">Monto</th>
-                  <th className="px-4 py-3 font-semibold">Accion</th>
-                </tr>
-              </thead>
-              <tbody>
-                {collections.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-[color:var(--muted)]" colSpan={9}>
-                      No hay cobros pendientes para esta busqueda.
-                    </td>
-                  </tr>
-                ) : (
-                  collections.map((item) => (
-                    <tr className="border-t border-[color:var(--border)]" key={item.id}>
-                      <td className="px-4 py-4">
+        <Card className="overflow-hidden">
+          <DataTable
+            caption="Cobros pendientes de aprobacion"
+            className="rounded-none border-0 shadow-none"
+            minWidth="1180px"
+            tableLabel="Cobros pendientes"
+          >
+            <DataTableHeader>
+              <DataTableRow className="hover:bg-transparent">
+                <DataTableHead>Venta</DataTableHead>
+                <DataTableHead>Cliente</DataTableHead>
+                <DataTableHead>Metodo</DataTableHead>
+                <DataTableHead>Destino</DataTableHead>
+                <DataTableHead>Fecha cobro</DataTableHead>
+                <DataTableHead>Registrado por</DataTableHead>
+                <DataTableHead>Estado</DataTableHead>
+                <DataTableHead>Comprobantes</DataTableHead>
+                <DataTableHead align="right">Monto</DataTableHead>
+                <DataTableHead>Accion</DataTableHead>
+              </DataTableRow>
+            </DataTableHeader>
+            <DataTableBody>
+              {collections.length === 0 ? (
+                <DataTableRow className="hover:bg-transparent">
+                  <DataTableCell colSpan={10}>
+                    <EmptyState
+                      description="Ajusta la busqueda para revisar otros cobros pendientes de aprobacion."
+                      title="No hay cobros pendientes para esta busqueda"
+                    />
+                  </DataTableCell>
+                </DataTableRow>
+              ) : (
+                collections.map((item) => {
+                  const reasonInputId = `collection-${item.id}-reason`;
+
+                  return (
+                    <DataTableRow key={item.id}>
+                      <DataTableCell>
                         <div className="font-mono text-xs">#{item.id}</div>
-                        <div className="text-xs text-[color:var(--muted)]">
+                        <div className="mt-1 text-xs text-[color:var(--muted)]">
                           Remito {item.remittanceLabel}
                         </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="font-medium">{item.customerName || "Sin cliente"}</div>
-                        <div className="font-mono text-xs text-[color:var(--muted)]">
+                      </DataTableCell>
+                      <DataTableCell>
+                        <div className="max-w-[220px] break-words font-medium">
+                          {item.customerName || "Sin cliente"}
+                        </div>
+                        <div className="mt-1 font-mono text-xs text-[color:var(--muted)]">
                           {item.customerTaxId || item.customerDocument || "-"}
                         </div>
-                      </td>
-                      <td className="px-4 py-4">{item.method || "-"}</td>
-                      <td className="px-4 py-4">
-                        <div>{item.destination || "-"}</div>
-                        <div className="text-xs text-[color:var(--muted)]">
+                      </DataTableCell>
+                      <DataTableCell>{item.method || "-"}</DataTableCell>
+                      <DataTableCell>
+                        <div className="max-w-[220px] break-words">{item.destination || "-"}</div>
+                        <div className="mt-1 max-w-[220px] break-words text-xs leading-5 text-[color:var(--muted)]">
                           {item.operation || "Sin operacion"}
                         </div>
-                      </td>
-                      <td className="px-4 py-4">{formatDate(item.collectionDate)}</td>
-                      <td className="px-4 py-4">{item.registeredBy || "-"}</td>
-                      <td className="px-4 py-4">
-                        <a
-                          className="font-semibold text-[color:var(--accent)]"
+                      </DataTableCell>
+                      <DataTableCell className="whitespace-nowrap">{formatDate(item.collectionDate)}</DataTableCell>
+                      <DataTableCell>{item.registeredBy || "-"}</DataTableCell>
+                      <DataTableCell>
+                        <StatusBadge tone={collectionStatusTone(item.status)}>
+                          {statusLabel(item.status)}
+                        </StatusBadge>
+                      </DataTableCell>
+                      <DataTableCell>
+                        <ButtonLink
+                          aria-label={`Abrir comprobantes asociados al cobro ${item.id}`}
                           href={`/api/sales-documents?saleId=${item.id}`}
+                          prefetch={false}
+                          rel="noreferrer"
+                          size="sm"
                           target="_blank"
+                          variant="secondary"
                         >
                           {item.associatedDocuments} asociados
-                        </a>
-                      </td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">
+                        </ButtonLink>
+                      </DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
                         {formatCurrency(item.registeredAmount)}
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="grid min-w-[260px] gap-2">
+                      </DataTableCell>
+                      <DataTableCell>
+                        <div className="grid min-w-[300px] gap-2">
                           <form action={approveCollectionAction}>
                             <input name="id" type="hidden" value={item.id} />
-                            <button className="min-h-10 w-full rounded-md bg-[color:var(--accent)] px-3 text-xs font-semibold text-white hover:bg-[color:var(--accent-strong)]">
+                            <Button
+                              aria-label={`Aprobar cobro ${item.id}`}
+                              className="w-full text-xs"
+                              size="sm"
+                              type="submit"
+                            >
                               Aprobar
-                            </button>
+                            </Button>
                           </form>
-                          <form action={rejectCollectionAction} className="flex gap-2">
+                          <form action={rejectCollectionAction} className="flex min-w-0 gap-2">
                             <input name="id" type="hidden" value={item.id} />
-                            <input
-                              className="min-h-10 flex-1 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-2 text-xs outline-none focus:border-[color:var(--accent)]"
+                            <label className="sr-only" htmlFor={reasonInputId}>
+                              Motivo de rechazo del cobro {item.id}
+                            </label>
+                            <Input
+                              aria-describedby={`${reasonInputId}-hint`}
+                              className="min-h-9 flex-1 px-2 text-xs"
+                              id={reasonInputId}
                               name="reason"
-                              placeholder="Motivo"
+                              placeholder="Motivo de rechazo"
                             />
-                            <button className="min-h-10 rounded-md border border-[color:var(--border)] px-3 text-xs font-semibold hover:bg-[color:var(--panel-subtle)]">
+                            <span className="sr-only" id={`${reasonInputId}-hint`}>
+                              Este motivo se envia junto con el rechazo del cobro.
+                            </span>
+                            <Button
+                              aria-label={`Rechazar cobro ${item.id}`}
+                              className="min-h-9 px-3 text-xs"
+                              size="sm"
+                              type="submit"
+                              variant="outline"
+                            >
                               Rechazar
-                            </button>
+                            </Button>
                           </form>
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                      </DataTableCell>
+                    </DataTableRow>
+                  );
+                })
+              )}
+            </DataTableBody>
+          </DataTable>
+        </Card>
       </div>
     </ModulePage>
   );
