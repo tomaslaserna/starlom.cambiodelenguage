@@ -36,6 +36,9 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     page: params.page,
     pageSize: "25",
   });
+  const suppliersMetricDetail = result.meta.query
+    ? `Coinciden con la busqueda actual - Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`
+    : `Total de proveedores cargados - Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`;
 
   return (
     <ModulePage
@@ -72,7 +75,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
             className="p-3"
-            detail={`Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`}
+            detail={suppliersMetricDetail}
             label="Proveedores encontrados"
             value={formatNumber(result.meta.total)}
           />
