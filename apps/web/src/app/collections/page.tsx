@@ -100,7 +100,12 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
         </Toolbar>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <StatCard className="p-3" label="Monto pendiente de aprobacion" value={formatCurrency(totalPending)} />
+          <StatCard
+            className="p-3"
+            detail="Calculado sobre los cobros visibles"
+            label="Monto visible pendiente de aprobacion"
+            value={formatCurrency(totalPending)}
+          />
           <StatCard
             className="p-3"
             detail={`${collections.length} visibles con la busqueda actual`}
