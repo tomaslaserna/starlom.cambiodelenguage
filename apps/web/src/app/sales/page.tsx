@@ -35,7 +35,7 @@ export default async function SalesPage() {
 
         <SectionTabs
           tabs={[
-            { href: "/sales", label: "Ventas registradas", active: true },
+            { href: "/sales", label: "Resumen", active: true },
             { href: "/orders/new", label: "Cargar pedido" },
             { href: "/quotes", label: "Presupuestos" },
           ]}
@@ -54,11 +54,17 @@ export default async function SalesPage() {
               <div>
                 <h2 className="font-semibold">Ventas registradas</h2>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">
-                  Listado operativo de pedidos y ventas.
+                  Listado operativo de pedidos y ventas con seguimiento de estados.
                 </p>
               </div>
-              <ButtonLink className="w-fit" href="/orders/new" size="sm" variant="secondary">
-                Abrir
+              <ButtonLink
+                aria-label="Ver listado de ventas registradas"
+                className="w-fit"
+                href="/orders"
+                size="sm"
+                variant="secondary"
+              >
+                Ver listado
               </ButtonLink>
             </CardContent>
           </Card>
@@ -67,11 +73,17 @@ export default async function SalesPage() {
               <div>
                 <h2 className="font-semibold">Cargar pedido</h2>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">
-                  Alta y seguimiento de pedidos desde el modulo Pedidos.
+                  Alta inicial de un pedido en estado recibido.
                 </p>
               </div>
-              <ButtonLink className="w-fit" href="/orders" size="sm" variant="secondary">
-                Abrir
+              <ButtonLink
+                aria-label="Abrir formulario para cargar un pedido"
+                className="w-fit"
+                href="/orders/new"
+                size="sm"
+                variant="secondary"
+              >
+                Crear pedido
               </ButtonLink>
             </CardContent>
           </Card>
@@ -83,8 +95,14 @@ export default async function SalesPage() {
                   Cotizaciones, vencimientos y aceptacion.
                 </p>
               </div>
-              <ButtonLink className="w-fit" href="/quotes" size="sm" variant="secondary">
-                Abrir
+              <ButtonLink
+                aria-label="Ver presupuestos comerciales"
+                className="w-fit"
+                href="/quotes"
+                size="sm"
+                variant="secondary"
+              >
+                Ver presupuestos
               </ButtonLink>
             </CardContent>
           </Card>
