@@ -1,0 +1,267 @@
+import type { AuthSession } from "@/lib/auth";
+import { queryWithCompanyContext } from "@/lib/db";
+
+export type NavigationBadgeKey =
+  | "approvals"
+  | "messages"
+  | "tasks"
+  | "ordersReceived"
+  | "ordersInProcess"
+  | "ordersPendingDelivery"
+  | "quotes"
+  | "payables"
+  | "purchases";
+
+export type NavigationItem = {
+  href: string;
+  label: string;
+  active: string;
+  badge?: NavigationBadgeKey;
+};
+
+export type NavigationGroup = {
+  label: string;
+  href?: string;
+  active: string;
+  badge?: NavigationBadgeKey;
+  items?: NavigationItem[];
+};
+
+export const navigationGroups: NavigationGroup[] = [
+  { href: "/", label: "Inicio", active: "home" },
+  { href: "/metrics", label: "Metricas", active: "metrics" },
+  {
+    label: "Balance",
+    active: "balance",
+    items: [
+      { href: "/balance", label: "Resumen", active: "balance" },
+      { href: "/balance/income-statement", label: "Estado de resultados", active: "balance" },
+      { href: "/balance/salaries", label: "Sueldos", active: "balance" },
+      { href: "/balance/dividends", label: "Dividendos", active: "balance" },
+    ],
+  },
+  {
+    label: "Tesoreria",
+    active: "treasury",
+    badge: "payables",
+    items: [
+      { href: "/treasury", label: "Saldos actuales", active: "treasury" },
+      { href: "/treasury/cash-flow", label: "Cash Flow", active: "treasury" },
+      { href: "/treasury/accounts-payable", label: "Cuentas por pagar", active: "treasury", badge: "payables" },
+      { href: "/treasury/movements", label: "Registro de movimientos", active: "treasury" },
+    ],
+  },
+  {
+    label: "Pedidos",
+    active: "orders",
+    badge: "ordersInProcess",
+    items: [
+      { href: "/orders", label: "Dashboard", active: "orders" },
+      { href: "/orders?status=recibido", label: "Recibidos", active: "orders", badge: "ordersReceived" },
+      { href: "/orders?status=en_proceso", label: "En proceso", active: "orders", badge: "ordersInProcess" },
+      {
+        href: "/orders?status=pendiente_entrega",
+        label: "Pendiente entrega",
+        active: "orders",
+        badge: "ordersPendingDelivery",
+      },
+    ],
+  },
+  {
+    label: "Ventas",
+    active: "sales",
+    badge: "quotes",
+    items: [
+      { href: "/sales", label: "Ventas registradas", active: "sales" },
+      { href: "/orders/new", label: "Cargar pedido", active: "sales" },
+      { href: "/quotes", label: "Presupuestos", active: "sales", badge: "quotes" },
+    ],
+  },
+  {
+    label: "Base de datos",
+    active: "database",
+    items: [
+      { href: "/database", label: "Resumen", active: "database" },
+      { href: "/employees", label: "Empleados", active: "database" },
+      { href: "/products", label: "Precios", active: "database" },
+      { href: "/customers", label: "Clientes", active: "database" },
+      { href: "/suppliers", label: "Proveedores", active: "database" },
+    ],
+  },
+  {
+    label: "Stock",
+    active: "stock",
+    items: [
+      { href: "/products", label: "Cambiar stock", active: "stock" },
+      { href: "/products?mode=new", label: "Nuevo stock", active: "stock" },
+      { href: "/products?mode=bulk", label: "Carga masiva", active: "stock" },
+    ],
+  },
+  {
+    label: "Compras",
+    active: "purchases",
+    badge: "purchases",
+    items: [
+      { href: "/purchases", label: "Nueva compra", active: "purchases" },
+      { href: "/purchases?type=urgente", label: "Urgentes", active: "purchases", badge: "purchases" },
+      { href: "/purchases?type=anticipada", label: "Anticipadas", active: "purchases" },
+      { href: "/purchases?type=solicitud", label: "Solicitudes de compra", active: "purchases" },
+    ],
+  },
+  {
+    label: "Cobros y pagos",
+    active: "collections",
+    badge: "approvals",
+    items: [
+      { href: "/collections", label: "Cobros", active: "collections", badge: "approvals" },
+      { href: "/treasury/current-accounts", label: "Cuentas corrientes", active: "collections" },
+      { href: "/treasury/movements?type=pago", label: "Pagos proveedores", active: "treasury" },
+    ],
+  },
+  {
+    label: "Usuarios y permisos",
+    active: "employees",
+    items: [
+      { href: "/employees", label: "Empleados", active: "employees" },
+      { href: "/employees/vendors", label: "Gestion de vendedores", active: "employees" },
+      { href: "/treasury/movements", label: "Registro de movimientos", active: "employees" },
+    ],
+  },
+  {
+    label: "Administrador",
+    active: "admin",
+    badge: "approvals",
+    items: [
+      { href: "/admin", label: "Panel admin", active: "admin" },
+      { href: "/admin/approvals", label: "Solicitudes y aprobaciones", active: "admin", badge: "approvals" },
+    ],
+  },
+  { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
+  { href: "/messages", label: "Mensajes", active: "messages", badge: "messages" },
+];
+
+export type NavigationSection = {
+  label: string;
+  groups: NavigationGroup[];
+};
+
+function groupByLabel(label: string) {
+  const group = navigationGroups.find((item) => item.label === label);
+  if (!group) throw new Error(`Missing navigation group: ${label}`);
+  return group;
+}
+
+export const navigationSections: NavigationSection[] = [
+  {
+    label: "Inicio / Panel",
+    groups: [groupByLabel("Inicio"), groupByLabel("Metricas")],
+  },
+  {
+    label: "Finanzas",
+    groups: [groupByLabel("Balance")],
+  },
+  {
+    label: "Tesoreria",
+    groups: [groupByLabel("Tesoreria"), groupByLabel("Cobros y pagos")],
+  },
+  {
+    label: "Comercial",
+    groups: [groupByLabel("Pedidos"), groupByLabel("Ventas")],
+  },
+  {
+    label: "Datos",
+    groups: [groupByLabel("Base de datos"), groupByLabel("Stock")],
+  },
+  {
+    label: "Operaciones",
+    groups: [groupByLabel("Compras"), groupByLabel("Calendario"), groupByLabel("Mensajes")],
+  },
+  {
+    label: "Administracion",
+    groups: [groupByLabel("Usuarios y permisos"), groupByLabel("Administrador")],
+  },
+];
+
+export type NavigationIndicators = Record<NavigationBadgeKey, number>;
+
+export function emptyNavigationIndicators(): NavigationIndicators {
+  return {
+    approvals: 0,
+    messages: 0,
+    tasks: 0,
+    ordersReceived: 0,
+    ordersInProcess: 0,
+    ordersPendingDelivery: 0,
+    quotes: 0,
+    payables: 0,
+    purchases: 0,
+  };
+}
+
+export async function getNavigationIndicators(session: AuthSession): Promise<NavigationIndicators> {
+  const result = await queryWithCompanyContext<{
+    approvals: string;
+    messages: string;
+    personal_tasks: string;
+    assigned_tasks: string;
+    orders_received: string;
+    orders_in_process: string;
+    orders_pending_delivery: string;
+    quotes: string;
+    payables: string;
+    purchases: string;
+  }>(
+    session.companyId,
+    `
+      SELECT
+        (SELECT COUNT(*) FROM ventas
+         WHERE empresa_id = $1
+           AND COALESCE(estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
+           AND COALESCE(estado_pedido,'entregado') = 'entregado')::text AS approvals,
+        (SELECT COUNT(*) FROM mensajes
+         WHERE empresa_id = $1 AND para = $2 AND leido = 0)::text AS messages,
+        (SELECT COUNT(*) FROM recordatorios
+         WHERE empresa_id = $1
+           AND completado = 0
+           AND (usuario = '' OR usuario = $2)
+           AND (fecha_envio IS NULL OR fecha_envio <= NOW()))::text AS personal_tasks,
+        (SELECT COUNT(*) FROM tareas_asignadas
+         WHERE empresa_id = $1
+           AND asignado_a = $2
+           AND completado = 0
+           AND (fecha_envio IS NULL OR fecha_envio <= NOW()))::text AS assigned_tasks,
+        (SELECT COUNT(*) FROM ventas
+         WHERE empresa_id = $1 AND COALESCE(estado_pedido,'recibido') = 'recibido')::text AS orders_received,
+        (SELECT COUNT(*) FROM ventas
+         WHERE empresa_id = $1 AND COALESCE(estado_pedido,'recibido') = 'en_proceso')::text AS orders_in_process,
+        (SELECT COUNT(*) FROM ventas
+         WHERE empresa_id = $1 AND COALESCE(estado_pedido,'recibido') = 'pendiente_entrega')::text AS orders_pending_delivery,
+        (SELECT COUNT(*) FROM presupuestos
+         WHERE empresa_id = $1 AND estado = 'pendiente')::text AS quotes,
+        (SELECT COUNT(*) FROM compras_registro
+         WHERE empresa_id = $1
+           AND COALESCE(pagado,0) = 0
+           AND estado <> 'cancelada'
+           AND GREATEST(total - COALESCE(monto_pagado, 0), 0) > 0)::text AS payables,
+        (SELECT COUNT(*) FROM compras_registro
+         WHERE empresa_id = $1
+           AND estado <> 'cancelada'
+           AND (tipo ILIKE '%urg%' OR estado = 'pendiente'))::text AS purchases
+    `,
+    [session.companyId, session.username],
+  );
+
+  const row = result.rows[0];
+  if (!row) return emptyNavigationIndicators();
+  return {
+    approvals: Number(row.approvals),
+    messages: Number(row.messages),
+    tasks: Number(row.personal_tasks) + Number(row.assigned_tasks),
+    ordersReceived: Number(row.orders_received),
+    ordersInProcess: Number(row.orders_in_process),
+    ordersPendingDelivery: Number(row.orders_pending_delivery),
+    quotes: Number(row.quotes),
+    payables: Number(row.payables),
+    purchases: Number(row.purchases),
+  };
+}
