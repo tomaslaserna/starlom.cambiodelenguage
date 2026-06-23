@@ -127,11 +127,15 @@ export default async function ApprovalsPage() {
                               Motivo de rechazo de la solicitud {item.id}
                             </label>
                             <Input
+                              aria-describedby={`${reasonInputId}-hint`}
                               className="min-h-9 flex-1 px-2 text-xs"
                               id={reasonInputId}
                               name="reason"
-                              placeholder="Motivo"
+                              placeholder="Motivo de rechazo"
                             />
+                            <span className="sr-only" id={`${reasonInputId}-hint`}>
+                              Este motivo se envia junto con el rechazo de la solicitud.
+                            </span>
                             <Button
                               aria-label={`Rechazar solicitud ${item.id}`}
                               className="min-h-9 px-3 text-xs"
