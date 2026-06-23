@@ -8,8 +8,10 @@ import { ShellNavigation } from "@/components/shell-navigation";
 import { ButtonLink } from "@/components/ui";
 import {
   emptyNavigationIndicators,
+  authorizedNavigationSections,
+  getNavigationAuthorization,
   getNavigationIndicators,
-  navigationSections,
+  type NavigationAuthorization,
 } from "@/lib/navigation";
 
 type ModulePageProps = {
@@ -18,6 +20,7 @@ type ModulePageProps = {
   active: string;
   session: AuthSession;
   children: ReactNode;
+  navigationAuthorization?: NavigationAuthorization;
 };
 
 function BrandBlock({ title }: { title?: string }) {
@@ -34,8 +37,18 @@ function BrandBlock({ title }: { title?: string }) {
   );
 }
 
-export async function ModulePage({ title, description, active, session, children }: ModulePageProps) {
+export async function ModulePage({
+  title,
+  description,
+  active,
+  session,
+  children,
+  navigationAuthorization,
+}: ModulePageProps) {
   let indicators = emptyNavigationIndicators();
+  const authorization = navigationAuthorization ?? (await getNavigationAuthorization(session));
+  const sections = authorizedNavigationSections(authorization);
+
   try {
     indicators = await getNavigationIndicators(session);
   } catch {
@@ -49,7 +62,7 @@ export async function ModulePage({ title, description, active, session, children
           <BrandBlock />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-          <ShellNavigation active={active} indicators={indicators} sections={navigationSections} />
+          <ShellNavigation active={active} indicators={indicators} sections={sections} />
         </div>
         <div className="grid gap-2 border-t border-[color:var(--border)] px-3 py-3">
           <ButtonLink href="/frontend/index.php" size="sm" variant="secondary">
@@ -85,7 +98,7 @@ export async function ModulePage({ title, description, active, session, children
                   Menu
                 </summary>
                 <div className="fixed inset-x-0 top-16 z-40 max-h-[72vh] overflow-y-auto overscroll-contain border-b border-[color:var(--border)] bg-[color:var(--panel)] p-4 shadow-[var(--shadow-md)]">
-                  <ShellNavigation active={active} indicators={indicators} sections={navigationSections} />
+                  <ShellNavigation active={active} indicators={indicators} sections={sections} />
                   <div className="mt-5 grid gap-2 border-t border-[color:var(--border)] pt-4">
                     <ButtonLink href="/frontend/index.php" size="sm" variant="secondary">
                       PHP actual

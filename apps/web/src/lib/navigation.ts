@@ -1,5 +1,10 @@
 import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
+import {
+  CUSTOMERS_READ_PERMISSION,
+  sessionAllows,
+  type Permission,
+} from "@/lib/route-auth";
 
 export type NavigationBadgeKey =
   | "approvals"
@@ -17,6 +22,7 @@ export type NavigationItem = {
   label: string;
   active: string;
   badge?: NavigationBadgeKey;
+  permission?: Permission;
 };
 
 export type NavigationGroup = {
@@ -25,6 +31,11 @@ export type NavigationGroup = {
   active: string;
   badge?: NavigationBadgeKey;
   items?: NavigationItem[];
+  permission?: Permission;
+};
+
+export type NavigationAuthorization = {
+  allowedPermissionKeys: Set<string>;
 };
 
 export const navigationGroups: NavigationGroup[] = [
@@ -84,7 +95,7 @@ export const navigationGroups: NavigationGroup[] = [
       { href: "/database", label: "Resumen", active: "database" },
       { href: "/employees", label: "Empleados", active: "database" },
       { href: "/products", label: "Precios", active: "database" },
-      { href: "/customers", label: "Clientes", active: "database" },
+      { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/suppliers", label: "Proveedores", active: "database" },
     ],
   },
@@ -183,6 +194,88 @@ export const navigationSections: NavigationSection[] = [
 ];
 
 export type NavigationIndicators = Record<NavigationBadgeKey, number>;
+
+function navigationPermissionKey(permission: Permission) {
+  return `${permission.resource.trim()}.${permission.action.trim()}`;
+}
+
+function collectRequiredNavigationPermissions() {
+  const permissions = new Map<string, Permission>();
+  for (const group of navigationGroups) {
+    if (group.permission) permissions.set(navigationPermissionKey(group.permission), group.permission);
+    for (const item of group.items ?? []) {
+      if (item.permission) permissions.set(navigationPermissionKey(item.permission), item.permission);
+    }
+  }
+  return Array.from(permissions.values());
+}
+
+export function navigationPermissionAllowed(
+  authorization: NavigationAuthorization,
+  permission: Permission | undefined,
+) {
+  if (!permission) return true;
+  return authorization.allowedPermissionKeys.has(navigationPermissionKey(permission));
+}
+
+export async function getNavigationAuthorization(session: AuthSession): Promise<NavigationAuthorization> {
+  const allowedPermissionKeys = new Set<string>();
+  await Promise.all(
+    collectRequiredNavigationPermissions().map(async (permission) => {
+      if (await sessionAllows(session, [permission])) {
+        allowedPermissionKeys.add(navigationPermissionKey(permission));
+      }
+    }),
+  );
+  return { allowedPermissionKeys };
+}
+
+function authorizedNavigationItem(
+  item: NavigationItem,
+  authorization: NavigationAuthorization,
+): NavigationItem | null {
+  if (!navigationPermissionAllowed(authorization, item.permission)) return null;
+  const authorizedItem: NavigationItem = {
+    href: item.href,
+    label: item.label,
+    active: item.active,
+  };
+  if (item.badge) authorizedItem.badge = item.badge;
+  return authorizedItem;
+}
+
+function authorizedNavigationGroup(
+  group: NavigationGroup,
+  authorization: NavigationAuthorization,
+): NavigationGroup | null {
+  if (!navigationPermissionAllowed(authorization, group.permission)) return null;
+
+  const authorizedItems = (group.items ?? [])
+    .map((item) => authorizedNavigationItem(item, authorization))
+    .filter((item): item is NavigationItem => Boolean(item));
+
+  if (!group.href && group.items && authorizedItems.length === 0) return null;
+
+  const authorizedGroup: NavigationGroup = {
+    label: group.label,
+    active: group.active,
+  };
+  if (group.href) authorizedGroup.href = group.href;
+  if (group.badge) authorizedGroup.badge = group.badge;
+  if (group.items) authorizedGroup.items = authorizedItems;
+  return authorizedGroup;
+}
+
+export function authorizedNavigationSections(authorization: NavigationAuthorization) {
+  return navigationSections
+    .map((section) => ({
+      ...section,
+      groups: section.groups
+        .map((group) => authorizedNavigationGroup(group, authorization))
+        .filter((group): group is NavigationGroup => Boolean(group)),
+    }))
+    .filter((section) => section.groups.length > 0);
+}
 
 export function emptyNavigationIndicators(): NavigationIndicators {
   return {

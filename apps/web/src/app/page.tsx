@@ -1,4 +1,6 @@
 import Image from "next/image";
+import { currentSession } from "@/lib/auth";
+import { sessionCanReadCustomers } from "@/lib/route-auth";
 
 const migrationModules = [
   {
@@ -34,7 +36,10 @@ const apiContracts = [
   { method: "GET", path: "/api/admin/metrics", purpose: "Indicadores financieros base" },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const session = await currentSession();
+  const canReadCustomers = session ? await sessionCanReadCustomers(session) : false;
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <header className="border-b border-[color:var(--border)] bg-[color:var(--panel)]">
@@ -61,12 +66,14 @@ export default function Home() {
             >
               Login Node
             </a>
-            <a
-              className="rounded-md border border-[color:var(--border)] px-3 py-2 hover:bg-[color:var(--panel-subtle)]"
-              href="/customers"
-            >
-              Clientes
-            </a>
+            {canReadCustomers ? (
+              <a
+                className="rounded-md border border-[color:var(--border)] px-3 py-2 hover:bg-[color:var(--panel-subtle)]"
+                href="/customers"
+              >
+                Clientes
+              </a>
+            ) : null}
             <a
               className="rounded-md border border-[color:var(--border)] px-3 py-2 hover:bg-[color:var(--panel-subtle)]"
               href="/products"

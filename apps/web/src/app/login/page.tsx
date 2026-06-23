@@ -11,7 +11,7 @@ type LoginPageProps = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const session = await currentSession();
-  if (session) redirect("/customers");
+  if (session) redirect("/");
 
   const params = await searchParams;
   const hasError = params.error === "invalid";

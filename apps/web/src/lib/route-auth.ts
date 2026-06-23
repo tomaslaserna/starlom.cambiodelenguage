@@ -7,6 +7,11 @@ export type Permission = {
   action: string;
 };
 
+export const CUSTOMERS_READ_PERMISSION = {
+  resource: "clientes",
+  action: "ver",
+} satisfies Permission;
+
 const LEGACY_ROLE_PERMISSIONS: Record<string, string[]> = {
   Empleado: ["pedidos.ver", "stock.ver"],
   Empleado_1: ["pedidos.ver", "pedidos.editar", "stock.ver", "stock.editar", "productos.ver"],
@@ -126,6 +131,10 @@ export async function sessionAllows(session: AuthSession, permissions: Permissio
   if (!isStaffRole(session.role)) return false;
   if (!permissions.length) return true;
   return legacyRoleAllows(session, permissions) || (await databaseAllows(session, permissions));
+}
+
+export async function sessionCanReadCustomers(session: AuthSession) {
+  return sessionAllows(session, [CUSTOMERS_READ_PERMISSION]);
 }
 
 export async function requireSessionPermission(session: AuthSession, permissions: Permission[]) {

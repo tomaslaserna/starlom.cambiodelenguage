@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
 
   const response = wantsJson(request)
     ? NextResponse.json({ ok: true, user: session })
-    : NextResponse.redirect(new URL("/customers", request.url), { status: 303 });
+    : NextResponse.redirect(new URL("/", request.url), { status: 303 });
 
   response.cookies.set(SESSION_COOKIE, encodeSession(session), sessionCookieOptions());
   return response;

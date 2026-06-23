@@ -21,6 +21,12 @@ import {
 import { listCustomers } from "@/lib/catalog";
 import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { CUSTOMERS_READ_PERMISSION } from "@/lib/route-auth";
+import {
+  getNavigationAuthorization,
+  navigationPermissionAllowed,
+} from "@/lib/navigation";
 
 type CustomersPageProps = {
   searchParams: Promise<{
@@ -39,6 +45,11 @@ function customerStatusTone(status: string): StatusBadgeTone {
 
 export default async function CustomersPage({ searchParams }: CustomersPageProps) {
   const session = await requireStaffSession();
+  const navigationAuthorization = await getNavigationAuthorization(session);
+  if (!navigationPermissionAllowed(navigationAuthorization, CUSTOMERS_READ_PERMISSION)) {
+    redirect("/");
+  }
+
   const params = await searchParams;
   const result = await listCustomers({
     companyId: session.companyId,
@@ -51,6 +62,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
     <ModulePage
       active="database"
       description="Clientes consultados desde PostgreSQL con sesion Node y contexto multiempresa."
+      navigationAuthorization={navigationAuthorization}
       session={session}
       title="Clientes"
     >
