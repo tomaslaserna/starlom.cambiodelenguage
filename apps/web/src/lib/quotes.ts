@@ -254,10 +254,19 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
 export async function acceptQuote(companyId: number, id: number) {
   const result = await queryWithCompanyContext<{ id: number }>(
     companyId,
-    "UPDATE presupuestos SET estado = 'aceptada' WHERE id = $1 AND empresa_id = $2 RETURNING id",
+    `
+      UPDATE presupuestos
+      SET estado = 'aceptada'
+      WHERE id = $1
+        AND empresa_id = $2
+        AND estado = 'pendiente'
+      RETURNING id
+    `,
     [id, companyId],
   );
-  if (!result.rows[0]) throw new ApiError(404, "Presupuesto no encontrado");
+  if (result.rowCount !== 1 || !result.rows[0]) {
+    throw new ApiError(409, "El presupuesto ya no esta pendiente o no puede aceptarse");
+  }
   return { id, redirect: `/orders/new?quoteId=${id}` };
 }
 
