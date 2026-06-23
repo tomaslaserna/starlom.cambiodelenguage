@@ -1,7 +1,24 @@
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
-import { SearchBar } from "@/components/search-bar";
 import { SectionTabs } from "@/components/section-tabs";
+import {
+  Button,
+  ButtonLink,
+  Card,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  StatCard,
+  StatusBadge,
+  Toolbar,
+} from "@/components/ui";
 import { listProducts } from "@/lib/catalog";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
@@ -31,91 +48,142 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       session={session}
       title="Productos"
     >
-        <div className="grid gap-5">
-          <SectionTabs
-            tabs={[
-              { href: "/products", label: "Cambiar stock", active: !params.mode },
-              { href: "/products?mode=new", label: "Nuevo stock", active: params.mode === "new" },
-              { href: "/products?mode=bulk", label: "Carga masiva", active: params.mode === "bulk" },
-            ]}
-          />
+      <div className="grid gap-5">
+        <PageHeader
+          description="Catalogo operativo de productos con costos y disponibilidad de stock desde la vista vigente."
+          title="Productos"
+        />
 
-          <div className="grid gap-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 md:grid-cols-[1fr_auto] md:items-center">
-            <SearchBar action="/products" placeholder="Buscar por producto, codigo, categoria o proveedor" query={result.meta.query} />
-          <div className="flex flex-wrap items-center gap-2">
-            <a
-              className="rounded-md border border-[color:var(--border)] px-3 py-2 text-sm font-semibold hover:bg-[color:var(--panel-subtle)]"
+        <SectionTabs
+          tabs={[
+            { href: "/products", label: "Cambiar stock", active: !params.mode },
+            { href: "/products?mode=new", label: "Nuevo stock", active: params.mode === "new" },
+            { href: "/products?mode=bulk", label: "Carga masiva", active: params.mode === "bulk" },
+          ]}
+        />
+
+        <Toolbar ariaLabel="Busqueda y acciones de productos">
+          <form
+            action="/products"
+            aria-label="Busqueda"
+            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto] lg:items-end"
+          >
+            <Field htmlFor="products-query" label="Buscar">
+              <Input
+                defaultValue={result.meta.query}
+                id="products-query"
+                name="q"
+                placeholder="Producto, codigo, categoria o proveedor"
+                type="search"
+              />
+            </Field>
+            <Button type="submit">Buscar</Button>
+            <ButtonLink
               href="/api/pdfs/pricing/price-list?list=1"
+              prefetch={false}
+              rel="noreferrer"
               target="_blank"
+              variant="secondary"
             >
               Lista PDF
-            </a>
-            <div className="rounded-md bg-[color:var(--panel-subtle)] px-3 py-2 text-sm">
-              <span className="font-semibold">{formatNumber(result.meta.total)}</span>{" "}
-              <span className="text-[color:var(--muted)]">productos</span>
-            </div>
-          </div>
+            </ButtonLink>
+          </form>
+        </Toolbar>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            className="p-3"
+            detail={
+              result.meta.query
+                ? `Coinciden con la busqueda actual - Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`
+                : `Total de productos cargados - Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`
+            }
+            label="Productos encontrados"
+            value={formatNumber(result.meta.total)}
+          />
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
-              <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Producto</th>
-                  <th className="px-4 py-3 font-semibold">Codigo</th>
-                  <th className="px-4 py-3 font-semibold">Categoria</th>
-                  <th className="px-4 py-3 font-semibold">Proveedor</th>
-                  <th className="px-4 py-3 text-right font-semibold">Costo</th>
-                  <th className="px-4 py-3 text-right font-semibold">Real</th>
-                  <th className="px-4 py-3 text-right font-semibold">Reservado</th>
-                  <th className="px-4 py-3 text-right font-semibold">Disponible</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.data.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-[color:var(--muted)]" colSpan={8}>
-                      No hay productos para la busqueda actual.
-                    </td>
-                  </tr>
-                ) : (
-                  result.data.map((product) => (
-                    <tr className="border-t border-[color:var(--border)]" key={product.id}>
-                      <td className="px-4 py-4">
-                        <div className="font-medium">{product.name}</div>
-                        <div className="text-xs text-[color:var(--muted)]">ID interno {product.productId || product.id}</div>
-                      </td>
-                      <td className="px-4 py-4 font-mono text-xs">{product.code || "-"}</td>
-                      <td className="px-4 py-4">{product.category || "-"}</td>
-                      <td className="px-4 py-4 text-[color:var(--muted)]">{product.supplier || "-"}</td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">{formatCurrency(product.cost)}</td>
-                      <td className="px-4 py-4 text-right">{formatNumber(product.stockReal)}</td>
-                      <td className="px-4 py-4 text-right">{formatNumber(product.reserved)}</td>
-                      <td className="px-4 py-4 text-right">
-                        <span
-                          className={`rounded-md px-2 py-1 font-medium ${
-                            product.available <= 0
-                              ? "bg-[color:var(--danger)] text-white"
-                              : "bg-[color:var(--panel-subtle)]"
-                          }`}
-                        >
-                          {formatNumber(product.available)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        <Card className="overflow-hidden">
+          <DataTable
+            caption="Listado paginado de productos con costo y stock"
+            className="rounded-none border-0 shadow-none"
+            minWidth="1040px"
+            tableLabel="Productos"
+          >
+            <DataTableHeader>
+              <DataTableRow className="hover:bg-transparent">
+                <DataTableHead>Producto</DataTableHead>
+                <DataTableHead>Codigo</DataTableHead>
+                <DataTableHead>Categoria</DataTableHead>
+                <DataTableHead>Proveedor</DataTableHead>
+                <DataTableHead align="right">Costo</DataTableHead>
+                <DataTableHead align="right">Real</DataTableHead>
+                <DataTableHead align="right">Reservado</DataTableHead>
+                <DataTableHead align="right">Disponible</DataTableHead>
+              </DataTableRow>
+            </DataTableHeader>
+            <DataTableBody>
+              {result.data.length === 0 ? (
+                <DataTableRow className="hover:bg-transparent">
+                  <DataTableCell colSpan={8}>
+                    <EmptyState
+                      description={
+                        result.meta.query
+                          ? "Ajusta la busqueda para encontrar productos por nombre, codigo, categoria o proveedor."
+                          : "Cuando existan productos cargados apareceran en este listado paginado."
+                      }
+                      title={
+                        result.meta.query
+                          ? "No hay productos para la busqueda actual"
+                          : "No hay productos cargados"
+                      }
+                    />
+                  </DataTableCell>
+                </DataTableRow>
+              ) : (
+                result.data.map((product) => (
+                  <DataTableRow key={product.id}>
+                    <DataTableCell>
+                      <div className="max-w-[300px] break-words font-medium">{product.name}</div>
+                      <div className="mt-1 whitespace-nowrap font-mono text-xs text-[color:var(--muted)]">
+                        ID interno {product.productId || product.id}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap font-mono text-xs">
+                      {product.code || "-"}
+                    </DataTableCell>
+                    <DataTableCell>
+                      <div className="max-w-[180px] break-words">{product.category || "-"}</div>
+                    </DataTableCell>
+                    <DataTableCell className="text-[color:var(--muted)]">
+                      <div className="max-w-[220px] break-words">{product.supplier || "-"}</div>
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                      {formatCurrency(product.cost)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                      {formatNumber(product.stockReal)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                      {formatNumber(product.reserved)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap">
+                      <StatusBadge tone={product.available <= 0 ? "danger" : "neutral"}>
+                        {formatNumber(product.available)}
+                      </StatusBadge>
+                    </DataTableCell>
+                  </DataTableRow>
+                ))
+              )}
+            </DataTableBody>
+          </DataTable>
           <PaginationLinks
             basePath="/products"
             page={result.meta.page}
             query={result.meta.query}
             totalPages={result.meta.totalPages}
           />
-        </div>
+        </Card>
       </div>
     </ModulePage>
   );
