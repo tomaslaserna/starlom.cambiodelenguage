@@ -12,6 +12,11 @@ export const CUSTOMERS_READ_PERMISSION = {
   action: "ver",
 } satisfies Permission;
 
+export const SUPPLIERS_READ_PERMISSION = {
+  resource: "proveedores",
+  action: "ver",
+} satisfies Permission;
+
 const LEGACY_ROLE_PERMISSIONS: Record<string, string[]> = {
   Empleado: ["pedidos.ver", "stock.ver"],
   Empleado_1: ["pedidos.ver", "pedidos.editar", "stock.ver", "stock.editar", "productos.ver"],
@@ -135,6 +140,10 @@ export async function sessionAllows(session: AuthSession, permissions: Permissio
 
 export async function sessionCanReadCustomers(session: AuthSession) {
   return sessionAllows(session, [CUSTOMERS_READ_PERMISSION]);
+}
+
+export async function sessionCanReadSuppliers(session: AuthSession) {
+  return sessionAllows(session, [SUPPLIERS_READ_PERMISSION]);
 }
 
 export async function requireSessionPermission(session: AuthSession, permissions: Permission[]) {

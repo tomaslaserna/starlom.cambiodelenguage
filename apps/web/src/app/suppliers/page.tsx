@@ -19,6 +19,8 @@ import {
 import { listSuppliers } from "@/lib/catalog-management";
 import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
+import { sessionCanReadSuppliers } from "@/lib/route-auth";
+import { redirect } from "next/navigation";
 
 type SuppliersPageProps = {
   searchParams: Promise<{
@@ -29,6 +31,10 @@ type SuppliersPageProps = {
 
 export default async function SuppliersPage({ searchParams }: SuppliersPageProps) {
   const session = await requireStaffSession();
+  if (!(await sessionCanReadSuppliers(session))) {
+    redirect("/");
+  }
+
   const params = await searchParams;
   const result = await listSuppliers({
     companyId: session.companyId,

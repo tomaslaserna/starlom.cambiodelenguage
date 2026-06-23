@@ -2,6 +2,7 @@ import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import {
   CUSTOMERS_READ_PERMISSION,
+  SUPPLIERS_READ_PERMISSION,
   sessionAllows,
   type Permission,
 } from "@/lib/route-auth";
@@ -96,7 +97,7 @@ export const navigationGroups: NavigationGroup[] = [
       { href: "/employees", label: "Empleados", active: "database" },
       { href: "/products", label: "Precios", active: "database" },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
-      { href: "/suppliers", label: "Proveedores", active: "database" },
+      { href: "/suppliers", label: "Proveedores", active: "database", permission: SUPPLIERS_READ_PERMISSION },
     ],
   },
   {
