@@ -79,6 +79,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             </Field>
             <Button type="submit">Buscar</Button>
             <ButtonLink
+              aria-label="Abrir lista PDF de precios en una pestaña nueva"
               href="/api/pdfs/pricing/price-list?list=1"
               prefetch={false}
               rel="noreferrer"
@@ -168,7 +169,10 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                       {formatNumber(product.reserved)}
                     </DataTableCell>
                     <DataTableCell align="right" className="whitespace-nowrap">
-                      <StatusBadge tone={product.available <= 0 ? "danger" : "neutral"}>
+                      <StatusBadge
+                        aria-label={`Stock disponible: ${formatNumber(product.available)}`}
+                        tone={product.available <= 0 ? "danger" : "neutral"}
+                      >
                         {formatNumber(product.available)}
                       </StatusBadge>
                     </DataTableCell>
