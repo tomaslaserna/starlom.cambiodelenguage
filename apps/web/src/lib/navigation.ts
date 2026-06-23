@@ -72,7 +72,7 @@ export const navigationGroups: NavigationGroup[] = [
     active: "sales",
     badge: "quotes",
     items: [
-      { href: "/sales", label: "Ventas registradas", active: "sales" },
+      { href: "/sales", label: "Ventas", active: "sales" },
       { href: "/orders/new", label: "Cargar pedido", active: "sales" },
       { href: "/quotes", label: "Presupuestos", active: "sales", badge: "quotes" },
     ],
