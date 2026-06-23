@@ -110,8 +110,12 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                 <DataTableRow className="hover:bg-transparent">
                   <DataTableCell colSpan={6}>
                     <EmptyState
-                      description="Ajusta la busqueda para encontrar clientes por nombre, razon social, CUIT o telefono."
-                      title="No hay clientes para la busqueda actual"
+                      description={
+                        result.meta.query
+                          ? "Ajusta la busqueda para encontrar clientes por nombre, razon social, CUIT o telefono."
+                          : "Cuando existan clientes cargados apareceran en este listado paginado."
+                      }
+                      title={result.meta.query ? "No hay clientes para la busqueda actual" : "No hay clientes cargados"}
                     />
                   </DataTableCell>
                 </DataTableRow>
@@ -129,8 +133,8 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                     <DataTableCell className="whitespace-nowrap font-mono text-xs">
                       {customer.taxIdType || "ID"} {customer.taxId || "-"}
                     </DataTableCell>
-                    <DataTableCell>
-                      <div className="max-w-[180px] break-words">{customer.phone || "-"}</div>
+                    <DataTableCell className="whitespace-nowrap">
+                      {customer.phone || "-"}
                     </DataTableCell>
                     <DataTableCell className="text-[color:var(--muted)]">
                       <div className="max-w-[220px] break-words">
