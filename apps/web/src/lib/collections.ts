@@ -2,10 +2,28 @@ import { ApiError } from "@/lib/api-response";
 import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
+import type { PoolClient } from "pg";
 
 const APPROVAL_STATES = new Set(["pendiente_aprobacion", "en_proceso"]);
 const REGISTERABLE_STATES = new Set(["pendiente", "vencido"]);
 const PAYMENT_METHODS = new Set(["efectivo", "transferencia", "echeck"]);
+const COLLECTION_RESOLUTION_CONFLICT =
+  "El cobro ya no esta pendiente de resolucion o no puede procesarse";
+
+type CollectionResolutionSale = {
+  id: number;
+  nombre_cliente: string;
+  monto: string;
+  nro_comprobante: number;
+  estado_cobro: string;
+  cobro_monto_registrado: string;
+  cobro_fecha: string | null;
+  cobro_metodo: string;
+  cobro_destino: string;
+  cobro_operacion: string;
+  cobro_notas: string;
+  nro_remito: number | null;
+};
 
 export type CollectionRegistrationInput = {
   amount: number;
@@ -23,6 +41,50 @@ function todayIso() {
 function remittanceLabel(value: { nro_remito?: number | null; nro_comprobante?: number | null; id?: number }) {
   const numberValue = value.nro_remito ?? value.nro_comprobante ?? value.id ?? 0;
   return `#${String(numberValue).padStart(4, "0")}`;
+}
+
+function throwCollectionResolutionConflict(): never {
+  throw new ApiError(409, COLLECTION_RESOLUTION_CONFLICT);
+}
+
+function assertResolvedOneRow(rows: { id: number }[]) {
+  if (rows.length !== 1) throwCollectionResolutionConflict();
+}
+
+async function lockCollectionSaleForResolution(
+  client: PoolClient,
+  companyId: number,
+  saleId: number,
+) {
+  const saleResult = await client.query<CollectionResolutionSale>(
+    `
+      SELECT v.id, v.nombre_cliente, v.monto::text, v.nro_comprobante,
+             COALESCE(v.estado_cobro,'pendiente') AS estado_cobro,
+             COALESCE(v.cobro_monto_registrado,0)::text AS cobro_monto_registrado,
+             COALESCE(v.cobro_fecha, CURRENT_DATE)::text AS cobro_fecha,
+             COALESCE(v.cobro_metodo,'') AS cobro_metodo,
+             COALESCE(v.cobro_destino,'') AS cobro_destino,
+             COALESCE(v.cobro_operacion,'') AS cobro_operacion,
+             COALESCE(v.cobro_notas,'') AS cobro_notas,
+             COALESCE((
+               SELECT r.nro_remito
+               FROM remitos r
+               WHERE r.id_venta = v.id AND r.empresa_id = v.empresa_id
+               ORDER BY r.id
+               LIMIT 1
+             ), v.nro_comprobante) AS nro_remito
+      FROM ventas v
+      WHERE v.id = $1 AND v.empresa_id = $2
+      FOR UPDATE OF v
+    `,
+    [saleId, companyId],
+  );
+  const sale = saleResult.rows[0];
+  if (!sale || !APPROVAL_STATES.has(sale.estado_cobro)) {
+    throwCollectionResolutionConflict();
+  }
+
+  return sale;
 }
 
 export function collectionRegistrationFromBody(body: RequestBody): CollectionRegistrationInput {
@@ -262,47 +324,7 @@ export async function registerCollection(
 
 export async function approveCollection(session: AuthSession, saleId: number) {
   return withCompanyContext(session.companyId, async (client) => {
-    const saleResult = await client.query<{
-      id: number;
-      nombre_cliente: string;
-      monto: string;
-      nro_comprobante: number;
-      estado_cobro: string;
-      cobro_monto_registrado: string;
-      cobro_fecha: string | null;
-      cobro_metodo: string;
-      cobro_destino: string;
-      cobro_operacion: string;
-      cobro_notas: string;
-      nro_remito: number | null;
-    }>(
-      `
-        SELECT v.id, v.nombre_cliente, v.monto::text, v.nro_comprobante,
-               COALESCE(v.estado_cobro,'pendiente') AS estado_cobro,
-               COALESCE(v.cobro_monto_registrado,0)::text AS cobro_monto_registrado,
-               COALESCE(v.cobro_fecha, CURRENT_DATE)::text AS cobro_fecha,
-               COALESCE(v.cobro_metodo,'') AS cobro_metodo,
-               COALESCE(v.cobro_destino,'') AS cobro_destino,
-               COALESCE(v.cobro_operacion,'') AS cobro_operacion,
-               COALESCE(v.cobro_notas,'') AS cobro_notas,
-               COALESCE((
-                 SELECT r.nro_remito
-                 FROM remitos r
-                 WHERE r.id_venta = v.id AND r.empresa_id = v.empresa_id
-                 ORDER BY r.id
-                 LIMIT 1
-               ), v.nro_comprobante) AS nro_remito
-        FROM ventas v
-        WHERE v.id = $1 AND v.empresa_id = $2
-        LIMIT 1
-      `,
-      [saleId, session.companyId],
-    );
-    const sale = saleResult.rows[0];
-    if (!sale) throw new ApiError(404, "Venta no encontrada");
-    if (!APPROVAL_STATES.has(sale.estado_cobro)) {
-      throw new ApiError(400, "El cobro no esta pendiente de aprobacion");
-    }
+    const sale = await lockCollectionSaleForResolution(client, session.companyId, saleId);
 
     const amount = Number(sale.cobro_monto_registrado);
     if (amount <= 0) throw new ApiError(400, "El monto registrado es invalido");
@@ -343,16 +365,19 @@ export async function approveCollection(session: AuthSession, saleId: number) {
     const totalCredit = Number(totalResult.rows[0]?.total_haber ?? 0);
     const nextStatus = totalCredit + 0.0001 >= Number(sale.monto) ? "recibido" : "pendiente";
 
-    await client.query(
+    const updateResult = await client.query<{ id: number }>(
       `
         UPDATE ventas
         SET estado_cobro = $1,
             cobro_aprobado_por = $2,
             cobro_aprobado_at = NOW()
         WHERE id = $3 AND empresa_id = $4
+          AND COALESCE(estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
+        RETURNING id
       `,
       [nextStatus, session.username, saleId, session.companyId],
     );
+    assertResolvedOneRow(updateResult.rows);
 
     await client.query(
       "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
@@ -369,21 +394,13 @@ export async function approveCollection(session: AuthSession, saleId: number) {
 
 export async function rejectCollection(session: AuthSession, saleId: number, reason: string) {
   return withCompanyContext(session.companyId, async (client) => {
-    const saleResult = await client.query<{ estado_cobro: string }>(
-      "SELECT COALESCE(estado_cobro,'pendiente') AS estado_cobro FROM ventas WHERE id = $1 AND empresa_id = $2 LIMIT 1",
-      [saleId, session.companyId],
-    );
-    const sale = saleResult.rows[0];
-    if (!sale) throw new ApiError(404, "Venta no encontrada");
-    if (!APPROVAL_STATES.has(sale.estado_cobro)) {
-      throw new ApiError(400, "El cobro no esta pendiente de aprobacion");
-    }
+    await lockCollectionSaleForResolution(client, session.companyId, saleId);
 
     const note = reason.trim()
       ? `Cobro rechazado por ${session.username}: ${reason.trim()}`
       : `Cobro rechazado por ${session.username}`;
 
-    await client.query(
+    const updateResult = await client.query<{ id: number }>(
       `
         UPDATE ventas
         SET estado_cobro = 'pendiente',
@@ -400,9 +417,12 @@ export async function rejectCollection(session: AuthSession, saleId: number, rea
             cobro_justificacion_proceso = $1,
             cobro_intento_proceso_at = NOW()
         WHERE id = $2 AND empresa_id = $3
+          AND COALESCE(estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
+        RETURNING id
       `,
       [note, saleId, session.companyId],
     );
+    assertResolvedOneRow(updateResult.rows);
 
     await client.query(
       "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
