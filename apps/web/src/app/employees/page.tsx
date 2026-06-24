@@ -1,6 +1,22 @@
 import { ModulePage } from "@/components/module-page";
 import { redirect } from "next/navigation";
-import { SearchBar } from "@/components/search-bar";
+import {
+  Button,
+  Card,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  StatCard,
+  StatusBadge,
+  Toolbar,
+} from "@/components/ui";
 import { listEmployeePermissions, listEmployees } from "@/lib/employees";
 import { formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
@@ -13,7 +29,10 @@ type EmployeesPageProps = {
 };
 
 function matchesQuery(item: Awaited<ReturnType<typeof listEmployees>>[number], query: string) {
-  if (!query) return true;
+  if (!query) {
+    return true;
+  }
+
   return [item.displayName, item.email, item.username, item.role, item.title]
     .join(" ")
     .toLowerCase()
@@ -28,12 +47,15 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
 
   const params = await searchParams;
   const query = params.q?.trim().toLowerCase() ?? "";
+
   const [allEmployees, permissions] = await Promise.all([
     listEmployees(session.companyId),
     listEmployeePermissions(session.companyId),
   ]);
+
   const employees = allEmployees.filter((item) => matchesQuery(item, query));
   const activeCount = employees.filter((employee) => employee.active).length;
+  const inactiveCount = employees.length - activeCount;
 
   return (
     <ModulePage
@@ -43,85 +65,114 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
       title="Empleados"
     >
       <div className="grid gap-5">
-        <div className="grid gap-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 md:grid-cols-[1fr_auto] md:items-center">
-          <SearchBar
+        <PageHeader
+          title="Empleados"
+          description="Gestiona el directorio interno, rangos, cargos y permisos disponibles del personal."
+        />
+
+        <Toolbar ariaLabel="Busqueda de empleados">
+          <form
             action="/employees"
-            placeholder="Buscar empleado, usuario, email, cargo o rango"
-            query={params.q ?? ""}
-          />
-          <div className="rounded-md bg-[color:var(--panel-subtle)] px-3 py-2 text-sm">
-            <span className="font-semibold">{permissions.length}</span>{" "}
-            <span className="text-[color:var(--muted)]">permisos</span>
-          </div>
+            aria-label="Buscar empleados"
+            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto] lg:items-end"
+          >
+            <Field htmlFor="employees-query" label="Buscar">
+              <Input
+                id="employees-query"
+                name="q"
+                type="search"
+                defaultValue={params.q ?? ""}
+                placeholder="Empleado, usuario, email, cargo o rango"
+              />
+            </Field>
+            <Button type="submit">Buscar</Button>
+          </form>
+        </Toolbar>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard label="Empleados filtrados" value={employees.length} />
+          <StatCard label="Activos filtrados" value={activeCount} />
+          <StatCard label="Inactivos filtrados" value={inactiveCount} />
+          <StatCard label="Permisos disponibles" value={permissions.length} />
         </div>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Empleados filtrados</div>
-            <div className="mt-2 text-2xl font-semibold">{employees.length}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Activos</div>
-            <div className="mt-2 text-2xl font-semibold">{activeCount}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Inactivos</div>
-            <div className="mt-2 text-2xl font-semibold">{employees.length - activeCount}</div>
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] border-collapse text-left text-sm">
-              <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Empleado</th>
-                  <th className="px-4 py-3 font-semibold">Usuario</th>
-                  <th className="px-4 py-3 font-semibold">Contacto</th>
-                  <th className="px-4 py-3 font-semibold">Rango</th>
-                  <th className="px-4 py-3 font-semibold">Cargo</th>
-                  <th className="px-4 py-3 font-semibold">Ingreso</th>
-                  <th className="px-4 py-3 text-right font-semibold">Permisos</th>
-                  <th className="px-4 py-3 font-semibold">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employees.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-[color:var(--muted)]" colSpan={8}>
-                      No hay empleados para la busqueda actual.
-                    </td>
-                  </tr>
-                ) : (
-                  employees.map((employee) => (
-                    <tr className="border-t border-[color:var(--border)]" key={employee.id}>
-                      <td className="px-4 py-4">
-                        <div className="font-medium">{employee.displayName || employee.name}</div>
-                        <div className="font-mono text-xs text-[color:var(--muted)]">
-                          DNI {employee.document || "-"}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 font-mono text-xs">{employee.username}</td>
-                      <td className="px-4 py-4">
-                        <div>{employee.email || "-"}</div>
-                        <div className="text-xs text-[color:var(--muted)]">{employee.phone || "-"}</div>
-                      </td>
-                      <td className="px-4 py-4">{employee.role}</td>
-                      <td className="px-4 py-4">{employee.title || "-"}</td>
-                      <td className="px-4 py-4">{formatDate(employee.hireDate)}</td>
-                      <td className="px-4 py-4 text-right">{employee.permissionIds.length}</td>
-                      <td className="px-4 py-4">
-                        <span className="rounded-md border border-[color:var(--border)] px-2 py-1 text-xs">
-                          {employee.active ? "Activo" : "Inactivo"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <Card className="overflow-hidden">
+          <DataTable
+            caption="Listado administrativo de empleados"
+            minWidth="1040px"
+            tableLabel="Empleados"
+            className="rounded-none border-0 shadow-none"
+          >
+            <DataTableHeader>
+              <DataTableRow>
+                <DataTableHead>Empleado</DataTableHead>
+                <DataTableHead>Usuario</DataTableHead>
+                <DataTableHead>Contacto</DataTableHead>
+                <DataTableHead>Rango</DataTableHead>
+                <DataTableHead>Cargo</DataTableHead>
+                <DataTableHead>Ingreso</DataTableHead>
+                <DataTableHead className="text-right">Permisos</DataTableHead>
+                <DataTableHead>Estado</DataTableHead>
+              </DataTableRow>
+            </DataTableHeader>
+            <DataTableBody>
+              {employees.length === 0 ? (
+                <DataTableRow>
+                  <DataTableCell colSpan={8} className="py-10">
+                    <EmptyState
+                      title="No hay empleados para mostrar"
+                      description={
+                        query
+                          ? "Ajusta la busqueda para revisar otros empleados."
+                          : "Todavia no hay empleados cargados en este directorio."
+                      }
+                    />
+                  </DataTableCell>
+                </DataTableRow>
+              ) : (
+                employees.map((employee) => (
+                  <DataTableRow key={employee.id}>
+                    <DataTableCell className="min-w-[220px]">
+                      <div className="font-medium text-[var(--color-text-primary)]">
+                        {employee.displayName || employee.name}
+                      </div>
+                      <div className="mt-1 text-[var(--text-caption)] text-[var(--color-text-muted)]">
+                        DNI {employee.document || "-"}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap font-mono text-[var(--text-body-sm)]">
+                      {employee.username}
+                    </DataTableCell>
+                    <DataTableCell className="min-w-[220px]">
+                      <div className="break-all text-[var(--color-text-primary)]">{employee.email || "-"}</div>
+                      <div className="mt-1 text-[var(--text-caption)] text-[var(--color-text-muted)]">
+                        {employee.phone || "-"}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap">{employee.role}</DataTableCell>
+                    <DataTableCell className="min-w-[160px] text-[var(--color-text-secondary)]">
+                      {employee.title || "-"}
+                    </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap text-[var(--color-text-secondary)]">
+                      {formatDate(employee.hireDate)}
+                    </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap text-right tabular-nums">
+                      {employee.permissionIds.length}
+                    </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap">
+                      <StatusBadge
+                        aria-label={`Estado laboral: ${employee.active ? "Activo" : "Inactivo"}`}
+                        tone={employee.active ? "success" : "neutral"}
+                      >
+                        {employee.active ? "Activo" : "Inactivo"}
+                      </StatusBadge>
+                    </DataTableCell>
+                  </DataTableRow>
+                ))
+              )}
+            </DataTableBody>
+          </DataTable>
+        </Card>
       </div>
     </ModulePage>
   );
