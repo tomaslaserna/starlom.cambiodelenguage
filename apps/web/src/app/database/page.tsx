@@ -1,5 +1,11 @@
-import Link from "next/link";
 import { ModulePage } from "@/components/module-page";
+import {
+  ButtonLink,
+  Card,
+  CardContent,
+  EmptyState,
+  PageHeader,
+} from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
 import {
   CUSTOMERS_READ_PERMISSION,
@@ -40,13 +46,49 @@ export default async function DatabasePage() {
       session={session}
       title="Base de datos"
     >
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {visibleModules.map((module) => (
-          <Link className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 hover:bg-[color:var(--panel-subtle)]" href={module.href} key={module.href}>
-            <h2 className="font-semibold">{module.label}</h2>
-            <p className="mt-2 text-sm text-[color:var(--muted)]">{module.detail}</p>
-          </Link>
-        ))}
+      <div className="grid gap-5">
+        <PageHeader
+          title="Base de datos"
+          description="Accesos a directorios operativos y datos maestros segun los permisos de lectura del usuario."
+        />
+
+        {visibleModules.length === 0 ? (
+          <Card>
+            <CardContent>
+              <EmptyState
+                title="No hay directorios disponibles"
+                description="Tu usuario no tiene accesos de lectura habilitados para esta seccion."
+                action={
+                  <ButtonLink href="/" size="sm" variant="secondary">
+                    Volver al inicio
+                  </ButtonLink>
+                }
+              />
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {visibleModules.map((module) => (
+              <Card key={module.href}>
+                <CardContent className="grid h-full gap-4">
+                  <div>
+                    <h2 className="font-semibold">{module.label}</h2>
+                    <p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">{module.detail}</p>
+                  </div>
+                  <ButtonLink
+                    aria-label={`Abrir ${module.label}`}
+                    className="w-fit"
+                    href={module.href}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    Abrir
+                  </ButtonLink>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </ModulePage>
   );
