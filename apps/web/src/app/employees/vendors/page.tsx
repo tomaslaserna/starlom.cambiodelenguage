@@ -16,10 +16,14 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { getVendorManagement } from "@/lib/vendors-management";
 import { requireStaffSession } from "@/lib/auth";
+import { sessionCanReadEmployees } from "@/lib/route-auth";
 import { saveVendorGoalAction } from "@/app/employees/vendors/actions";
+import { redirect } from "next/navigation";
 
 export default async function VendorsManagementPage() {
   const session = await requireStaffSession();
+  if (!(await sessionCanReadEmployees(session))) redirect("/");
+
   const data = await getVendorManagement(session.companyId);
 
   return (

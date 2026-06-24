@@ -137,7 +137,7 @@ export const navigationGroups: NavigationGroup[] = [
     active: "employees",
     items: [
       { href: "/employees", label: "Empleados", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
-      { href: "/employees/vendors", label: "Gestion de vendedores", active: "employees" },
+      { href: "/employees/vendors", label: "Gestion de vendedores", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
       { href: "/treasury/movements", label: "Registro de movimientos", active: "employees" },
     ],
   },
