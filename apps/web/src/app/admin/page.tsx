@@ -9,6 +9,7 @@ export default async function AdminPage() {
   const session = await requireStaffSession();
   const approvalAccess = await approvalCenterAccessForSession(session);
   const canReadEmployees = await sessionCanReadEmployees(session);
+  const canUseApprovals = approvalAccess.collections || approvalAccess.requests;
   const approvals = await listApprovalCenter(session.companyId, approvalAccess);
 
   return (
@@ -35,10 +36,12 @@ export default async function AdminPage() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <Link className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 hover:bg-[color:var(--panel-subtle)]" href="/admin/approvals">
-            <h2 className="font-semibold">Solicitudes y aprobaciones</h2>
-            <p className="mt-2 text-sm text-[color:var(--muted)]">Bandeja central de ordenes, pagos, facturas y cobros.</p>
-          </Link>
+          {canUseApprovals ? (
+            <Link className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 hover:bg-[color:var(--panel-subtle)]" href="/admin/approvals">
+              <h2 className="font-semibold">Solicitudes y aprobaciones</h2>
+              <p className="mt-2 text-sm text-[color:var(--muted)]">Bandeja central de ordenes, pagos, facturas y cobros.</p>
+            </Link>
+          ) : null}
           {canReadEmployees ? (
             <Link className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 hover:bg-[color:var(--panel-subtle)]" href="/employees">
               <h2 className="font-semibold">Usuarios y permisos</h2>

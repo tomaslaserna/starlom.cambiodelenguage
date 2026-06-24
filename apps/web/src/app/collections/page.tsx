@@ -21,6 +21,8 @@ import {
 import { listPendingCollections } from "@/lib/collections";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
+import { sessionCanReadCollections } from "@/lib/route-auth";
+import { redirect } from "next/navigation";
 import {
   approveCollectionAction,
   rejectCollectionAction,
@@ -62,6 +64,8 @@ function collectionStatusTone(value: string): StatusBadgeTone {
 
 export default async function CollectionsPage({ searchParams }: CollectionsPageProps) {
   const session = await requireStaffSession();
+  if (!(await sessionCanReadCollections(session))) redirect("/");
+
   const params = await searchParams;
   const query = params.q?.trim().toLowerCase() ?? "";
   const allCollections = await listPendingCollections(session.companyId);

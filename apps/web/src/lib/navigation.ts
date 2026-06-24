@@ -1,16 +1,21 @@
 import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import {
+  COLLECTIONS_APPROVE_PERMISSION,
+  COLLECTIONS_READ_PERMISSION,
   CUSTOMERS_READ_PERMISSION,
   EMPLOYEES_READ_PERMISSION,
   PRODUCTS_READ_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
   sessionAllows,
+  sessionCanApproveCollections,
+  sessionCanReadCollections,
   type Permission,
 } from "@/lib/route-auth";
 
 export type NavigationBadgeKey =
   | "approvals"
+  | "collectionApprovals"
   | "messages"
   | "tasks"
   | "ordersReceived"
@@ -125,9 +130,15 @@ export const navigationGroups: NavigationGroup[] = [
   {
     label: "Cobros y pagos",
     active: "collections",
-    badge: "approvals",
+    badge: "collectionApprovals",
     items: [
-      { href: "/collections", label: "Cobros", active: "collections", badge: "approvals" },
+      {
+        href: "/collections",
+        label: "Cobros",
+        active: "collections",
+        badge: "collectionApprovals",
+        permission: COLLECTIONS_READ_PERMISSION,
+      },
       { href: "/treasury/current-accounts", label: "Cuentas corrientes", active: "collections" },
       { href: "/treasury/movements?type=pago", label: "Pagos proveedores", active: "treasury" },
     ],
@@ -147,7 +158,13 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "approvals",
     items: [
       { href: "/admin", label: "Panel admin", active: "admin" },
-      { href: "/admin/approvals", label: "Solicitudes y aprobaciones", active: "admin", badge: "approvals" },
+      {
+        href: "/admin/approvals",
+        label: "Solicitudes y aprobaciones",
+        active: "admin",
+        badge: "approvals",
+        permission: COLLECTIONS_APPROVE_PERMISSION,
+      },
     ],
   },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
@@ -283,6 +300,7 @@ export function authorizedNavigationSections(authorization: NavigationAuthorizat
 export function emptyNavigationIndicators(): NavigationIndicators {
   return {
     approvals: 0,
+    collectionApprovals: 0,
     messages: 0,
     tasks: 0,
     ordersReceived: 0,
@@ -295,8 +313,20 @@ export function emptyNavigationIndicators(): NavigationIndicators {
 }
 
 export async function getNavigationIndicators(session: AuthSession): Promise<NavigationIndicators> {
+  const [canReadCollections, canApproveCollections] = await Promise.all([
+    sessionCanReadCollections(session),
+    sessionCanApproveCollections(session),
+  ]);
+  const shouldCountCollectionApprovals = canReadCollections || canApproveCollections;
+  const collectionApprovalsSelect = shouldCountCollectionApprovals
+    ? `(SELECT COUNT(*) FROM ventas
+         WHERE empresa_id = $1
+           AND COALESCE(estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
+           AND COALESCE(estado_pedido,'entregado') = 'entregado')::text`
+    : `'0'::text`;
+
   const result = await queryWithCompanyContext<{
-    approvals: string;
+    collection_approvals: string;
     messages: string;
     personal_tasks: string;
     assigned_tasks: string;
@@ -310,10 +340,7 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     session.companyId,
     `
       SELECT
-        (SELECT COUNT(*) FROM ventas
-         WHERE empresa_id = $1
-           AND COALESCE(estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
-           AND COALESCE(estado_pedido,'entregado') = 'entregado')::text AS approvals,
+        ${collectionApprovalsSelect} AS collection_approvals,
         (SELECT COUNT(*) FROM mensajes
          WHERE empresa_id = $1 AND para = $2 AND leido = 0)::text AS messages,
         (SELECT COUNT(*) FROM recordatorios
@@ -349,8 +376,10 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
 
   const row = result.rows[0];
   if (!row) return emptyNavigationIndicators();
+  const collectionApprovals = Number(row.collection_approvals);
   return {
-    approvals: Number(row.approvals),
+    approvals: canApproveCollections ? collectionApprovals : 0,
+    collectionApprovals: canReadCollections ? collectionApprovals : 0,
     messages: Number(row.messages),
     tasks: Number(row.personal_tasks) + Number(row.assigned_tasks),
     ordersReceived: Number(row.orders_received),

@@ -3,12 +3,9 @@ import { ApiError } from "@/lib/api-response";
 import { listPendingCollections } from "@/lib/collections";
 import { queryWithCompanyContext } from "@/lib/db";
 import { executeSupplierPayment } from "@/lib/purchases";
-import { sessionAllows, type Permission } from "@/lib/route-auth";
+import { COLLECTIONS_APPROVE_PERMISSION, sessionAllows } from "@/lib/route-auth";
 
-export const COLLECTION_APPROVAL_PERMISSION = {
-  resource: "cobranzas",
-  action: "aprobar",
-} satisfies Permission;
+export const COLLECTION_APPROVAL_PERMISSION = COLLECTIONS_APPROVE_PERMISSION;
 
 export type ApprovalSource = "collection" | "request";
 

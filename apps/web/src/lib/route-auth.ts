@@ -27,6 +27,16 @@ export const EMPLOYEES_READ_PERMISSION = {
   action: "ver",
 } satisfies Permission;
 
+export const COLLECTIONS_READ_PERMISSION = {
+  resource: "cobranzas",
+  action: "ver",
+} satisfies Permission;
+
+export const COLLECTIONS_APPROVE_PERMISSION = {
+  resource: "cobranzas",
+  action: "aprobar",
+} satisfies Permission;
+
 const LEGACY_ROLE_PERMISSIONS: Record<string, string[]> = {
   Empleado: ["pedidos.ver", "stock.ver"],
   Empleado_1: ["pedidos.ver", "pedidos.editar", "stock.ver", "stock.editar", "productos.ver"],
@@ -162,6 +172,14 @@ export async function sessionCanReadProducts(session: AuthSession) {
 
 export async function sessionCanReadEmployees(session: AuthSession) {
   return sessionAllows(session, [EMPLOYEES_READ_PERMISSION]);
+}
+
+export async function sessionCanReadCollections(session: AuthSession) {
+  return sessionAllows(session, [COLLECTIONS_READ_PERMISSION]);
+}
+
+export async function sessionCanApproveCollections(session: AuthSession) {
+  return sessionAllows(session, [COLLECTIONS_APPROVE_PERMISSION]);
 }
 
 export async function requireSessionPermission(session: AuthSession, permissions: Permission[]) {
