@@ -2,6 +2,7 @@ import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import {
   CUSTOMERS_READ_PERMISSION,
+  PRODUCTS_READ_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
   sessionAllows,
   type Permission,
@@ -95,7 +96,7 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       { href: "/database", label: "Resumen", active: "database" },
       { href: "/employees", label: "Empleados", active: "database" },
-      { href: "/products", label: "Precios", active: "database" },
+      { href: "/products", label: "Precios", active: "database", permission: PRODUCTS_READ_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/suppliers", label: "Proveedores", active: "database", permission: SUPPLIERS_READ_PERMISSION },
     ],
@@ -104,9 +105,9 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Stock",
     active: "stock",
     items: [
-      { href: "/products", label: "Cambiar stock", active: "stock" },
-      { href: "/products?mode=new", label: "Nuevo stock", active: "stock" },
-      { href: "/products?mode=bulk", label: "Carga masiva", active: "stock" },
+      { href: "/products", label: "Cambiar stock", active: "stock", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/products?mode=new", label: "Nuevo stock", active: "stock", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/products?mode=bulk", label: "Carga masiva", active: "stock", permission: PRODUCTS_READ_PERMISSION },
     ],
   },
   {

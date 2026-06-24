@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
 import { SectionTabs } from "@/components/section-tabs";
@@ -22,6 +23,7 @@ import {
 import { listProducts } from "@/lib/catalog";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
+import { sessionCanReadProducts } from "@/lib/route-auth";
 
 type ProductsPageProps = {
   searchParams: Promise<{
@@ -33,6 +35,8 @@ type ProductsPageProps = {
 
 export default async function ProductsPage({ searchParams }: ProductsPageProps) {
   const session = await requireStaffSession();
+  if (!(await sessionCanReadProducts(session))) redirect("/");
+
   const params = await searchParams;
   const result = await listProducts({
     companyId: session.companyId,

@@ -1,6 +1,6 @@
 import Image from "next/image";
 import { currentSession } from "@/lib/auth";
-import { sessionCanReadCustomers } from "@/lib/route-auth";
+import { sessionCanReadCustomers, sessionCanReadProducts } from "@/lib/route-auth";
 
 const migrationModules = [
   {
@@ -38,7 +38,9 @@ const apiContracts = [
 
 export default async function Home() {
   const session = await currentSession();
-  const canReadCustomers = session ? await sessionCanReadCustomers(session) : false;
+  const [canReadCustomers, canReadProducts] = session
+    ? await Promise.all([sessionCanReadCustomers(session), sessionCanReadProducts(session)])
+    : [false, false];
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -74,12 +76,14 @@ export default async function Home() {
                 Clientes
               </a>
             ) : null}
-            <a
-              className="rounded-md border border-[color:var(--border)] px-3 py-2 hover:bg-[color:var(--panel-subtle)]"
-              href="/products"
-            >
-              Productos
-            </a>
+            {canReadProducts ? (
+              <a
+                className="rounded-md border border-[color:var(--border)] px-3 py-2 hover:bg-[color:var(--panel-subtle)]"
+                href="/products"
+              >
+                Productos
+              </a>
+            ) : null}
             <a
               className="rounded-md border border-[color:var(--border)] px-3 py-2 hover:bg-[color:var(--panel-subtle)]"
               href="/orders"
