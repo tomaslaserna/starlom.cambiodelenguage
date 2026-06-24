@@ -2,6 +2,7 @@ import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import {
   CUSTOMERS_READ_PERMISSION,
+  EMPLOYEES_READ_PERMISSION,
   PRODUCTS_READ_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
   sessionAllows,
@@ -95,7 +96,7 @@ export const navigationGroups: NavigationGroup[] = [
     active: "database",
     items: [
       { href: "/database", label: "Resumen", active: "database" },
-      { href: "/employees", label: "Empleados", active: "database" },
+      { href: "/employees", label: "Empleados", active: "database", permission: EMPLOYEES_READ_PERMISSION },
       { href: "/products", label: "Precios", active: "database", permission: PRODUCTS_READ_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/suppliers", label: "Proveedores", active: "database", permission: SUPPLIERS_READ_PERMISSION },
@@ -135,7 +136,7 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Usuarios y permisos",
     active: "employees",
     items: [
-      { href: "/employees", label: "Empleados", active: "employees" },
+      { href: "/employees", label: "Empleados", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
       { href: "/employees/vendors", label: "Gestion de vendedores", active: "employees" },
       { href: "/treasury/movements", label: "Registro de movimientos", active: "employees" },
     ],

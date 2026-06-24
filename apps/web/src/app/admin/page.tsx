@@ -3,10 +3,12 @@ import Link from "next/link";
 import { approvalCenterAccessForSession, listApprovalCenter } from "@/lib/approvals";
 import { formatCurrency } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
+import { sessionCanReadEmployees } from "@/lib/route-auth";
 
 export default async function AdminPage() {
   const session = await requireStaffSession();
   const approvalAccess = await approvalCenterAccessForSession(session);
+  const canReadEmployees = await sessionCanReadEmployees(session);
   const approvals = await listApprovalCenter(session.companyId, approvalAccess);
 
   return (
@@ -37,10 +39,12 @@ export default async function AdminPage() {
             <h2 className="font-semibold">Solicitudes y aprobaciones</h2>
             <p className="mt-2 text-sm text-[color:var(--muted)]">Bandeja central de ordenes, pagos, facturas y cobros.</p>
           </Link>
-          <Link className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 hover:bg-[color:var(--panel-subtle)]" href="/employees">
-            <h2 className="font-semibold">Usuarios y permisos</h2>
-            <p className="mt-2 text-sm text-[color:var(--muted)]">Empleados, roles y accesos.</p>
-          </Link>
+          {canReadEmployees ? (
+            <Link className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 hover:bg-[color:var(--panel-subtle)]" href="/employees">
+              <h2 className="font-semibold">Usuarios y permisos</h2>
+              <p className="mt-2 text-sm text-[color:var(--muted)]">Empleados, roles y accesos.</p>
+            </Link>
+          ) : null}
           <Link className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 hover:bg-[color:var(--panel-subtle)]" href="/balance">
             <h2 className="font-semibold">Balance</h2>
             <p className="mt-2 text-sm text-[color:var(--muted)]">Resultado, sueldos, dividendos y obligaciones.</p>

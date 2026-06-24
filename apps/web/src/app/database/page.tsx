@@ -3,6 +3,7 @@ import { ModulePage } from "@/components/module-page";
 import { requireStaffSession } from "@/lib/auth";
 import {
   CUSTOMERS_READ_PERMISSION,
+  EMPLOYEES_READ_PERMISSION,
   PRODUCTS_READ_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
   type Permission,
@@ -18,7 +19,7 @@ const modules: Array<{
   detail: string;
   permission?: Permission;
 }> = [
-  { href: "/employees", label: "Empleados", detail: "Usuarios internos y permisos" },
+  { href: "/employees", label: "Empleados", detail: "Usuarios internos y permisos", permission: EMPLOYEES_READ_PERMISSION },
   { href: "/products", label: "Precios", detail: "Catalogo, costos y stock", permission: PRODUCTS_READ_PERMISSION },
   { href: "/customers", label: "Clientes", detail: "Base comercial", permission: CUSTOMERS_READ_PERMISSION },
   { href: "/suppliers", label: "Proveedores", detail: "Base de compras", permission: SUPPLIERS_READ_PERMISSION },

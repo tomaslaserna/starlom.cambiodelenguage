@@ -1,8 +1,10 @@
 import { ModulePage } from "@/components/module-page";
+import { redirect } from "next/navigation";
 import { SearchBar } from "@/components/search-bar";
 import { listEmployeePermissions, listEmployees } from "@/lib/employees";
 import { formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
+import { sessionCanReadEmployees } from "@/lib/route-auth";
 
 type EmployeesPageProps = {
   searchParams: Promise<{
@@ -20,6 +22,10 @@ function matchesQuery(item: Awaited<ReturnType<typeof listEmployees>>[number], q
 
 export default async function EmployeesPage({ searchParams }: EmployeesPageProps) {
   const session = await requireStaffSession();
+  if (!(await sessionCanReadEmployees(session))) {
+    redirect("/");
+  }
+
   const params = await searchParams;
   const query = params.q?.trim().toLowerCase() ?? "";
   const [allEmployees, permissions] = await Promise.all([
