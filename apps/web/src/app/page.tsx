@@ -5,25 +5,26 @@ import { sessionCanReadCustomers, sessionCanReadProducts } from "@/lib/route-aut
 const migrationModules = [
   {
     name: "Autenticacion y permisos",
-    phpSurface: "sign.php, auth.php, guard.php",
     target: "Sesion server-side y RBAC en Node",
     status: "Migrado base",
   },
   {
     name: "Clientes y productos",
-    phpSurface: "clientes.php, productos.php, stock.php",
     target: "API JSON + tablas React",
     status: "Pantallas base",
   },
   {
     name: "Ventas y comprobantes",
-    phpSurface: "ventas.php, facturacion.php",
-    target: "Flujos transaccionales con auditoria",
-    status: "APIs migradas",
+    target: "/sales, /orders, /billing",
+    status: "React operativo",
+  },
+  {
+    name: "Stock, precios y margenes",
+    target: "/products, /pricing",
+    status: "React operativo",
   },
   {
     name: "Administracion",
-    phpSurface: "admin_*.php, panel_*.php",
     target: "Dashboard financiero modular",
     status: "Dashboard base",
   },
@@ -104,9 +105,9 @@ export default async function Home() {
             </a>
             <a
               className="rounded-md bg-[color:var(--accent)] px-3 py-2 text-white hover:bg-[color:var(--accent-strong)]"
-              href="/frontend/index.php"
+              href="/sales"
             >
-              ERP PHP actual
+              Entrar al ERP React
             </a>
           </nav>
         </div>
@@ -116,10 +117,10 @@ export default async function Home() {
         <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5">
           <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 className="text-xl font-semibold">Mapa de migracion</h2>
+              <h2 className="text-xl font-semibold">Mapa React</h2>
               <p className="max-w-2xl text-sm leading-6 text-[color:var(--muted)]">
-                La nueva app convive con PHP mientras se reemplazan modulos por APIs Node,
-                pantallas React y acceso controlado a PostgreSQL.
+                La operacion diaria queda concentrada en React mientras se completan ajustes
+                finos dentro de apps/web.
               </p>
             </div>
             <span className="w-fit rounded-md bg-[color:var(--panel-subtle)] px-3 py-2 font-mono text-xs">
@@ -132,7 +133,6 @@ export default async function Home() {
               <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Modulo</th>
-                  <th className="hidden px-4 py-3 font-semibold md:table-cell">PHP actual</th>
                   <th className="px-4 py-3 font-semibold">Destino</th>
                   <th className="px-4 py-3 font-semibold">Estado</th>
                 </tr>
@@ -141,9 +141,6 @@ export default async function Home() {
                 {migrationModules.map((module) => (
                   <tr key={module.name} className="border-t border-[color:var(--border)]">
                     <td className="px-4 py-4 font-medium">{module.name}</td>
-                    <td className="hidden px-4 py-4 font-mono text-xs text-[color:var(--muted)] md:table-cell">
-                      {module.phpSurface}
-                    </td>
                     <td className="px-4 py-4 text-[color:var(--muted)]">{module.target}</td>
                     <td className="px-4 py-4">
                       <span className="rounded-md border border-[color:var(--border)] px-2 py-1 text-xs">

@@ -10,7 +10,7 @@ type SectionTab = {
 
 export function SectionTabs({ tabs }: { tabs: SectionTab[] }) {
   return (
-    <nav aria-label="Secciones" className="flex flex-wrap gap-2 text-sm font-medium">
+    <nav aria-label="Secciones" className="erp-text-body-sm flex flex-wrap gap-2 font-medium">
       {tabs.map((tab) => (
         <Link
           aria-current={tab.active ? "page" : undefined}
@@ -27,7 +27,7 @@ export function SectionTabs({ tabs }: { tabs: SectionTab[] }) {
           {tab.badge && tab.badge > 0 ? (
             <span
               aria-label={`${tab.badge} pendientes`}
-              className={`rounded-full px-2 py-0.5 text-xs ${
+              className={`erp-text-caption rounded-full px-2 py-0.5 ${
                 tab.active ? "bg-white text-[color:var(--accent)]" : "bg-[color:var(--danger)] text-white"
               }`}
             >

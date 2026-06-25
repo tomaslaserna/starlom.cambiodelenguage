@@ -41,7 +41,7 @@ export function PresenceIndicator({ compact = false }: { compact?: boolean }) {
       aria-label={`${users.length} usuarios online`}
       aria-live="polite"
       className={cn(
-        "rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 text-xs shadow-[var(--shadow-sm)]",
+        "erp-text-caption rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 shadow-[var(--shadow-sm)]",
         compact && "px-2",
       )}
       role="status"

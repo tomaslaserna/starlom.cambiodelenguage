@@ -6,6 +6,10 @@ import {
   Button,
   ButtonLink,
   Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
   DataTable,
   DataTableBody,
   DataTableCell,
@@ -16,12 +20,21 @@ import {
   Field,
   Input,
   PageHeader,
+  Select,
   StatCard,
   StatusBadge,
+  Textarea,
   Toolbar,
 } from "@/components/ui";
+import {
+  bulkUpdateProductsAction,
+  createProductAction,
+  importProductCodesCsvAction,
+  importProductsCsvAction,
+} from "@/app/products/actions";
 import { listProducts } from "@/lib/catalog";
 import { formatCurrency, formatNumber } from "@/lib/format";
+import { listMargins } from "@/lib/pricing";
 import { requireStaffSession } from "@/lib/auth";
 import { sessionCanReadProducts } from "@/lib/route-auth";
 
@@ -30,6 +43,11 @@ type ProductsPageProps = {
     q?: string;
     page?: string;
     mode?: string;
+    created?: string;
+    inserted?: string;
+    processed?: string;
+    skipped?: string;
+    updated?: string;
   }>;
 };
 
@@ -38,12 +56,15 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   if (!(await sessionCanReadProducts(session))) redirect("/");
 
   const params = await searchParams;
-  const result = await listProducts({
-    companyId: session.companyId,
-    query: params.q,
-    page: params.page,
-    pageSize: "25",
-  });
+  const [result, margins] = await Promise.all([
+    listProducts({
+      companyId: session.companyId,
+      query: params.q,
+      page: params.page,
+      pageSize: "25",
+    }),
+    listMargins(session.companyId),
+  ]);
 
   return (
     <ModulePage
@@ -94,6 +115,108 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             </ButtonLink>
           </form>
         </Toolbar>
+
+        {params.mode === "new" ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Nuevo producto</CardTitle>
+              <CardDescription>
+                Alta directa en React para productos nuevos y stock inicial.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form action={createProductAction} className="grid gap-4 lg:grid-cols-2">
+                <Field htmlFor="product-name" label="Nombre" required>
+                  <Input id="product-name" name="name" />
+                </Field>
+                <Field htmlFor="product-code" label="Categoria de precio" required>
+                  <Select id="product-code" name="code">
+                    {margins.map((margin) => (
+                      <option key={margin.code} value={margin.code}>
+                        {margin.code} - {margin.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field htmlFor="product-cost" label="Costo" required>
+                  <Input id="product-cost" name="cost" inputMode="decimal" />
+                </Field>
+                <Field htmlFor="product-stock" label="Stock inicial">
+                  <Input id="product-stock" name="stock" defaultValue="0" inputMode="numeric" />
+                </Field>
+                <Field htmlFor="product-provider" label="Proveedor">
+                  <Input id="product-provider" name="provider" />
+                </Field>
+                <Field htmlFor="product-image" label="Imagen">
+                  <Input id="product-image" name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+                </Field>
+                <Field className="lg:col-span-2" htmlFor="product-description" label="Descripcion">
+                  <Textarea id="product-description" name="description" rows={4} />
+                </Field>
+                <div className="lg:col-span-2">
+                  <Button type="submit">Crear producto</Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {params.mode === "bulk" ? (
+          <div className="grid gap-4 xl:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle>Importar productos CSV</CardTitle>
+                <CardDescription>Importacion de catalogo con la API Node existente.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form action={importProductsCsvAction} className="grid gap-3">
+                  <Field htmlFor="products-csv" label="Archivo CSV">
+                    <Input id="products-csv" name="csv_file" type="file" accept=".csv,text/csv" />
+                  </Field>
+                  <Button type="submit">Importar productos</Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Actualizar codigos CSV</CardTitle>
+                <CardDescription>Actualizacion masiva de codigos desde archivo CSV.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form action={importProductCodesCsvAction} className="grid gap-3">
+                  <Field htmlFor="codes-csv" label="Archivo CSV">
+                    <Input id="codes-csv" name="csv_file" type="file" accept=".csv,text/csv" />
+                  </Field>
+                  <Button type="submit" variant="secondary">
+                    Actualizar codigos
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Actualizacion masiva JSON</CardTitle>
+                <CardDescription>Edicion directa de nombre, costo, descripcion, stock e imagen.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form action={bulkUpdateProductsAction} className="grid gap-3">
+                  <Field
+                    htmlFor="bulk-json"
+                    label="Productos JSON"
+                    description='Formato: [{"id":1,"name":"Producto","cost":100,"stock":5,"description":"","image":""}]'
+                  >
+                    <Textarea id="bulk-json" name="itemsJson" rows={6} />
+                  </Field>
+                  <Button type="submit" variant="secondary">
+                    Aplicar cambios
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        ) : null}
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <StatCard

@@ -27,6 +27,7 @@ const modules: Array<{
 }> = [
   { href: "/employees", label: "Empleados", detail: "Usuarios internos y permisos", permission: EMPLOYEES_READ_PERMISSION },
   { href: "/products", label: "Precios", detail: "Catalogo, costos y stock", permission: PRODUCTS_READ_PERMISSION },
+  { href: "/pricing", label: "Margenes y listas", detail: "Categorias, multiplicadores y listas de precio", permission: PRODUCTS_READ_PERMISSION },
   { href: "/customers", label: "Clientes", detail: "Base comercial", permission: CUSTOMERS_READ_PERMISSION },
   { href: "/suppliers", label: "Proveedores", detail: "Base de compras", permission: SUPPLIERS_READ_PERMISSION },
 ];

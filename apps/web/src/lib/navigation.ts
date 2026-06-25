@@ -94,6 +94,7 @@ export const navigationGroups: NavigationGroup[] = [
       { href: "/sales", label: "Ventas", active: "sales" },
       { href: "/orders/new", label: "Cargar pedido", active: "sales" },
       { href: "/quotes", label: "Presupuestos", active: "sales", badge: "quotes" },
+      { href: "/billing", label: "Facturacion", active: "billing" },
     ],
   },
   {
@@ -103,6 +104,7 @@ export const navigationGroups: NavigationGroup[] = [
       { href: "/database", label: "Resumen", active: "database" },
       { href: "/employees", label: "Empleados", active: "database", permission: EMPLOYEES_READ_PERMISSION },
       { href: "/products", label: "Precios", active: "database", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/pricing", label: "Margenes y listas", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/suppliers", label: "Proveedores", active: "database", permission: SUPPLIERS_READ_PERMISSION },
     ],

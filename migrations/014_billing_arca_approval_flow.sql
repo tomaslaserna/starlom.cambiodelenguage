@@ -6,7 +6,7 @@ VALUES (
     'admin.facturacion',
     'Facturacion',
     'Aprobacion Admin de facturas ARCA, IVA debito/credito y registro fiscal.',
-    'facturacion.php',
+    '/billing',
     110,
     TRUE,
     'fiscal',

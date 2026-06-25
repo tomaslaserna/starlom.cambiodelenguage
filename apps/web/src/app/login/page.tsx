@@ -61,10 +61,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </button>
           </form>
 
-          <div className="mt-4 flex justify-between text-sm">
-            <a className="text-[color:var(--muted)] hover:text-foreground" href="/frontend/sign.php">
-              Usar login PHP
-            </a>
+          <div className="mt-4 flex justify-end text-sm">
             <Link className="text-[color:var(--muted)] hover:text-foreground" href="/">
               Volver
             </Link>
@@ -79,7 +76,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             Mismo usuario, nueva interfaz React y Node.
           </h2>
           <p className="mt-4 leading-7 text-[color:var(--muted)]">
-            Este acceso valida los hashes existentes del ERP PHP y crea una sesion HTTP-only
+            Este acceso valida los hashes existentes del ERP legado y crea una sesion HTTP-only
             para proteger las pantallas nuevas mientras se migran los modulos.
           </p>
         </div>

@@ -37,6 +37,40 @@
   --control-height-sm: 2.25rem;
   --control-height-md: 2.5rem;
   --control-height-lg: 2.75rem;
+  --text-caption: 0.75rem;       /* 12px */
+  --text-body-sm: 0.8125rem;     /* 13px */
+  --text-body: 0.875rem;         /* 14px */
+  --text-base: 1rem;             /* 16px */
+  --text-title-sm: 1rem;         /* 16px */
+  --text-title-md: 1.125rem;     /* 18px */
+  --text-title-lg: 1.25rem;      /* 20px */
+  --text-page-title: 1.5rem;     /* 24px */
+  --text-display: 1.875rem;      /* 30px */
+  --leading-caption: 1rem;
+  --leading-body-sm: 1.125rem;
+  --leading-body: 1.25rem;
+  --leading-base: 1.5rem;
+  --leading-title-sm: 1.5rem;
+  --leading-title-md: 1.625rem;
+  --leading-title-lg: 1.75rem;
+  --leading-page-title: 2rem;
+  --leading-display: 2.25rem;
+  --text-xs: var(--text-caption);
+  --text-xs--line-height: var(--leading-caption);
+  --text-sm: var(--text-body);
+  --text-sm--line-height: var(--leading-body);
+  --text-base--line-height: var(--leading-base);
+  --text-lg: var(--text-title-md);
+  --text-lg--line-height: var(--leading-title-md);
+  --text-xl: var(--text-title-lg);
+  --text-xl--line-height: var(--leading-title-lg);
+  --text-2xl: var(--text-page-title);
+  --text-2xl--line-height: var(--leading-page-title);
+  --text-3xl: var(--text-display);
+  --text-3xl--line-height: var(--leading-display);
+  --text-4xl: var(--text-display);
+  --text-4xl--line-height: var(--leading-display);
+  color-scheme: light;
 }
 
 @theme inline {
@@ -44,40 +78,6 @@
   --color-foreground: var(--foreground);
   --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0d1117;
-    --foreground: #edf2f7;
-    --muted: #9aa7b6;
-    --panel: #141a22;
-    --panel-raised: #171f29;
-    --panel-subtle: #1f2a36;
-    --panel-muted: #111821;
-    --border: #2d3947;
-    --border-strong: #435366;
-    --accent: #3fb89f;
-    --accent-strong: #6bd0bb;
-    --accent-subtle: #163a34;
-    --focus: #60a5fa;
-    --focus-soft: rgba(96, 165, 250, 0.18);
-    --success: #5fcf86;
-    --success-subtle: #183727;
-    --warning: #f6bd4b;
-    --warning-subtle: #3c2f14;
-    --danger: #ff8a7a;
-    --danger-subtle: #3d1d1b;
-    --info: #93c5fd;
-    --info-subtle: #172b48;
-    --hover: #202b38;
-    --field: #101720;
-    --table-header: #1c2530;
-    --table-row-hover: #17202b;
-    --shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.28);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.34);
-    --shadow-md: 0 10px 28px rgba(0, 0, 0, 0.36);
-  }
 }
 
 * {
@@ -103,6 +103,7 @@
 }
 
 html {
+  color-scheme: light;
   max-width: 100%;
   overflow-x: clip;
 }
@@ -111,12 +112,58 @@ body {
   max-width: 100%;
   overflow-x: clip;
   background: var(--background);
+  color-scheme: light;
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+.erp-text-caption {
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+}
+
+.erp-text-body-sm {
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+}
+
+.erp-text-body {
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+}
+
+.erp-text-base {
+  font-size: var(--text-base);
+  line-height: var(--leading-base);
+}
+
+.erp-text-title-sm {
+  font-size: var(--text-title-sm);
+  line-height: var(--leading-title-sm);
+}
+
+.erp-text-title-md {
+  font-size: var(--text-title-md);
+  line-height: var(--leading-title-md);
+}
+
+.erp-text-title-lg {
+  font-size: var(--text-title-lg);
+  line-height: var(--leading-title-lg);
+}
+
+.erp-text-page-title {
+  font-size: var(--text-page-title);
+  line-height: var(--leading-page-title);
+}
+
+.erp-text-display {
+  font-size: var(--text-display);
+  line-height: var(--leading-display);
 }
 
 .erp-shell-content,

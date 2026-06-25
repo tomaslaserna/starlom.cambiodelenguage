@@ -30,10 +30,10 @@ export function StatCard({ className, detail, footer, label, tone = "neutral", v
         className,
       )}
     >
-      <div className="text-sm font-medium text-[color:var(--muted)]">{label}</div>
-      <div className="mt-2 text-2xl font-semibold tracking-normal">{value}</div>
-      {detail ? <div className="mt-2 text-xs leading-5 text-[color:var(--muted)]">{detail}</div> : null}
-      {footer ? <div className="mt-3 border-t border-[color:var(--border)] pt-3 text-xs">{footer}</div> : null}
+      <div className="erp-text-body-sm font-medium text-[color:var(--muted)]">{label}</div>
+      <div className="erp-text-page-title mt-2 font-semibold tracking-normal">{value}</div>
+      {detail ? <div className="erp-text-caption mt-2 text-[color:var(--muted)]">{detail}</div> : null}
+      {footer ? <div className="erp-text-caption mt-3 border-t border-[color:var(--border)] pt-3">{footer}</div> : null}
     </section>
   );
 }

@@ -16,14 +16,14 @@ export function Field({ children, className, description, error, htmlFor, label,
 
   return (
     <div className={cn("grid gap-1.5", className)}>
-      <LabelTag className="text-sm font-semibold text-[color:var(--foreground)]" htmlFor={htmlFor}>
+      <LabelTag className="erp-text-body-sm font-semibold text-[color:var(--foreground)]" htmlFor={htmlFor}>
         {label}
         {required ? <span className="ml-1 text-[color:var(--danger)]">*</span> : null}
       </LabelTag>
       {children}
-      {description ? <p className="text-xs leading-5 text-[color:var(--muted)]">{description}</p> : null}
+      {description ? <p className="erp-text-caption text-[color:var(--muted)]">{description}</p> : null}
       {error ? (
-        <p aria-live="polite" className="text-xs leading-5 text-[color:var(--danger)]">
+        <p aria-live="polite" className="erp-text-caption text-[color:var(--danger)]">
           {error}
         </p>
       ) : null}

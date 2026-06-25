@@ -17,9 +17,9 @@ export const buttonVariantClasses = {
 } as const;
 
 export const buttonSizeClasses = {
-  sm: "min-h-[var(--control-height-sm)] px-3 text-xs",
-  md: "min-h-[var(--control-height-md)] px-3.5 text-sm",
-  lg: "min-h-[var(--control-height-lg)] px-4 text-sm",
+  sm: "erp-text-caption min-h-[var(--control-height-sm)] px-3",
+  md: "erp-text-body-sm min-h-[var(--control-height-md)] px-3.5",
+  lg: "erp-text-body min-h-[var(--control-height-lg)] px-4",
 } as const;
 
 export type ButtonVariant = keyof typeof buttonVariantClasses;

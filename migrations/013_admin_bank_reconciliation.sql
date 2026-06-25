@@ -67,7 +67,7 @@ ALTER TABLE public.admin_bank_reconciliation_matches ENABLE ROW LEVEL SECURITY;
 
 INSERT INTO public.admin_resources (clave, nombre, descripcion, ruta, orden, sensible, fuente)
 VALUES
-    ('admin.conciliacion_bancaria', 'Conciliacion bancaria', 'Cruce de extractos bancarios contra cobros y pagos registrados.', 'admin_conciliacion_bancaria.php', 25, FALSE, 'tesoreria')
+    ('admin.conciliacion_bancaria', 'Conciliacion bancaria', 'Cruce de extractos bancarios contra cobros y pagos registrados.', '/treasury/movements', 25, FALSE, 'tesoreria')
 ON CONFLICT (clave) DO UPDATE
 SET nombre = EXCLUDED.nombre,
     descripcion = EXCLUDED.descripcion,

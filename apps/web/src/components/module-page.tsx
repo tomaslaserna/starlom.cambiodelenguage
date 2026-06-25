@@ -30,8 +30,8 @@ function BrandBlock({ title }: { title?: string }) {
         <Image src="/starlim-logo.png" alt="Star Lim" width={30} height={30} />
       </span>
       <span className="min-w-0">
-        <span className="block text-xs font-medium text-[color:var(--muted)]">Star Lim ERP</span>
-        {title ? <span className="block truncate text-base font-semibold">{title}</span> : null}
+        <span className="erp-text-caption block font-medium text-[color:var(--muted)]">Star Lim ERP</span>
+        {title ? <span className="erp-text-title-sm block truncate font-semibold">{title}</span> : null}
       </span>
     </Link>
   );
@@ -65,8 +65,8 @@ export async function ModulePage({
           <ShellNavigation active={active} indicators={indicators} sections={sections} />
         </div>
         <div className="grid gap-2 border-t border-[color:var(--border)] px-3 py-3">
-          <ButtonLink href="/frontend/index.php" size="sm" variant="secondary">
-            PHP actual
+          <ButtonLink href="/" size="sm" variant="secondary">
+            Inicio React
           </ButtonLink>
         </div>
       </aside>
@@ -75,12 +75,12 @@ export async function ModulePage({
         <header className="sticky top-0 z-30 border-b border-[color:var(--border)] bg-[color:var(--panel)]/95 backdrop-blur">
           <div className="hidden min-h-16 items-center justify-between gap-4 px-5 lg:flex">
             <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold tracking-normal">{title}</h1>
-              <p className="truncate text-sm text-[color:var(--muted)]">{description}</p>
+              <h1 className="erp-text-title-md truncate font-semibold tracking-normal">{title}</h1>
+              <p className="erp-text-body-sm truncate text-[color:var(--muted)]">{description}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <PresenceIndicator />
-              <div className="max-w-[340px] truncate rounded-[var(--radius-md)] bg-[color:var(--panel-subtle)] px-3 py-2 text-xs">
+              <div className="erp-text-caption max-w-[340px] truncate rounded-[var(--radius-md)] bg-[color:var(--panel-subtle)] px-3 py-2">
                 <span className="font-semibold">{session.displayName}</span>
                 <span className="text-[color:var(--muted)]"> - {session.role} - {session.companyName}</span>
               </div>
@@ -93,15 +93,15 @@ export async function ModulePage({
               <details className="group">
                 <summary
                   aria-label="Abrir menu de navegacion"
-                  className="min-h-10 list-none rounded-[var(--radius-md)] border border-[color:var(--border)] px-3 py-2 text-sm font-semibold"
+                  className="erp-text-body-sm min-h-10 list-none rounded-[var(--radius-md)] border border-[color:var(--border)] px-3 py-2 font-semibold"
                 >
                   Menu
                 </summary>
                 <div className="fixed inset-x-0 top-16 z-40 max-h-[72vh] overflow-y-auto overscroll-contain border-b border-[color:var(--border)] bg-[color:var(--panel)] p-4 shadow-[var(--shadow-md)]">
                   <ShellNavigation active={active} indicators={indicators} sections={sections} />
                   <div className="mt-5 grid gap-2 border-t border-[color:var(--border)] pt-4">
-                    <ButtonLink href="/frontend/index.php" size="sm" variant="secondary">
-                      PHP actual
+                    <ButtonLink href="/" size="sm" variant="secondary">
+                      Inicio React
                     </ButtonLink>
                     <LogoutButton className="w-full" />
                   </div>

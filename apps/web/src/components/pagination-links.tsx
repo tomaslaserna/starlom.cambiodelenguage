@@ -38,7 +38,7 @@ export function PaginationLinks({
   return (
     <nav
       aria-label="Paginacion"
-      className="flex flex-col gap-3 border-t border-[color:var(--border)] px-4 py-4 text-sm md:flex-row md:items-center md:justify-between"
+      className="erp-text-body-sm flex flex-col gap-3 border-t border-[color:var(--border)] px-4 py-4 md:flex-row md:items-center md:justify-between"
     >
       <span className="text-[color:var(--muted)]">
         Pagina {page} de {totalPages}

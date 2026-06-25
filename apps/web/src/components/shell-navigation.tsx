@@ -78,7 +78,7 @@ function Badge({ value, active }: { value: number; active?: boolean }) {
     <span
       aria-label={`${value} pendientes`}
       className={cn(
-        "ml-auto inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold leading-none",
+        "erp-text-caption ml-auto inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 font-semibold",
         active ? "bg-[color:var(--accent)] text-white" : "bg-[color:var(--danger)] text-white",
       )}
     >
@@ -89,7 +89,7 @@ function Badge({ value, active }: { value: number; active?: boolean }) {
 
 function navigationRowClass(active: boolean) {
   return cn(
-    "flex min-h-9 items-center gap-2 rounded-[var(--radius-md)] border px-2.5 py-1.5 text-sm font-medium transition-colors",
+    "erp-text-body-sm flex min-h-9 items-center gap-2 rounded-[var(--radius-md)] border px-2.5 py-1.5 font-medium transition-colors",
     active
       ? "border-[color:var(--accent)] bg-[color:var(--accent-subtle)] text-[color:var(--foreground)]"
       : "border-transparent text-[color:var(--muted)] hover:bg-[color:var(--hover)] hover:text-[color:var(--foreground)]",
@@ -116,7 +116,7 @@ function NavigationItemLink({
     <Link
       aria-current={itemCurrent ? "page" : undefined}
       className={cn(
-        "flex min-h-9 items-center gap-2 rounded-[var(--radius-md)] px-2.5 py-1.5 text-sm transition-colors lg:min-h-8",
+        "erp-text-body-sm flex min-h-9 items-center gap-2 rounded-[var(--radius-md)] px-2.5 py-1.5 transition-colors lg:min-h-8",
         itemCurrent
           ? "bg-[color:var(--panel-subtle)] font-semibold text-[color:var(--foreground)]"
           : "text-[color:var(--muted)] hover:bg-[color:var(--hover)] hover:text-[color:var(--foreground)]",
@@ -161,7 +161,7 @@ function NavigationGroupBlock({
   return (
     <details className="group" open={activeGroup || undefined}>
       <summary className={cn("cursor-pointer list-none", navigationRowClass(activeGroup))}>
-        <span aria-hidden="true" className="text-xs transition-transform group-open:rotate-90">
+        <span aria-hidden="true" className="erp-text-caption transition-transform group-open:rotate-90">
           &gt;
         </span>
         <span className="min-w-0 flex-1 truncate">{group.label}</span>
@@ -195,7 +195,7 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
     <nav aria-label="Navegacion principal" className="grid gap-5">
       {sections.map((section) => (
         <section className="grid gap-1" key={section.label}>
-          <h2 className="px-2.5 text-[11px] font-semibold uppercase tracking-normal text-[color:var(--muted)]">
+          <h2 className="erp-text-caption px-2.5 font-semibold uppercase tracking-normal text-[color:var(--muted)]">
             {section.label}
           </h2>
           <div className="grid gap-1">

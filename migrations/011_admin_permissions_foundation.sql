@@ -46,19 +46,19 @@ ALTER TABLE public.admin_audit_log ENABLE ROW LEVEL SECURITY;
 
 INSERT INTO public.admin_resources (clave, nombre, descripcion, ruta, orden, sensible, fuente)
 VALUES
-    ('admin.panel', 'Administracion', 'Panel principal con resumen general y filtros.', 'panel_empleados.php', 10, FALSE, 'dashboard'),
-    ('admin.tesoreria', 'Tesoreria', 'Analisis de liquidez, cuentas disponibles y arqueo de caja sobre datos de cobros y pagos.', 'admin_tesoreria.php', 20, FALSE, 'cobros_pagos'),
-    ('admin.metricas', 'Metricas', 'Indicadores de negocio reutilizando la fuente de Negocio/metricas.', 'planilla_admin.php', 30, FALSE, 'negocio'),
-    ('admin.movimientos', 'Registros de movimientos', 'Log de acciones de empleados filtrable por usuario, fecha y accion.', 'admin_movimientos.php', 40, FALSE, 'auditoria'),
-    ('admin.cashflow', 'Cash flow', 'Flujo de caja proyectado con ingresos y egresos futuros.', 'admin_cashflow.php', 50, FALSE, 'tesoreria'),
-    ('admin.balance', 'Balance', 'Balance mensual y anual con costos fijos y variables.', 'admin_balance.php', 60, FALSE, 'contabilidad'),
-    ('admin.dividendos', 'Dividendos', 'Distribucion a socios, retiros e historial.', 'admin_dividendos.php', 70, TRUE, 'socios'),
-    ('admin.sueldos', 'Sueldos', 'Sueldos, retiros, cuotas e historial de empleados.', 'admin_sueldos.php', 80, TRUE, 'rrhh'),
-    ('admin.calendario', 'Calendario', 'Eventos, vencimientos y recordatorios administrativos recurrentes.', 'admin_calendario.php', 90, FALSE, 'recordatorios'),
-    ('admin.usuarios', 'Usuarios y permisos', 'Gestion de usuarios y permisos administrativos.', 'gestion_empleados.php', 100, TRUE, 'seguridad'),
-    ('admin.obligaciones_fiscales', 'Obligaciones fiscales', 'IVA, IIBB, impuestos y vencimientos.', 'admin_obligaciones_fiscales.php', 110, TRUE, 'fiscal'),
-    ('admin.resultados', 'Estado de resultados', 'Vista P&L mensual: ventas menos costos y gastos.', 'admin_resultados.php', 120, FALSE, 'contabilidad'),
-    ('admin.cuentas_por_pagar', 'Cuentas por pagar', 'Deudas a proveedores y socios con vencimientos.', 'admin_cuentas_por_pagar.php', 130, FALSE, 'tesoreria')
+    ('admin.panel', 'Administracion', 'Panel principal con resumen general y filtros.', '/', 10, FALSE, 'dashboard'),
+    ('admin.tesoreria', 'Tesoreria', 'Analisis de liquidez, cuentas disponibles y arqueo de caja sobre datos de cobros y pagos.', '/treasury', 20, FALSE, 'cobros_pagos'),
+    ('admin.metricas', 'Metricas', 'Indicadores de negocio reutilizando la fuente de Negocio/metricas.', '/metrics', 30, FALSE, 'negocio'),
+    ('admin.movimientos', 'Registros de movimientos', 'Log de acciones de empleados filtrable por usuario, fecha y accion.', '/treasury/movements', 40, FALSE, 'auditoria'),
+    ('admin.cashflow', 'Cash flow', 'Flujo de caja proyectado con ingresos y egresos futuros.', '/treasury/cash-flow', 50, FALSE, 'tesoreria'),
+    ('admin.balance', 'Balance', 'Balance mensual y anual con costos fijos y variables.', '/balance', 60, FALSE, 'contabilidad'),
+    ('admin.dividendos', 'Dividendos', 'Distribucion a socios, retiros e historial.', '/balance/dividends', 70, TRUE, 'socios'),
+    ('admin.sueldos', 'Sueldos', 'Sueldos, retiros, cuotas e historial de empleados.', '/balance/salaries', 80, TRUE, 'rrhh'),
+    ('admin.calendario', 'Calendario', 'Eventos, vencimientos y recordatorios administrativos recurrentes.', '/calendar', 90, FALSE, 'recordatorios'),
+    ('admin.usuarios', 'Usuarios y permisos', 'Gestion de usuarios y permisos administrativos.', '/employees', 100, TRUE, 'seguridad'),
+    ('admin.obligaciones_fiscales', 'Obligaciones fiscales', 'IVA, IIBB, impuestos y vencimientos.', '/billing', 110, TRUE, 'fiscal'),
+    ('admin.resultados', 'Estado de resultados', 'Vista P&L mensual: ventas menos costos y gastos.', '/balance/income-statement', 120, FALSE, 'contabilidad'),
+    ('admin.cuentas_por_pagar', 'Cuentas por pagar', 'Deudas a proveedores y socios con vencimientos.', '/treasury/accounts-payable', 130, FALSE, 'tesoreria')
 ON CONFLICT (clave) DO UPDATE
 SET nombre = EXCLUDED.nombre,
     descripcion = EXCLUDED.descripcion,

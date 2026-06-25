@@ -36,7 +36,7 @@ export function DataTable({
         <table
           {...tableProps}
           aria-label={tableLabel}
-          className={cn("w-full border-collapse text-left text-sm", tableProps?.className)}
+          className={cn("erp-text-body-sm w-full border-collapse text-left", tableProps?.className)}
           style={{ minWidth, ...tableProps?.style }}
         >
           {caption ? <caption className="sr-only">{caption}</caption> : null}
@@ -48,7 +48,7 @@ export function DataTable({
 }
 
 export function DataTableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("bg-[color:var(--table-header)] text-xs uppercase text-[color:var(--muted)]", className)} {...props} />;
+  return <thead className={cn("erp-text-caption bg-[color:var(--table-header)] uppercase text-[color:var(--muted)]", className)} {...props} />;
 }
 
 export function DataTableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
