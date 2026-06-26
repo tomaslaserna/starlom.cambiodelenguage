@@ -1,6 +1,7 @@
 import { ModulePage } from "@/components/module-page";
 import Link from "next/link";
 import { approvalCenterAccessForSession, listApprovalCenter } from "@/lib/approvals";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { sessionCanReadEmployees } from "@/lib/route-auth";
@@ -10,7 +11,15 @@ export default async function AdminPage() {
   const approvalAccess = await approvalCenterAccessForSession(session);
   const canReadEmployees = await sessionCanReadEmployees(session);
   const canUseApprovals = approvalAccess.collections || approvalAccess.requests;
-  const approvals = await listApprovalCenter(session.companyId, approvalAccess);
+  const approvals = await fastOr(listApprovalCenter(session.companyId, approvalAccess), {
+    items: [],
+    meta: {
+      total: 0,
+      collections: 0,
+      requests: 0,
+      amount: 0,
+    },
+  });
 
   return (
     <ModulePage

@@ -1,12 +1,29 @@
 import { ModulePage } from "@/components/module-page";
 import { SectionTabs } from "@/components/section-tabs";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { getBalanceDashboard } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
 
 export default async function BalancePage() {
   const session = await requireStaffSession();
-  const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId);
+  const { metrics, payables, cashflow } = await fastOr(getBalanceDashboard(session.companyId), {
+    metrics: {
+      period: {
+        currentStart: "",
+        nextStart: "",
+        previousStart: "",
+      },
+      sales: { current: 0, previous: 0, deltaPercent: null },
+      collections: { current: 0, previous: 0, deltaPercent: null },
+      margin: { grossCost: 0, grossProfit: 0, operatingCosts: 0, operatingResult: 0 },
+      stock: { value: 0, units: 0, products: 0 },
+      purchases: { current: 0, openTotal: 0 },
+      receivables: { openTotal: 0 },
+    },
+    payables: { data: [], meta: { count: 0, total: 0 } },
+    cashflow: { data: [], meta: { inflow: 0, outflow: 0, net: 0 } },
+  });
 
   return (
     <ModulePage

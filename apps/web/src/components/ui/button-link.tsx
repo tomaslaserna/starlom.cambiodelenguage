@@ -26,7 +26,7 @@ export function ButtonLink({
           {leadingIcon}
         </span>
       ) : null}
-      <span>{children}</span>
+      <span className="min-w-0">{children}</span>
       {trailingIcon ? (
         <span aria-hidden="true" className="shrink-0">
           {trailingIcon}

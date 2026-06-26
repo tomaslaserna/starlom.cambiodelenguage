@@ -13,6 +13,7 @@ import {
   PageHeader,
   StatCard,
 } from "@/components/ui";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency } from "@/lib/format";
 import { getVendorManagement } from "@/lib/vendors-management";
 import { requireStaffSession } from "@/lib/auth";
@@ -24,7 +25,14 @@ export default async function VendorsManagementPage() {
   const session = await requireStaffSession();
   if (!(await sessionCanReadEmployees(session))) redirect("/");
 
-  const data = await getVendorManagement(session.companyId);
+  const data = await fastOr(getVendorManagement(session.companyId), {
+    vendors: [],
+    meta: {
+      count: 0,
+      clients: 0,
+      salesTotal: 0,
+    },
+  });
 
   return (
     <ModulePage

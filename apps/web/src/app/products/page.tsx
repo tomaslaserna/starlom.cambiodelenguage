@@ -33,6 +33,7 @@ import {
   importProductsCsvAction,
 } from "@/app/products/actions";
 import { listProducts } from "@/lib/catalog";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { listMargins } from "@/lib/pricing";
 import { requireStaffSession } from "@/lib/auth";
@@ -57,13 +58,26 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   const params = await searchParams;
   const [result, margins] = await Promise.all([
-    listProducts({
-      companyId: session.companyId,
-      query: params.q,
-      page: params.page,
-      pageSize: "25",
-    }),
-    listMargins(session.companyId),
+    fastOr(
+      listProducts({
+        companyId: session.companyId,
+        query: params.q,
+        page: params.page,
+        pageSize: "25",
+      }),
+      {
+        data: [],
+        meta: {
+          companyId: session.companyId,
+          query: params.q?.trim() ?? "",
+          page: 1,
+          pageSize: 25,
+          total: 0,
+          totalPages: 1,
+        },
+      },
+    ),
+    fastOr(listMargins(session.companyId), []),
   ]);
 
   return (
@@ -166,7 +180,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             <Card>
               <CardHeader>
                 <CardTitle>Importar productos CSV</CardTitle>
-                <CardDescription>Importacion de catalogo con la API Node existente.</CardDescription>
+                <CardDescription>Carga masiva del catalogo de productos.</CardDescription>
               </CardHeader>
               <CardContent>
                 <form action={importProductsCsvAction} className="grid gap-3">

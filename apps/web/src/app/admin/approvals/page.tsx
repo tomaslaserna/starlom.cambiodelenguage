@@ -15,6 +15,7 @@ import {
   StatusBadge,
   type StatusBadgeTone,
 } from "@/components/ui";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   approvalCenterAccessForSession,
@@ -36,7 +37,15 @@ function sourceTone(source: ApprovalSource): StatusBadgeTone {
 export default async function ApprovalsPage() {
   const session = await requireStaffSession();
   const approvalAccess = await approvalCenterAccessForSession(session);
-  const approvals = await listApprovalCenter(session.companyId, approvalAccess);
+  const approvals = await fastOr(listApprovalCenter(session.companyId, approvalAccess), {
+    items: [],
+    meta: {
+      total: 0,
+      collections: 0,
+      requests: 0,
+      amount: 0,
+    },
+  });
 
   return (
     <ModulePage

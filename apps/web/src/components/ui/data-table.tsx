@@ -27,7 +27,7 @@ export function DataTable({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[var(--radius-lg)] border border-[color:var(--border)] bg-[color:var(--panel)] shadow-[var(--shadow-xs)]",
+        "overflow-hidden rounded-[8px] border border-[#e2e8f0] bg-white shadow-[var(--shadow-xs)]",
         className,
       )}
       {...props}
@@ -48,15 +48,15 @@ export function DataTable({
 }
 
 export function DataTableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn("erp-text-caption bg-[color:var(--table-header)] uppercase text-[color:var(--muted)]", className)} {...props} />;
+  return <thead className={cn("erp-text-caption border-b border-[#e2e8f0] bg-[#f8fafc] uppercase text-[#64748b]", className)} {...props} />;
 }
 
 export function DataTableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <tbody className={cn("divide-y divide-[color:var(--border)]", className)} {...props} />;
+  return <tbody className={cn("divide-y divide-[#edf2f7]", className)} {...props} />;
 }
 
 export function DataTableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
-  return <tr className={cn("transition-colors hover:bg-[color:var(--table-row-hover)]", className)} {...props} />;
+  return <tr className={cn("transition-colors hover:bg-[#f8fafc]", className)} {...props} />;
 }
 
 type Align = "left" | "center" | "right";
@@ -75,7 +75,7 @@ export function DataTableHead({
 }: ThHTMLAttributes<HTMLTableCellElement> & { align?: Align }) {
   return (
     <th
-      className={cn("px-4 py-3 font-semibold", alignClasses[align], className)}
+      className={cn("px-4 py-3 font-black tracking-[0.04em]", alignClasses[align], className)}
       scope={scope}
       {...props}
     />
@@ -87,5 +87,5 @@ export function DataTableCell({
   className,
   ...props
 }: TdHTMLAttributes<HTMLTableCellElement> & { align?: Align }) {
-  return <td className={cn("px-4 py-3.5 align-middle", alignClasses[align], className)} {...props} />;
+  return <td className={cn("px-4 py-3 align-middle font-semibold text-[#172033]", alignClasses[align], className)} {...props} />;
 }

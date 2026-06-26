@@ -20,6 +20,7 @@ import {
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { listQuotes } from "@/lib/quotes";
 import { requireStaffSession } from "@/lib/auth";
@@ -65,7 +66,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const params = await searchParams;
   const status = params.status?.trim() || "pendiente";
   const query = params.q?.trim().toLowerCase() ?? "";
-  const quotes = (await listQuotes(session.companyId, status === "all" ? "" : status)).filter((item) =>
+  const quotes = (await fastOr(listQuotes(session.companyId, status === "all" ? "" : status), [])).filter((item) =>
     matchesQuery(item, query),
   );
   const total = quotes.reduce((sum, quote) => sum + quote.total, 0);
@@ -74,7 +75,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   return (
     <ModulePage
       active="sales"
-      description="Presupuestos comerciales migrados a Node, con estado, vencimiento y totales calculados."
+      description="Presupuestos comerciales con estado, vencimiento y totales calculados."
       session={session}
       title="Presupuestos"
     >

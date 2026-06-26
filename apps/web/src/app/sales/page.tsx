@@ -8,12 +8,20 @@ import {
   StatCard,
 } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
+import { fastOr } from "@/lib/fast-data";
 import { getSalesSummary } from "@/lib/sales-admin";
 import { requireStaffSession } from "@/lib/auth";
 
 export default async function SalesPage() {
   const session = await requireStaffSession();
-  const summary = await getSalesSummary(session.companyId, "mes");
+  const summary = await fastOr(getSalesSummary(session.companyId, "mes"), {
+    totalInvoices: 0,
+    totalAmount: 0,
+    invoiced: 0,
+    notInvoiced: 0,
+    pending: 0,
+    overdue: 0,
+  });
 
   return (
     <ModulePage

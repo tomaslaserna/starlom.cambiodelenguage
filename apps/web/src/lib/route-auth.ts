@@ -113,6 +113,9 @@ const LEGACY_ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
 };
 
+const DATABASE_PERMISSION_CACHE_TTL_MS = 60_000;
+const databasePermissionCache = new Map<string, { expiresAt: number; allowed: boolean }>();
+
 function permissionKey(permission: Permission) {
   return `${permission.resource.trim()}.${permission.action.trim()}`;
 }
@@ -128,6 +131,10 @@ async function databaseAllows(session: AuthSession, permissions: Permission[]) {
   if (!permissions.length) return true;
 
   const keys = permissions.map(permissionKey);
+  const cacheKey = `${session.userId}:${session.companyId}:${keys.sort().join("|")}`;
+  const cached = databasePermissionCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.allowed;
+
   const result = await getDbPool().query<{ allowed: number }>(
     `
       SELECT 1 AS allowed
@@ -149,7 +156,13 @@ async function databaseAllows(session: AuthSession, permissions: Permission[]) {
     [session.userId, session.companyId, keys],
   );
 
-  return Boolean(result.rows[0]);
+  const allowed = Boolean(result.rows[0]);
+  databasePermissionCache.set(cacheKey, {
+    expiresAt: Date.now() + DATABASE_PERMISSION_CACHE_TTL_MS,
+    allowed,
+  });
+
+  return allowed;
 }
 
 export async function sessionAllows(session: AuthSession, permissions: Permission[] = []) {

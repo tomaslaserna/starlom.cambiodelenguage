@@ -2,7 +2,7 @@ import type { HTMLAttributes } from "react";
 import { cn } from "./utils";
 
 const toneClasses = {
-  neutral: "border-[color:var(--border)] bg-[color:var(--panel-subtle)] text-[color:var(--foreground)]",
+  neutral: "border-[color:var(--border)] bg-[color:var(--panel-muted)] text-[color:var(--foreground)]",
   accent: "border-[color:var(--accent)] bg-[color:var(--accent-subtle)] text-[color:var(--accent-strong)]",
   success: "border-[color:var(--success)] bg-[color:var(--success-subtle)] text-[color:var(--success)]",
   warning: "border-[color:var(--warning)] bg-[color:var(--warning-subtle)] text-[color:var(--warning)]",

@@ -1,12 +1,20 @@
 import { ModulePage } from "@/components/module-page";
 import { SectionTabs } from "@/components/section-tabs";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency } from "@/lib/format";
 import { getSalaryPlan } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
 
 export default async function SalariesPage() {
   const session = await requireStaffSession();
-  const salaries = await getSalaryPlan(session.companyId);
+  const salaries = await fastOr(getSalaryPlan(session.companyId), {
+    employees: [],
+    meta: {
+      activeCount: 0,
+      monthlyCost: 0,
+      payable: 0,
+    },
+  });
 
   return (
     <ModulePage

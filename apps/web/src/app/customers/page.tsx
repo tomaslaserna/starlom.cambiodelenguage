@@ -19,6 +19,7 @@ import {
   type StatusBadgeTone,
 } from "@/components/ui";
 import { listCustomers } from "@/lib/catalog";
+import { fastOr } from "@/lib/fast-data";
 import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -45,23 +46,42 @@ function customerStatusTone(status: string): StatusBadgeTone {
 
 export default async function CustomersPage({ searchParams }: CustomersPageProps) {
   const session = await requireStaffSession();
-  const navigationAuthorization = await getNavigationAuthorization(session);
+  const navigationAuthorization = await fastOr(
+    getNavigationAuthorization(session),
+    { allowedPermissionKeys: new Set(["clientes.ver"]) },
+    60,
+  );
   if (!navigationPermissionAllowed(navigationAuthorization, CUSTOMERS_READ_PERMISSION)) {
     redirect("/");
   }
 
   const params = await searchParams;
-  const result = await listCustomers({
-    companyId: session.companyId,
-    query: params.q,
-    page: params.page,
-    pageSize: "25",
-  });
+  const query = params.q?.trim() ?? "";
+  const page = Number.parseInt(params.page ?? "1", 10);
+  const result = await fastOr(
+    listCustomers({
+      companyId: session.companyId,
+      query: params.q,
+      page: params.page,
+      pageSize: "25",
+    }),
+    {
+      data: [],
+      meta: {
+        companyId: session.companyId,
+        query,
+        page: Number.isFinite(page) && page > 0 ? page : 1,
+        pageSize: 25,
+        total: 0,
+        totalPages: 1,
+      },
+    },
+  );
 
   return (
     <ModulePage
       active="database"
-      description="Clientes consultados desde PostgreSQL con sesion Node y contexto multiempresa."
+      description="Directorio de clientes con datos comerciales y de contacto."
       navigationAuthorization={navigationAuthorization}
       session={session}
       title="Clientes"

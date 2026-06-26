@@ -7,6 +7,7 @@ import {
   PageHeader,
 } from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
+import { fastOr } from "@/lib/fast-data";
 import {
   CUSTOMERS_READ_PERMISSION,
   EMPLOYEES_READ_PERMISSION,
@@ -34,7 +35,18 @@ const modules: Array<{
 
 export default async function DatabasePage() {
   const session = await requireStaffSession();
-  const navigationAuthorization = await getNavigationAuthorization(session);
+  const navigationAuthorization = await fastOr(
+    getNavigationAuthorization(session),
+    {
+      allowedPermissionKeys: new Set([
+        "empleados.ver",
+        "productos.ver",
+        "clientes.ver",
+        "proveedores.ver",
+      ]),
+    },
+    60,
+  );
   const visibleModules = modules.filter((module) =>
     navigationPermissionAllowed(navigationAuthorization, module.permission),
   );

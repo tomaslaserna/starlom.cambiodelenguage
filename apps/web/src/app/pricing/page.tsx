@@ -45,7 +45,7 @@ export default async function PricingPage() {
   return (
     <ModulePage
       active="pricing"
-      description="Listas de precio, margenes, multiplicadores y rubros migrados a React."
+      description="Listas de precio, margenes, multiplicadores y rubros."
       session={session}
       title="Precios y margenes"
     >

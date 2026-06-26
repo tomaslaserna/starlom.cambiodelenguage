@@ -1,6 +1,7 @@
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
 import { SectionTabs } from "@/components/section-tabs";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getMovementRegister } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
@@ -15,12 +16,24 @@ type MovementsPageProps = {
 export default async function MovementsPage({ searchParams }: MovementsPageProps) {
   const session = await requireStaffSession();
   const params = await searchParams;
-  const result = await getMovementRegister({
-    companyId: session.companyId,
-    type: params.type,
-    page: params.page,
-    pageSize: "25",
-  });
+  const page = Number.parseInt(params.page ?? "1", 10);
+  const result = await fastOr(
+    getMovementRegister({
+      companyId: session.companyId,
+      type: params.type,
+      page: params.page,
+      pageSize: "25",
+    }),
+    {
+      data: [],
+      meta: {
+        page: Number.isFinite(page) && page > 0 ? page : 1,
+        pageSize: 25,
+        total: 0,
+        totalPages: 1,
+      },
+    },
+  );
 
   return (
     <ModulePage

@@ -17,7 +17,58 @@ function percentDelta(current: number, previous: number) {
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-export async function getAdminMetrics(companyId: number) {
+type AdminMetrics = {
+  period: ReturnType<typeof monthBounds>;
+  sales: { current: number; previous: number; deltaPercent: number | null };
+  collections: { current: number; previous: number; deltaPercent: number | null };
+  margin: { grossCost: number; grossProfit: number; operatingCosts: number; operatingResult: number };
+  stock: { value: number; units: number; products: number };
+  purchases: { current: number; openTotal: number };
+  receivables: { openTotal: number };
+};
+
+const ADMIN_METRICS_CACHE_TTL_MS = 120_000;
+const ADMIN_METRICS_FAST_TIMEOUT_MS = 50;
+const adminMetricsCache = new Map<number, { expiresAt: number; value: AdminMetrics }>();
+
+function emptyAdminMetrics(): AdminMetrics {
+  return {
+    period: monthBounds(),
+    sales: { current: 0, previous: 0, deltaPercent: null },
+    collections: { current: 0, previous: 0, deltaPercent: null },
+    margin: { grossCost: 0, grossProfit: 0, operatingCosts: 0, operatingResult: 0 },
+    stock: { value: 0, units: 0, products: 0 },
+    purchases: { current: 0, openTotal: 0 },
+    receivables: { openTotal: 0 },
+  };
+}
+
+export async function getAdminMetrics(companyId: number): Promise<AdminMetrics> {
+  const cached = adminMetricsCache.get(companyId);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const loadPromise = loadAdminMetrics(companyId)
+    .then((value) => {
+      adminMetricsCache.set(companyId, {
+        expiresAt: Date.now() + ADMIN_METRICS_CACHE_TTL_MS,
+        value,
+      });
+      return value;
+    })
+    .catch((error) => {
+      if (cached) return cached.value;
+      throw error;
+    });
+
+  if (cached) return cached.value;
+
+  return Promise.race([
+    loadPromise,
+    new Promise<AdminMetrics>((resolve) => setTimeout(() => resolve(emptyAdminMetrics()), ADMIN_METRICS_FAST_TIMEOUT_MS)),
+  ]);
+}
+
+async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
   const bounds = monthBounds();
   const result = await queryWithCompanyContext<{
     sales_current: string;

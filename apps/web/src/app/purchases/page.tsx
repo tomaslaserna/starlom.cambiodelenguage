@@ -1,5 +1,6 @@
 import { ModulePage } from "@/components/module-page";
 import { SectionTabs } from "@/components/section-tabs";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { listPurchases } from "@/lib/purchases";
 import { requireStaffSession } from "@/lib/auth";
@@ -78,7 +79,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   const query = params.q?.trim().toLowerCase() ?? "";
   const status = params.status?.trim() ?? "";
   const type = params.type?.trim() ?? "";
-  const allPurchases = await listPurchases(session.companyId);
+  const allPurchases = await fastOr(listPurchases(session.companyId), []);
   const purchases = allPurchases.filter(
     (item) =>
       matchesQuery(item, query) &&
@@ -91,7 +92,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   return (
     <ModulePage
       active="purchases"
-      description="Compras, recepcion de paquetes y saldo proveedor desde la capa Node migrada."
+      description="Compras, recepcion de paquetes y saldo proveedor."
       session={session}
       title="Compras"
     >

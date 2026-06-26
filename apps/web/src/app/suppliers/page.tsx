@@ -17,6 +17,7 @@ import {
   Toolbar,
 } from "@/components/ui";
 import { listSuppliers } from "@/lib/catalog-management";
+import { fastOr } from "@/lib/fast-data";
 import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { sessionCanReadSuppliers } from "@/lib/route-auth";
@@ -36,12 +37,27 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   }
 
   const params = await searchParams;
-  const result = await listSuppliers({
-    companyId: session.companyId,
-    query: params.q,
-    page: params.page,
-    pageSize: "25",
-  });
+  const query = params.q?.trim() ?? "";
+  const page = Number.parseInt(params.page ?? "1", 10);
+  const result = await fastOr(
+    listSuppliers({
+      companyId: session.companyId,
+      query: params.q,
+      page: params.page,
+      pageSize: "25",
+    }),
+    {
+      data: [],
+      meta: {
+        companyId: session.companyId,
+        query,
+        page: Number.isFinite(page) && page > 0 ? page : 1,
+        pageSize: 25,
+        total: 0,
+        totalPages: 1,
+      },
+    },
+  );
   const suppliersMetricDetail = result.meta.query
     ? `Coinciden con la busqueda actual - Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`
     : `Total de proveedores cargados - Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`;
@@ -49,7 +65,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
   return (
     <ModulePage
       active="database"
-      description="Base de proveedores migrada a Node."
+      description="Base de proveedores, contacto y datos comerciales."
       session={session}
       title="Proveedores"
     >

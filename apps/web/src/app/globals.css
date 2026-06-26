@@ -1,39 +1,43 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f7fa;
-  --foreground: #17202a;
-  --muted: #667085;
+  --background: #f8fafc;
+  --foreground: #101828;
+  --muted: #64748b;
   --panel: #ffffff;
   --panel-raised: #ffffff;
-  --panel-subtle: #f0f3f7;
+  --panel-subtle: #eff6ff;
   --panel-muted: #f8fafc;
-  --border: #d7dee8;
-  --border-strong: #b8c3cf;
-  --accent: #0f766e;
-  --accent-strong: #0b5f59;
-  --accent-subtle: #e3f4f1;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-contrast: #ffffff;
+  --accent-subtle: #eff6ff;
+  --accent-secondary: #14b8a6;
+  --accent-secondary-subtle: #ccfbf1;
   --focus: #2563eb;
-  --focus-soft: rgba(37, 99, 235, 0.16);
+  --focus-soft: rgba(37, 99, 235, 0.18);
   --success: #15803d;
-  --success-subtle: #e8f6ee;
+  --success-subtle: #e9f8ef;
   --warning: #b45309;
-  --warning-subtle: #fff3d7;
-  --danger: #b42318;
+  --warning-subtle: #fff4db;
+  --danger: #b91c1c;
   --danger-subtle: #fdecec;
   --info: #1d4ed8;
-  --info-subtle: #e8f0ff;
+  --info-subtle: #e9f0ff;
   --hover: #edf2f7;
   --field: #ffffff;
-  --table-header: #f3f6fa;
-  --table-row-hover: #f8fafc;
+  --table-header: #eef3f7;
+  --table-row-hover: #f7fafc;
   --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
-  --shadow-xs: 0 1px 1px rgba(16, 24, 40, 0.04);
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08);
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-sm: 0 10px 26px rgba(16, 24, 40, 0.08);
+  --shadow-md: 0 18px 42px rgba(16, 24, 40, 0.13);
+  --shadow-control: 0 1px 2px rgba(16, 24, 40, 0.06), inset 0 -1px 0 rgba(16, 24, 40, 0.05);
   --control-height-sm: 2.25rem;
   --control-height-md: 2.5rem;
   --control-height-lg: 2.75rem;
@@ -121,6 +125,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+body::before {
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 34%),
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.10), transparent 32%);
+  content: "";
+  height: 260px;
+  inset: 0 0 auto;
+  pointer-events: none;
+  position: fixed;
+  z-index: -1;
+}
+
 .erp-text-caption {
   font-size: var(--text-caption);
   line-height: var(--leading-caption);
@@ -176,9 +192,12 @@ body {
   overflow-x: clip;
 }
 
-a {
-  color: inherit;
+:where(a) {
   text-decoration: none;
+}
+
+a:not([class]) {
+  color: inherit;
 }
 
 button,
@@ -209,4 +228,8 @@ button:disabled,
   outline: 2px solid var(--focus);
   outline-offset: 2px;
   box-shadow: 0 0 0 4px var(--focus-soft);
+}
+
+:where(input, select, textarea)::placeholder {
+  color: color-mix(in srgb, var(--muted) 72%, white);
 }

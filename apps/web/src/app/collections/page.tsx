@@ -19,6 +19,7 @@ import {
   type StatusBadgeTone,
 } from "@/components/ui";
 import { listPendingCollections } from "@/lib/collections";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { sessionCanReadCollections } from "@/lib/route-auth";
@@ -68,7 +69,7 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
 
   const params = await searchParams;
   const query = params.q?.trim().toLowerCase() ?? "";
-  const allCollections = await listPendingCollections(session.companyId);
+  const allCollections = await fastOr(listPendingCollections(session.companyId), []);
   const collections = allCollections.filter((item) => matchesQuery(item, query));
   const totalPending = collections.reduce((sum, item) => sum + item.registeredAmount, 0);
 

@@ -60,7 +60,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
   return (
     <ModulePage
       active="employees"
-      description="Empleados, rangos y permisos migrados a la sesion Node con RBAC granular."
+      description="Empleados, rangos, permisos y estado de acceso."
       session={session}
       title="Empleados"
     >

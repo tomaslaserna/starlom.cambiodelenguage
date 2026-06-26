@@ -11,8 +11,8 @@ export function Textarea({ className, invalid, ...props }: TextareaProps) {
       {...props}
       aria-invalid={invalid ? true : props["aria-invalid"]}
       className={cn(
-        "erp-text-body-sm min-h-28 rounded-[var(--radius-md)] border bg-[color:var(--field)] px-3 py-2 text-[color:var(--foreground)] shadow-[var(--shadow-xs)] outline-none transition-colors placeholder:text-[color:var(--muted)] disabled:opacity-60",
-        invalid ? "border-[color:var(--danger)]" : "border-[color:var(--border)] hover:border-[color:var(--border-strong)]",
+        "erp-text-body-sm min-h-28 rounded-[var(--radius-md)] border bg-[color:var(--field)] px-3 py-2 text-[color:var(--foreground)] shadow-[var(--shadow-control)] outline-none transition-[background-color,border-color,box-shadow] placeholder:text-[color:var(--muted)] disabled:bg-[color:var(--panel-muted)] disabled:opacity-70",
+        invalid ? "border-[color:var(--danger)]" : "border-[color:var(--border)] hover:border-[color:var(--border-strong)] focus:border-[color:var(--accent)]",
         className,
       )}
     />

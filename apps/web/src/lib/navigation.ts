@@ -217,6 +217,17 @@ export const navigationSections: NavigationSection[] = [
 
 export type NavigationIndicators = Record<NavigationBadgeKey, number>;
 
+const AUTHORIZATION_CACHE_TTL_MS = 60_000;
+const INDICATORS_CACHE_TTL_MS = 20_000;
+
+type CacheEntry<T> = {
+  expiresAt: number;
+  value: T;
+};
+
+const authorizationCache = new Map<string, CacheEntry<NavigationAuthorization>>();
+const indicatorsCache = new Map<string, CacheEntry<NavigationIndicators>>();
+
 function navigationPermissionKey(permission: Permission) {
   return `${permission.resource.trim()}.${permission.action.trim()}`;
 }
@@ -241,6 +252,10 @@ export function navigationPermissionAllowed(
 }
 
 export async function getNavigationAuthorization(session: AuthSession): Promise<NavigationAuthorization> {
+  const cacheKey = `${session.userId}:${session.companyId}:${session.role}`;
+  const cached = authorizationCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
   const allowedPermissionKeys = new Set<string>();
   await Promise.all(
     collectRequiredNavigationPermissions().map(async (permission) => {
@@ -249,7 +264,14 @@ export async function getNavigationAuthorization(session: AuthSession): Promise<
       }
     }),
   );
-  return { allowedPermissionKeys };
+
+  const authorization = { allowedPermissionKeys };
+  authorizationCache.set(cacheKey, {
+    expiresAt: Date.now() + AUTHORIZATION_CACHE_TTL_MS,
+    value: authorization,
+  });
+
+  return authorization;
 }
 
 function authorizedNavigationItem(
@@ -315,6 +337,10 @@ export function emptyNavigationIndicators(): NavigationIndicators {
 }
 
 export async function getNavigationIndicators(session: AuthSession): Promise<NavigationIndicators> {
+  const cacheKey = `${session.userId}:${session.companyId}:${session.role}`;
+  const cached = indicatorsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
   const [canReadCollections, canApproveCollections] = await Promise.all([
     sessionCanReadCollections(session),
     sessionCanApproveCollections(session),
@@ -379,7 +405,7 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
   const row = result.rows[0];
   if (!row) return emptyNavigationIndicators();
   const collectionApprovals = Number(row.collection_approvals);
-  return {
+  const indicators = {
     approvals: canApproveCollections ? collectionApprovals : 0,
     collectionApprovals: canReadCollections ? collectionApprovals : 0,
     messages: Number(row.messages),
@@ -391,4 +417,11 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     payables: Number(row.payables),
     purchases: Number(row.purchases),
   };
+
+  indicatorsCache.set(cacheKey, {
+    expiresAt: Date.now() + INDICATORS_CACHE_TTL_MS,
+    value: indicators,
+  });
+
+  return indicators;
 }

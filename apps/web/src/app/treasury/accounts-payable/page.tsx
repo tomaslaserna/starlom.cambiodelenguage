@@ -1,12 +1,19 @@
 import { ModulePage } from "@/components/module-page";
 import { SectionTabs } from "@/components/section-tabs";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getAccountsPayable } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
 
 export default async function AccountsPayablePage() {
   const session = await requireStaffSession();
-  const payables = await getAccountsPayable(session.companyId);
+  const payables = await fastOr(getAccountsPayable(session.companyId), {
+    data: [],
+    meta: {
+      count: 0,
+      total: 0,
+    },
+  });
 
   return (
     <ModulePage

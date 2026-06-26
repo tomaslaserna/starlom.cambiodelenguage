@@ -23,6 +23,7 @@ import {
   type StatusBadgeTone,
 } from "@/components/ui";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
+import { fastOr } from "@/lib/fast-data";
 import { getOrdersDashboard, listOrders } from "@/lib/orders";
 import { requireStaffSession } from "@/lib/auth";
 import { updateOrderStatusAction } from "@/app/orders/actions";
@@ -77,22 +78,43 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const session = await requireStaffSession();
   const params = await searchParams;
   const [result, dashboard] = await Promise.all([
-    listOrders({
-      companyId: session.companyId,
-      query: params.q,
-      status: params.status,
-      collectionStatus: params.collectionStatus,
-      page: params.page,
-      pageSize: "25",
+    fastOr(
+      listOrders({
+        companyId: session.companyId,
+        query: params.q,
+        status: params.status,
+        collectionStatus: params.collectionStatus,
+        page: params.page,
+        pageSize: "25",
+      }),
+      {
+        data: [],
+        meta: {
+          companyId: session.companyId,
+          query: params.q?.trim() ?? "",
+          status: params.status?.trim() ?? "",
+          collectionStatus: params.collectionStatus?.trim() ?? "",
+          page: 1,
+          pageSize: 25,
+          total: 0,
+          totalPages: 1,
+        },
+      },
+    ),
+    fastOr(getOrdersDashboard(session.companyId), {
+      receivedMonth: 0,
+      deliveredMonth: 0,
+      inProcess: 0,
+      pendingDelivery: 0,
+      totalMonth: 0,
     }),
-    getOrdersDashboard(session.companyId),
   ]);
   const pageAmount = result.data.reduce((sum, order) => sum + order.amount, 0);
 
   return (
     <ModulePage
       active="orders"
-      description="Pedidos y ventas migrados a React/Node, con filtros por estado operativo y estado de cobro."
+      description="Pedidos y ventas con filtros por estado operativo y estado de cobro."
       session={session}
       title="Pedidos"
     >

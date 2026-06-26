@@ -1,12 +1,20 @@
 import { ModulePage } from "@/components/module-page";
 import { SectionTabs } from "@/components/section-tabs";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getCashflow } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
 
 export default async function CashFlowPage() {
   const session = await requireStaffSession();
-  const cashflow = await getCashflow(session.companyId);
+  const cashflow = await fastOr(getCashflow(session.companyId), {
+    data: [],
+    meta: {
+      inflow: 0,
+      outflow: 0,
+      net: 0,
+    },
+  });
 
   return (
     <ModulePage

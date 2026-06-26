@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Star Lim ERP",
-  description: "Nueva base React y Node para la migracion incremental de Star Lim.",
+  title: "Starlim",
+  description: "Panel operativo de Starlim.",
 };
 
 export default function RootLayout({

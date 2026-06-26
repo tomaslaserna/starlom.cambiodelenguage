@@ -1,12 +1,21 @@
 import { ModulePage } from "@/components/module-page";
 import { SectionTabs } from "@/components/section-tabs";
+import { fastOr } from "@/lib/fast-data";
 import { formatCurrency } from "@/lib/format";
 import { getTreasuryBalances } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
 
 export default async function TreasuryPage() {
   const session = await requireStaffSession();
-  const treasury = await getTreasuryBalances(session.companyId);
+  const treasury = await fastOr(getTreasuryBalances(session.companyId), {
+    accounts: [],
+    meta: {
+      total: 0,
+      cash: 0,
+      bank: 0,
+      other: 0,
+    },
+  });
 
   return (
     <ModulePage

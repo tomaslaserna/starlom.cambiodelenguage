@@ -355,7 +355,7 @@ export async function createPdfFile(
     },
     bufferPages: true,
     info: {
-      Producer: "StarLim Node PDF",
+      Producer: "StarLim PDF",
       Creator: "StarLim ERP",
     },
   });
