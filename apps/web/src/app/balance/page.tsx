@@ -1,5 +1,4 @@
 import { ModulePage } from "@/components/module-page";
-import { SectionTabs } from "@/components/section-tabs";
 import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { getBalanceDashboard } from "@/lib/finance";
@@ -24,6 +23,13 @@ export default async function BalancePage() {
     payables: { data: [], meta: { count: 0, total: 0 } },
     cashflow: { data: [], meta: { inflow: 0, outflow: 0, net: 0 } },
   });
+  const incomeRows = [
+    { label: "Ventas entregadas", amount: metrics.sales.current },
+    { label: "Costo de mercaderia vendida", amount: -metrics.margin.grossCost },
+    { label: "Ganancia bruta", amount: metrics.margin.grossProfit, strong: true },
+    { label: "Costos fijos operativos y sueldos vigentes", amount: -metrics.margin.operatingCosts },
+    { label: "Resultado operativo", amount: metrics.margin.operatingResult, strong: true },
+  ];
 
   return (
     <ModulePage
@@ -33,14 +39,6 @@ export default async function BalancePage() {
       title="Balance"
     >
       <div className="grid gap-5">
-        <SectionTabs
-          tabs={[
-            { href: "/balance", label: "Resumen", active: true },
-            { href: "/balance/income-statement", label: "Estado de resultados" },
-            { href: "/balance/salaries", label: "Sueldos" },
-            { href: "/balance/dividends", label: "Dividendos" },
-          ]}
-        />
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
@@ -85,6 +83,24 @@ export default async function BalancePage() {
                 <div className="mt-1 font-semibold">{formatCurrency(payables.meta.total)}</div>
               </div>
             </div>
+          </section>
+
+          <section className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
+            <div className="border-b border-[color:var(--border)] px-4 py-3">
+              <h2 className="font-semibold">Estado de resultados</h2>
+            </div>
+            <table className="w-full border-collapse text-left text-sm">
+              <tbody>
+                {incomeRows.map((row) => (
+                  <tr className="border-t border-[color:var(--border)] first:border-t-0" key={row.label}>
+                    <td className={`px-4 py-3 ${row.strong ? "font-semibold" : ""}`}>{row.label}</td>
+                    <td className={`px-4 py-3 text-right font-mono text-xs ${row.strong ? "font-semibold" : ""}`}>
+                      {formatCurrency(row.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </section>
 
           <section className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">

@@ -1,5 +1,4 @@
 import { ModulePage } from "@/components/module-page";
-import { SectionTabs } from "@/components/section-tabs";
 import {
   Button,
   ButtonLink,
@@ -24,7 +23,7 @@ import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { listQuotes } from "@/lib/quotes";
 import { requireStaffSession } from "@/lib/auth";
-import { acceptQuoteAction } from "@/app/quotes/actions";
+import { acceptQuoteAction, createQuoteAction } from "@/app/quotes/actions";
 
 type QuotesPageProps = {
   searchParams: Promise<{
@@ -85,13 +84,58 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
           title="Presupuestos"
         />
 
-        <SectionTabs
-          tabs={[
-            { href: "/sales", label: "Resumen" },
-            { href: "/orders/new", label: "Cargar pedido" },
-            { href: "/quotes", label: "Presupuestos", active: true },
-          ]}
-        />
+        <Card>
+          <form action={createQuoteAction} className="grid gap-4 p-4">
+            <div className="grid gap-3 lg:grid-cols-4">
+              <Field htmlFor="quote-customer" label="Cliente" required>
+                <Input id="quote-customer" name="customerName" required placeholder="Nombre del cliente" />
+              </Field>
+              <Field htmlFor="quote-business" label="Razon social">
+                <Input id="quote-business" name="businessName" placeholder="Opcional" />
+              </Field>
+              <Field htmlFor="quote-tax" label="CUIT/DNI">
+                <Input id="quote-tax" name="taxId" placeholder="Opcional" />
+              </Field>
+              <Field htmlFor="quote-vat" label="Condicion IVA">
+                <Select id="quote-vat" name="vatCondition" defaultValue="Consumidor final">
+                  <option value="Consumidor final">Consumidor final</option>
+                  <option value="Responsable inscripto">Responsable inscripto</option>
+                  <option value="Monotributo">Monotributo</option>
+                  <option value="Exento">Exento</option>
+                </Select>
+              </Field>
+              <Field htmlFor="quote-phone" label="Telefono">
+                <Input id="quote-phone" name="phone" placeholder="Opcional" />
+              </Field>
+              <Field htmlFor="quote-address" label="Direccion">
+                <Input id="quote-address" name="address" placeholder="Opcional" />
+              </Field>
+              <Field htmlFor="quote-validity" label="Vigencia">
+                <Input id="quote-validity" name="validityDays" type="number" min="1" max="365" defaultValue={15} />
+              </Field>
+              <label className="flex min-h-[var(--control-height-md)] items-end gap-2 pb-2 text-sm font-semibold">
+                <input className="mb-0.5 h-4 w-4 accent-[var(--accent)]" name="includeVat" type="checkbox" defaultChecked />
+                Incluir IVA
+              </label>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_120px_150px_130px_auto] lg:items-end">
+              <Field htmlFor="quote-product" label="Producto / servicio" required>
+                <Input id="quote-product" name="productName" required placeholder="Descripcion" />
+              </Field>
+              <Field htmlFor="quote-quantity" label="Cantidad" required>
+                <Input id="quote-quantity" name="quantity" type="number" min="0.001" step="0.001" defaultValue={1} required />
+              </Field>
+              <Field htmlFor="quote-price" label="Precio unitario" required>
+                <Input id="quote-price" name="unitPrice" type="number" min="0" step="0.01" required />
+              </Field>
+              <Field htmlFor="quote-discount" label="Descuento %">
+                <Input id="quote-discount" name="discount" type="number" min="0" max="100" step="0.01" defaultValue={0} />
+              </Field>
+              <Button type="submit">Crear presupuesto</Button>
+            </div>
+          </form>
+        </Card>
 
         <Toolbar ariaLabel="Filtros de presupuestos">
           <form

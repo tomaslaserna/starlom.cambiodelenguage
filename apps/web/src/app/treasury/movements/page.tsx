@@ -1,6 +1,5 @@
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
-import { SectionTabs } from "@/components/section-tabs";
 import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getMovementRegister } from "@/lib/finance";
@@ -43,14 +42,6 @@ export default async function MovementsPage({ searchParams }: MovementsPageProps
       title="Registro de movimientos"
     >
       <div className="grid gap-5">
-        <SectionTabs
-          tabs={[
-            { href: "/treasury", label: "Saldos actuales" },
-            { href: "/treasury/cash-flow", label: "Cash Flow" },
-            { href: "/treasury/accounts-payable", label: "Cuentas por pagar" },
-            { href: "/treasury/movements", label: "Registro de movimientos", active: true },
-          ]}
-        />
 
         <form
           action="/treasury/movements"

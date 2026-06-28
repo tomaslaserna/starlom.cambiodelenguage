@@ -1,5 +1,4 @@
 import { ModulePage } from "@/components/module-page";
-import { SectionTabs } from "@/components/section-tabs";
 import { fastOr } from "@/lib/fast-data";
 import { formatDate } from "@/lib/format";
 import { listMessageCenter } from "@/lib/messages";
@@ -39,13 +38,6 @@ export default async function MessagesPage({ searchParams }: MessagesPageProps) 
     >
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <section className="grid gap-4">
-          <SectionTabs
-            tabs={[
-              { href: "/messages", label: "Recibidos", active: box === "inbox", badge: center.meta.unread },
-              { href: "/messages?box=sent", label: "Enviados", active: box === "sent" },
-              { href: "/messages?box=drafts", label: "Borradores", active: box === "drafts", badge: center.meta.drafts ?? 0 },
-            ]}
-          />
 
           {box === "inbox" ? (
             <form action={markInboxReadAction}>

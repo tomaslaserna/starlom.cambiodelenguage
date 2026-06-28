@@ -377,7 +377,6 @@ export function productCreateInputFromBody(body: RequestBody) {
     stock,
     provider: textField(body, "provider") || textField(body, "proveedor"),
     description: textField(body, "description") || textField(body, "descripcion"),
-    image: textField(body, "image") || textField(body, "imagen"),
   };
 }
 
@@ -399,11 +398,11 @@ export async function createStockProduct(
       `
         INSERT INTO productos (
           id_producto, rubro, codigo, categoria, proveedor, nombre, costo,
-          stock, descripcion, imagen, empresa_id
+          stock, descripcion, empresa_id
         )
-        SELECT COALESCE(MAX(id_producto), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+        SELECT COALESCE(MAX(id_producto), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8, $9
         FROM productos
-        WHERE codigo = $2 AND empresa_id = $10
+        WHERE codigo = $2 AND empresa_id = $9
         RETURNING id
       `,
       [
@@ -415,7 +414,6 @@ export async function createStockProduct(
         input.cost,
         input.stock,
         input.description,
-        input.image,
         session.companyId,
       ],
     );
@@ -437,7 +435,6 @@ export function productBulkUpdateInputFromBody(body: RequestBody): Record<string
     cost: Array.isArray(body.precio) ? body.precio[index] : undefined,
     description: Array.isArray(body.descripcion) ? body.descripcion[index] : undefined,
     stock: Array.isArray(body.cantidad) ? body.cantidad[index] : undefined,
-    image: Array.isArray(body.imagen) ? body.imagen[index] : undefined,
   }));
 }
 
@@ -454,8 +451,8 @@ export async function bulkUpdateProducts(
       const result = await client.query<{ id: number }>(
         `
           UPDATE productos
-          SET nombre = $1, costo = $2, descripcion = $3, stock = $4, imagen = $5
-          WHERE id = $6 AND empresa_id = $7
+          SET nombre = $1, costo = $2, descripcion = $3, stock = $4
+          WHERE id = $5 AND empresa_id = $6
           RETURNING id
         `,
         [
@@ -463,7 +460,6 @@ export async function bulkUpdateProducts(
           Number(item.cost ?? item.costo ?? item.precio ?? 0),
           String(item.description ?? item.descripcion ?? "").trim(),
           Math.max(0, Number.parseInt(String(item.stock ?? item.cantidad ?? 0), 10) || 0),
-          String(item.image ?? item.imagen ?? "").trim(),
           id,
           session.companyId,
         ],

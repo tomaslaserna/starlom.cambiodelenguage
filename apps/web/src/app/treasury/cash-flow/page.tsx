@@ -1,5 +1,4 @@
 import { ModulePage } from "@/components/module-page";
-import { SectionTabs } from "@/components/section-tabs";
 import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getCashflow } from "@/lib/admin-metrics";
@@ -24,14 +23,6 @@ export default async function CashFlowPage() {
       title="Cash Flow"
     >
       <div className="grid gap-5">
-        <SectionTabs
-          tabs={[
-            { href: "/treasury", label: "Saldos actuales" },
-            { href: "/treasury/cash-flow", label: "Cash Flow", active: true },
-            { href: "/treasury/accounts-payable", label: "Cuentas por pagar" },
-            { href: "/treasury/movements", label: "Registro de movimientos" },
-          ]}
-        />
 
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">

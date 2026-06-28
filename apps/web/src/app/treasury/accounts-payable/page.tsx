@@ -1,5 +1,4 @@
 import { ModulePage } from "@/components/module-page";
-import { SectionTabs } from "@/components/section-tabs";
 import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getAccountsPayable } from "@/lib/admin-metrics";
@@ -23,14 +22,6 @@ export default async function AccountsPayablePage() {
       title="Cuentas por pagar"
     >
       <div className="grid gap-5">
-        <SectionTabs
-          tabs={[
-            { href: "/treasury", label: "Saldos actuales" },
-            { href: "/treasury/cash-flow", label: "Cash Flow" },
-            { href: "/treasury/accounts-payable", label: "Cuentas por pagar", active: true, badge: payables.meta.count },
-            { href: "/treasury/movements", label: "Registro de movimientos" },
-          ]}
-        />
 
         <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
           <div className="text-sm text-[color:var(--muted)]">Saldo abierto total</div>

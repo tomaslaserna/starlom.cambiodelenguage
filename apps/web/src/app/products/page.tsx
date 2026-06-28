@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
-import { SectionTabs } from "@/components/section-tabs";
 import {
   Button,
   ButtonLink,
@@ -93,14 +92,6 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
           title="Productos"
         />
 
-        <SectionTabs
-          tabs={[
-            { href: "/products", label: "Cambiar stock", active: !params.mode },
-            { href: "/products?mode=new", label: "Nuevo stock", active: params.mode === "new" },
-            { href: "/products?mode=bulk", label: "Carga masiva", active: params.mode === "bulk" },
-          ]}
-        />
-
         <Toolbar ariaLabel="Busqueda y acciones de productos">
           <form
             action="/products"
@@ -161,9 +152,6 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                 <Field htmlFor="product-provider" label="Proveedor">
                   <Input id="product-provider" name="provider" />
                 </Field>
-                <Field htmlFor="product-image" label="Imagen">
-                  <Input id="product-image" name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
-                </Field>
                 <Field className="lg:col-span-2" htmlFor="product-description" label="Descripcion">
                   <Textarea id="product-description" name="description" rows={4} />
                 </Field>
@@ -212,14 +200,14 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             <Card>
               <CardHeader>
                 <CardTitle>Actualizacion masiva JSON</CardTitle>
-                <CardDescription>Edicion directa de nombre, costo, descripcion, stock e imagen.</CardDescription>
+                <CardDescription>Edicion directa de nombre, costo, descripcion y stock.</CardDescription>
               </CardHeader>
               <CardContent>
                 <form action={bulkUpdateProductsAction} className="grid gap-3">
                   <Field
                     htmlFor="bulk-json"
                     label="Productos JSON"
-                    description='Formato: [{"id":1,"name":"Producto","cost":100,"stock":5,"description":"","image":""}]'
+                    description='Formato: [{"id":1,"name":"Producto","cost":100,"stock":5,"description":""}]'
                   >
                     <Textarea id="bulk-json" name="itemsJson" rows={6} />
                   </Field>

@@ -126,11 +126,11 @@ async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
         WHERE dv.empresa_id = $4
       ),
       stock AS (
-        SELECT COALESCE(SUM(stock * costo), 0) AS stock_value,
-               COALESCE(SUM(stock), 0) AS stock_units,
-               COUNT(*) AS stock_products
+        SELECT COALESCE(SUM(stock * costo) FILTER (WHERE COALESCE(stock, 0) > 0), 0) AS stock_value,
+               COALESCE(SUM(stock) FILTER (WHERE COALESCE(stock, 0) > 0), 0) AS stock_units,
+               COUNT(*) FILTER (WHERE COALESCE(stock, 0) <= 0) AS stock_products
         FROM productos
-        WHERE empresa_id = $4 AND stock > 0
+        WHERE empresa_id = $4
       ),
       operating AS (
         SELECT COALESCE(SUM(monto), 0) AS operating_costs_current

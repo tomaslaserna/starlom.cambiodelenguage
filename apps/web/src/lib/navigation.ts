@@ -54,7 +54,6 @@ export const navigationGroups: NavigationGroup[] = [
     active: "balance",
     items: [
       { href: "/balance", label: "Resumen", active: "balance" },
-      { href: "/balance/income-statement", label: "Estado de resultados", active: "balance" },
       { href: "/balance/salaries", label: "Sueldos", active: "balance" },
       { href: "/balance/dividends", label: "Dividendos", active: "balance" },
     ],
@@ -170,7 +169,16 @@ export const navigationGroups: NavigationGroup[] = [
     ],
   },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
-  { href: "/messages", label: "Mensajes", active: "messages", badge: "messages" },
+  {
+    label: "Mensajes",
+    active: "messages",
+    badge: "messages",
+    items: [
+      { href: "/messages", label: "Recibidos", active: "messages", badge: "messages" },
+      { href: "/messages?box=sent", label: "Enviados", active: "messages" },
+      { href: "/messages?box=drafts", label: "Borradores", active: "messages" },
+    ],
+  },
 ];
 
 export type NavigationSection = {

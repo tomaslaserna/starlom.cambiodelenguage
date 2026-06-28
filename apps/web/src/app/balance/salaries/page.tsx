@@ -1,5 +1,4 @@
 import { ModulePage } from "@/components/module-page";
-import { SectionTabs } from "@/components/section-tabs";
 import { fastOr } from "@/lib/fast-data";
 import { formatCurrency } from "@/lib/format";
 import { getSalaryPlan } from "@/lib/finance";
@@ -24,14 +23,6 @@ export default async function SalariesPage() {
       title="Sueldos"
     >
       <div className="grid gap-5">
-        <SectionTabs
-          tabs={[
-            { href: "/balance", label: "Resumen" },
-            { href: "/balance/income-statement", label: "Estado de resultados" },
-            { href: "/balance/salaries", label: "Sueldos", active: true },
-            { href: "/balance/dividends", label: "Dividendos" },
-          ]}
-        />
 
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">

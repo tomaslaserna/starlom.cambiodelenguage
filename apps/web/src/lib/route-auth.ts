@@ -38,6 +38,42 @@ export const COLLECTIONS_APPROVE_PERMISSION = {
 } satisfies Permission;
 
 const LEGACY_ROLE_PERMISSIONS: Record<string, string[]> = {
+  administrador: ["*"],
+  jefe: [
+    "pedidos.ver",
+    "pedidos.crear",
+    "pedidos.editar",
+    "pedidos.cancelar",
+    "pedidos.administrar",
+    "stock.ver",
+    "stock.editar",
+    "stock.administrar",
+    "productos.ver",
+    "productos.crear",
+    "productos.editar",
+    "clientes.ver",
+    "clientes.crear",
+    "clientes.editar",
+    "proveedores.ver",
+    "presupuestos.ver",
+    "presupuestos.crear",
+    "presupuestos.editar",
+    "empleados.ver",
+    "empleados.crear",
+    "empleados.editar",
+  ],
+  deposito: ["pedidos.ver", "pedidos.editar", "pedidos.administrar", "stock.ver", "stock.editar", "productos.ver"],
+  logistica: ["pedidos.ver", "pedidos.editar", "pedidos.administrar"],
+  operador: ["pedidos.ver", "pedidos.crear", "stock.ver", "productos.ver"],
+  vendedor: [
+    "clientes.ver",
+    "clientes.crear",
+    "clientes.editar",
+    "pedidos.ver",
+    "pedidos.crear",
+    "presupuestos.ver",
+    "presupuestos.crear",
+  ],
   Empleado: ["pedidos.ver", "stock.ver"],
   Empleado_1: ["pedidos.ver", "pedidos.editar", "stock.ver", "stock.editar", "productos.ver"],
   Empleado_2: [
@@ -121,13 +157,14 @@ function permissionKey(permission: Permission) {
 }
 
 function legacyRoleAllows(session: AuthSession, permissions: Permission[]) {
-  if (session.role === "Admin") return true;
+  if (session.role === "Admin" || session.role === "administrador") return true;
   const allowed = new Set(LEGACY_ROLE_PERMISSIONS[session.role] ?? []);
+  if (allowed.has("*")) return true;
   return permissions.some((permission) => allowed.has(permissionKey(permission)));
 }
 
 async function databaseAllows(session: AuthSession, permissions: Permission[]) {
-  if (session.role === "Admin") return true;
+  if (session.role === "Admin" || session.role === "administrador") return true;
   if (!permissions.length) return true;
 
   const keys = permissions.map(permissionKey);
@@ -138,19 +175,18 @@ async function databaseAllows(session: AuthSession, permissions: Permission[]) {
   const result = await getDbPool().query<{ allowed: number }>(
     `
       SELECT 1 AS allowed
-      FROM app_usuario_permisos up
-      JOIN app_permisos p ON p.id = up.id_permiso
-      WHERE up.id_usuario = $1
-        AND up.empresa_id = $2
-        AND p.clave = ANY($3)
+      FROM profile_permissions pp
+      WHERE pp.profile_id = $1::uuid
+        AND pp.empresa_id = $2
+        AND pp.permission_key = ANY($3)
       UNION
       SELECT 1 AS allowed
-      FROM app_usuario_roles ur
-      JOIN app_rol_permisos rp ON rp.id_rol = ur.id_rol
-      JOIN app_permisos p ON p.id = rp.id_permiso
-      WHERE ur.id_usuario = $1
-        AND ur.empresa_id = $2
-        AND p.clave = ANY($3)
+      FROM usuario_empresa ue
+      JOIN role_permissions rp ON rp.role = ue.role
+      WHERE ue.id_usuario = $1::uuid
+        AND ue.empresa_id = $2
+        AND ue.activo = TRUE
+        AND rp.permission_key = ANY($3)
       LIMIT 1
     `,
     [session.userId, session.companyId, keys],
@@ -213,6 +249,6 @@ export async function requireApiSession(permissions: Permission[] = []) {
 
 export async function requireAdminApiSession() {
   const session = await requireApiSession();
-  if (session.role !== "Admin") throw new ApiError(403, "Solo Admin");
+  if (session.role !== "Admin" && session.role !== "administrador") throw new ApiError(403, "Solo Admin");
   return session;
 }

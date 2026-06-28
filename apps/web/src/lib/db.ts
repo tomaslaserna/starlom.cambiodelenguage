@@ -4,7 +4,7 @@ import { getDatabaseEnv } from "@/lib/env";
 let pool: Pool | null = null;
 
 const READ_CACHE_TTL_MS = 90_000;
-const readQueryCache = new Map<string, { expiresAt: number; result: QueryResult<QueryResultRow> }>();
+const readQueryCache = new Map<string, { expiresAt: number; result: QueryResult<QueryResultRow>; tables: Set<string> }>();
 const inFlightReadQueries = new Map<string, Promise<QueryResult<QueryResultRow>>>();
 
 function isCacheableRead(sql: string) {
@@ -17,6 +17,29 @@ function readCacheKey(companyId: number, sql: string, params: unknown[]) {
   return JSON.stringify([companyId, sql.replace(/\s+/g, " ").trim(), params]);
 }
 
+function extractSqlTables(sql: string) {
+  const tables = new Set<string>();
+  const normalized = sql.replace(/"([^"]+)"/g, "$1");
+  const patterns = [
+    /\bfrom\s+([a-z_][a-z0-9_\.]*)/gi,
+    /\bjoin\s+([a-z_][a-z0-9_\.]*)/gi,
+    /\binsert\s+into\s+([a-z_][a-z0-9_\.]*)/gi,
+    /\bupdate\s+([a-z_][a-z0-9_\.]*)/gi,
+    /\bdelete\s+from\s+([a-z_][a-z0-9_\.]*)/gi,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of normalized.matchAll(pattern)) {
+      const table = match[1]?.split(".").pop();
+      if (table && !["select", "values", "lateral"].includes(table.toLowerCase())) {
+        tables.add(table.toLowerCase());
+      }
+    }
+  }
+
+  return tables;
+}
+
 function cloneQueryResult<T extends QueryResultRow>(result: QueryResult<QueryResultRow>): QueryResult<T> {
   return {
     ...result,
@@ -26,6 +49,22 @@ function cloneQueryResult<T extends QueryResultRow>(result: QueryResult<QueryRes
 
 export function clearReadQueryCache() {
   readQueryCache.clear();
+}
+
+function clearReadQueryCacheForTables(tables: Set<string>) {
+  if (!tables.size) {
+    clearReadQueryCache();
+    return;
+  }
+
+  for (const [key, entry] of readQueryCache) {
+    for (const table of tables) {
+      if (entry.tables.has(table)) {
+        readQueryCache.delete(key);
+        break;
+      }
+    }
+  }
 }
 
 export function getDbPool(): Pool {
@@ -78,7 +117,7 @@ export async function queryWithCompanyContext<T extends QueryResultRow>(
       return cloneQueryResult<T>(await inFlight);
     }
   } else {
-    clearReadQueryCache();
+    clearReadQueryCacheForTables(extractSqlTables(sql));
   }
 
   const queryPromise = withCompanyContext(companyId, (client) => client.query<T>(sql, params)) as Promise<
@@ -98,6 +137,7 @@ export async function queryWithCompanyContext<T extends QueryResultRow>(
     readQueryCache.set(key, {
       expiresAt: Date.now() + READ_CACHE_TTL_MS,
       result: cloneQueryResult<QueryResultRow>(result),
+      tables: extractSqlTables(sql),
     });
   }
 

@@ -29,7 +29,6 @@ export type Product = {
   stockReal: number;
   reserved: number;
   available: number;
-  image: string;
 };
 
 type ListInput = {
@@ -170,12 +169,11 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
     stock_real: number;
     reservado: string;
     disponible: string;
-    imagen: string;
   }>(
     companyId,
     `
       SELECT id, id_producto, codigo, categoria, proveedor, nombre, costo,
-             stock_real, reservado, disponible, imagen
+             stock_real, reservado, disponible
       FROM vista_stock_disponible
       WHERE ${where}
       ORDER BY nombre ASC, id ASC
@@ -198,7 +196,6 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
       stockReal: row.stock_real,
       reserved: Number(row.reservado),
       available: Number(row.disponible),
-      image: row.imagen,
     })),
     meta: {
       companyId,

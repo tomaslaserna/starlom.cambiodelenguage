@@ -81,7 +81,7 @@ export async function ModulePage({
   );
 
   return (
-    <div className="min-h-screen bg-[#f5f7fb] text-foreground lg:grid lg:grid-cols-[260px_minmax(0,1fr)]">
+    <div className="min-h-screen overflow-visible bg-[#f5f7fb] text-foreground lg:grid lg:h-screen lg:grid-cols-[260px_minmax(0,1fr)] lg:overflow-hidden">
       <RouteWarmup />
       <aside className="sticky top-0 hidden h-screen border-r border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_48%,#073f94_100%)] text-white shadow-[8px_0_30px_rgba(7,63,148,0.22)] lg:flex lg:flex-col">
         <div className="border-b border-white/14 px-4 py-4">
@@ -101,7 +101,7 @@ export async function ModulePage({
         </div>
       </aside>
 
-      <main className="min-w-0">
+      <main className="min-h-screen min-w-0 overflow-visible lg:h-screen lg:overflow-y-auto lg:overscroll-contain">
         <header className="sticky top-0 z-30 border-b border-[#d9e2ef] bg-white/95 shadow-[0_8px_24px_rgba(15,23,42,0.045)] backdrop-blur">
           <div className="hidden min-h-[4.25rem] items-center justify-between gap-4 px-7 lg:flex">
             <div className="min-w-0">
@@ -145,7 +145,7 @@ export async function ModulePage({
           </div>
         </header>
 
-        <section className="erp-shell-content mx-auto min-w-0 max-w-[1480px] px-4 py-5 sm:px-6 lg:px-7 lg:py-6">
+        <section className="erp-shell-content mx-auto min-w-0 max-w-[1480px] px-4 pb-24 pt-5 sm:px-6 lg:px-7 lg:pb-28 lg:pt-6">
           {children}
         </section>
       </main>

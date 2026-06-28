@@ -17,7 +17,7 @@ export type FiscalStatus = {
 
 export type FiscalAuthorizationInput = {
   companyId: number;
-  userId: number;
+  userId: string;
   username: string;
   documentId: number;
   source: FiscalDocumentSource;

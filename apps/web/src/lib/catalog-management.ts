@@ -80,7 +80,6 @@ export type ProductDetail = {
   cost: number;
   stock: number;
   description: string;
-  image: string;
 };
 
 export type ProductUpdateInput = {
@@ -89,7 +88,6 @@ export type ProductUpdateInput = {
   description: string;
   stock: number;
   code: string;
-  image: string;
   justification: string;
 };
 
@@ -197,7 +195,6 @@ function mapProduct(row: {
   costo: string;
   stock: number;
   descripcion: string;
-  imagen: string;
 }): ProductDetail {
   return {
     id: row.id,
@@ -209,7 +206,6 @@ function mapProduct(row: {
     cost: Number(row.costo),
     stock: row.stock,
     description: row.descripcion,
-    image: row.imagen,
   };
 }
 
@@ -264,7 +260,6 @@ export function productUpdateInputFromBody(
     description: firstText(body, ["description", "descripcion"], defaults.description),
     stock: firstInt(body, ["stock", "cantidad"], defaults.stock),
     code: firstText(body, ["code", "codigo"], defaults.code).toUpperCase(),
-    image: firstText(body, ["image", "imagen"], defaults.image),
     justification: firstText(body, ["justification", "justificacion"]),
   };
 
@@ -509,7 +504,7 @@ export async function getProduct(companyId: number, id: number) {
     companyId,
     `
       SELECT id, id_producto, categoria, codigo, proveedor, nombre, costo::text,
-             stock, descripcion, imagen
+             stock, descripcion
       FROM productos
       WHERE id = $1 AND empresa_id = $2
       LIMIT 1
@@ -531,7 +526,7 @@ export async function updateProduct(
     const currentResult = await client.query<Parameters<typeof mapProduct>[0]>(
       `
         SELECT id, id_producto, categoria, codigo, proveedor, nombre, costo::text,
-               stock, descripcion, imagen
+               stock, descripcion
         FROM productos
         WHERE id = $1 AND empresa_id = $2
         LIMIT 1
@@ -548,9 +543,8 @@ export async function updateProduct(
             costo = $2,
             descripcion = $3,
             stock = $4,
-            codigo = $5,
-            imagen = $6
-        WHERE id = $7 AND empresa_id = $8
+            codigo = $5
+        WHERE id = $6 AND empresa_id = $7
         RETURNING id
       `,
       [
@@ -559,7 +553,6 @@ export async function updateProduct(
         input.description,
         input.stock,
         input.code,
-        input.image,
         id,
         session.companyId,
       ],
@@ -587,7 +580,6 @@ export async function updateProduct(
         after: String(input.stock),
       },
       { key: "codigo", label: "Categoria", before: current.codigo, after: input.code },
-      { key: "imagen", label: "Imagen", before: current.imagen, after: input.image },
     ]
       .filter((change) => change.before !== change.after)
       .map(({ label, before, after }) => ({ label, antes: before, despues: after }));
@@ -619,7 +611,6 @@ export async function updateProduct(
         descripcion: input.description,
         stock: input.stock,
         codigo: input.code,
-        imagen: input.image,
       }),
       changedFields: changes.length,
     };

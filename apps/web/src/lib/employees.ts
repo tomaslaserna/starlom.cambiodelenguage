@@ -1,28 +1,52 @@
 import { ApiError } from "@/lib/api-response";
-import { hashLegacyPassword, type AuthSession } from "@/lib/auth";
-import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { supabaseServiceRoleKey, type AuthSession } from "@/lib/auth";
+import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { envValue } from "@/lib/env";
 import { textField, type RequestBody } from "@/lib/request-body";
 
-const ROLE_ALIASES: Record<string, string> = {
-  Empleado1: "Empleado_1",
-  Empleado2: "Empleado_2",
-  Jefe0: "Jefe",
+const APP_ROLES = ["administrador", "jefe", "deposito", "logistica", "operador", "vendedor"] as const;
+type AppRole = (typeof APP_ROLES)[number];
+
+const LEGACY_ROLE_MAP: Record<string, AppRole> = {
+  Admin: "administrador",
+  Jefe1: "jefe",
+  Jefe: "jefe",
+  Empleado: "operador",
+  Empleado_1: "operador",
+  Empleado_2: "vendedor",
 };
 
-function normalizeRole(role: string) {
-  return ROLE_ALIASES[role] ?? role;
+function normalizeRole(value: string): AppRole {
+  const mapped = LEGACY_ROLE_MAP[value] ?? value;
+  return APP_ROLES.includes(mapped as AppRole) ? (mapped as AppRole) : "operador";
 }
 
-function allowedRoles(currentRole: string) {
-  const roles = ["Empleado", "Empleado_1", "Empleado_2", "Jefe"];
-  if (currentRole === "Admin") roles.push("Jefe1", "Admin");
-  return roles;
+function supabaseUrl() {
+  const value = envValue("SUPABASE_URL") || envValue("NEXT_PUBLIC_SUPABASE_URL");
+  if (!value) throw new Error("Missing SUPABASE_URL");
+  return value.replace(/\/+$/, "");
 }
 
-function permissionIdsFromBody(body: RequestBody) {
-  const raw = body.permissionIds ?? body.permisos ?? [];
-  if (!Array.isArray(raw)) return [];
-  return [...new Set(raw.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+function serviceHeaders() {
+  const key = supabaseServiceRoleKey();
+  return {
+    apikey: key,
+    authorization: `Bearer ${key}`,
+    "content-type": "application/json",
+  };
+}
+
+function assignableRolesFor(sessionRole: string): AppRole[] {
+  const role = normalizeRole(sessionRole);
+  if (role === "administrador") return [...APP_ROLES];
+  if (role === "jefe") return ["deposito", "logistica", "operador", "vendedor"];
+  return [];
+}
+
+function permissionKeysFromBody(body: RequestBody) {
+  const raw = body.permissionKeys ?? body.permissionIds ?? body.permisos ?? [];
+  const values = Array.isArray(raw) ? raw : [raw];
+  return [...new Set(values.map((item) => String(item).trim()).filter(Boolean))];
 }
 
 export function employeeInputFromBody(body: RequestBody, isCreate: boolean) {
@@ -31,28 +55,19 @@ export function employeeInputFromBody(body: RequestBody, isCreate: boolean) {
   const email = textField(body, "email") || textField(body, "correo");
   const username = textField(body, "username") || textField(body, "usuario");
   const password = textField(body, "password") || textField(body, "contrasena");
-  const role = normalizeRole(textField(body, "role") || textField(body, "rango") || "Empleado");
+  const role = normalizeRole(textField(body, "role") || textField(body, "rango") || "operador");
 
   if (!name || !username || !email) throw new ApiError(400, "Completa nombre, usuario y email");
   if (!email.includes("@")) throw new ApiError(400, "Email invalido");
-  if (isCreate && password.length < 6) {
-    throw new ApiError(400, "La contrasena debe tener al menos 6 caracteres");
-  }
+  if (isCreate && password.length < 6) throw new ApiError(400, "La contrasena debe tener al menos 6 caracteres");
   if (!isCreate && password && password.length < 6) {
     throw new ApiError(400, "La nueva contrasena debe tener al menos 6 caracteres");
   }
 
-  const phone = textField(body, "phone") || textField(body, "telefono");
-  const document = textField(body, "document") || textField(body, "dni");
-  if (phone.length > 30 || document.length > 30) {
-    throw new ApiError(400, "DNI o telefono demasiado largo");
-  }
-
   return {
+    displayName: `${name} ${lastName}`.trim(),
     name,
     lastName,
-    document,
-    phone,
     email,
     username,
     role,
@@ -61,260 +76,295 @@ export function employeeInputFromBody(body: RequestBody, isCreate: boolean) {
         ? true
         : Boolean(body.active ?? body.activo),
     title: textField(body, "title") || textField(body, "cargo"),
-    hireDate: textField(body, "hireDate") || textField(body, "fecha_ingreso") || null,
-    notes: textField(body, "notes") || textField(body, "observaciones"),
     password,
-    permissionIds: permissionIdsFromBody(body),
+    permissionKeys: permissionKeysFromBody(body),
   };
 }
 
-function mapEmployee(row: {
-  id: number;
-  nombre_completo: string;
-  nombre: string;
-  apellido: string;
-  dni: string;
-  telefono: string;
-  correo: string;
-  usuario: string;
-  rango: string;
-  cargo: string;
-  activo: number;
-  fecha_ingreso: string | null;
-  observaciones: string;
-  empresa_rango: string | null;
-  empresa_activo: boolean | null;
-}) {
-  return {
-    id: row.id,
-    displayName: row.nombre_completo,
-    name: row.nombre,
-    lastName: row.apellido,
-    document: row.dni,
-    phone: row.telefono,
-    email: row.correo,
-    username: row.usuario,
-    role: normalizeRole(row.empresa_rango || row.rango),
-    title: row.cargo,
-    active: Number(row.activo) !== 0 && row.empresa_activo !== false,
-    hireDate: row.fecha_ingreso,
-    notes: row.observaciones,
-  };
+async function createAuthUser(input: ReturnType<typeof employeeInputFromBody>) {
+  const response = await fetch(`${supabaseUrl()}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: serviceHeaders(),
+    body: JSON.stringify({
+      email: input.email,
+      password: input.password,
+      email_confirm: true,
+      user_metadata: {
+        full_name: input.displayName,
+        username: input.username,
+        title: input.title,
+      },
+    }),
+  });
+
+  const body = (await response.json().catch(() => ({}))) as { id?: string; error?: string; msg?: string };
+  if (!response.ok || !body.id) {
+    throw new ApiError(response.status || 500, body.error || body.msg || "No se pudo crear el usuario en Supabase Auth");
+  }
+  return body.id;
 }
 
-export async function listEmployees(companyId: number) {
-  const employees = await queryWithCompanyContext<Parameters<typeof mapEmployee>[0]>(
-    companyId,
-    `
-      SELECT u.id, u.nombre_completo, u.nombre, u.apellido, u.dni, u.telefono,
-             u.correo, u.usuario, u.rango, u.cargo, u.activo,
-             u.fecha_ingreso::text, u.observaciones,
-             ue.rango AS empresa_rango, ue.activo AS empresa_activo
-      FROM usuarios u
-      JOIN usuario_empresa ue ON ue.id_usuario = u.id AND ue.empresa_id = $1
-      WHERE ue.empresa_id = $1
-        AND u.rango NOT IN ('Minorista', 'Mayorista')
-      ORDER BY u.nombre_completo ASC, u.usuario ASC
-    `,
-    [companyId],
-  );
+async function updateAuthUser(id: string, input: ReturnType<typeof employeeInputFromBody>) {
+  const payload: Record<string, unknown> = {
+    email: input.email,
+    user_metadata: {
+      full_name: input.displayName,
+      username: input.username,
+      title: input.title,
+    },
+  };
+  if (input.password) payload.password = input.password;
 
-  const permissions = await queryWithCompanyContext<{ id_usuario: number; id_permiso: number }>(
-    companyId,
-    "SELECT id_usuario, id_permiso FROM app_usuario_permisos WHERE empresa_id = $1 ORDER BY id_usuario, id_permiso",
-    [companyId],
-  );
-  const permissionMap = new Map<number, number[]>();
-  for (const permission of permissions.rows) {
-    const list = permissionMap.get(permission.id_usuario) ?? [];
-    list.push(permission.id_permiso);
-    permissionMap.set(permission.id_usuario, list);
+  const response = await fetch(`${supabaseUrl()}/auth/v1/admin/users/${id}`, {
+    method: "PUT",
+    headers: serviceHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string; msg?: string };
+    throw new ApiError(response.status, body.error || body.msg || "No se pudo actualizar el usuario en Supabase Auth");
+  }
+}
+
+async function assertEmployeeEditable(session: AuthSession, targetId: string, currentUserId?: string) {
+  if (currentUserId && targetId === currentUserId) {
+    throw new ApiError(400, "No podes modificar tu propio estado desde esta accion");
   }
 
-  return employees.rows.map((row) => ({
-    ...mapEmployee(row),
-    permissionIds: permissionMap.get(row.id) ?? [],
-  }));
-}
-
-export async function listEmployeePermissions(companyId: number) {
-  const result = await queryWithCompanyContext<{
-    id: number;
-    clave: string;
-    modulo: string;
-    accion: string;
-    nombre: string;
-  }>(
-    companyId,
-    `
-      SELECT id, clave, modulo, accion, nombre
-      FROM app_permisos
-      ORDER BY modulo ASC, accion ASC, clave ASC
-    `,
-  );
-
-  return result.rows.map((row) => ({
-    id: row.id,
-    key: row.clave,
-    module: row.modulo,
-    action: row.accion,
-    name: row.nombre,
-  }));
-}
-
-async function assertEmployeeEditable(
-  session: AuthSession,
-  targetId: number,
-  currentUsername: string | null,
-) {
-  const result = await queryWithCompanyContext<{ usuario: string; rango: string }>(
+  const result = await queryWithCompanyContext<{ role: string }>(
     session.companyId,
     `
-      SELECT u.usuario, COALESCE(ue.rango, u.rango) AS rango
-      FROM usuarios u
-      JOIN usuario_empresa ue ON ue.id_usuario = u.id AND ue.empresa_id = $2
-      WHERE u.id = $1
+      SELECT ue.role::text AS role
+      FROM usuario_empresa ue
+      WHERE ue.id_usuario = $1::uuid AND ue.empresa_id = $2
       LIMIT 1
     `,
     [targetId, session.companyId],
   );
   const target = result.rows[0];
   if (!target) throw new ApiError(404, "Empleado no encontrado");
-  if (currentUsername && target.usuario === currentUsername) {
-    throw new ApiError(400, "No podes modificar tu propio estado desde esta accion");
+
+  if (normalizeRole(target.role) === "administrador" && normalizeRole(session.role) !== "administrador") {
+    throw new ApiError(403, "No tenes permiso para modificar un administrador");
   }
-  if (target.rango === "Admin" && session.role !== "Admin") {
-    throw new ApiError(403, "No tenes permiso para modificar un Admin");
+}
+
+async function filterPermissionKeysForActor(session: AuthSession, keys: string[]) {
+  if (!keys.length) return [];
+  const role = normalizeRole(session.role);
+  const result = await queryWithCompanyContext<{ key: string; sensitive: boolean }>(
+    session.companyId,
+    `
+      SELECT key, sensitive
+      FROM app_permissions
+      WHERE key = ANY($1)
+      ORDER BY key
+    `,
+    [keys],
+  );
+
+  if (role === "administrador") return result.rows.map((row) => row.key);
+  if (role === "jefe") return result.rows.filter((row) => !row.sensitive).map((row) => row.key);
+  return [];
+}
+
+async function saveEmployeePermissions(
+  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  companyId: number,
+  userId: string,
+  grantedBy: string,
+  permissionKeys: string[],
+) {
+  await client.query("DELETE FROM profile_permissions WHERE profile_id = $1::uuid AND empresa_id = $2", [
+    userId,
+    companyId,
+  ]);
+  for (const permissionKey of permissionKeys) {
+    await client.query(
+      `
+        INSERT INTO profile_permissions (profile_id, empresa_id, permission_key, granted_by)
+        VALUES ($1::uuid, $2, $3, $4::uuid)
+        ON CONFLICT DO NOTHING
+      `,
+      [userId, companyId, permissionKey, grantedBy],
+    );
   }
+}
+
+export async function listEmployees(companyId: number) {
+  const employees = await queryWithCompanyContext<{
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    username: string | null;
+    title: string | null;
+    role: string;
+    active: boolean;
+    created_at: string | null;
+    permission_keys: string[] | null;
+  }>(
+    companyId,
+    `
+      SELECT p.id::text,
+             p.full_name,
+             p.email,
+             p.username,
+             p.title,
+             ue.role::text AS role,
+             p.active AND ue.activo AS active,
+             p.created_at::text,
+             COALESCE(
+               ARRAY_AGG(DISTINCT perm.permission_key) FILTER (WHERE perm.permission_key IS NOT NULL),
+               ARRAY[]::text[]
+             ) AS permission_keys
+      FROM profiles p
+      JOIN usuario_empresa ue ON ue.id_usuario = p.id AND ue.empresa_id = $1
+      LEFT JOIN (
+        SELECT profile_id, empresa_id, permission_key FROM profile_permissions
+        UNION
+        SELECT ue2.id_usuario AS profile_id, ue2.empresa_id, rp.permission_key
+        FROM usuario_empresa ue2
+        JOIN role_permissions rp ON rp.role = ue2.role
+      ) perm ON perm.profile_id = p.id AND perm.empresa_id = ue.empresa_id
+      WHERE ue.empresa_id = $1
+      GROUP BY p.id, p.full_name, p.email, p.username, p.title, ue.role, p.active, ue.activo, p.created_at
+      ORDER BY p.full_name ASC NULLS LAST, p.email ASC
+    `,
+    [companyId],
+  );
+
+  return employees.rows.map((row) => ({
+    id: row.id,
+    displayName: row.full_name || row.username || row.email || row.id,
+    name: row.full_name || row.username || "",
+    lastName: "",
+    document: "",
+    phone: "",
+    email: row.email || "",
+    username: row.username || row.email || "",
+    role: normalizeRole(row.role),
+    title: row.title || "",
+    active: row.active,
+    hireDate: row.created_at,
+    notes: "",
+    permissionIds: row.permission_keys ?? [],
+  }));
+}
+
+export async function listEmployeePermissions(companyId: number) {
+  const result = await queryWithCompanyContext<{
+    key: string;
+    module: string;
+    action: string;
+    label: string;
+    sensitive: boolean;
+  }>(
+    companyId,
+    `
+      SELECT key, module, action, label, sensitive
+      FROM app_permissions
+      ORDER BY sensitive ASC, module ASC, action ASC, key ASC
+    `,
+  );
+
+  return result.rows.map((row) => ({
+    id: row.key,
+    key: row.key,
+    module: row.module,
+    action: row.action,
+    name: row.label,
+    sensitive: row.sensitive,
+  }));
 }
 
 export async function createEmployee(session: AuthSession, body: RequestBody) {
   const input = employeeInputFromBody(body, true);
-  const finalRole = allowedRoles(session.role).includes(input.role) ? input.role : "Empleado";
+  const assignableRoles = assignableRolesFor(session.role);
+  if (!assignableRoles.includes(input.role)) throw new ApiError(403, "No podes asignar ese rol");
+
+  const permissionKeys = await filterPermissionKeysForActor(session, input.permissionKeys);
+  const userId = await createAuthUser(input);
 
   return withCompanyContext(session.companyId, async (client) => {
-    const duplicate = await client.query(
-      "SELECT id FROM usuarios WHERE usuario = $1 OR correo = $2 LIMIT 1",
-      [input.username, input.email],
-    );
-    if (duplicate.rows[0]) throw new ApiError(409, "Ya existe un empleado con ese usuario o email");
-
-    const passwordHash = await hashLegacyPassword(input.password);
-    const displayName = `${input.name} ${input.lastName}`.trim();
-    const created = await client.query<{ id: number }>(
-      `
-        INSERT INTO usuarios (
-          nombre_completo, nombre, apellido, dni, telefono, correo, usuario, contrasena,
-          rango, cargo, activo, fecha_ingreso, observaciones
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-        RETURNING id
-      `,
-      [
-        displayName,
-        input.name,
-        input.lastName,
-        input.document,
-        input.phone,
-        input.email,
-        input.username,
-        passwordHash,
-        finalRole,
-        input.title,
-        input.active ? 1 : 0,
-        input.hireDate,
-        input.notes,
-      ],
-    );
-    const id = created.rows[0].id;
-
     await client.query(
       `
-        INSERT INTO usuario_empresa (id_usuario, empresa_id, rango, activo)
-        VALUES ($1, $2, $3, $4)
-        ON CONFLICT (id_usuario, empresa_id) DO UPDATE
-        SET rango = EXCLUDED.rango, activo = EXCLUDED.activo, updated_at = CURRENT_TIMESTAMP
+        INSERT INTO profiles (id, full_name, email, username, title, role, active)
+        VALUES ($1::uuid, $2, $3, $4, $5, $6::user_role, $7)
+        ON CONFLICT (id) DO UPDATE
+        SET full_name = EXCLUDED.full_name,
+            email = EXCLUDED.email,
+            username = EXCLUDED.username,
+            title = EXCLUDED.title,
+            role = EXCLUDED.role,
+            active = EXCLUDED.active,
+            updated_at = now()
       `,
-      [id, session.companyId, finalRole, input.active],
+      [userId, input.displayName, input.email, input.username, input.title, input.role, input.active],
     );
-    await syncEmployeeRole(client, session.companyId, id, finalRole);
-    await saveEmployeePermissions(client, session.companyId, id, input.permissionIds);
-
-    return { id };
+    await client.query(
+      `
+        INSERT INTO usuario_empresa (id_usuario, empresa_id, role, activo)
+        VALUES ($1::uuid, $2, $3::user_role, $4)
+        ON CONFLICT (id_usuario, empresa_id) DO UPDATE
+        SET role = EXCLUDED.role, activo = EXCLUDED.activo, updated_at = now()
+      `,
+      [userId, session.companyId, input.role, input.active],
+    );
+    await saveEmployeePermissions(client, session.companyId, userId, session.userId, permissionKeys);
+    clearReadQueryCache();
+    return { id: userId };
   });
 }
 
-export async function updateEmployee(session: AuthSession, id: number, body: RequestBody) {
-  await assertEmployeeEditable(session, id, null);
+export async function updateEmployee(session: AuthSession, id: string, body: RequestBody) {
+  await assertEmployeeEditable(session, id);
   const input = employeeInputFromBody(body, false);
-  const finalRole = allowedRoles(session.role).includes(input.role) ? input.role : "Empleado";
+  const assignableRoles = assignableRolesFor(session.role);
+  if (!assignableRoles.includes(input.role)) throw new ApiError(403, "No podes asignar ese rol");
+
+  const permissionKeys = await filterPermissionKeysForActor(session, input.permissionKeys);
+  await updateAuthUser(id, input);
 
   return withCompanyContext(session.companyId, async (client) => {
-    const duplicate = await client.query(
-      "SELECT id FROM usuarios WHERE (usuario = $1 OR correo = $2) AND id <> $3 LIMIT 1",
-      [input.username, input.email, id],
-    );
-    if (duplicate.rows[0]) throw new ApiError(409, "Ya existe un empleado con ese usuario o email");
-
-    const displayName = `${input.name} ${input.lastName}`.trim();
-    const params: unknown[] = [
-      displayName,
-      input.name,
-      input.lastName,
-      input.document,
-      input.phone,
-      input.email,
-      input.username,
-      finalRole,
-      input.title,
-      input.active ? 1 : 0,
-      input.hireDate,
-      input.notes,
-    ];
-    let passwordSql = "";
-    if (input.password) {
-      params.push(await hashLegacyPassword(input.password));
-      passwordSql = `, contrasena = $${params.length}`;
-    }
-    params.push(id);
-
     await client.query(
       `
-        UPDATE usuarios
-        SET nombre_completo = $1, nombre = $2, apellido = $3, dni = $4,
-            telefono = $5, correo = $6, usuario = $7, rango = $8, cargo = $9,
-            activo = $10, fecha_ingreso = $11, observaciones = $12
-            ${passwordSql}
-        WHERE id = $${params.length}
+        UPDATE profiles
+        SET full_name = $1,
+            email = $2,
+            username = $3,
+            title = $4,
+            role = $5::user_role,
+            active = $6,
+            updated_at = now()
+        WHERE id = $7::uuid
       `,
-      params,
+      [input.displayName, input.email, input.username, input.title, input.role, input.active, id],
     );
-
     await client.query(
       `
-        INSERT INTO usuario_empresa (id_usuario, empresa_id, rango, activo)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO usuario_empresa (id_usuario, empresa_id, role, activo)
+        VALUES ($1::uuid, $2, $3::user_role, $4)
         ON CONFLICT (id_usuario, empresa_id) DO UPDATE
-        SET rango = EXCLUDED.rango, activo = EXCLUDED.activo, updated_at = CURRENT_TIMESTAMP
+        SET role = EXCLUDED.role, activo = EXCLUDED.activo, updated_at = now()
       `,
-      [id, session.companyId, finalRole, input.active],
+      [id, session.companyId, input.role, input.active],
     );
-    await syncEmployeeRole(client, session.companyId, id, finalRole);
-    await saveEmployeePermissions(client, session.companyId, id, input.permissionIds);
-
+    await saveEmployeePermissions(client, session.companyId, id, session.userId, permissionKeys);
+    clearReadQueryCache();
     return { id };
   });
 }
 
-export async function toggleEmployeeStatus(session: AuthSession, id: number) {
-  await assertEmployeeEditable(session, id, session.username);
-  const result = await queryWithCompanyContext<{ id: number; active: number }>(
+export async function toggleEmployeeStatus(session: AuthSession, id: string) {
+  await assertEmployeeEditable(session, id, session.userId);
+  const result = await queryWithCompanyContext<{ id: string; active: boolean }>(
     session.companyId,
     `
-      UPDATE usuarios
-      SET activo = CASE WHEN COALESCE(activo, 1) = 1 THEN 0 ELSE 1 END
-      WHERE id = $1
-      RETURNING id, activo AS active
+      UPDATE profiles
+      SET active = NOT active, updated_at = now()
+      WHERE id = $1::uuid
+      RETURNING id::text, active
     `,
     [id],
   );
@@ -322,51 +372,10 @@ export async function toggleEmployeeStatus(session: AuthSession, id: number) {
 
   await queryWithCompanyContext(
     session.companyId,
-    "UPDATE usuario_empresa SET activo = $1, updated_at = CURRENT_TIMESTAMP WHERE id_usuario = $2 AND empresa_id = $3",
-    [Number(result.rows[0].active) !== 0, id, session.companyId],
+    "UPDATE usuario_empresa SET activo = $1, updated_at = now() WHERE id_usuario = $2::uuid AND empresa_id = $3",
+    [result.rows[0].active, id, session.companyId],
   );
+  clearReadQueryCache();
 
-  return { id, active: Number(result.rows[0].active) !== 0 };
-}
-
-async function syncEmployeeRole(
-  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
-  companyId: number,
-  userId: number,
-  role: string,
-) {
-  await client.query("DELETE FROM app_usuario_roles WHERE id_usuario = $1 AND empresa_id = $2", [
-    userId,
-    companyId,
-  ]);
-  await client.query(
-    `
-      INSERT INTO app_usuario_roles (id_usuario, empresa_id, id_rol)
-      SELECT $1, $2, id FROM app_roles WHERE clave = $3
-      ON CONFLICT DO NOTHING
-    `,
-    [userId, companyId, role],
-  );
-}
-
-async function saveEmployeePermissions(
-  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
-  companyId: number,
-  userId: number,
-  permissionIds: number[],
-) {
-  await client.query("DELETE FROM app_usuario_permisos WHERE id_usuario = $1 AND empresa_id = $2", [
-    userId,
-    companyId,
-  ]);
-  for (const permissionId of permissionIds) {
-    await client.query(
-      `
-        INSERT INTO app_usuario_permisos (id_usuario, empresa_id, id_permiso)
-        VALUES ($1, $2, $3)
-        ON CONFLICT DO NOTHING
-      `,
-      [userId, companyId, permissionId],
-    );
-  }
+  return { id, active: result.rows[0].active };
 }

@@ -1,5 +1,4 @@
 import { ModulePage } from "@/components/module-page";
-import { SectionTabs } from "@/components/section-tabs";
 import {
   ButtonLink,
   Card,
@@ -39,14 +38,6 @@ export default async function SalesPage() {
           }
           description="Resumen comercial y accesos operativos a ventas registradas, carga de pedidos y presupuestos."
           title="Ventas"
-        />
-
-        <SectionTabs
-          tabs={[
-            { href: "/sales", label: "Resumen", active: true },
-            { href: "/orders/new", label: "Cargar pedido" },
-            { href: "/quotes", label: "Presupuestos" },
-          ]}
         />
 
         <div className="grid gap-3 md:grid-cols-4">

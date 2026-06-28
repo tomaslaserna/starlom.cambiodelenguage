@@ -1,5 +1,4 @@
 import { ModulePage } from "@/components/module-page";
-import { SectionTabs } from "@/components/section-tabs";
 import { fastOr } from "@/lib/fast-data";
 import { formatCurrency } from "@/lib/format";
 import { getTreasuryBalances } from "@/lib/finance";
@@ -25,14 +24,6 @@ export default async function TreasuryPage() {
       title="Tesoreria"
     >
       <div className="grid gap-5">
-        <SectionTabs
-          tabs={[
-            { href: "/treasury", label: "Saldos actuales", active: true },
-            { href: "/treasury/cash-flow", label: "Cash Flow" },
-            { href: "/treasury/accounts-payable", label: "Cuentas por pagar" },
-            { href: "/treasury/movements", label: "Registro de movimientos" },
-          ]}
-        />
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">

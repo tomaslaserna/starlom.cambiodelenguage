@@ -1,7 +1,5 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createHmac } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { getDbPool } from "@/lib/db";
 import { envValue } from "@/lib/env";
 import { ApiError } from "@/lib/api-response";
@@ -20,46 +18,90 @@ export {
   type AuthSession,
 } from "@/lib/session-token";
 
-const STAFF_ROLES = new Set(["Empleado", "Empleado_1", "Empleado_2", "Jefe", "Jefe1", "Admin"]);
+const STAFF_ROLES = new Set([
+  "administrador",
+  "jefe",
+  "deposito",
+  "logistica",
+  "operador",
+  "vendedor",
+  "Empleado",
+  "Empleado_1",
+  "Empleado_2",
+  "Jefe",
+  "Jefe1",
+  "Admin",
+]);
 
 type DbUser = {
-  id: number;
-  nombre_completo: string;
-  correo: string;
-  usuario: string;
-  contrasena: string;
-  rango: string;
-  activo: number;
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  username: string | null;
+  role: string;
+  active: boolean;
+  company_id: string | null;
+  company_name: string | null;
+  company_role: string | null;
 };
 
 function normalizeRole(role: string) {
   return (
     {
-      Empleado1: "Empleado_1",
-      Empleado2: "Empleado_2",
-      Jefe0: "Jefe",
+      Admin: "administrador",
+      Jefe1: "jefe",
+      Jefe: "jefe",
+      Empleado: "operador",
+      Empleado1: "operador",
+      Empleado2: "vendedor",
+      Empleado_1: "operador",
+      Empleado_2: "vendedor",
+      Jefe0: "jefe",
     }[role] ?? role
   );
 }
 
-function pepper() {
-  return envValue("STARLIM_PEPPER") || "57@r_L1m:---(2026)";
+function supabaseUrl() {
+  const value = envValue("SUPABASE_URL") || envValue("NEXT_PUBLIC_SUPABASE_URL");
+  if (!value) throw new Error("Missing SUPABASE_URL");
+  return value.replace(/\/+$/, "");
 }
 
-function passwordDigest(password: string) {
-  return createHmac("sha256", pepper()).update(password).digest("hex");
+function supabaseAnonKey() {
+  const value =
+    envValue("SUPABASE_ANON_KEY") ||
+    envValue("SUPABASE_PUBLISHABLE_KEY") ||
+    envValue("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") ||
+    envValue("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  if (!value) throw new Error("Missing SUPABASE_ANON_KEY or SUPABASE_PUBLISHABLE_KEY");
+  return value;
+}
+
+export function supabaseServiceRoleKey() {
+  const value = envValue("SUPABASE_SERVICE_ROLE_KEY");
+  if (!value) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+  return value;
 }
 
 export function isStaffRole(role: string) {
   return STAFF_ROLES.has(normalizeRole(role));
 }
 
-export async function verifyLegacyPassword(password: string, hash: string) {
-  return bcrypt.compare(passwordDigest(password), hash);
-}
+async function signInWithPassword(email: string, password: string) {
+  const key = supabaseAnonKey();
+  const response = await fetch(`${supabaseUrl()}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      authorization: `Bearer ${key}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ email, password }),
+  });
 
-export async function hashLegacyPassword(password: string) {
-  return bcrypt.hash(passwordDigest(password), 10);
+  if (!response.ok) return null;
+  const body = (await response.json()) as { user?: { id?: string; email?: string } };
+  return body.user?.id ? body.user : null;
 }
 
 export async function authenticateUser(identifier: string, password: string): Promise<AuthSession | null> {
@@ -68,49 +110,42 @@ export async function authenticateUser(identifier: string, password: string): Pr
 
   const userResult = await getDbPool().query<DbUser>(
     `
-      SELECT id, nombre_completo, correo, usuario, contrasena, rango, activo
-      FROM usuarios
-      WHERE correo = $1 OR usuario = $1
+      SELECT p.id::text,
+             p.full_name,
+             p.email,
+             p.username,
+             p.role::text AS role,
+             p.active,
+             e.id::text AS company_id,
+             e.nombre AS company_name,
+             ue.role::text AS company_role
+      FROM profiles p
+      LEFT JOIN usuario_empresa ue ON ue.id_usuario = p.id AND ue.activo = TRUE
+      LEFT JOIN empresas e ON e.id = ue.empresa_id AND e.activa = TRUE
+      WHERE lower(p.email) = lower($1)
+         OR lower(COALESCE(p.username, '')) = lower($1)
+      ORDER BY e.id NULLS LAST
       LIMIT 1
     `,
     [normalizedIdentifier],
   );
 
   const user = userResult.rows[0];
-  if (!user || Number(user.activo) === 0) return null;
+  if (!user || !user.active || !user.email) return null;
 
-  const validPassword = await verifyLegacyPassword(password, user.contrasena);
-  if (!validPassword) return null;
+  const authUser = await signInWithPassword(user.email, password);
+  if (!authUser || authUser.id !== user.id) return null;
 
-  const membershipResult = await getDbPool().query<{
-    id: string;
-    nombre: string;
-    rango: string;
-  }>(
-    `
-      SELECT e.id::text, e.nombre, ue.rango
-      FROM usuario_empresa ue
-      JOIN empresas e ON e.id = ue.empresa_id
-      WHERE ue.id_usuario = $1
-        AND ue.activo = TRUE
-        AND e.activa = TRUE
-      ORDER BY e.id
-      LIMIT 1
-    `,
-    [user.id],
-  );
-
-  const membership = membershipResult.rows[0];
-  const role = normalizeRole(membership?.rango || user.rango);
+  const role = normalizeRole(user.company_role || user.role);
 
   return {
     userId: user.id,
-    username: user.usuario,
-    email: user.correo,
-    displayName: user.nombre_completo || user.usuario,
+    username: user.username || user.email,
+    email: user.email,
+    displayName: user.full_name || user.username || user.email,
     role,
-    companyId: Number(membership?.id ?? 1),
-    companyName: membership?.nombre || "Starlim",
+    companyId: Number(user.company_id ?? 1),
+    companyName: user.company_name || "Starlim",
     expiresAt: newSessionExpiry(),
   };
 }
@@ -121,70 +156,8 @@ export async function registerPublicUser(input: {
   username: string;
   password: string;
 }) {
-  const displayName = input.displayName.trim();
-  const email = input.email.trim();
-  const username = input.username.trim();
-  if (!displayName || !email || !username || !input.password) {
-    throw new ApiError(400, "Completa todos los campos");
-  }
-  if (!email.includes("@")) throw new ApiError(400, "Email invalido");
-  if (input.password.length < 6) {
-    throw new ApiError(400, "La contrasena debe tener al menos 6 caracteres");
-  }
-
-  const poolClient = await getDbPool().connect();
-  try {
-    await poolClient.query("BEGIN");
-    const duplicateEmail = await poolClient.query(
-      "SELECT id FROM usuarios WHERE lower(correo) = lower($1) LIMIT 1",
-      [email],
-    );
-    if (duplicateEmail.rows[0]) throw new ApiError(409, "email_exists");
-
-    const duplicateUsername = await poolClient.query(
-      "SELECT id FROM usuarios WHERE lower(usuario) = lower($1) LIMIT 1",
-      [username],
-    );
-    if (duplicateUsername.rows[0]) throw new ApiError(409, "user_exists");
-
-    const passwordHash = await hashLegacyPassword(input.password);
-    const created = await poolClient.query<{ id: number }>(
-      `
-        INSERT INTO usuarios (nombre_completo, correo, usuario, contrasena, rango)
-        VALUES ($1, $2, $3, $4, 'Minorista')
-        RETURNING id
-      `,
-      [displayName, email, username, passwordHash],
-    );
-    const userId = created.rows[0].id;
-    const companyId = 1;
-    await poolClient.query(
-      `
-        INSERT INTO usuario_empresa (id_usuario, empresa_id, rango, activo)
-        VALUES ($1, $2, 'Minorista', TRUE)
-        ON CONFLICT (id_usuario, empresa_id) DO UPDATE
-        SET rango = EXCLUDED.rango, activo = TRUE, updated_at = CURRENT_TIMESTAMP
-      `,
-      [userId, companyId],
-    );
-    await poolClient.query("COMMIT");
-
-    return {
-      userId,
-      username,
-      email,
-      displayName,
-      role: "Minorista",
-      companyId,
-      companyName: "Starlim",
-      expiresAt: newSessionExpiry(),
-    } satisfies AuthSession;
-  } catch (error) {
-    await poolClient.query("ROLLBACK");
-    throw error;
-  } finally {
-    poolClient.release();
-  }
+  void input;
+  throw new ApiError(403, "El registro publico esta deshabilitado. Un administrador debe crear el usuario.");
 }
 
 export async function currentSession() {

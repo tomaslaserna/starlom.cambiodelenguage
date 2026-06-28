@@ -1,6 +1,5 @@
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
-import { SectionTabs } from "@/components/section-tabs";
 import {
   Button,
   ButtonLink,
@@ -130,15 +129,6 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           }
           description="Seguimiento de pedidos recibidos, en proceso, pendientes de entrega y entregados."
           title="Gestion de pedidos"
-        />
-
-        <SectionTabs
-          tabs={[
-            { href: "/orders", label: "Dashboard", active: !params.status },
-            { href: "/orders?status=recibido", label: "Recibidos", active: params.status === "recibido", badge: dashboard.receivedMonth },
-            { href: "/orders?status=en_proceso", label: "En proceso", active: params.status === "en_proceso", badge: dashboard.inProcess },
-            { href: "/orders?status=pendiente_entrega", label: "Pendiente entrega", active: params.status === "pendiente_entrega", badge: dashboard.pendingDelivery },
-          ]}
         />
 
         <Toolbar ariaLabel="Filtros de pedidos">

@@ -40,7 +40,7 @@ function dateRangeLabel(from: string, to: string) {
   return `${from ? pdfDate(from) : "inicio"} a ${to ? pdfDate(to) : "hoy"}`;
 }
 
-export async function buildQuotePdf(companyId: number, quoteId: number) {
+export async function buildQuotePdf(companyId: number, quoteId: string) {
   const quote = await getQuote(companyId, quoteId);
   const products = asQuoteProducts(quote.products);
   const filename = `presupuesto_${quote.id}.pdf`;

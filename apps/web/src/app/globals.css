@@ -108,13 +108,17 @@
 
 html {
   color-scheme: light;
+  min-height: 100%;
   max-width: 100%;
-  overflow-x: clip;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 body {
+  min-height: 100%;
   max-width: 100%;
-  overflow-x: clip;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--background);
   color-scheme: light;
   color: var(--foreground);
@@ -189,7 +193,8 @@ body::before {
 }
 
 .erp-shell-content {
-  overflow-x: clip;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 :where(a) {

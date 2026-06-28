@@ -1,8 +1,9 @@
 import { ModulePage } from "@/components/module-page";
-import { SectionTabs } from "@/components/section-tabs";
 import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { listPurchases } from "@/lib/purchases";
+import { listProducts } from "@/lib/catalog";
+import { listSuppliers } from "@/lib/catalog-management";
 import { requireStaffSession } from "@/lib/auth";
 import {
   Button,
@@ -25,6 +26,7 @@ import {
   type StatusBadgeTone,
 } from "@/components/ui";
 import {
+  createPurchaseAction,
   updatePurchaseStatusAction,
   uploadPurchaseReceiptAction,
 } from "@/app/purchases/actions";
@@ -44,7 +46,62 @@ const purchaseStates = [
   { value: "cancelada", label: "Cancelada" },
 ];
 
-function matchesQuery(item: Awaited<ReturnType<typeof listPurchases>>[number], query: string) {
+type PurchaseRow = Awaited<ReturnType<typeof listPurchases>>[number];
+
+const purchaseViews = {
+  nueva: {
+    href: "/purchases",
+    title: "Nueva compra",
+    description: "Carga una compra y revisa las operaciones recientes.",
+    filterTypes: null,
+    createType: "compra",
+    emptyTitle: "No hay compras cargadas",
+  },
+  urgente: {
+    href: "/purchases?type=urgente",
+    title: "Compras urgentes",
+    description: "Bandeja de compras que requieren prioridad operativa.",
+    filterTypes: ["urgente"],
+    createType: "urgente",
+    emptyTitle: "No hay compras urgentes",
+  },
+  anticipada: {
+    href: "/purchases?type=anticipada",
+    title: "Compras anticipadas",
+    description: "Compras planificadas antes de la necesidad inmediata.",
+    filterTypes: ["anticipada"],
+    createType: "anticipada",
+    emptyTitle: "No hay compras anticipadas",
+  },
+  solicitud: {
+    href: "/purchases?type=solicitud",
+    title: "Solicitudes de compra",
+    description: "Solicitudes pendientes o cargadas por el equipo.",
+    filterTypes: ["solicitud", "solicitud_compra", "solicitud de compra"],
+    createType: "solicitud",
+    emptyTitle: "No hay solicitudes de compra",
+  },
+} as const;
+
+function normalizePurchaseType(value: string) {
+  return value.trim().toLowerCase().replaceAll("-", "_");
+}
+
+function viewForType(type: string) {
+  const normalized = normalizePurchaseType(type);
+  if (normalized === "urgente") return purchaseViews.urgente;
+  if (normalized === "anticipada") return purchaseViews.anticipada;
+  if (["solicitud", "solicitud_compra", "solicitud de compra"].includes(normalized)) return purchaseViews.solicitud;
+  return purchaseViews.nueva;
+}
+
+function matchesType(item: PurchaseRow, filterTypes: readonly string[] | null) {
+  if (!filterTypes) return true;
+  const normalized = normalizePurchaseType(item.type);
+  return filterTypes.some((type) => normalizePurchaseType(type) === normalized);
+}
+
+function matchesQuery(item: PurchaseRow, query: string) {
   if (!query) return true;
   return [item.supplierName, item.description, item.status, item.type]
     .join(" ")
@@ -79,12 +136,22 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   const query = params.q?.trim().toLowerCase() ?? "";
   const status = params.status?.trim() ?? "";
   const type = params.type?.trim() ?? "";
-  const allPurchases = await fastOr(listPurchases(session.companyId), []);
+  const view = viewForType(type);
+  const showCreateForm = view === purchaseViews.nueva;
+  const [allPurchases, suppliers, products] = await Promise.all([
+    fastOr(listPurchases(session.companyId), []),
+    showCreateForm
+      ? fastOr(listSuppliers({ companyId: session.companyId, pageSize: "100" }).then((result) => result.data), [])
+      : Promise.resolve([]),
+    showCreateForm
+      ? fastOr(listProducts({ companyId: session.companyId, pageSize: "100" }).then((result) => result.data), [])
+      : Promise.resolve([]),
+  ]);
   const purchases = allPurchases.filter(
     (item) =>
       matchesQuery(item, query) &&
       (!status || item.status === status) &&
-      (!type || item.type === type || item.type.toLowerCase().includes(type.toLowerCase())),
+      matchesType(item, view.filterTypes),
   );
   const openBalance = purchases.reduce((sum, item) => sum + item.balance, 0);
   const total = purchases.reduce((sum, item) => sum + item.total, 0);
@@ -92,29 +159,75 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   return (
     <ModulePage
       active="purchases"
-      description="Compras, recepcion de paquetes y saldo proveedor."
+      description={view.description}
       session={session}
-      title="Compras"
+      title={view.title}
     >
       <div className="grid gap-5">
         <PageHeader
-          description="Seguimiento de compras, recepcion de paquetes, saldos pendientes y documentacion PDF."
-          title="Gestion de compras"
+          description={view.description}
+          title={view.title}
         />
 
-        <SectionTabs
-          tabs={[
-            { href: "/purchases", label: "Nueva compra", active: !type },
-            {
-              href: "/purchases?type=urgente",
-              label: "Urgentes",
-              active: type === "urgente",
-              badge: allPurchases.filter((item) => item.type.toLowerCase().includes("urg")).length,
-            },
-            { href: "/purchases?type=anticipada", label: "Anticipadas", active: type === "anticipada" },
-            { href: "/purchases?type=solicitud", label: "Solicitudes de compra", active: type === "solicitud" },
-          ]}
-        />
+        {showCreateForm ? (
+          <Card className="p-4">
+            <form action={createPurchaseAction} className="grid gap-4">
+              <div className="grid gap-3 md:grid-cols-4">
+                <Field htmlFor="purchase-supplier" label="Proveedor">
+                  <Select id="purchase-supplier" name="supplierId" required>
+                    <option value="">Seleccionar proveedor</option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field htmlFor="purchase-type" label="Tipo">
+                  <Select defaultValue={view.createType} id="purchase-type" name="type">
+                    <option value="compra">Compra</option>
+                    <option value="urgente">Urgente</option>
+                    <option value="anticipada">Anticipada</option>
+                    <option value="solicitud">Solicitud</option>
+                  </Select>
+                </Field>
+                <Field htmlFor="purchase-date" label="Fecha">
+                  <Input defaultValue={new Date().toISOString().slice(0, 10)} id="purchase-date" name="date" type="date" />
+                </Field>
+                <Field htmlFor="purchase-status" label="Estado inicial">
+                  <Select defaultValue="pendiente" id="purchase-status" name="status">
+                    <option value="pendiente">Pendiente</option>
+                    <option value="recibida">Recibida</option>
+                  </Select>
+                </Field>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_160px_160px]">
+                <Field htmlFor="purchase-description" label="Descripcion">
+                  <Input id="purchase-description" name="description" placeholder="Detalle o referencia interna" />
+                </Field>
+                <Field htmlFor="purchase-total" label="Total">
+                  <Input id="purchase-total" min="0" name="total" required step="0.01" type="number" />
+                </Field>
+                <Field htmlFor="purchase-quantity" label="Cantidad opcional">
+                  <Input id="purchase-quantity" min="1" name="quantity" step="1" type="number" />
+                </Field>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_auto] md:items-end">
+                <Field htmlFor="purchase-product" label="Producto opcional">
+                  <Select id="purchase-product" name="productId">
+                    <option value="">Sin producto asociado</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name} {product.code ? `- ${product.code}` : ""}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Button type="submit">Crear compra</Button>
+              </div>
+            </form>
+          </Card>
+        ) : null}
 
         <Toolbar ariaLabel="Filtros de compras">
           <form
@@ -140,7 +253,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
               </Select>
             </Field>
             <Button type="submit">Filtrar</Button>
-            <ButtonLink href="/purchases" variant="secondary">
+            <ButtonLink href={view.href} variant="secondary">
               Limpiar
             </ButtonLink>
             {type ? <input name="type" type="hidden" value={type} /> : null}
@@ -178,8 +291,8 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                 <DataTableRow className="hover:bg-transparent">
                   <DataTableCell colSpan={9}>
                     <EmptyState
-                      description="Ajusta la busqueda o limpia los filtros para volver al listado completo."
-                      title="No hay compras para los filtros actuales"
+                      description="Ajusta la busqueda o limpia los filtros para revisar esta bandeja."
+                      title={view.emptyTitle}
                     />
                   </DataTableCell>
                 </DataTableRow>

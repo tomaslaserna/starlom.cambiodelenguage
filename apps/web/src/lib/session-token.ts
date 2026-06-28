@@ -5,7 +5,7 @@ export const SESSION_COOKIE = "starlim_node_session";
 export const SESSION_TTL_SECONDS = 20 * 60;
 
 export type AuthSession = {
-  userId: number;
+  userId: string;
   username: string;
   email: string;
   displayName: string;

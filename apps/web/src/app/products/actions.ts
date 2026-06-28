@@ -12,11 +12,7 @@ import {
   productCreateInputFromBody,
 } from "@/lib/imports";
 import { requireAdminApiSession, requireApiSession } from "@/lib/route-auth";
-import {
-  imageFileFromFormData,
-  stringFieldsFromFormData,
-  uploadImageFile,
-} from "@/lib/storage";
+import { stringFieldsFromFormData } from "@/lib/storage";
 
 export async function createProductAction(formData: FormData) {
   const session = await requireApiSession([
@@ -24,17 +20,6 @@ export async function createProductAction(formData: FormData) {
     { resource: "stock", action: "editar" },
   ]);
   const body = stringFieldsFromFormData(formData);
-  const image = imageFileFromFormData(formData, ["imageFile", "image", "foto"]);
-
-  if (image) {
-    const uploaded = await uploadImageFile({
-      file: image,
-      folder: "productos",
-      namePrefix: `producto_${session.companyId}`,
-    });
-    body.image = uploaded.url;
-    body.imagen = uploaded.url;
-  }
 
   await createStockProduct(session, productCreateInputFromBody(body));
   revalidatePath("/products");

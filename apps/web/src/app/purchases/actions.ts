@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import {
   assertPurchaseReceiptUploadAllowed,
+  createPurchase,
+  purchaseInputFromBody,
   updatePurchaseReceiptPhoto,
   updatePurchaseStatus,
 } from "@/lib/purchases";
@@ -10,6 +12,26 @@ import { positiveId } from "@/lib/request-body";
 import { imageFileFromFormData, uploadImageFile } from "@/lib/storage";
 import { ApiError } from "@/lib/api-response";
 import { requireApiSession } from "@/lib/route-auth";
+
+export async function createPurchaseAction(formData: FormData) {
+  const session = await requireApiSession([{ resource: "compras", action: "crear" }]);
+  await createPurchase(
+    session,
+    purchaseInputFromBody({
+      supplierId: formData.get("supplierId"),
+      description: formData.get("description"),
+      total: formData.get("total"),
+      date: formData.get("date"),
+      status: formData.get("status"),
+      type: formData.get("type"),
+      items:
+        formData.get("productId") && formData.get("quantity")
+          ? [{ productId: formData.get("productId"), quantity: formData.get("quantity") }]
+          : [],
+    }),
+  );
+  revalidatePath("/purchases");
+}
 
 export async function updatePurchaseStatusAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "compras", action: "editar" }]);
