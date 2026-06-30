@@ -243,7 +243,7 @@ export async function deleteMargin(companyId: number, code: string) {
 
   return withCompanyContext(companyId, async (client) => {
     const usage = await client.query<{ count: string }>(
-      "SELECT COUNT(*)::text AS count FROM productos WHERE codigo = $1 AND empresa_id = $2",
+      "SELECT COUNT(*)::text AS count FROM products WHERE category_code = $1 AND empresa_id = $2 AND active = true",
       [normalizedCode, companyId],
     );
     const productsCount = Number(usage.rows[0]?.count ?? 0);

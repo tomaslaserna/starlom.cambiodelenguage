@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { textField, type RequestBody } from "@/lib/request-body";
 
 const PRIORITIES = new Set(["urgente", "alta", "normal"]);
@@ -146,7 +147,7 @@ export async function listMessageCenter(session: AuthSession) {
       JOIN usuario_empresa ue ON ue.id_usuario = u.id
       WHERE ue.empresa_id = $1
         AND ue.activo = TRUE
-        AND COALESCE(ue.rango, u.rango) NOT IN ('Minorista','Mayorista')
+        AND COALESCE(u.rango, '') NOT IN ('Minorista','Mayorista')
       ORDER BY u.usuario ASC
     `,
     [session.companyId],
@@ -531,7 +532,7 @@ function customerMetrics(timestamps: number[]) {
 
 export async function getCustomerFollowUp(companyId: number) {
   const result = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     nombre_cliente: string;
     telefono: string;
     vendedor: string;
@@ -539,28 +540,23 @@ export async function getCustomerFollowUp(companyId: number) {
   }>(
     companyId,
     `
-      SELECT c.id, c.nombre_cliente, COALESCE(c.telefono,'') AS telefono,
-             COALESCE(c.vendedor_cl,'') AS vendedor, d.fecha::text
-      FROM clientes c
+      SELECT c.id::text AS id, c.display_name AS nombre_cliente, COALESCE(c.phone,'') AS telefono,
+             COALESCE(c.seller_name,'') AS vendedor, d.fecha::text
+      FROM clients c
       LEFT JOIN (
-        SELECT DISTINCT empresa_id,
-               REGEXP_REPLACE(COALESCE(dni_cliente,''), '[^0-9]', '', 'g') AS dni_norm,
-               fecha
-        FROM ventas
+        SELECT DISTINCT empresa_id, client_id, sale_date AS fecha
+        FROM sales
         WHERE empresa_id = $1
-          AND COALESCE(estado_pedido,'entregado') = 'entregado'
-          AND REGEXP_REPLACE(COALESCE(dni_cliente,''), '[^0-9]', '', 'g') <> ''
-      ) d ON d.empresa_id = c.empresa_id
-         AND d.dni_norm = REGEXP_REPLACE(COALESCE(c.nro_id,''), '[^0-9]', '', 'g')
-         AND d.dni_norm <> ''
+          AND ${normalizedOrderStatusSql("sales")} = 'entregado'
+      ) d ON d.empresa_id = c.empresa_id AND d.client_id = c.id
       WHERE c.empresa_id = $1
-      ORDER BY c.nombre_cliente ASC, c.id ASC, d.fecha ASC
+      ORDER BY c.display_name ASC, c.id ASC, d.fecha ASC
     `,
     [companyId],
   );
 
   const customers = new Map<
-    number,
+    string,
     { name: string; phone: string; seller: string; timestamps: number[] }
   >();
   for (const row of result.rows) {

@@ -4,8 +4,8 @@ import { parse } from "csv-parse/sync";
 import iconv from "iconv-lite";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
-import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
-import { numberField, textField, type RequestBody } from "@/lib/request-body";
+import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { numberField, textField, uuidParam, type RequestBody } from "@/lib/request-body";
 
 type CsvImportResult = {
   inserted?: number;
@@ -14,6 +14,17 @@ type CsvImportResult = {
   errors: string[];
   processed: number;
 };
+
+const MAX_CSV_BYTES = 10 * 1024 * 1024;
+const MAX_CSV_ROWS = 50_000;
+const CSV_MIME_TYPES = new Set([
+  "",
+  "application/csv",
+  "application/octet-stream",
+  "application/vnd.ms-excel",
+  "text/csv",
+  "text/plain",
+]);
 
 function decodeCsvBuffer(buffer: Buffer) {
   if (buffer.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))) {
@@ -45,6 +56,8 @@ async function csvFileFromRequest(request: Request) {
   const file = form.get("csv_file") ?? form.get("file");
   if (!(file instanceof File)) throw new ApiError(400, "No se recibio ningun archivo CSV");
   if (!file.name.toLowerCase().endsWith(".csv")) throw new ApiError(400, "Solo se aceptan archivos .csv");
+  if (file.size > MAX_CSV_BYTES) throw new ApiError(400, "El CSV supera el limite de 10 MB");
+  if (!CSV_MIME_TYPES.has(file.type)) throw new ApiError(400, "El tipo de archivo CSV no es valido");
   return file;
 }
 
@@ -60,6 +73,9 @@ async function recordsFromCsvRequest(request: Request) {
     relax_quotes: true,
     skip_empty_lines: false,
   }) as string[][];
+  if (records.length > MAX_CSV_ROWS) {
+    throw new ApiError(400, `El CSV supera el limite de ${MAX_CSV_ROWS} filas`);
+  }
 
   return records;
 }
@@ -84,24 +100,6 @@ function toArgentineDecimal(raw: string, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function parseDate(raw: string) {
-  const value = raw.trim();
-  if (!value || value === "0" || value === "-" || value.toLowerCase() === "null") return null;
-
-  const dmy = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
-  if (dmy) {
-    const year = dmy[3].length === 2 ? `20${dmy[3]}` : dmy[3];
-    return `${year.padStart(4, "0")}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
-  }
-
-  const ymd = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (ymd) return `${ymd[1]}-${ymd[2].padStart(2, "0")}-${ymd[3].padStart(2, "0")}`;
-
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return null;
-  return new Date(timestamp).toISOString().slice(0, 10);
-}
-
 function parseCustomerStatus(raw: string) {
   const normalized = raw.trim().toLowerCase();
   if (normalized === "perdido") return "Perdido";
@@ -112,6 +110,7 @@ function parseCustomerStatus(raw: string) {
 function parseReceiptType(raw: string) {
   const normalized = raw.trim().toLowerCase();
   if (normalized === "factura a" || normalized === "a") return "Factura A";
+  if (normalized === "factura c" || normalized === "c") return "Factura C";
   if (normalized === "remito") return "Remito";
   return "Factura B";
 }
@@ -130,7 +129,7 @@ export async function importProductsFromCsv(request: Request, companyId: number)
       const rubro = value(row, 1);
       const code = value(row, 2).toUpperCase();
       const category = value(row, 3);
-      const supplier = value(row, 4);
+      const supplierName = value(row, 4);
       const name = value(row, 5);
       const cost = toArgentineDecimal(value(row, 6), 0);
       const stock = Number.parseInt(value(row, 7), 10) || 0;
@@ -144,8 +143,8 @@ export async function importProductsFromCsv(request: Request, companyId: number)
       const duplicate = await client.query(
         `
           SELECT id
-          FROM productos
-          WHERE empresa_id = $1 AND codigo = $2 AND nombre = $3 AND costo = $4
+          FROM products
+          WHERE empresa_id = $1 AND category_code = $2 AND name = $3 AND COALESCE(cost, 0) = $4
           LIMIT 1
         `,
         [companyId, code, name, cost],
@@ -156,24 +155,38 @@ export async function importProductsFromCsv(request: Request, companyId: number)
         continue;
       }
 
-      const next = await client.query<{ next_id: number }>(
-        "SELECT COALESCE(MAX(id_producto), 0) + 1 AS next_id FROM productos WHERE empresa_id = $1 AND codigo = $2",
-        [companyId, code],
+      const supplier = supplierName
+        ? await client.query<{ id: string }>(
+            "SELECT id::text AS id FROM suppliers WHERE empresa_id = $1 AND active = true AND display_name ILIKE $2 LIMIT 1",
+            [companyId, supplierName],
+          )
+        : { rows: [] };
+
+      const created = await client.query<{ id: string }>(
+        `
+          INSERT INTO products (
+            category, category_code, supplier_id, name, cost, empresa_id
+          )
+          VALUES ($1, $2, $3::uuid, $4, $5, $6)
+          RETURNING id::text AS id
+        `,
+        [category || rubro, code, supplier.rows[0]?.id ?? null, name, cost, companyId],
       );
 
-      await client.query(
-        `
-          INSERT INTO productos (
-            id_producto, rubro, codigo, categoria, proveedor, nombre, costo, stock, descripcion, empresa_id
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '', $9)
-        `,
-        [next.rows[0].next_id, rubro, code, category, supplier, name, cost, Math.max(0, stock), companyId],
-      );
+      if (stock > 0) {
+        await client.query(
+          `
+            INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
+            VALUES ($1::uuid, 'ajuste_positivo', $2, $3, $4)
+          `,
+          [created.rows[0].id, Math.max(0, stock), "Stock inicial importado por CSV", companyId],
+        );
+      }
       result.inserted = (result.inserted ?? 0) + 1;
     }
   });
 
+  clearReadQueryCache();
   return result;
 }
 
@@ -204,10 +217,6 @@ export async function importCustomersFromCsv(request: Request, companyId: number
       const hours = value(row, 11);
       const notes = value(row, 12);
       const receipt = parseReceiptType(value(row, 13));
-      const lastPurchase = parseDate(value(row, 14));
-      const purchaseAge = Number.parseInt(value(row, 15), 10) || 0;
-      const averagePurchase = toArgentineDecimal(value(row, 16), 0);
-      const repurchaseDate = parseDate(value(row, 17));
       const observation = [notes, /^\d+$/.test(paymentDays) ? `Plazo de pago: ${paymentDays} dias` : ""]
         .filter(Boolean)
         .join(" | ");
@@ -220,7 +229,7 @@ export async function importCustomersFromCsv(request: Request, companyId: number
 
       if (code) {
         const duplicate = await client.query(
-          "SELECT id FROM clientes WHERE empresa_id = $1 AND codigo_cliente = $2 LIMIT 1",
+          "SELECT id FROM clients WHERE empresa_id = $1 AND external_code = $2 LIMIT 1",
           [companyId, code],
         );
         if (duplicate.rows[0]) {
@@ -232,15 +241,14 @@ export async function importCustomersFromCsv(request: Request, companyId: number
 
       await client.query(
         `
-          INSERT INTO clientes (
-            codigo_cliente, nombre_cliente, razon_social, vendedor_cl, tipo_id,
-            nro_id, cond_iva, telefono, estado, domicilio, lista_precios,
-            horarios, observacion, comprobante, ultima_compra, antiguedad_uc,
-            promedio_compra, dia_recompra, empresa_id
+          INSERT INTO clients (
+            external_code, display_name, legal_name, seller_name, tax_id,
+            fiscal_condition, phone, active, address, price_list_name,
+            opening_hours, notes, receipt_type, payment_term_days, empresa_id
           )
           VALUES (
-            $1, $2, $3, $4, 'CUIT', $5, $6, $7, $8, $9, $10,
-            $11, $12, $13, $14, $15, $16, $17, $18
+            $1, $2, $3, $4, $5, $6, $7, $8 <> 'Perdido', $9, $10,
+            $11, $12, $13, $14, $15
           )
         `,
         [
@@ -257,10 +265,7 @@ export async function importCustomersFromCsv(request: Request, companyId: number
           hours,
           observation,
           receipt,
-          lastPurchase,
-          purchaseAge,
-          averagePurchase,
-          repurchaseDate,
+          /^\d+$/.test(paymentDays) ? Number(paymentDays) : null,
           companyId,
         ],
       );
@@ -268,6 +273,7 @@ export async function importCustomersFromCsv(request: Request, companyId: number
     }
   });
 
+  clearReadQueryCache();
   return result;
 }
 
@@ -296,11 +302,11 @@ export async function importProductCodesFromCsv(request: Request, companyId: num
       let costSql = "";
       if (cost !== null && Number.isFinite(cost)) {
         params.push(cost);
-        costSql = ` AND costo = $${params.length}`;
+        costSql = ` AND COALESCE(cost, 0) = $${params.length}`;
       }
 
-      const found = await client.query<{ id: number }>(
-        `SELECT id FROM productos WHERE empresa_id = $1 AND nombre = $2${costSql} LIMIT 10`,
+      const found = await client.query<{ id: string }>(
+        `SELECT id::text AS id FROM products WHERE empresa_id = $1 AND name = $2${costSql} LIMIT 10`,
         params,
       );
       if (!found.rows.length) {
@@ -309,14 +315,15 @@ export async function importProductCodesFromCsv(request: Request, companyId: num
         continue;
       }
 
-      const updated = await client.query<{ id: number }>(
-        `UPDATE productos SET codigo = $${params.length + 1} WHERE empresa_id = $1 AND nombre = $2${costSql} RETURNING id`,
+      const updated = await client.query<{ id: string }>(
+        `UPDATE products SET category_code = $${params.length + 1}, updated_at = now() WHERE empresa_id = $1 AND name = $2${costSql} RETURNING id::text AS id`,
         [...params, newCode],
       );
       result.updated = (result.updated ?? 0) + (updated.rowCount ?? 0);
     }
   });
 
+  clearReadQueryCache();
   return result;
 }
 
@@ -330,12 +337,17 @@ export function stockRecountInputFromBody(body: RequestBody) {
       .map((item) => {
         if (!item || typeof item !== "object") return null;
         const record = item as Record<string, unknown>;
-        const id = Number(record.id);
+        const id = String(record.id ?? "").trim();
         const valueNumber = Number(record.value ?? record.valor);
-        if (!Number.isInteger(id) || id <= 0 || !Number.isFinite(valueNumber)) return null;
+        try {
+          uuidParam(id, "Producto");
+        } catch {
+          return null;
+        }
+        if (!Number.isFinite(valueNumber)) return null;
         return { id, value: valueNumber };
       })
-      .filter((item): item is { id: number; value: number } => Boolean(item)),
+      .filter((item): item is { id: string; value: number } => Boolean(item)),
   };
 }
 
@@ -344,21 +356,55 @@ export async function applyStockRecount(
   input: ReturnType<typeof stockRecountInputFromBody>,
 ) {
   let updated = 0;
-  const errors: number[] = [];
+  const errors: string[] = [];
 
   await withCompanyContext(session.companyId, async (client) => {
     for (const item of input.items) {
-      const result = await client.query<{ id: number }>(
-        input.mode === "exact"
-          ? "UPDATE productos SET stock = $1 WHERE id = $2 AND empresa_id = $3 RETURNING id"
-          : "UPDATE productos SET stock = GREATEST(0, stock + $1) WHERE id = $2 AND empresa_id = $3 RETURNING id",
-        [input.mode === "exact" ? Math.max(0, item.value) : item.value, item.id, session.companyId],
+      const current = await client.query<{ stock: string }>(
+        `
+          SELECT COALESCE(SUM(
+            CASE
+              WHEN movement_type IN ('entrada_compra', 'ajuste_positivo') THEN quantity
+              ELSE -quantity
+            END
+          ), 0)::text AS stock
+          FROM stock_movements
+          WHERE product_id = $1::uuid AND empresa_id = $2
+        `,
+        [item.id, session.companyId],
       );
-      if (result.rows[0]) updated++;
-      else errors.push(item.id);
+
+      const exists = await client.query<{ id: string }>(
+        "SELECT id::text AS id FROM products WHERE id = $1::uuid AND empresa_id = $2 AND active = true LIMIT 1",
+        [item.id, session.companyId],
+      );
+      if (!exists.rows[0]) {
+        errors.push(item.id);
+        continue;
+      }
+
+      const currentStock = Number(current.rows[0]?.stock ?? 0);
+      const delta = input.mode === "exact" ? Math.max(0, item.value) - currentStock : item.value;
+      if (delta !== 0) {
+        await client.query(
+          `
+            INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
+            VALUES ($1::uuid, $2::stock_movement_type, $3, $4, $5)
+          `,
+          [
+            item.id,
+            delta > 0 ? "ajuste_positivo" : "ajuste_negativo",
+            Math.abs(delta),
+            `Recuento de stock por ${session.username}`,
+            session.companyId,
+          ],
+        );
+      }
+      updated++;
     }
   });
 
+  clearReadQueryCache();
   return { updated, errors };
 }
 
@@ -384,7 +430,7 @@ export async function createStockProduct(
   session: AuthSession,
   input: ReturnType<typeof productCreateInputFromBody>,
 ) {
-  return withCompanyContext(session.companyId, async (client) => {
+  const result = await withCompanyContext(session.companyId, async (client) => {
     const margin = await client.query<{ nombre: string }>(
       "SELECT nombre FROM margenes WHERE codigo = $1 AND empresa_id = $2 LIMIT 1",
       [input.code, session.companyId],
@@ -394,31 +440,46 @@ export async function createStockProduct(
     }
 
     const rubric = input.code.replace(/\d+$/g, "");
-    const created = await client.query<{ id: number }>(
-      `
-        INSERT INTO productos (
-          id_producto, rubro, codigo, categoria, proveedor, nombre, costo,
-          stock, descripcion, empresa_id
+    const supplier = input.provider
+      ? await client.query<{ id: string }>(
+          "SELECT id::text AS id FROM suppliers WHERE empresa_id = $1 AND active = true AND display_name ILIKE $2 LIMIT 1",
+          [session.companyId, input.provider],
         )
-        SELECT COALESCE(MAX(id_producto), 0) + 1, $1, $2, $3, $4, $5, $6, $7, $8, $9
-        FROM productos
-        WHERE codigo = $2 AND empresa_id = $9
-        RETURNING id
+      : { rows: [] };
+
+    const created = await client.query<{ id: string }>(
+      `
+        INSERT INTO products (
+          category, category_code, supplier_id, name, cost, empresa_id
+        )
+        VALUES ($1, $2, $3::uuid, $4, $5, $6)
+        RETURNING id::text AS id
       `,
       [
-        rubric,
+        margin.rows[0].nombre || rubric,
         input.code,
-        margin.rows[0].nombre,
-        input.provider,
+        supplier.rows[0]?.id ?? null,
         input.name,
         input.cost,
-        input.stock,
-        input.description,
         session.companyId,
       ],
     );
+
+    if (input.stock > 0) {
+      await client.query(
+        `
+          INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
+          VALUES ($1::uuid, 'ajuste_positivo', $2, $3, $4)
+        `,
+        [created.rows[0].id, input.stock, `Stock inicial por ${session.username}`, session.companyId],
+      );
+    }
+
     return { id: created.rows[0].id };
   });
+
+  clearReadQueryCache();
+  return result;
 }
 
 export function productBulkUpdateInputFromBody(body: RequestBody): Record<string, unknown>[] {
@@ -446,52 +507,91 @@ export async function bulkUpdateProducts(
 
   await withCompanyContext(session.companyId, async (client) => {
     for (const item of items) {
-      const id = Number(item.id);
-      if (!Number.isInteger(id) || id <= 0) continue;
-      const result = await client.query<{ id: number }>(
+      const id = String(item.id ?? "").trim();
+      try {
+        uuidParam(id, "Producto");
+      } catch {
+        continue;
+      }
+
+      const current = await client.query<{ stock: string }>(
         `
-          UPDATE productos
-          SET nombre = $1, costo = $2, descripcion = $3, stock = $4
-          WHERE id = $5 AND empresa_id = $6
-          RETURNING id
+          SELECT COALESCE(SUM(
+            CASE
+              WHEN movement_type IN ('entrada_compra', 'ajuste_positivo') THEN quantity
+              ELSE -quantity
+            END
+          ), 0)::text AS stock
+          FROM stock_movements
+          WHERE product_id = $1::uuid AND empresa_id = $2
+        `,
+        [id, session.companyId],
+      );
+
+      const nextStock = Math.max(0, Number.parseInt(String(item.stock ?? item.cantidad ?? 0), 10) || 0);
+      const result = await client.query<{ id: string }>(
+        `
+          UPDATE products
+          SET name = $1, cost = $2, updated_at = now()
+          WHERE id = $3::uuid AND empresa_id = $4 AND active = true
+          RETURNING id::text AS id
         `,
         [
           String(item.name ?? item.nombre ?? "").trim(),
           Number(item.cost ?? item.costo ?? item.precio ?? 0),
-          String(item.description ?? item.descripcion ?? "").trim(),
-          Math.max(0, Number.parseInt(String(item.stock ?? item.cantidad ?? 0), 10) || 0),
           id,
           session.companyId,
         ],
       );
-      if (result.rows[0]) updated++;
+      if (result.rows[0]) {
+        const delta = nextStock - Number(current.rows[0]?.stock ?? 0);
+        if (delta !== 0) {
+          await client.query(
+            `
+              INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
+              VALUES ($1::uuid, $2::stock_movement_type, $3, $4, $5)
+            `,
+            [
+              id,
+              delta > 0 ? "ajuste_positivo" : "ajuste_negativo",
+              Math.abs(delta),
+              `Actualizacion masiva por ${session.username}`,
+              session.companyId,
+            ],
+          );
+        }
+        updated++;
+      }
     }
   });
 
+  clearReadQueryCache();
   return { updated };
 }
 
 export async function listVendors(companyId: number) {
   const result = await queryWithCompanyContext<{
-    id: number;
-    nombre: string;
-    apellido: string;
-    lista_precios_fav: string;
+    id: string;
+    name: string;
   }>(
     companyId,
     `
-      SELECT id, nombre, apellido, lista_precios_fav
-      FROM operadores
-      WHERE empresa_id = $1
-      ORDER BY nombre ASC, apellido ASC
+      SELECT p.id::text AS id,
+             COALESCE(NULLIF(p.full_name, ''), NULLIF(p.username, ''), p.email, '') AS name
+      FROM usuario_empresa ue
+      JOIN profiles p ON p.id = ue.id_usuario
+      WHERE ue.empresa_id = $1
+        AND ue.activo = TRUE
+        AND ue.role::text = 'vendedor'
+      ORDER BY name ASC
     `,
     [companyId],
   );
 
   return result.rows.map((row) => ({
     id: row.id,
-    name: row.nombre,
-    lastName: row.apellido,
-    favoritePriceList: row.lista_precios_fav,
+    name: row.name,
+    lastName: "",
+    favoritePriceList: "",
   }));
 }

@@ -1,8 +1,8 @@
-import type { AuthSession } from "@/lib/auth";
+import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { ApiError } from "@/lib/api-response";
 import { listPendingCollections } from "@/lib/collections";
 import { queryWithCompanyContext } from "@/lib/db";
-import { executeSupplierPayment } from "@/lib/purchases";
+import { executeSupplierPayment, purchaseIdFromParam } from "@/lib/purchases";
 import { COLLECTIONS_APPROVE_PERMISSION, sessionAllows } from "@/lib/route-auth";
 
 export const COLLECTION_APPROVAL_PERMISSION = COLLECTIONS_APPROVE_PERMISSION;
@@ -25,7 +25,7 @@ type ApprovalRequestRow = {
 };
 
 export type ApprovalItem = {
-  id: number;
+  id: string | number;
   type: string;
   title: string;
   detail: string;
@@ -51,7 +51,8 @@ export function parseApprovalSource(value: FormDataEntryValue | null): ApprovalS
 }
 
 export function canResolveGenericApproval(session: AuthSession) {
-  return session.role === "Admin" || session.role === "Jefe1";
+  const role = normalizeRole(session.role);
+  return role === "administrador" || role === "jefe";
 }
 
 export async function approvalCenterAccessForSession(session: AuthSession): Promise<ApprovalCenterAccess> {
@@ -96,7 +97,7 @@ export async function listApprovalCenter(companyId: number, access: ApprovalCent
     title: `Cobro ${item.customerName || "sin cliente"}`,
     detail: `${item.method || "Metodo"} - ${item.destination || "sin destino"} - Operacion ${
       item.operation || "-"
-    }`,
+    } - Saldo actual ${item.outstandingAmount.toFixed(2)} - Queda ${item.outstandingAfterApproval.toFixed(2)}`,
     amount: item.registeredAmount,
     requester: item.registeredBy,
     createdAt: item.registeredAt,
@@ -162,7 +163,7 @@ export async function resolveGenericApproval(
       : row.metadata;
 
   if (nextState === "aprobada" && metadata.action === "supplier_payment") {
-    await executeSupplierPayment(session, Number(metadata.purchaseId), {
+    await executeSupplierPayment(session, purchaseIdFromParam(String(metadata.purchaseId ?? ""), "Compra"), {
       amount: Number(metadata.amount),
       date: String(metadata.date || new Date().toISOString().slice(0, 10)),
       notes: String(metadata.notes || ""),

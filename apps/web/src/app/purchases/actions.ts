@@ -5,10 +5,10 @@ import {
   assertPurchaseReceiptUploadAllowed,
   createPurchase,
   purchaseInputFromBody,
+  purchaseIdFromParam,
   updatePurchaseReceiptPhoto,
   updatePurchaseStatus,
 } from "@/lib/purchases";
-import { positiveId } from "@/lib/request-body";
 import { imageFileFromFormData, uploadImageFile } from "@/lib/storage";
 import { ApiError } from "@/lib/api-response";
 import { requireApiSession } from "@/lib/route-auth";
@@ -35,7 +35,7 @@ export async function createPurchaseAction(formData: FormData) {
 
 export async function updatePurchaseStatusAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "compras", action: "editar" }]);
-  const id = positiveId(String(formData.get("id") ?? ""), "Compra");
+  const id = purchaseIdFromParam(String(formData.get("id") ?? ""), "Compra");
   const status = String(formData.get("status") ?? "").trim();
   if (!status) throw new ApiError(400, "Estado invalido");
   await updatePurchaseStatus(session.companyId, id, status);
@@ -44,7 +44,7 @@ export async function updatePurchaseStatusAction(formData: FormData) {
 
 export async function uploadPurchaseReceiptAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "compras", action: "editar" }]);
-  const id = positiveId(String(formData.get("id") ?? ""), "Compra");
+  const id = purchaseIdFromParam(String(formData.get("id") ?? ""), "Compra");
   await assertPurchaseReceiptUploadAllowed(session.companyId, id);
   const image = imageFileFromFormData(formData, ["foto", "file", "receipt"]);
   if (!image) throw new ApiError(400, "No se recibio ninguna imagen");

@@ -1,7 +1,5 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { requireApiAccess } from "@/lib/api-auth";
-import { companyIdFromRequest } from "@/lib/company";
 import {
   createPaymentRecord,
   listPaymentRecords,
@@ -13,13 +11,11 @@ import { requireApiSession } from "@/lib/route-auth";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const unauthorized = requireApiAccess(request);
-  if (unauthorized) return unauthorized;
-
   try {
+    const session = await requireApiSession([{ resource: "cobranzas", action: "ver" }]);
     const searchParams = request.nextUrl.searchParams;
     const result = await listPaymentRecords({
-      companyId: companyIdFromRequest(request),
+      companyId: session.companyId,
       type: searchParams.get("type") ?? searchParams.get("tipo"),
       name: searchParams.get("name") ?? searchParams.get("nombre"),
       from: searchParams.get("from") ?? searchParams.get("desde"),
@@ -43,4 +39,3 @@ export async function POST(request: NextRequest) {
     return handleApiError(error);
   }
 }
-

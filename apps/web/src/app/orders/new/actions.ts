@@ -10,5 +10,5 @@ export async function createOrderAction(formData: FormData) {
     { resource: "pedidos", action: "editar" },
   ]);
   await createBasicOrder(session, basicOrderInputFromBody(Object.fromEntries(formData.entries())));
-  redirect("/orders?status=recibido");
+  redirect("/orders?status=cargado");
 }

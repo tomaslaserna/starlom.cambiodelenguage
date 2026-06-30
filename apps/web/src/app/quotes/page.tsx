@@ -19,11 +19,19 @@ import {
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { getOrderFormData } from "@/lib/orders";
 import { listQuotes } from "@/lib/quotes";
 import { requireStaffSession } from "@/lib/auth";
-import { acceptQuoteAction, createQuoteAction } from "@/app/quotes/actions";
+import { requirePagePermission } from "@/lib/page-auth";
+import {
+  QUOTES_APPROVE_PERMISSION,
+  QUOTES_CREATE_PERMISSION,
+  QUOTES_READ_PERMISSION,
+  sessionAllows,
+} from "@/lib/route-auth";
+import { acceptQuoteAction, acceptQuoteAndRemitAction, createQuoteAction } from "@/app/quotes/actions";
+import { QuoteEntryFields } from "@/app/quotes/quote-entry-fields";
 
 type QuotesPageProps = {
   searchParams: Promise<{
@@ -60,82 +68,65 @@ function quoteStatusTone(value: string): StatusBadgeTone {
   return "neutral";
 }
 
+function whatsappPhone(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("54")) return digits;
+  return `54${digits.replace(/^0+/, "")}`;
+}
+
+function quoteWhatsappHref(quote: Awaited<ReturnType<typeof listQuotes>>[number]) {
+  const customer = quote.customer.name || quote.customer.businessName || "cliente";
+  const pdfBase = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  const pdfPath = `/api/pdfs/quotes/${quote.id}`;
+  const pdfUrl = pdfBase ? `${pdfBase}${pdfPath}` : pdfPath;
+  const text = encodeURIComponent(
+    [
+      `Hola ${customer}, te enviamos el presupuesto de Starlim.`,
+      `Total: ${formatCurrency(quote.total)}.`,
+      `PDF: ${pdfUrl}`,
+    ].join("\n"),
+  );
+  const phone = whatsappPhone(quote.customer.phone);
+  return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+}
+
 export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const session = await requireStaffSession();
+  await requirePagePermission(session, [QUOTES_READ_PERMISSION]);
   const params = await searchParams;
   const status = params.status?.trim() || "pendiente";
   const query = params.q?.trim().toLowerCase() ?? "";
-  const quotes = (await fastOr(listQuotes(session.companyId, status === "all" ? "" : status), [])).filter((item) =>
-    matchesQuery(item, query),
-  );
+  const [canCreateQuotes, canApproveQuotes, rawQuotes, quoteFormData] = await Promise.all([
+    sessionAllows(session, [QUOTES_CREATE_PERMISSION]),
+    sessionAllows(session, [QUOTES_APPROVE_PERMISSION]),
+    listQuotes(session.companyId, status === "all" ? "" : status),
+    getOrderFormData(session.companyId),
+  ]);
+  const quotes = rawQuotes.filter((item) => matchesQuery(item, query));
   const total = quotes.reduce((sum, quote) => sum + quote.total, 0);
   const expired = quotes.filter((quote) => quote.valid === false).length;
 
   return (
     <ModulePage
       active="sales"
-      description="Presupuestos comerciales con estado, vencimiento y totales calculados."
+      description="Presupuestos formales y rapidos con totales calculados."
       session={session}
       title="Presupuestos"
     >
       <div className="grid gap-5">
         <PageHeader
-          description="Seguimiento de presupuestos comerciales, vencimientos, importes y conversion a pedido."
+          description="Genera presupuestos formales para guardar o presupuestos rapidos para enviar por WhatsApp."
           title="Presupuestos"
         />
 
+        {canCreateQuotes ? (
         <Card>
           <form action={createQuoteAction} className="grid gap-4 p-4">
-            <div className="grid gap-3 lg:grid-cols-4">
-              <Field htmlFor="quote-customer" label="Cliente" required>
-                <Input id="quote-customer" name="customerName" required placeholder="Nombre del cliente" />
-              </Field>
-              <Field htmlFor="quote-business" label="Razon social">
-                <Input id="quote-business" name="businessName" placeholder="Opcional" />
-              </Field>
-              <Field htmlFor="quote-tax" label="CUIT/DNI">
-                <Input id="quote-tax" name="taxId" placeholder="Opcional" />
-              </Field>
-              <Field htmlFor="quote-vat" label="Condicion IVA">
-                <Select id="quote-vat" name="vatCondition" defaultValue="Consumidor final">
-                  <option value="Consumidor final">Consumidor final</option>
-                  <option value="Responsable inscripto">Responsable inscripto</option>
-                  <option value="Monotributo">Monotributo</option>
-                  <option value="Exento">Exento</option>
-                </Select>
-              </Field>
-              <Field htmlFor="quote-phone" label="Telefono">
-                <Input id="quote-phone" name="phone" placeholder="Opcional" />
-              </Field>
-              <Field htmlFor="quote-address" label="Direccion">
-                <Input id="quote-address" name="address" placeholder="Opcional" />
-              </Field>
-              <Field htmlFor="quote-validity" label="Vigencia">
-                <Input id="quote-validity" name="validityDays" type="number" min="1" max="365" defaultValue={15} />
-              </Field>
-              <label className="flex min-h-[var(--control-height-md)] items-end gap-2 pb-2 text-sm font-semibold">
-                <input className="mb-0.5 h-4 w-4 accent-[var(--accent)]" name="includeVat" type="checkbox" defaultChecked />
-                Incluir IVA
-              </label>
-            </div>
-
-            <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_120px_150px_130px_auto] lg:items-end">
-              <Field htmlFor="quote-product" label="Producto / servicio" required>
-                <Input id="quote-product" name="productName" required placeholder="Descripcion" />
-              </Field>
-              <Field htmlFor="quote-quantity" label="Cantidad" required>
-                <Input id="quote-quantity" name="quantity" type="number" min="0.001" step="0.001" defaultValue={1} required />
-              </Field>
-              <Field htmlFor="quote-price" label="Precio unitario" required>
-                <Input id="quote-price" name="unitPrice" type="number" min="0" step="0.01" required />
-              </Field>
-              <Field htmlFor="quote-discount" label="Descuento %">
-                <Input id="quote-discount" name="discount" type="number" min="0" max="100" step="0.01" defaultValue={0} />
-              </Field>
-              <Button type="submit">Crear presupuesto</Button>
-            </div>
+            <QuoteEntryFields clients={quoteFormData.clients} products={quoteFormData.products} />
           </form>
         </Card>
+        ) : null}
 
         <Toolbar ariaLabel="Filtros de presupuestos">
           <form
@@ -187,7 +178,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                 <DataTableHead align="right">Neto</DataTableHead>
                 <DataTableHead align="right">IVA</DataTableHead>
                 <DataTableHead align="right">Total</DataTableHead>
-                <DataTableHead>Accion</DataTableHead>
+                <DataTableHead>Acciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
@@ -237,7 +228,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                       {formatCurrency(quote.total)}
                     </DataTableCell>
                     <DataTableCell>
-                      <div className="grid min-w-[132px] gap-2">
+                      <div className="grid min-w-[168px] gap-2">
                         <ButtonLink
                           aria-label={`Abrir PDF del presupuesto ${quote.id}`}
                           href={`/api/pdfs/quotes/${quote.id}`}
@@ -249,18 +240,43 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                         >
                           PDF
                         </ButtonLink>
-                        {quote.status === "pendiente" ? (
-                          <form action={acceptQuoteAction}>
-                            <input name="id" type="hidden" value={quote.id} />
-                            <Button
-                              aria-label={`Aceptar presupuesto ${quote.id}`}
-                              className="w-full"
-                              size="sm"
-                              type="submit"
-                            >
-                              Aceptar
-                            </Button>
-                          </form>
+                        <ButtonLink
+                          aria-label={`Enviar presupuesto ${quote.id} por WhatsApp`}
+                          href={quoteWhatsappHref(quote)}
+                          prefetch={false}
+                          rel="noreferrer"
+                          size="sm"
+                          target="_blank"
+                          variant="outline"
+                        >
+                          WhatsApp
+                        </ButtonLink>
+                        {quote.status === "pendiente" && canApproveQuotes ? (
+                          <>
+                            <form action={acceptQuoteAction}>
+                              <input name="id" type="hidden" value={quote.id} />
+                              <Button
+                                aria-label={`Aceptar presupuesto ${quote.id}`}
+                                className="w-full"
+                                size="sm"
+                                type="submit"
+                              >
+                                Aceptar
+                              </Button>
+                            </form>
+                            <form action={acceptQuoteAndRemitAction}>
+                              <input name="id" type="hidden" value={quote.id} />
+                              <Button
+                                aria-label={`Aprobar y remitar presupuesto ${quote.id}`}
+                                className="w-full"
+                                size="sm"
+                                type="submit"
+                                variant="secondary"
+                              >
+                                Aprobar y remitar
+                              </Button>
+                            </form>
+                          </>
                         ) : (
                           <span className="text-xs text-[color:var(--muted)]">Sin accion</span>
                         )}

@@ -1,13 +1,11 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { requireApiAccess } from "@/lib/api-auth";
-import { companyIdFromRequest } from "@/lib/company";
 import {
   customerInputFromBody,
   getCustomer,
   updateCustomer,
 } from "@/lib/catalog-management";
-import { positiveId, readRequestBody } from "@/lib/request-body";
+import { readRequestBody, uuidParam } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
@@ -17,12 +15,10 @@ type RouteContext = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const unauthorized = requireApiAccess(request);
-  if (unauthorized) return unauthorized;
-
   try {
+    const session = await requireApiSession([{ resource: "clientes", action: "ver" }]);
     const { id } = await context.params;
-    const data = await getCustomer(companyIdFromRequest(request), positiveId(id));
+    const data = await getCustomer(session.companyId, uuidParam(id, "Cliente"));
     return ok({ data });
   } catch (error) {
     return handleApiError(error);
@@ -33,7 +29,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const session = await requireApiSession([{ resource: "clientes", action: "editar" }]);
     const { id } = await context.params;
-    const customerId = positiveId(id);
+    const customerId = uuidParam(id, "Cliente");
     const body = await readRequestBody(request);
     const current = await getCustomer(session.companyId, customerId);
     const data = await updateCustomer(

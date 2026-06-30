@@ -1,13 +1,21 @@
 import { ApiError } from "@/lib/api-response";
-import type { AuthSession } from "@/lib/auth";
-import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { normalizeRole, type AuthSession } from "@/lib/auth";
+import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import {
+  ORDER_STATUSES,
+  normalizeOrderStatusValue,
+  normalizedOrderStatusSql,
+  type OrderStatus,
+} from "@/lib/order-status";
 import { parsePagination } from "@/lib/pagination";
-import { intField, textField, type RequestBody } from "@/lib/request-body";
+import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
+import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
+import { discountSaleStockIfAvailable } from "@/lib/stock";
 import type { PoolClient } from "pg";
 
-const ORDER_STATES = new Set(["recibido", "en_proceso", "pendiente_entrega", "entregado"]);
+const ORDER_STATES = new Set<string>(ORDER_STATUSES);
 const TRACKING_STATES = new Set(["facturada", "no_facturada"]);
-const TYPE_CODES = new Set([1, 2, 3, 6, 7, 8]);
+const TYPE_CODES = new Set([1, 2, 3, 6, 7, 8, 11, 12, 13]);
 
 const SALE_EDIT_FIELDS = {
   nro_comprobante: { label: "Nro. comprobante", type: "int" },
@@ -80,36 +88,115 @@ function normalizeSaleEditValue(type: string, raw: string, label: string) {
   }
 }
 
-async function discountSaleStock(client: PoolClient, companyId: number, saleId: number) {
-  const claim = await client.query(
-    `
-      UPDATE ventas
-      SET stock_descontado = 1
-      WHERE id = $1 AND empresa_id = $2 AND COALESCE(stock_descontado, 0) = 0
-      RETURNING id
-    `,
-    [saleId, companyId],
-  );
-  if (!claim.rows[0]) return false;
+const SALE_DB_FIELDS: Record<SaleEditField, string> = {
+  nro_comprobante: "receipt_number",
+  tipo_cbte: "receipt_type",
+  nombre_cliente: "client_name",
+  dni_cliente: "client_document",
+  fecha: "sale_date",
+  monto: "total_amount",
+  condicion_pago: "payment_condition",
+  estado_pedido: "order_status",
+  seguimiento: "tracking_status",
+  vendedor: "seller_name",
+};
 
-  const lines = await client.query<{ id_producto: number; cantidad: number }>(
-    "SELECT id_producto, cantidad FROM detalle_ventas WHERE id_venta = $1 AND empresa_id = $2",
-    [saleId, companyId],
-  );
-  for (const line of lines.rows) {
-    await client.query("UPDATE productos SET stock = stock - $1 WHERE id = $2 AND empresa_id = $3", [
-      line.cantidad,
-      line.id_producto,
-      companyId,
-    ]);
+async function discountSaleStock(client: PoolClient, companyId: number, saleId: string) {
+  return discountSaleStockIfAvailable(client, companyId, saleId, `Descuento admin por venta ${saleId}`);
+}
+
+function assertSaleOrderTransition(currentStatus: OrderStatus, nextStatus: OrderStatus) {
+  if (currentStatus === nextStatus) {
+    throw new ApiError(400, `El pedido ya esta en '${currentStatus}'.`);
   }
-  return true;
+  if (currentStatus === "entregado" || currentStatus === "cancelado") {
+    throw new ApiError(400, `El pedido ya esta ${currentStatus} y no puede modificarse.`);
+  }
+  if (nextStatus === "cargado") {
+    throw new ApiError(400, "No se puede volver un pedido a cargado.");
+  }
+  if (nextStatus === "confirmado" && currentStatus !== "cargado") {
+    throw new ApiError(400, "Solo los pedidos cargados pueden confirmarse.");
+  }
+  if (nextStatus === "entregado" && currentStatus !== "confirmado") {
+    throw new ApiError(400, "Solo los pedidos confirmados pueden marcarse como entregados.");
+  }
+}
+
+function collectionStatusForOrderStatus(status: OrderStatus) {
+  if (status === "entregado") return "pendiente";
+  if (status === "cancelado") return "cancelado";
+  return "no_aplica";
+}
+
+function orderIntegrationEventType(status: OrderStatus) {
+  if (status === "confirmado") return "pedido.confirmado_stock";
+  if (status === "entregado") return "pedido.entregado";
+  return "pedido.cancelado";
+}
+
+async function applySaleOrderStatusTransition(
+  client: PoolClient,
+  session: AuthSession,
+  saleId: string,
+  nextStatus: OrderStatus,
+) {
+  const currentResult = await client.query<{ estado_pedido: string }>(
+    `
+      SELECT ${normalizedOrderStatusSql("s")} AS estado_pedido
+      FROM sales s
+      WHERE s.id = $1::uuid AND s.empresa_id = $2
+      LIMIT 1
+      FOR UPDATE OF s
+    `,
+    [saleId, session.companyId],
+  );
+  const current = currentResult.rows[0];
+  if (!current) throw new ApiError(404, "Venta no encontrada");
+
+  const currentStatus = normalizeOrderStatusValue(current.estado_pedido);
+  assertSaleOrderTransition(currentStatus, nextStatus);
+
+  let stockDiscounted = false;
+  if (nextStatus === "entregado") {
+    stockDiscounted = await discountSaleStock(client, session.companyId, saleId);
+  }
+
+  await client.query(
+    `
+      UPDATE sales
+      SET order_status = $1,
+          status = $1,
+          collection_status = $2,
+          updated_at = now()
+      WHERE id = $3::uuid AND empresa_id = $4
+    `,
+    [nextStatus, collectionStatusForOrderStatus(nextStatus), saleId, session.companyId],
+  );
+
+  await client.query(
+    "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
+    [
+      orderIntegrationEventType(nextStatus),
+      JSON.stringify({
+        id: saleId,
+        estado_anterior: currentStatus,
+        estado_nuevo: nextStatus,
+        stock_pendiente_impresion: nextStatus === "confirmado",
+        cobro_habilitado: nextStatus === "entregado",
+        usuario: session.username,
+      }),
+      session.companyId,
+    ],
+  );
+
+  return stockDiscounted;
 }
 
 export async function getSalesSummary(companyId: number, period: string | null) {
   const bounds = currentPeriod(period);
   const params = bounds.start && bounds.end ? [companyId, bounds.start, bounds.end] : [companyId];
-  const periodFilter = bounds.start && bounds.end ? "AND fecha >= $2 AND fecha < $3" : "";
+  const periodFilter = bounds.start && bounds.end ? "AND sale_date >= $2 AND sale_date < $3" : "";
 
   const summary = await queryWithCompanyContext<{
     total_facturas: string;
@@ -121,16 +208,17 @@ export async function getSalesSummary(companyId: number, period: string | null) 
     `
       SELECT COUNT(*)::text AS total_facturas,
              COALESCE(SUM(monto), 0)::text AS total_monto,
-             COALESCE(SUM(CASE WHEN is_venta = 1 AND con_factura THEN monto ELSE 0 END), 0)::text AS facturadas,
+             COALESCE(SUM(CASE WHEN con_factura THEN monto ELSE 0 END), 0)::text AS facturadas,
              COALESCE(SUM(CASE WHEN NOT con_factura THEN monto ELSE 0 END), 0)::text AS no_facturadas
       FROM (
-        SELECT monto, COALESCE(cae, '') <> '' AS con_factura, 1 AS is_venta, fecha
-        FROM ventas
-        WHERE empresa_id = $1 AND COALESCE(estado_pedido, 'entregado') = 'entregado' ${periodFilter}
-        UNION ALL
-        SELECT monto, FALSE AS con_factura, 0 AS is_venta, fecha
-        FROM remitos
-        WHERE empresa_id = $1 AND id_venta IS NULL AND COALESCE(estado_pedido, 'entregado') = 'entregado' ${periodFilter}
+        SELECT COALESCE(s.total_amount, 0) AS monto,
+               COALESCE(s.tracking_status, 'no_facturada') = 'facturada' AS con_factura,
+               s.sale_date
+        FROM sales s
+        WHERE s.empresa_id = $1
+          AND ${canonicalSalesSourceSql("s")}
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
+          ${periodFilter}
       ) combined
     `,
     params,
@@ -140,11 +228,12 @@ export async function getSalesSummary(companyId: number, period: string | null) 
     companyId,
     `
       SELECT
-        COALESCE(SUM(CASE WHEN COALESCE(estado_cobro,'pendiente') IN ('pendiente','en_proceso','pendiente_aprobacion') THEN monto ELSE 0 END), 0)::text AS pendiente,
-        COALESCE(SUM(CASE WHEN estado_cobro = 'vencido' THEN monto ELSE 0 END), 0)::text AS vencido
-      FROM ventas
-      WHERE empresa_id = $1
-        AND COALESCE(estado_pedido, 'entregado') = 'entregado'
+        COALESCE(SUM(CASE WHEN COALESCE(s.collection_status,'pendiente') IN ('pendiente','en_proceso','pendiente_aprobacion') THEN COALESCE(s.total_amount, 0) ELSE 0 END), 0)::text AS pendiente,
+        COALESCE(SUM(CASE WHEN s.collection_status = 'vencido' THEN COALESCE(s.total_amount, 0) ELSE 0 END), 0)::text AS vencido
+      FROM sales s
+      WHERE s.empresa_id = $1
+        AND ${canonicalSalesSourceSql("s")}
+        AND ${normalizedOrderStatusSql("s")} = 'entregado'
     `,
     [companyId],
   );
@@ -162,25 +251,27 @@ export async function getSalesSummary(companyId: number, period: string | null) 
 }
 
 export function salesFieldInputFromBody(body: RequestBody) {
-  const saleId = intField(body, "saleId", intField(body, "id_venta", 0));
-  const deliveryId = intField(body, "deliveryId", intField(body, "id_remito", 0));
+  const saleId = textField(body, "saleId") || textField(body, "id_venta");
+  const deliveryId = textField(body, "deliveryId") || textField(body, "id_remito");
   const field = textField(body, "field") || textField(body, "campo");
   const value = textField(body, "value") || textField(body, "valor");
-  const isDelivery = deliveryId > 0 && saleId <= 0;
+  const isDelivery = Boolean(deliveryId && !saleId);
 
   if (isDelivery) {
+    const id = uuidParam(deliveryId, "Remito");
     if (field !== "estado_pedido" || !ORDER_STATES.has(value)) {
       throw new ApiError(400, "Datos invalidos");
     }
-    return { target: "delivery" as const, id: deliveryId, field, value };
+    return { target: "delivery" as const, id, field, value };
   }
 
-  if (saleId <= 0) throw new ApiError(400, "Venta invalida");
+  if (!saleId) throw new ApiError(400, "Venta invalida");
+  const id = uuidParam(saleId, "Venta");
   if (field === "estado_pedido" && ORDER_STATES.has(value)) {
-    return { target: "sale" as const, id: saleId, field, value };
+    return { target: "sale" as const, id, field, value };
   }
   if (field === "seguimiento" && TRACKING_STATES.has(value)) {
-    return { target: "sale" as const, id: saleId, field, value };
+    return { target: "sale" as const, id, field, value };
   }
   throw new ApiError(400, "Datos invalidos");
 }
@@ -190,17 +281,29 @@ export async function updateSalesField(
   input: ReturnType<typeof salesFieldInputFromBody>,
 ) {
   return withCompanyContext(session.companyId, async (client) => {
-    const table = input.target === "delivery" ? "remitos" : "ventas";
-    const result = await client.query<{ id: number }>(
-      `UPDATE ${table} SET ${input.field} = $1 WHERE id = $2 AND empresa_id = $3 RETURNING id`,
+    if (input.target === "sale" && input.field === "estado_pedido") {
+      const stockDiscounted = await applySaleOrderStatusTransition(
+        client,
+        session,
+        input.id,
+        input.value as OrderStatus,
+      );
+      clearReadQueryCache();
+      return { id: input.id, affected: 1, stockDiscounted };
+    }
+
+    const table = input.target === "delivery" ? "delivery_documents" : "sales";
+    const column =
+      input.target === "delivery"
+        ? "order_status"
+        : input.field === "estado_pedido"
+          ? "order_status"
+          : "tracking_status";
+    const result = await client.query<{ id: string }>(
+      `UPDATE ${table} SET ${column} = $1, updated_at = now() WHERE id = $2::uuid AND empresa_id = $3 RETURNING id::text AS id`,
       [input.value, input.id, session.companyId],
     );
     if (!result.rows[0]) throw new ApiError(404, "Registro no encontrado");
-
-    let stockDiscounted = false;
-    if (input.target === "sale" && input.field === "estado_pedido" && input.value === "entregado") {
-      stockDiscounted = await discountSaleStock(client, session.companyId, input.id);
-    }
 
     await client.query(
       "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
@@ -211,22 +314,24 @@ export async function updateSalesField(
       ],
     );
 
-    return { id: input.id, affected: result.rowCount, stockDiscounted };
+    clearReadQueryCache();
+    return { id: input.id, affected: result.rowCount, stockDiscounted: false };
   });
 }
 
-export async function getSalesAdminRecord(companyId: number, id: number) {
+export async function getSalesAdminRecord(companyId: number, id: string) {
   const result = await queryWithCompanyContext<Record<string, unknown>>(
     companyId,
     `
-      SELECT id, nro_comprobante, tipo_cbte, nombre_cliente, dni_cliente,
-             fecha::text, monto::text, condicion_pago,
-             COALESCE(estado_cobro,'pendiente') AS estado_cobro,
-             COALESCE(estado_pedido,'entregado') AS estado_pedido,
-             COALESCE(seguimiento,'no_facturada') AS seguimiento,
-             vendedor
-      FROM ventas
-      WHERE id = $1 AND empresa_id = $2
+      SELECT id::text AS id, receipt_number AS nro_comprobante, receipt_type AS tipo_cbte,
+             client_name AS nombre_cliente, client_document AS dni_cliente,
+             sale_date::text AS fecha, COALESCE(total_amount, 0)::text AS monto, payment_condition AS condicion_pago,
+             COALESCE(collection_status,'pendiente') AS estado_cobro,
+             ${normalizedOrderStatusSql("sales")} AS estado_pedido,
+             COALESCE(tracking_status,'no_facturada') AS seguimiento,
+             seller_name AS vendedor
+      FROM sales
+      WHERE id = $1::uuid AND empresa_id = $2
       LIMIT 1
     `,
     [id, companyId],
@@ -236,15 +341,25 @@ export async function getSalesAdminRecord(companyId: number, id: number) {
   return row;
 }
 
-export async function updateSalesAdminRecord(session: AuthSession, id: number, body: RequestBody) {
-  if (!["Jefe1", "Admin"].includes(session.role)) throw new ApiError(403, "Sin permisos");
+export async function updateSalesAdminRecord(session: AuthSession, id: string, body: RequestBody) {
+  const role = normalizeRole(session.role);
+  if (role !== "administrador" && role !== "jefe") throw new ApiError(403, "Sin permisos");
   if (body.estado_cobro !== undefined) {
     throw new ApiError(400, "El estado de cobro se gestiona desde Cobros y Pagos");
   }
 
   return withCompanyContext(session.companyId, async (client) => {
     const currentResult = await client.query<Record<string, unknown>>(
-      "SELECT * FROM ventas WHERE id = $1 AND empresa_id = $2 LIMIT 1",
+      `
+        SELECT id::text, receipt_number AS nro_comprobante, receipt_type AS tipo_cbte,
+               client_name AS nombre_cliente, client_document AS dni_cliente,
+               sale_date::text AS fecha, total_amount::text AS monto,
+               payment_condition AS condicion_pago, ${normalizedOrderStatusSql("sales")} AS estado_pedido,
+               tracking_status AS seguimiento, seller_name AS vendedor
+        FROM sales
+        WHERE id = $1::uuid AND empresa_id = $2
+        LIMIT 1
+      `,
       [id, session.companyId],
     );
     const current = currentResult.rows[0];
@@ -253,6 +368,7 @@ export async function updateSalesAdminRecord(session: AuthSession, id: number, b
     const sets: string[] = [];
     const values: unknown[] = [];
     const changes: { label: string; antes: string; despues: string }[] = [];
+    let nextOrderStatus: OrderStatus | null = null;
 
     for (const [field, config] of Object.entries(SALE_EDIT_FIELDS) as [SaleEditField, (typeof SALE_EDIT_FIELDS)[SaleEditField]][]) {
       if (body[field] === undefined || body[field] === null) continue;
@@ -266,39 +382,52 @@ export async function updateSalesAdminRecord(session: AuthSession, id: number, b
             : String(current[field] ?? "");
       if (before === normalized.display) continue;
 
+      if (field === "estado_pedido") {
+        nextOrderStatus = normalized.value as OrderStatus;
+        changes.push({ label: config.label, antes: before, despues: normalized.display });
+        continue;
+      }
+
       values.push(normalized.value);
-      sets.push(`${field} = $${values.length}`);
+      sets.push(`${SALE_DB_FIELDS[field]} = $${values.length}`);
       changes.push({ label: config.label, antes: before, despues: normalized.display });
     }
 
-    if (!sets.length) return { id, changedFields: 0 };
+    if (!sets.length && !nextOrderStatus) return { id, changedFields: 0 };
 
-    values.push(id, session.companyId);
-    await client.query(
-      `UPDATE ventas SET ${sets.join(", ")} WHERE id = $${values.length - 1} AND empresa_id = $${values.length}`,
-      values,
-    );
+    if (nextOrderStatus) {
+      await applySaleOrderStatusTransition(client, session, id, nextOrderStatus);
+    }
+
+    if (sets.length) {
+      values.push(id, session.companyId);
+      await client.query(
+        `UPDATE sales SET ${sets.join(", ")}, updated_at = now() WHERE id = $${values.length - 1}::uuid AND empresa_id = $${values.length}`,
+        values,
+      );
+    }
 
     const label = `Venta #${String(current.nro_comprobante ?? 0).padStart(8, "0")} - ${
       current.nombre_cliente || "sin cliente"
     }`;
     await client.query(
       `
-        INSERT INTO ventas_modificaciones (empleado, venta_id, venta_label, accion, cambios, empresa_id)
+        INSERT INTO sales_admin_audit (employee, sale_id, sale_label, action, changes, empresa_id)
         VALUES ($1, $2, $3, 'edicion', $4, $5)
       `,
       [session.username, id, label, JSON.stringify(changes), session.companyId],
     );
 
+    clearReadQueryCache();
     return { id, changedFields: changes.length };
   });
 }
 
 export async function listSalesAdminAudit(companyId: number) {
   const result = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     empleado: string;
-    venta_id: number;
+    venta_id: string | null;
     venta_label: string;
     accion: string;
     cambios: string;
@@ -306,10 +435,12 @@ export async function listSalesAdminAudit(companyId: number) {
   }>(
     companyId,
     `
-      SELECT id, empleado, venta_id, venta_label, accion, cambios, fecha::text
-      FROM ventas_modificaciones
+      SELECT id::text AS id, employee AS empleado, sale_id::text AS venta_id,
+             sale_label AS venta_label, action AS accion, changes::text AS cambios,
+             created_at::text AS fecha
+      FROM sales_admin_audit
       WHERE empresa_id = $1
-      ORDER BY fecha DESC, id DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT 200
     `,
     [companyId],
@@ -349,29 +480,32 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     return `$${params.length}`;
   };
 
-  const saleConditions = ["v.empresa_id = $1", "COALESCE(v.estado_pedido, 'entregado') = 'entregado'"];
-  let saleJoin = "";
+  const saleConditions = [
+    "v.empresa_id = $1",
+    canonicalSalesSourceSql("v"),
+    `${normalizedOrderStatusSql("v")} = 'entregado'`,
+  ];
 
   if (filters.taxId) {
-    saleConditions.push(`v.dni_cliente = ${pushParam(filters.taxId)}`);
+    saleConditions.push(`regexp_replace(COALESCE(v.client_document, ''), '[^0-9]', '', 'g') = ${pushParam(filters.taxId)}`);
   }
   if (filters.receiptNumber) {
-    saleConditions.push(`v.nro_comprobante::text LIKE ${pushParam(`%${filters.receiptNumber.replace(/^0+/, "") || "0"}%`)}`);
+    saleConditions.push(`COALESCE(v.receipt_number, 0)::text LIKE ${pushParam(`%${filters.receiptNumber.replace(/^0+/, "") || "0"}%`)}`);
   }
-  const receiptMap: Record<string, string> = { a: "1", b: "6" };
+  const receiptMap: Record<string, string> = { a: "1", b: "6", c: "11" };
   if (filters.receiptType === "remito") {
-    saleConditions.push("COALESCE(v.cae, '') = ''");
+    saleConditions.push("COALESCE(v.tracking_status, 'no_facturada') = 'no_facturada'");
   } else if (filters.receiptType === "nc") {
-    saleConditions.push("v.tipo_cbte IN (3,8)", "COALESCE(v.cae, '') <> ''");
+    saleConditions.push("v.receipt_type IN (3,8,13)");
   } else if (filters.receiptType === "nd") {
-    saleConditions.push("v.tipo_cbte IN (2,7)", "COALESCE(v.cae, '') <> ''");
+    saleConditions.push("v.receipt_type IN (2,7,12)");
   } else if (receiptMap[filters.receiptType]) {
-    saleConditions.push(`v.tipo_cbte = ${receiptMap[filters.receiptType]}`, "COALESCE(v.cae, '') <> ''");
+    saleConditions.push(`v.receipt_type = ${receiptMap[filters.receiptType]}`);
   }
   for (const [key, expression] of [
-    ["day", "EXTRACT(DAY FROM v.fecha)"],
-    ["month", "EXTRACT(MONTH FROM v.fecha)"],
-    ["year", "EXTRACT(YEAR FROM v.fecha)"],
+    ["day", "EXTRACT(DAY FROM v.sale_date)"],
+    ["month", "EXTRACT(MONTH FROM v.sale_date)"],
+    ["year", "EXTRACT(YEAR FROM v.sale_date)"],
   ] as const) {
     const value = filters[key];
     if (/^\d+$/.test(value)) {
@@ -379,49 +513,49 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     }
   }
   if (["en_proceso", "pendiente_aprobacion", "recibido", "pendiente", "vencido"].includes(filters.collection)) {
-    saleConditions.push(`COALESCE(v.estado_cobro, 'pendiente') = ${pushParam(filters.collection)}`);
+    saleConditions.push(`COALESCE(v.collection_status, 'pendiente') = ${pushParam(filters.collection)}`);
   }
   if (TRACKING_STATES.has(filters.tracking)) {
-    saleConditions.push(`v.seguimiento = ${pushParam(filters.tracking)}`);
+    saleConditions.push(`v.tracking_status = ${pushParam(filters.tracking)}`);
   }
   if (["rev", "1", "2", "3", "4"].includes(filters.priceList)) {
-    saleJoin = "LEFT JOIN clientes cl ON cl.empresa_id = v.empresa_id AND cl.nro_id = v.dni_cliente";
-    saleConditions.push(`cl.lista_precios = ${pushParam(filters.priceList)}`);
+    saleConditions.push(`v.price_list_name = ${pushParam(filters.priceList)}`);
   }
 
   const includeDeliveries =
     filters.receiptType === "remito" ||
     (!filters.receiptNumber &&
-      !["a", "b", "nc", "nd"].includes(filters.receiptType) &&
+      !["a", "b", "c", "nc", "nd"].includes(filters.receiptType) &&
       !["en_proceso", "pendiente_aprobacion", "recibido", "pendiente", "vencido"].includes(filters.collection) &&
       filters.tracking !== "facturada");
 
   const saleSql = `
-    SELECT v.id AS id_venta, v.nro_comprobante, v.tipo_cbte, COALESCE(v.cae, '') AS cae,
-           v.fecha::text, v.monto::text, v.condicion_pago,
-           COALESCE(v.estado_cobro, 'pendiente') AS estado_cobro,
-           COALESCE(v.seguimiento, 'no_facturada') AS seguimiento,
-           COALESCE(v.estado_pedido, 'entregado') AS estado_pedido,
-           v.nombre_cliente, v.dni_cliente, rj.id AS id_remito, rj.nro_remito
-    FROM ventas v
-    LEFT JOIN remitos rj ON rj.empresa_id = v.empresa_id AND rj.id_venta = v.id
-    ${saleJoin}
+    SELECT v.id::text AS id_venta, v.receipt_number AS nro_comprobante, v.receipt_type AS tipo_cbte,
+           CASE WHEN COALESCE(v.tracking_status, 'no_facturada') = 'facturada' THEN 'manual' ELSE '' END AS cae,
+           v.sale_date::text AS fecha, COALESCE(v.total_amount, 0)::text AS monto, COALESCE(v.payment_condition, '') AS condicion_pago,
+           COALESCE(v.collection_status, 'pendiente') AS estado_cobro,
+           COALESCE(v.tracking_status, 'no_facturada') AS seguimiento,
+           ${normalizedOrderStatusSql("v")} AS estado_pedido,
+           COALESCE(v.client_name, '') AS nombre_cliente, COALESCE(v.client_document, '') AS dni_cliente,
+           rj.id::text AS id_remito, rj.delivery_number AS nro_remito
+    FROM sales v
+    LEFT JOIN delivery_documents rj ON rj.empresa_id = v.empresa_id AND rj.sale_id = v.id
     WHERE ${saleConditions.join(" AND ")}
   `;
   let deliverySql = "";
   if (includeDeliveries) {
     const deliveryConditions = [
       "r.empresa_id = $1",
-      "r.id_venta IS NULL",
-      "COALESCE(r.estado_pedido, 'entregado') = 'entregado'",
+      "r.sale_id IS NULL",
+      "COALESCE(r.order_status, 'entregado') = 'entregado'",
     ];
     if (filters.taxId) {
-      deliveryConditions.push(`r.dni_cliente = ${pushParam(filters.taxId)}`);
+      deliveryConditions.push(`regexp_replace(COALESCE(r.client_document, ''), '[^0-9]', '', 'g') = ${pushParam(filters.taxId)}`);
     }
     for (const [key, expression] of [
-      ["day", "EXTRACT(DAY FROM r.fecha)"],
-      ["month", "EXTRACT(MONTH FROM r.fecha)"],
-      ["year", "EXTRACT(YEAR FROM r.fecha)"],
+      ["day", "EXTRACT(DAY FROM r.delivery_date)"],
+      ["month", "EXTRACT(MONTH FROM r.delivery_date)"],
+      ["year", "EXTRACT(YEAR FROM r.delivery_date)"],
     ] as const) {
       const value = filters[key];
       if (/^\d+$/.test(value)) {
@@ -429,17 +563,18 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
       }
     }
     if (["rev", "1", "2", "3", "4"].includes(filters.priceList)) {
-      deliveryConditions.push(`r.lista_precios = ${pushParam(filters.priceList)}`);
+      deliveryConditions.push(`r.price_list_name = ${pushParam(filters.priceList)}`);
     }
 
     deliverySql = `
       UNION ALL
       SELECT NULL AS id_venta, NULL AS nro_comprobante, 0 AS tipo_cbte, '' AS cae,
-             r.fecha::text, r.monto::text, r.condicion_pago,
+             r.delivery_date::text AS fecha, r.total_amount::text AS monto, r.payment_condition AS condicion_pago,
              NULL AS estado_cobro, NULL AS seguimiento,
-             COALESCE(r.estado_pedido, 'entregado') AS estado_pedido,
-             r.nombre_cliente, r.dni_cliente, r.id AS id_remito, r.nro_remito
-      FROM remitos r
+             COALESCE(r.order_status, 'entregado') AS estado_pedido,
+             r.client_name AS nombre_cliente, r.client_document AS dni_cliente,
+             r.id::text AS id_remito, r.delivery_number AS nro_remito
+      FROM delivery_documents r
       WHERE ${deliveryConditions.join(" AND ")}
     `;
   }
@@ -451,7 +586,7 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
   );
 
   const rows = await queryWithCompanyContext<{
-    id_venta: number | null;
+    id_venta: string | null;
     nro_comprobante: number | null;
     tipo_cbte: number;
     cae: string;
@@ -463,7 +598,7 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     estado_pedido: string;
     nombre_cliente: string;
     dni_cliente: string;
-    id_remito: number | null;
+    id_remito: string | null;
     nro_remito: number | null;
   }>(
     companyId,
@@ -476,7 +611,7 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     [...params, pagination.pageSize, pagination.offset],
   );
 
-  const typeLabels: Record<number, string> = { 0: "Remito", 1: "A", 2: "ND", 3: "NC", 6: "B", 7: "ND", 8: "NC" };
+  const typeLabels: Record<number, string> = { 0: "Remito", 1: "A", 2: "ND", 3: "NC", 6: "B", 7: "ND", 8: "NC", 11: "C", 12: "ND", 13: "NC" };
   const data = rows.rows.map((row) => {
     const hasInvoice = Boolean(row.cae);
     return {

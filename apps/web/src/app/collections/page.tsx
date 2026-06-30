@@ -19,7 +19,6 @@ import {
   type StatusBadgeTone,
 } from "@/components/ui";
 import { listPendingCollections } from "@/lib/collections";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { sessionCanReadCollections } from "@/lib/route-auth";
@@ -69,7 +68,7 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
 
   const params = await searchParams;
   const query = params.q?.trim().toLowerCase() ?? "";
-  const allCollections = await fastOr(listPendingCollections(session.companyId), []);
+  const allCollections = await listPendingCollections(session.companyId);
   const collections = allCollections.filter((item) => matchesQuery(item, query));
   const totalPending = collections.reduce((sum, item) => sum + item.registeredAmount, 0);
 
@@ -123,27 +122,25 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
           <DataTable
             caption="Cobros pendientes de aprobacion"
             className="rounded-none border-0 shadow-none"
-            minWidth="1180px"
+            minWidth="0"
             tableLabel="Cobros pendientes"
+            tableProps={{ className: "table-fixed" }}
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
-                <DataTableHead>Venta</DataTableHead>
-                <DataTableHead>Cliente</DataTableHead>
-                <DataTableHead>Metodo</DataTableHead>
-                <DataTableHead>Destino</DataTableHead>
-                <DataTableHead>Fecha cobro</DataTableHead>
-                <DataTableHead>Registrado por</DataTableHead>
-                <DataTableHead>Estado</DataTableHead>
-                <DataTableHead>Comprobantes</DataTableHead>
-                <DataTableHead align="right">Monto</DataTableHead>
-                <DataTableHead>Accion</DataTableHead>
+                <DataTableHead className="w-[11%] px-2">Venta</DataTableHead>
+                <DataTableHead className="w-[18%] px-2">Cliente</DataTableHead>
+                <DataTableHead className="w-[20%] px-2">Cobro</DataTableHead>
+                <DataTableHead className="w-[12%] px-2">Registro</DataTableHead>
+                <DataTableHead className="w-[13%] px-2">Estado</DataTableHead>
+                <DataTableHead align="right" className="w-[11%] px-2">Monto</DataTableHead>
+                <DataTableHead className="w-[15%] px-2">Accion</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {collections.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={10}>
+                  <DataTableCell colSpan={7}>
                     <EmptyState
                       description="Ajusta la busqueda para revisar otros cobros pendientes de aprobacion."
                       title="No hay cobros pendientes para esta busqueda"
@@ -156,37 +153,14 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
 
                   return (
                     <DataTableRow key={item.id}>
-                      <DataTableCell>
-                        <div className="font-mono text-xs">#{item.id}</div>
-                        <div className="mt-1 text-xs text-[color:var(--muted)]">
+                      <DataTableCell className="px-2 py-2">
+                        <div className="truncate font-mono text-xs">#{item.id.slice(0, 8)}</div>
+                        <div className="mt-1 truncate text-xs text-[color:var(--muted)]">
                           Remito {item.remittanceLabel}
                         </div>
-                      </DataTableCell>
-                      <DataTableCell>
-                        <div className="max-w-[220px] break-words font-medium">
-                          {item.customerName || "Sin cliente"}
-                        </div>
-                        <div className="mt-1 font-mono text-xs text-[color:var(--muted)]">
-                          {item.customerTaxId || item.customerDocument || "-"}
-                        </div>
-                      </DataTableCell>
-                      <DataTableCell>{item.method || "-"}</DataTableCell>
-                      <DataTableCell>
-                        <div className="max-w-[220px] break-words">{item.destination || "-"}</div>
-                        <div className="mt-1 max-w-[220px] break-words text-xs leading-5 text-[color:var(--muted)]">
-                          {item.operation || "Sin operacion"}
-                        </div>
-                      </DataTableCell>
-                      <DataTableCell className="whitespace-nowrap">{formatDate(item.collectionDate)}</DataTableCell>
-                      <DataTableCell>{item.registeredBy || "-"}</DataTableCell>
-                      <DataTableCell>
-                        <StatusBadge tone={collectionStatusTone(item.status)}>
-                          {statusLabel(item.status)}
-                        </StatusBadge>
-                      </DataTableCell>
-                      <DataTableCell>
                         <ButtonLink
                           aria-label={`Abrir comprobantes asociados al cobro ${item.id}`}
+                          className="mt-2 h-8 px-2 text-[11px]"
                           href={`/api/sales-documents?saleId=${item.id}`}
                           prefetch={false}
                           rel="noreferrer"
@@ -194,14 +168,50 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                           target="_blank"
                           variant="secondary"
                         >
-                          {item.associatedDocuments} asociados
+                          {item.associatedDocuments} comp.
                         </ButtonLink>
                       </DataTableCell>
-                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
-                        {formatCurrency(item.registeredAmount)}
+                      <DataTableCell className="px-2 py-2">
+                        <div className="truncate font-medium">
+                          {item.customerName || "Sin cliente"}
+                        </div>
+                        <div className="mt-1 truncate font-mono text-xs text-[color:var(--muted)]">
+                          {item.customerTaxId || item.customerDocument || "-"}
+                        </div>
                       </DataTableCell>
-                      <DataTableCell>
-                        <div className="grid min-w-[300px] gap-2">
+                      <DataTableCell className="px-2 py-2">
+                        <div className="truncate font-medium">{item.method || "-"}</div>
+                        <div className="mt-1 truncate text-xs leading-5 text-[color:var(--muted)]">
+                          {item.destination || "-"} · {item.operation || "Sin operacion"}
+                        </div>
+                        {item.notes ? (
+                          <div className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--muted)]">
+                            {item.notes}
+                          </div>
+                        ) : null}
+                      </DataTableCell>
+                      <DataTableCell className="px-2 py-2">
+                        <div className="whitespace-nowrap text-xs">{formatDate(item.collectionDate)}</div>
+                        <div className="mt-1 truncate text-xs text-[color:var(--muted)]">
+                          {item.registeredBy || "-"}
+                        </div>
+                      </DataTableCell>
+                      <DataTableCell className="px-2 py-2">
+                        <StatusBadge tone={collectionStatusTone(item.status)}>
+                          {statusLabel(item.status)}
+                        </StatusBadge>
+                        <div className="mt-2 text-xs leading-5 text-[color:var(--muted)]">
+                          Saldo actual {formatCurrency(item.outstandingAmount)}
+                        </div>
+                      </DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
+                        <div>{formatCurrency(item.registeredAmount)}</div>
+                        <div className="mt-1 text-[11px] text-[color:var(--muted)]">
+                          Queda {formatCurrency(item.outstandingAfterApproval)}
+                        </div>
+                      </DataTableCell>
+                      <DataTableCell className="px-2 py-2">
+                        <div className="grid gap-2">
                           <form action={approveCollectionAction}>
                             <input name="id" type="hidden" value={item.id} />
                             <Button
@@ -213,14 +223,14 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                               Aprobar
                             </Button>
                           </form>
-                          <form action={rejectCollectionAction} className="flex min-w-0 gap-2">
+                          <form action={rejectCollectionAction} className="grid gap-2">
                             <input name="id" type="hidden" value={item.id} />
                             <label className="sr-only" htmlFor={reasonInputId}>
                               Motivo de rechazo del cobro {item.id}
                             </label>
                             <Input
                               aria-describedby={`${reasonInputId}-hint`}
-                              className="min-h-9 flex-1 px-2 text-xs"
+                              className="min-h-9 px-2 text-xs"
                               id={reasonInputId}
                               name="reason"
                               placeholder="Motivo de rechazo"

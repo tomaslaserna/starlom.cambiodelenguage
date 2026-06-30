@@ -10,7 +10,6 @@ import { requireStaffSession } from "@/lib/auth";
 import { fastOr } from "@/lib/fast-data";
 import {
   CUSTOMERS_READ_PERMISSION,
-  EMPLOYEES_READ_PERMISSION,
   PRODUCTS_READ_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
   type Permission,
@@ -26,7 +25,6 @@ const modules: Array<{
   detail: string;
   permission?: Permission;
 }> = [
-  { href: "/employees", label: "Empleados", detail: "Usuarios internos y permisos", permission: EMPLOYEES_READ_PERMISSION },
   { href: "/products", label: "Precios", detail: "Catalogo, costos y stock", permission: PRODUCTS_READ_PERMISSION },
   { href: "/pricing", label: "Margenes y listas", detail: "Categorias, multiplicadores y listas de precio", permission: PRODUCTS_READ_PERMISSION },
   { href: "/customers", label: "Clientes", detail: "Base comercial", permission: CUSTOMERS_READ_PERMISSION },
@@ -37,14 +35,7 @@ export default async function DatabasePage() {
   const session = await requireStaffSession();
   const navigationAuthorization = await fastOr(
     getNavigationAuthorization(session),
-    {
-      allowedPermissionKeys: new Set([
-        "empleados.ver",
-        "productos.ver",
-        "clientes.ver",
-        "proveedores.ver",
-      ]),
-    },
+    { allowedPermissionKeys: new Set<string>() },
     60,
   );
   const visibleModules = modules.filter((module) =>
@@ -54,7 +45,7 @@ export default async function DatabasePage() {
   return (
     <ModulePage
       active="database"
-      description="Bases de datos operativas como submodulos. La visualizacion sensible queda fuera de Usuarios y permisos."
+      description="Datos maestros operativos. Usuarios y permisos se gestionan desde Administracion."
       navigationAuthorization={navigationAuthorization}
       session={session}
       title="Base de datos"

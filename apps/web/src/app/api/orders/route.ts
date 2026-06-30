@@ -1,19 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { handleApiError } from "@/lib/api-response";
-import { requireApiAccess } from "@/lib/api-auth";
-import { companyIdFromRequest } from "@/lib/company";
 import { listOrders } from "@/lib/orders";
+import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const unauthorized = requireApiAccess(request);
-  if (unauthorized) return unauthorized;
-
   try {
+    const session = await requireApiSession([{ resource: "pedidos", action: "ver" }]);
     const searchParams = request.nextUrl.searchParams;
     const result = await listOrders({
-      companyId: companyIdFromRequest(request),
+      companyId: session.companyId,
       query: searchParams.get("q"),
       status: searchParams.get("status"),
       collectionStatus: searchParams.get("collectionStatus"),
@@ -26,4 +23,3 @@ export async function GET(request: NextRequest) {
     return handleApiError(error);
   }
 }
-

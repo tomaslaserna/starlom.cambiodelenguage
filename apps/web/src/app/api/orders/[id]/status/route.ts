@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { orderStatusFromBody, updateOrderStatus } from "@/lib/orders";
-import { positiveId, readRequestBody } from "@/lib/request-body";
+import { orderConfirmationDocumentFromBody, orderStatusFromBody, updateOrderStatus } from "@/lib/orders";
+import { readRequestBody, uuidParam } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
@@ -15,10 +15,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const session = await requireApiSession([{ resource: "pedidos", action: "editar" }]);
     const { id } = await context.params;
     const body = await readRequestBody(request);
-    const data = await updateOrderStatus(session, positiveId(id), orderStatusFromBody(body));
+    const data = await updateOrderStatus(session, uuidParam(id, "Pedido"), orderStatusFromBody(body), {
+      confirmationDocument: orderConfirmationDocumentFromBody(body),
+    });
     return ok({ data });
   } catch (error) {
     return handleApiError(error);
   }
 }
-

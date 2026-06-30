@@ -1,9 +1,10 @@
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getMovementRegister } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/page-auth";
+import { ADMIN_MOVEMENTS_READ_PERMISSION, ADMIN_TREASURY_READ_PERMISSION } from "@/lib/route-auth";
 
 type MovementsPageProps = {
   searchParams: Promise<{
@@ -14,25 +15,14 @@ type MovementsPageProps = {
 
 export default async function MovementsPage({ searchParams }: MovementsPageProps) {
   const session = await requireStaffSession();
+  await requirePagePermission(session, [ADMIN_MOVEMENTS_READ_PERMISSION, ADMIN_TREASURY_READ_PERMISSION]);
   const params = await searchParams;
-  const page = Number.parseInt(params.page ?? "1", 10);
-  const result = await fastOr(
-    getMovementRegister({
-      companyId: session.companyId,
-      type: params.type,
-      page: params.page,
-      pageSize: "25",
-    }),
-    {
-      data: [],
-      meta: {
-        page: Number.isFinite(page) && page > 0 ? page : 1,
-        pageSize: 25,
-        total: 0,
-        totalPages: 1,
-      },
-    },
-  );
+  const result = await getMovementRegister({
+    companyId: session.companyId,
+    type: params.type,
+    page: params.page,
+    pageSize: "25",
+  });
 
   return (
     <ModulePage

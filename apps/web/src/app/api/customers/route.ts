@@ -1,7 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { requireApiAccess } from "@/lib/api-auth";
-import { companyIdFromRequest } from "@/lib/company";
 import { listCustomers } from "@/lib/catalog";
 import {
   createCustomer,
@@ -13,18 +11,20 @@ import { requireApiSession } from "@/lib/route-auth";
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const unauthorized = requireApiAccess(request);
-  if (unauthorized) return unauthorized;
+  try {
+    const session = await requireApiSession([{ resource: "clientes", action: "ver" }]);
+    const searchParams = request.nextUrl.searchParams;
+    const result = await listCustomers({
+      companyId: session.companyId,
+      query: searchParams.get("q"),
+      page: searchParams.get("page"),
+      pageSize: searchParams.get("pageSize"),
+    });
 
-  const searchParams = request.nextUrl.searchParams;
-  const result = await listCustomers({
-    companyId: companyIdFromRequest(request),
-    query: searchParams.get("q"),
-    page: searchParams.get("page"),
-    pageSize: searchParams.get("pageSize"),
-  });
-
-  return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({ ok: true, ...result });
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
 export async function POST(request: NextRequest) {

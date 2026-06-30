@@ -2,6 +2,8 @@ import { ModulePage } from "@/components/module-page";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { getAdminMetrics } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/page-auth";
+import { ADMIN_METRICS_READ_PERMISSION, REPORTS_READ_PERMISSION } from "@/lib/route-auth";
 
 function deltaLabel(value: number | null) {
   if (value === null) return "s/c";
@@ -189,6 +191,7 @@ function PlainMetric({ label, value, detail }: { label: string; value: string; d
 
 export default async function MetricsPage() {
   const session = await requireStaffSession();
+  await requirePagePermission(session, [ADMIN_METRICS_READ_PERMISSION, REPORTS_READ_PERMISSION]);
   const metrics = await getAdminMetrics(session.companyId);
 
   const salesTrend = trendSeries(metrics.sales.current, metrics.sales.previous);

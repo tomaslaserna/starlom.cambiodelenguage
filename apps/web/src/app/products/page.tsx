@@ -32,7 +32,6 @@ import {
   importProductsCsvAction,
 } from "@/app/products/actions";
 import { listProducts } from "@/lib/catalog";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { listMargins } from "@/lib/pricing";
 import { requireStaffSession } from "@/lib/auth";
@@ -57,26 +56,13 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
   const params = await searchParams;
   const [result, margins] = await Promise.all([
-    fastOr(
-      listProducts({
-        companyId: session.companyId,
-        query: params.q,
-        page: params.page,
-        pageSize: "25",
-      }),
-      {
-        data: [],
-        meta: {
-          companyId: session.companyId,
-          query: params.q?.trim() ?? "",
-          page: 1,
-          pageSize: 25,
-          total: 0,
-          totalPages: 1,
-        },
-      },
-    ),
-    fastOr(listMargins(session.companyId), []),
+    listProducts({
+      companyId: session.companyId,
+      query: params.q,
+      page: params.page,
+      pageSize: "25",
+    }),
+    listMargins(session.companyId),
   ]);
 
   return (
@@ -207,7 +193,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                   <Field
                     htmlFor="bulk-json"
                     label="Productos JSON"
-                    description='Formato: [{"id":1,"name":"Producto","cost":100,"stock":5,"description":""}]'
+                    description='Formato: [{"id":"uuid-del-producto","name":"Producto","cost":100,"stock":5}]'
                   >
                     <Textarea id="bulk-json" name="itemsJson" rows={6} />
                   </Field>

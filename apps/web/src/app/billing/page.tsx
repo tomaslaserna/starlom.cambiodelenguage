@@ -27,8 +27,11 @@ import {
 import { createSalesNoteAction } from "@/app/billing/actions";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import { getFiscalStatus } from "@/lib/fiscal";
+import { orderStatusLabel } from "@/lib/order-status";
 import { getSalesSummary, listSalesLedger } from "@/lib/sales-admin";
 import { requireStaffSession } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/page-auth";
+import { SALES_READ_PERMISSION } from "@/lib/route-auth";
 
 type BillingPageProps = {
   searchParams: Promise<{
@@ -59,6 +62,7 @@ function trackingTone(value: string) {
 
 export default async function BillingPage({ searchParams }: BillingPageProps) {
   const session = await requireStaffSession();
+  await requirePagePermission(session, [SALES_READ_PERMISSION]);
   const params = await searchParams;
   const search = paramsToUrlSearchParams(params);
   const [ledger, summary] = await Promise.all([
@@ -101,6 +105,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 <option value="">Todos</option>
                 <option value="a">Factura A</option>
                 <option value="b">Factura B</option>
+                <option value="c">Factura C</option>
                 <option value="remito">Remito</option>
                 <option value="nc">Nota credito</option>
                 <option value="nd">Nota debito</option>
@@ -192,7 +197,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                     </DataTableCell>
                     <DataTableCell>
                       <StatusBadge tone={item.orderStatus === "entregado" ? "success" : "warning"}>
-                        {item.orderStatus}
+                        {orderStatusLabel(item.orderStatus)}
                       </StatusBadge>
                     </DataTableCell>
                     <DataTableCell>

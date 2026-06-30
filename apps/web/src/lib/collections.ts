@@ -1,21 +1,26 @@
 import { ApiError } from "@/lib/api-response";
-import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { normalizeOrderStatusValue, normalizedOrderStatusSql } from "@/lib/order-status";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
+import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import type { AuthSession } from "@/lib/auth";
 import type { PoolClient } from "pg";
 
 const APPROVAL_STATES = new Set(["pendiente_aprobacion", "en_proceso"]);
 const REGISTERABLE_STATES = new Set(["pendiente", "vencido"]);
 const PAYMENT_METHODS = new Set(["efectivo", "transferencia", "echeck"]);
+const MONEY_EPSILON = 0.005;
 const COLLECTION_RESOLUTION_CONFLICT =
   "El cobro ya no esta pendiente de resolucion o no puede procesarse";
 
 type CollectionResolutionSale = {
-  id: number;
+  id: string;
+  client_id: string | null;
   nombre_cliente: string;
   monto: string;
   nro_comprobante: number;
   estado_cobro: string;
+  estado_pedido: string;
   cobro_monto_registrado: string;
   cobro_fecha: string | null;
   cobro_metodo: string;
@@ -38,7 +43,7 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function remittanceLabel(value: { nro_remito?: number | null; nro_comprobante?: number | null; id?: number }) {
+function remittanceLabel(value: { nro_remito?: number | null; nro_comprobante?: number | null; id?: string | number }) {
   const numberValue = value.nro_remito ?? value.nro_comprobante ?? value.id ?? 0;
   return `#${String(numberValue).padStart(4, "0")}`;
 }
@@ -47,34 +52,77 @@ function throwCollectionResolutionConflict(): never {
   throw new ApiError(409, COLLECTION_RESOLUTION_CONFLICT);
 }
 
-function assertResolvedOneRow(rows: { id: number }[]) {
+function assertResolvedOneRow(rows: { id: string }[]) {
   if (rows.length !== 1) throwCollectionResolutionConflict();
+}
+
+function moneyValue(value: string | number | null | undefined) {
+  return Math.round(Number(value ?? 0) * 100) / 100;
+}
+
+function assertCollectionAmountWithinBalance(amount: number, outstanding: number) {
+  if (amount > outstanding + MONEY_EPSILON) {
+    throw new ApiError(
+      400,
+      `El cobro supera el saldo pendiente. Saldo disponible: ${outstanding.toFixed(2)}`,
+    );
+  }
+}
+
+async function saleCollectedCredit(
+  client: {
+    query: (sql: string, params?: unknown[]) => Promise<{ rows: { total_credit: string | null }[] }>;
+  },
+  companyId: number,
+  saleId: string,
+) {
+  const totalResult = await client.query(
+    `
+      SELECT COALESCE(SUM(credit), 0)::text AS total_credit
+      FROM current_account_movements
+      WHERE empresa_id = $1 AND sale_id = $2::uuid
+    `,
+    [companyId, saleId],
+  );
+
+  return moneyValue(totalResult.rows[0]?.total_credit);
+}
+
+async function saleOutstandingBalance(
+  client: {
+    query: (sql: string, params?: unknown[]) => Promise<{ rows: { total_credit: string | null }[] }>;
+  },
+  companyId: number,
+  saleId: string,
+  saleTotal: string | number,
+) {
+  const collected = await saleCollectedCredit(client, companyId, saleId);
+  return Math.max(0, moneyValue(saleTotal) - collected);
 }
 
 async function lockCollectionSaleForResolution(
   client: PoolClient,
   companyId: number,
-  saleId: number,
+  saleId: string,
 ) {
   const saleResult = await client.query<CollectionResolutionSale>(
     `
-      SELECT v.id, v.nombre_cliente, v.monto::text, v.nro_comprobante,
-             COALESCE(v.estado_cobro,'pendiente') AS estado_cobro,
-             COALESCE(v.cobro_monto_registrado,0)::text AS cobro_monto_registrado,
-             COALESCE(v.cobro_fecha, CURRENT_DATE)::text AS cobro_fecha,
-             COALESCE(v.cobro_metodo,'') AS cobro_metodo,
-             COALESCE(v.cobro_destino,'') AS cobro_destino,
-             COALESCE(v.cobro_operacion,'') AS cobro_operacion,
-             COALESCE(v.cobro_notas,'') AS cobro_notas,
-             COALESCE((
-               SELECT r.nro_remito
-               FROM remitos r
-               WHERE r.id_venta = v.id AND r.empresa_id = v.empresa_id
-               ORDER BY r.id
-               LIMIT 1
-             ), v.nro_comprobante) AS nro_remito
-      FROM ventas v
-      WHERE v.id = $1 AND v.empresa_id = $2
+      SELECT v.id::text AS id, v.client_id::text,
+             COALESCE(v.client_name, c.display_name, '') AS nombre_cliente,
+             COALESCE(v.total_amount, 0)::text AS monto,
+             COALESCE(v.receipt_number, nullif(regexp_replace(COALESCE(v.sale_number, ''), '\D', '', 'g'), '')::bigint, 0)::int AS nro_comprobante,
+             COALESCE(v.collection_status,'pendiente') AS estado_cobro,
+             ${normalizedOrderStatusSql("v")} AS estado_pedido,
+             COALESCE(v.collection_registered_amount,0)::text AS cobro_monto_registrado,
+             COALESCE(v.collection_date, CURRENT_DATE)::text AS cobro_fecha,
+             COALESCE(v.collection_method,'') AS cobro_metodo,
+             COALESCE(v.collection_destination,'') AS cobro_destino,
+             COALESCE(v.collection_operation,'') AS cobro_operacion,
+             COALESCE(v.collection_notes,'') AS cobro_notas,
+             COALESCE(v.receipt_number, nullif(regexp_replace(COALESCE(v.sale_number, ''), '\D', '', 'g'), '')::bigint, 0)::int AS nro_remito
+      FROM sales v
+      LEFT JOIN clients c ON c.id = v.client_id AND c.empresa_id = v.empresa_id
+      WHERE v.id = $1::uuid AND v.empresa_id = $2
       FOR UPDATE OF v
     `,
     [saleId, companyId],
@@ -82,6 +130,9 @@ async function lockCollectionSaleForResolution(
   const sale = saleResult.rows[0];
   if (!sale || !APPROVAL_STATES.has(sale.estado_cobro)) {
     throwCollectionResolutionConflict();
+  }
+  if (normalizeOrderStatusValue(sale.estado_pedido) !== "entregado") {
+    throw new ApiError(400, "El pedido debe estar entregado para resolver el cobro");
   }
 
   return sale;
@@ -112,17 +163,16 @@ async function ensureSaleDebit(
     query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }>;
   },
   companyId: number,
-  saleId: number,
-  sale: { nombre_cliente: string; monto: string | number; nro_remito?: number | null; nro_comprobante: number },
+  saleId: string,
+  sale: { client_id?: string | null; nombre_cliente: string; monto: string | number; nro_remito?: number | null; nro_comprobante: number },
 ) {
   const existing = await client.query(
     `
       SELECT id
-      FROM cuentas_corrientes
+      FROM current_account_movements
       WHERE empresa_id = $1
-        AND id_origen = $2
-        AND tipo_origen = 'venta'
-        AND debe > 0
+        AND sale_id = $2::uuid
+        AND debit > 0
       LIMIT 1
     `,
     [companyId, saleId],
@@ -131,16 +181,16 @@ async function ensureSaleDebit(
 
   await client.query(
     `
-      INSERT INTO cuentas_corrientes (
-        tipo, entidad_nombre, descripcion, debe, haber, fecha, id_origen, tipo_origen, empresa_id
+      INSERT INTO current_account_movements (
+        client_id, sale_id, movement_date, debit, credit, description, empresa_id
       )
-      VALUES ('cliente', $1, $2, $3, 0, CURRENT_DATE, $4, 'venta', $5)
+      VALUES ($1::uuid, $2::uuid, CURRENT_DATE, $3, 0, $4, $5)
     `,
     [
-      sale.nombre_cliente,
-      `Saldo pendiente - Remito ${remittanceLabel(sale)}`,
-      Number(sale.monto),
+      sale.client_id ?? null,
       saleId,
+      Number(sale.monto),
+      `Saldo pendiente - Remito ${remittanceLabel(sale)} - ${sale.nombre_cliente}`,
       companyId,
     ],
   );
@@ -148,7 +198,7 @@ async function ensureSaleDebit(
 
 export async function listPendingCollections(companyId: number) {
   const result = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     nro_comprobante: number;
     tipo_cbte: number;
     cae: string;
@@ -169,48 +219,48 @@ export async function listPendingCollections(companyId: number) {
     cobro_registrado_at: string | null;
     estado_cobro: string;
     documentos_asociados: string;
+    cobrado_aprobado: string;
+    saldo_actual: string;
+    saldo_despues_aprobar: string;
   }>(
     companyId,
     `
-      SELECT v.id, v.nro_comprobante, v.tipo_cbte, COALESCE(v.cae,'') AS cae,
-             v.fecha::text, v.monto::text, v.nombre_cliente, v.dni_cliente,
-             COALESCE(rm.nro_remito, v.nro_comprobante) AS nro_remito,
-             COALESCE(cli.codigo_cliente, '') AS codigo_cliente,
-             COALESCE(cli.nro_id, v.dni_cliente, '') AS cuit_cliente,
-             COALESCE(v.cobro_metodo,'') AS cobro_metodo,
-             COALESCE(v.cobro_monto_registrado,0)::text AS cobro_monto_registrado,
-             v.cobro_fecha::text,
-             COALESCE(v.cobro_destino,'') AS cobro_destino,
-             COALESCE(v.cobro_operacion,'') AS cobro_operacion,
-             COALESCE(v.cobro_notas,'') AS cobro_notas,
-             COALESCE(v.cobro_registrado_por,'') AS cobro_registrado_por,
-             v.cobro_registrado_at::text,
-             COALESCE(v.estado_cobro,'pendiente') AS estado_cobro,
-             COALESCE(docs.total, 0)::text AS documentos_asociados
-      FROM ventas v
-      LEFT JOIN (
-        SELECT id_venta, MIN(nro_remito) AS nro_remito
-        FROM remitos
-        WHERE empresa_id = $1
-        GROUP BY id_venta
-      ) rm ON rm.id_venta = v.id
-      LEFT JOIN (
-        SELECT regexp_replace(nro_id, '[^0-9]', '', 'g') AS nro_norm,
-               MAX(NULLIF(codigo_cliente,'')) AS codigo_cliente,
-               MAX(NULLIF(nro_id,'')) AS nro_id
-        FROM clientes
-        WHERE empresa_id = $1 AND COALESCE(nro_id,'') <> ''
-        GROUP BY regexp_replace(nro_id, '[^0-9]', '', 'g')
-      ) cli ON cli.nro_norm = regexp_replace(v.dni_cliente, '[^0-9]', '', 'g')
+      SELECT v.id::text AS id,
+             COALESCE(v.receipt_number, nullif(regexp_replace(COALESCE(v.sale_number, ''), '\D', '', 'g'), '')::bigint, 0)::int AS nro_comprobante,
+             0 AS tipo_cbte,
+             '' AS cae,
+             v.sale_date::text AS fecha,
+             COALESCE(v.total_amount, 0)::text AS monto,
+             COALESCE(v.client_name, cli.display_name, '') AS nombre_cliente,
+             COALESCE(v.client_document, cli.tax_id, '') AS dni_cliente,
+             COALESCE(v.receipt_number, nullif(regexp_replace(COALESCE(v.sale_number, ''), '\D', '', 'g'), '')::bigint, 0)::int AS nro_remito,
+             COALESCE(cli.external_code, '') AS codigo_cliente,
+             COALESCE(cli.tax_id, v.client_document, '') AS cuit_cliente,
+             COALESCE(v.collection_method,'') AS cobro_metodo,
+             COALESCE(v.collection_registered_amount,0)::text AS cobro_monto_registrado,
+             v.collection_date::text AS cobro_fecha,
+             COALESCE(v.collection_destination,'') AS cobro_destino,
+             COALESCE(v.collection_operation,'') AS cobro_operacion,
+             COALESCE(v.collection_notes,'') AS cobro_notas,
+             COALESCE(v.collection_registered_by,'') AS cobro_registrado_por,
+             v.collection_registered_at::text AS cobro_registrado_at,
+             COALESCE(v.collection_status,'pendiente') AS estado_cobro,
+             0::text AS documentos_asociados,
+             COALESCE(approved.total_credit, 0)::text AS cobrado_aprobado,
+             GREATEST(COALESCE(v.total_amount, 0) - COALESCE(approved.total_credit, 0), 0)::text AS saldo_actual,
+             GREATEST(COALESCE(v.total_amount, 0) - COALESCE(approved.total_credit, 0) - COALESCE(v.collection_registered_amount, 0), 0)::text AS saldo_despues_aprobar
+      FROM sales v
+      LEFT JOIN clients cli ON cli.id = v.client_id AND cli.empresa_id = v.empresa_id
       LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS total
-        FROM comprobantes_venta cv
-        WHERE cv.empresa_id = v.empresa_id AND cv.id_venta = v.id
-      ) docs ON TRUE
-      WHERE COALESCE(v.estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
+        SELECT COALESCE(SUM(cam.credit), 0) AS total_credit
+        FROM current_account_movements cam
+        WHERE cam.empresa_id = v.empresa_id AND cam.sale_id = v.id
+      ) approved ON true
+      WHERE COALESCE(v.collection_status,'pendiente') IN ('pendiente_aprobacion','en_proceso')
         AND v.empresa_id = $1
-        AND COALESCE(v.estado_pedido,'entregado') = 'entregado'
-      ORDER BY v.cobro_registrado_at DESC, v.id DESC
+        AND ${canonicalSalesSourceSql("v")}
+        AND ${normalizedOrderStatusSql("v")} = 'entregado'
+      ORDER BY v.collection_registered_at DESC, v.created_at DESC
     `,
     [companyId],
   );
@@ -238,34 +288,38 @@ export async function listPendingCollections(companyId: number) {
     registeredAt: row.cobro_registrado_at,
     status: row.estado_cobro,
     associatedDocuments: Number(row.documentos_asociados),
+    approvedAmount: Number(row.cobrado_aprobado),
+    outstandingAmount: Number(row.saldo_actual),
+    outstandingAfterApproval: Number(row.saldo_despues_aprobar),
   }));
 }
 
 export async function registerCollection(
   session: AuthSession,
-  saleId: number,
+  saleId: string,
   input: CollectionRegistrationInput,
 ) {
   return withCompanyContext(session.companyId, async (client) => {
     const saleResult = await client.query<{
+      client_id: string | null;
       nombre_cliente: string;
       monto: string;
       nro_comprobante: number;
       estado_cobro: string;
+      estado_pedido: string;
       nro_remito: number | null;
     }>(
       `
-        SELECT v.nombre_cliente, v.monto::text, v.nro_comprobante,
-               COALESCE(v.estado_cobro,'pendiente') AS estado_cobro,
-               COALESCE((
-                 SELECT r.nro_remito
-                 FROM remitos r
-                 WHERE r.id_venta = v.id AND r.empresa_id = v.empresa_id
-                 ORDER BY r.id
-                 LIMIT 1
-               ), v.nro_comprobante) AS nro_remito
-        FROM ventas v
-        WHERE v.id = $1 AND v.empresa_id = $2
+        SELECT v.client_id::text,
+               COALESCE(v.client_name, c.display_name, '') AS nombre_cliente,
+               COALESCE(v.total_amount, 0)::text AS monto,
+               COALESCE(v.receipt_number, nullif(regexp_replace(COALESCE(v.sale_number, ''), '\D', '', 'g'), '')::bigint, 0)::int AS nro_comprobante,
+               COALESCE(v.collection_status,'pendiente') AS estado_cobro,
+               ${normalizedOrderStatusSql("v")} AS estado_pedido,
+               COALESCE(v.receipt_number, nullif(regexp_replace(COALESCE(v.sale_number, ''), '\D', '', 'g'), '')::bigint, 0)::int AS nro_remito
+        FROM sales v
+        LEFT JOIN clients c ON c.id = v.client_id AND c.empresa_id = v.empresa_id
+        WHERE v.id = $1::uuid AND v.empresa_id = $2
         LIMIT 1
       `,
       [saleId, session.companyId],
@@ -275,26 +329,35 @@ export async function registerCollection(
     if (!REGISTERABLE_STATES.has(sale.estado_cobro)) {
       throw new ApiError(400, "La venta no esta pendiente de cobro");
     }
+    if (normalizeOrderStatusValue(sale.estado_pedido) !== "entregado") {
+      throw new ApiError(400, "El pedido debe estar entregado para registrar un cobro");
+    }
 
     await ensureSaleDebit(client, session.companyId, saleId, sale);
+    const outstanding = await saleOutstandingBalance(client, session.companyId, saleId, sale.monto);
+    if (outstanding <= MONEY_EPSILON) {
+      throw new ApiError(400, "La venta ya no tiene saldo pendiente");
+    }
+    assertCollectionAmountWithinBalance(input.amount, outstanding);
 
     await client.query(
       `
-        UPDATE ventas
-        SET estado_cobro = 'pendiente_aprobacion',
-            cobro_metodo = $1,
-            cobro_monto_registrado = $2,
-            cobro_fecha = $3,
-            cobro_destino = $4,
-            cobro_operacion = $5,
-            cobro_notas = $6,
-            cobro_registrado_por = $7,
-            cobro_registrado_at = NOW(),
-            cobro_aprobado_por = '',
-            cobro_aprobado_at = NULL,
-            cobro_justificacion_proceso = '',
-            cobro_intento_proceso_at = NULL
-        WHERE id = $8 AND empresa_id = $9
+        UPDATE sales
+        SET collection_status = 'pendiente_aprobacion',
+            collection_method = $1,
+            collection_registered_amount = $2,
+            collection_date = $3,
+            collection_destination = $4,
+            collection_operation = $5,
+            collection_notes = $6,
+            collection_registered_by = $7,
+            collection_registered_at = NOW(),
+            collection_approved_by = '',
+            collection_approved_at = NULL,
+            collection_resolution_note = '',
+            collection_resolution_at = NULL,
+            updated_at = now()
+        WHERE id = $8::uuid AND empresa_id = $9
       `,
       [
         input.method,
@@ -318,11 +381,12 @@ export async function registerCollection(
       ],
     );
 
+    clearReadQueryCache();
     return { id: saleId, status: "pendiente_aprobacion", amount: input.amount };
   });
 }
 
-export async function approveCollection(session: AuthSession, saleId: number) {
+export async function approveCollection(session: AuthSession, saleId: string) {
   return withCompanyContext(session.companyId, async (client) => {
     const sale = await lockCollectionSaleForResolution(client, session.companyId, saleId);
 
@@ -330,52 +394,73 @@ export async function approveCollection(session: AuthSession, saleId: number) {
     if (amount <= 0) throw new ApiError(400, "El monto registrado es invalido");
 
     await ensureSaleDebit(client, session.companyId, saleId, sale);
+    const outstanding = await saleOutstandingBalance(client, session.companyId, saleId, sale.monto);
+    if (outstanding <= MONEY_EPSILON) {
+      throw new ApiError(400, "La venta ya no tiene saldo pendiente");
+    }
+    assertCollectionAmountWithinBalance(amount, outstanding);
 
     const doc = remittanceLabel(sale);
     const description = `Cobro aprobado - Remito ${doc}`;
     await client.query(
       `
-        INSERT INTO cuentas_corrientes (
-          tipo, entidad_nombre, descripcion, debe, haber, fecha, id_origen, tipo_origen, empresa_id
+        INSERT INTO payments (
+          client_id, sale_id, payment_date, amount, method, reference,
+          status, registered_by, empresa_id
         )
-        VALUES ('cliente', $1, $2, 0, $3, $4, $5, 'venta', $6)
+        VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, 'registrado', $7::uuid, $8)
       `,
-      [sale.nombre_cliente, description, amount, sale.cobro_fecha || todayIso(), saleId, session.companyId],
+      [
+        sale.client_id ?? null,
+        saleId,
+        sale.cobro_fecha || todayIso(),
+        amount,
+        sale.cobro_metodo,
+        sale.cobro_operacion || description,
+        session.userId,
+        session.companyId,
+      ],
     );
 
     const detail = `Metodo: ${sale.cobro_metodo} | Cuenta destino/entrega: ${sale.cobro_destino} | Operacion: ${sale.cobro_operacion} | ${sale.cobro_notas}`.trim();
     await client.query(
       `
-        INSERT INTO pagos_registro (
-          tipo, entidad_nombre, concepto, monto, fecha, notas, id_origen, tipo_origen, empresa_id
+        INSERT INTO current_account_movements (
+          client_id, sale_id, movement_date, debit, credit, description, empresa_id
         )
-        VALUES ('cobro', $1, $2, $3, $4, $5, $6, 'venta', $7)
+        VALUES ($1::uuid, $2::uuid, $3, 0, $4, $5, $6)
       `,
-      [sale.nombre_cliente, description, amount, sale.cobro_fecha || todayIso(), detail, saleId, session.companyId],
+      [
+        sale.client_id ?? null,
+        saleId,
+        sale.cobro_fecha || todayIso(),
+        amount,
+        `${description} | ${detail}`,
+        session.companyId,
+      ],
     );
 
-    const totalResult = await client.query<{ total_haber: string | null }>(
-      `
-        SELECT SUM(haber)::text AS total_haber
-        FROM cuentas_corrientes
-        WHERE empresa_id = $1 AND id_origen = $2 AND tipo_origen = 'venta'
-      `,
-      [session.companyId, saleId],
-    );
-    const totalCredit = Number(totalResult.rows[0]?.total_haber ?? 0);
-    const nextStatus = totalCredit + 0.0001 >= Number(sale.monto) ? "recibido" : "pendiente";
+    const nextOutstanding = Math.max(0, outstanding - amount);
+    const nextStatus = nextOutstanding <= MONEY_EPSILON ? "recibido" : "pendiente";
+    const resolutionNote =
+      nextStatus === "pendiente"
+        ? `Cobro parcial aprobado. Saldo pendiente: ${nextOutstanding.toFixed(2)}`
+        : "Cobro total aprobado";
 
-    const updateResult = await client.query<{ id: number }>(
+    const updateResult = await client.query<{ id: string }>(
       `
-        UPDATE ventas
-        SET estado_cobro = $1,
-            cobro_aprobado_por = $2,
-            cobro_aprobado_at = NOW()
-        WHERE id = $3 AND empresa_id = $4
-          AND COALESCE(estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
-        RETURNING id
+        UPDATE sales
+        SET collection_status = $1,
+            collection_approved_by = $2,
+            collection_approved_at = NOW(),
+            collection_resolution_note = $5,
+            collection_resolution_at = NOW(),
+            updated_at = now()
+        WHERE id = $3::uuid AND empresa_id = $4
+          AND COALESCE(collection_status,'pendiente') IN ('pendiente_aprobacion','en_proceso')
+        RETURNING id::text AS id
       `,
-      [nextStatus, session.username, saleId, session.companyId],
+      [nextStatus, session.username, saleId, session.companyId, resolutionNote],
     );
     assertResolvedOneRow(updateResult.rows);
 
@@ -383,16 +468,23 @@ export async function approveCollection(session: AuthSession, saleId: number) {
       "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
       [
         "cobro.aprobado",
-        JSON.stringify({ id: saleId, estado: nextStatus, monto: amount, usuario: session.username }),
+        JSON.stringify({
+          id: saleId,
+          estado: nextStatus,
+          monto: amount,
+          saldo_pendiente: nextOutstanding,
+          usuario: session.username,
+        }),
         session.companyId,
       ],
     );
 
+    clearReadQueryCache();
     return { id: saleId, status: nextStatus, amount };
   });
 }
 
-export async function rejectCollection(session: AuthSession, saleId: number, reason: string) {
+export async function rejectCollection(session: AuthSession, saleId: string, reason: string) {
   return withCompanyContext(session.companyId, async (client) => {
     await lockCollectionSaleForResolution(client, session.companyId, saleId);
 
@@ -400,25 +492,26 @@ export async function rejectCollection(session: AuthSession, saleId: number, rea
       ? `Cobro rechazado por ${session.username}: ${reason.trim()}`
       : `Cobro rechazado por ${session.username}`;
 
-    const updateResult = await client.query<{ id: number }>(
+    const updateResult = await client.query<{ id: string }>(
       `
-        UPDATE ventas
-        SET estado_cobro = 'pendiente',
-            cobro_metodo = '',
-            cobro_monto_registrado = 0,
-            cobro_fecha = NULL,
-            cobro_destino = '',
-            cobro_operacion = '',
-            cobro_notas = '',
-            cobro_registrado_por = '',
-            cobro_registrado_at = NULL,
-            cobro_aprobado_por = '',
-            cobro_aprobado_at = NULL,
-            cobro_justificacion_proceso = $1,
-            cobro_intento_proceso_at = NOW()
-        WHERE id = $2 AND empresa_id = $3
-          AND COALESCE(estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
-        RETURNING id
+        UPDATE sales
+        SET collection_status = 'pendiente',
+            collection_method = '',
+            collection_registered_amount = 0,
+            collection_date = NULL,
+            collection_destination = '',
+            collection_operation = '',
+            collection_notes = '',
+            collection_registered_by = '',
+            collection_registered_at = NULL,
+            collection_approved_by = '',
+            collection_approved_at = NULL,
+            collection_resolution_note = $1,
+            collection_resolution_at = NOW(),
+            updated_at = now()
+        WHERE id = $2::uuid AND empresa_id = $3
+          AND COALESCE(collection_status,'pendiente') IN ('pendiente_aprobacion','en_proceso')
+        RETURNING id::text AS id
       `,
       [note, saleId, session.companyId],
     );
@@ -433,6 +526,7 @@ export async function rejectCollection(session: AuthSession, saleId: number, rea
       ],
     );
 
+    clearReadQueryCache();
     return { id: saleId, status: "pendiente" };
   });
 }

@@ -45,7 +45,7 @@ type DbUser = {
   company_role: string | null;
 };
 
-function normalizeRole(role: string) {
+export function normalizeRole(role: string) {
   return (
     {
       Admin: "administrador",
@@ -85,6 +85,18 @@ export function supabaseServiceRoleKey() {
 
 export function isStaffRole(role: string) {
   return STAFF_ROLES.has(normalizeRole(role));
+}
+
+export function publicSessionUser(session: AuthSession) {
+  return {
+    userId: session.userId,
+    username: session.username,
+    email: session.email,
+    displayName: session.displayName,
+    role: session.role,
+    companyId: session.companyId,
+    companyName: session.companyName,
+  };
 }
 
 async function signInWithPassword(email: string, password: string) {

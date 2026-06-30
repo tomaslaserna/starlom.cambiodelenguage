@@ -1,19 +1,14 @@
 import { ModulePage } from "@/components/module-page";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency } from "@/lib/format";
 import { getSalaryPlan } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/page-auth";
+import { ADMIN_SALARIES_READ_PERMISSION } from "@/lib/route-auth";
 
 export default async function SalariesPage() {
   const session = await requireStaffSession();
-  const salaries = await fastOr(getSalaryPlan(session.companyId), {
-    employees: [],
-    meta: {
-      activeCount: 0,
-      monthlyCost: 0,
-      payable: 0,
-    },
-  });
+  await requirePagePermission(session, [ADMIN_SALARIES_READ_PERMISSION]);
+  const salaries = await getSalaryPlan(session.companyId);
 
   return (
     <ModulePage

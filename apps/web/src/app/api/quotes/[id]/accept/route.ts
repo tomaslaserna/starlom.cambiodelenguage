@@ -13,7 +13,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const session = await requireApiSession([{ resource: "presupuestos", action: "aprobar" }]);
     const { id } = await context.params;
-    const data = await acceptQuote(session.companyId, id);
+    const data = await acceptQuote(session, id);
     return ok({ data });
   } catch (error) {
     return handleApiError(error);

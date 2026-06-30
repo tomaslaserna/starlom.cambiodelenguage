@@ -1,20 +1,15 @@
-import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { requireApiAccess } from "@/lib/api-auth";
-import { companyIdFromRequest } from "@/lib/company";
 import { listPendingCollections } from "@/lib/collections";
+import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
 
-export async function GET(request: NextRequest) {
-  const unauthorized = requireApiAccess(request);
-  if (unauthorized) return unauthorized;
-
+export async function GET() {
   try {
-    const data = await listPendingCollections(companyIdFromRequest(request));
+    const session = await requireApiSession([{ resource: "cobranzas", action: "ver" }]);
+    const data = await listPendingCollections(session.companyId);
     return ok({ data });
   } catch (error) {
     return handleApiError(error);
   }
 }
-

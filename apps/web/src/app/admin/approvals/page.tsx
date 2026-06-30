@@ -15,8 +15,8 @@ import {
   StatusBadge,
   type StatusBadgeTone,
 } from "@/components/ui";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { redirect } from "next/navigation";
 import {
   approvalCenterAccessForSession,
   canOperateApprovalSource,
@@ -37,15 +37,8 @@ function sourceTone(source: ApprovalSource): StatusBadgeTone {
 export default async function ApprovalsPage() {
   const session = await requireStaffSession();
   const approvalAccess = await approvalCenterAccessForSession(session);
-  const approvals = await fastOr(listApprovalCenter(session.companyId, approvalAccess), {
-    items: [],
-    meta: {
-      total: 0,
-      collections: 0,
-      requests: 0,
-      amount: 0,
-    },
-  });
+  if (!approvalAccess.collections && !approvalAccess.requests) redirect("/");
+  const approvals = await listApprovalCenter(session.companyId, approvalAccess);
 
   return (
     <ModulePage
@@ -104,13 +97,13 @@ export default async function ApprovalsPage() {
                     <DataTableRow key={`${item.source}-${item.id}`}>
                       <DataTableCell>
                         <StatusBadge tone={sourceTone(item.source)}>{sourceLabel(item.source)}</StatusBadge>
-                        <div className="mt-2 max-w-[220px] text-xs leading-5 text-[color:var(--muted)]">
+                        <div className="mt-2 max-w-55 text-xs leading-5 text-(--muted)">
                           {item.type || "-"}
                         </div>
                       </DataTableCell>
                       <DataTableCell>
                         <div className="font-medium">{item.title}</div>
-                        <div className="mt-1 max-w-[320px] text-xs leading-5 text-[color:var(--muted)]">
+                        <div className="mt-1 max-w-80 text-xs leading-5 text-(--muted)">
                           {item.detail || "-"}
                         </div>
                       </DataTableCell>
@@ -124,7 +117,7 @@ export default async function ApprovalsPage() {
                       </DataTableCell>
                       <DataTableCell>
                         {canOperateItem ? (
-                          <div className="grid min-w-[300px] gap-2">
+                          <div className="grid min-w-75 gap-2">
                             <form action={approveApprovalAction}>
                               <input name="id" type="hidden" value={item.id} />
                               <input name="source" type="hidden" value={item.source} />
@@ -165,7 +158,7 @@ export default async function ApprovalsPage() {
                             </form>
                           </div>
                         ) : (
-                          <span className="text-xs text-[color:var(--muted)]">Sin permiso</span>
+                          <span className="text-xs text-(--muted)">Sin permiso</span>
                         )}
                       </DataTableCell>
                     </DataTableRow>

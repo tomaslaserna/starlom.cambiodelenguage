@@ -1,9 +1,8 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { requireApiAccess } from "@/lib/api-auth";
-import { companyIdFromRequest } from "@/lib/company";
 import { getDeliveryItems } from "@/lib/deliveries";
-import { positiveId } from "@/lib/request-body";
+import { uuidParam } from "@/lib/request-body";
+import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
 
@@ -12,12 +11,10 @@ type RouteContext = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const unauthorized = requireApiAccess(request);
-  if (unauthorized) return unauthorized;
-
   try {
+    const session = await requireApiSession([{ resource: "pedidos", action: "ver" }]);
     const { id } = await context.params;
-    const data = await getDeliveryItems(companyIdFromRequest(request), positiveId(id, "Remito"));
+    const data = await getDeliveryItems(session.companyId, uuidParam(id, "Remito"));
     return ok({ data });
   } catch (error) {
     return handleApiError(error);

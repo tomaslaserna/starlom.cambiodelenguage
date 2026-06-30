@@ -1,19 +1,14 @@
 import { ModulePage } from "@/components/module-page";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getCashflow } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/page-auth";
+import { ADMIN_CASHFLOW_READ_PERMISSION, ADMIN_TREASURY_READ_PERMISSION } from "@/lib/route-auth";
 
 export default async function CashFlowPage() {
   const session = await requireStaffSession();
-  const cashflow = await fastOr(getCashflow(session.companyId), {
-    data: [],
-    meta: {
-      inflow: 0,
-      outflow: 0,
-      net: 0,
-    },
-  });
+  await requirePagePermission(session, [ADMIN_CASHFLOW_READ_PERMISSION, ADMIN_TREASURY_READ_PERMISSION]);
+  const cashflow = await getCashflow(session.companyId);
 
   return (
     <ModulePage

@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { handleApiError } from "@/lib/api-response";
 import { buildDeliveryPdf } from "@/lib/pdf/documents";
 import { pdfResponse } from "@/lib/pdf/renderer";
-import { positiveId } from "@/lib/request-body";
+import { uuidParam } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
     const file = await buildDeliveryPdf(
       session.companyId,
-      positiveId(id, "Remito"),
+      uuidParam(id, "Remito"),
       request.nextUrl.searchParams.get("prices") === "1",
     );
     return pdfResponse(file, request.nextUrl.searchParams.get("download") !== "1");

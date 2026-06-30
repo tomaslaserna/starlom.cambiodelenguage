@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import type { AuthSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
 import { PresenceIndicator } from "@/components/presence-indicator";
-import { RouteWarmup } from "@/components/route-warmup";
 import { ShellNavigation } from "@/components/shell-navigation";
 import { ButtonLink } from "@/components/ui";
 import {
@@ -62,14 +61,7 @@ export async function ModulePage({
 }: ModulePageProps) {
   let indicators = emptyNavigationIndicators();
   const fallbackAuthorization: NavigationAuthorization = {
-    allowedPermissionKeys: new Set([
-      "clientes.ver",
-      "proveedores.ver",
-      "productos.ver",
-      "empleados.ver",
-      "cobranzas.ver",
-      "cobranzas.aprobar",
-    ]),
+    allowedPermissionKeys: new Set<string>(),
   };
   const authorization =
     navigationAuthorization ??
@@ -82,7 +74,6 @@ export async function ModulePage({
 
   return (
     <div className="min-h-screen overflow-visible bg-[#f5f7fb] text-foreground lg:grid lg:h-screen lg:grid-cols-[260px_minmax(0,1fr)] lg:overflow-hidden">
-      <RouteWarmup />
       <aside className="sticky top-0 hidden h-screen border-r border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_48%,#073f94_100%)] text-white shadow-[8px_0_30px_rgba(7,63,148,0.22)] lg:flex lg:flex-col">
         <div className="border-b border-white/14 px-4 py-4">
           <BrandBlock />

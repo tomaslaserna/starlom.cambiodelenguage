@@ -1,10 +1,18 @@
 import { ModulePage } from "@/components/module-page";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { listPurchases } from "@/lib/purchases";
-import { listProducts } from "@/lib/catalog";
-import { listSuppliers } from "@/lib/catalog-management";
+import {
+  listPurchaseFormProducts,
+  listPurchaseFormSuppliers,
+  listPurchases,
+} from "@/lib/purchases";
 import { requireStaffSession } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/page-auth";
+import {
+  PURCHASES_CREATE_PERMISSION,
+  PURCHASES_EDIT_PERMISSION,
+  PURCHASES_READ_PERMISSION,
+  sessionAllows,
+} from "@/lib/route-auth";
 import {
   Button,
   ButtonLink,
@@ -132,20 +140,21 @@ function packageStatusTone(value: string): StatusBadgeTone {
 
 export default async function PurchasesPage({ searchParams }: PurchasesPageProps) {
   const session = await requireStaffSession();
+  await requirePagePermission(session, [PURCHASES_READ_PERMISSION]);
   const params = await searchParams;
   const query = params.q?.trim().toLowerCase() ?? "";
   const status = params.status?.trim() ?? "";
   const type = params.type?.trim() ?? "";
   const view = viewForType(type);
-  const showCreateForm = view === purchaseViews.nueva;
+  const [canCreatePurchases, canEditPurchases] = await Promise.all([
+    sessionAllows(session, [PURCHASES_CREATE_PERMISSION]),
+    sessionAllows(session, [PURCHASES_EDIT_PERMISSION]),
+  ]);
+  const showCreateForm = view === purchaseViews.nueva && canCreatePurchases;
   const [allPurchases, suppliers, products] = await Promise.all([
-    fastOr(listPurchases(session.companyId), []),
-    showCreateForm
-      ? fastOr(listSuppliers({ companyId: session.companyId, pageSize: "100" }).then((result) => result.data), [])
-      : Promise.resolve([]),
-    showCreateForm
-      ? fastOr(listProducts({ companyId: session.companyId, pageSize: "100" }).then((result) => result.data), [])
-      : Promise.resolve([]),
+    listPurchases(session.companyId),
+    showCreateForm ? listPurchaseFormSuppliers(session.companyId) : Promise.resolve([]),
+    showCreateForm ? listPurchaseFormProducts(session.companyId) : Promise.resolve([]),
   ]);
   const purchases = allPurchases.filter(
     (item) =>
@@ -361,6 +370,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                               Devol.
                             </ButtonLink>
                           </div>
+                          {canEditPurchases ? (
                           <form action={updatePurchaseStatusAction} className="flex min-w-0 gap-2">
                             <input name="id" type="hidden" value={purchase.id} />
                             <label className="sr-only" htmlFor={statusSelectId}>
@@ -387,7 +397,8 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                               Guardar
                             </Button>
                           </form>
-                          {purchase.status === "recibida" ? (
+                          ) : null}
+                          {purchase.status === "recibida" && canEditPurchases ? (
                             <form action={uploadPurchaseReceiptAction} className="grid gap-2">
                               <input name="id" type="hidden" value={purchase.id} />
                               <Field className="gap-1" htmlFor={receiptInputId} label="Recibo">

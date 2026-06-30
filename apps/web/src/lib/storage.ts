@@ -19,7 +19,7 @@ type StorageConfig = {
 
 type ImageUploadInput = {
   file: File;
-  folder: "productos" | "recibos";
+  folder: "recibos";
   namePrefix: string;
   maxBytes?: number;
 };
@@ -29,7 +29,7 @@ function storageConfig(): StorageConfig {
     /\/+$/,
     "",
   );
-  const key = envValue("SUPABASE_SERVICE_ROLE_KEY") || envValue("SUPABASE_SERVICE_KEY") || "";
+  const key = envValue("SUPABASE_SERVICE_ROLE_KEY") || "";
   const bucket = envValue("STARLIM_STORAGE_BUCKET") || DEFAULT_BUCKET;
 
   if (!url || !key) {

@@ -1,4 +1,6 @@
 import { queryWithCompanyContext } from "@/lib/db";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 
 function monthBounds(date = new Date()) {
   const current = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
@@ -28,44 +30,21 @@ type AdminMetrics = {
 };
 
 const ADMIN_METRICS_CACHE_TTL_MS = 120_000;
-const ADMIN_METRICS_FAST_TIMEOUT_MS = 50;
 const adminMetricsCache = new Map<number, { expiresAt: number; value: AdminMetrics }>();
-
-function emptyAdminMetrics(): AdminMetrics {
-  return {
-    period: monthBounds(),
-    sales: { current: 0, previous: 0, deltaPercent: null },
-    collections: { current: 0, previous: 0, deltaPercent: null },
-    margin: { grossCost: 0, grossProfit: 0, operatingCosts: 0, operatingResult: 0 },
-    stock: { value: 0, units: 0, products: 0 },
-    purchases: { current: 0, openTotal: 0 },
-    receivables: { openTotal: 0 },
-  };
-}
 
 export async function getAdminMetrics(companyId: number): Promise<AdminMetrics> {
   const cached = adminMetricsCache.get(companyId);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const loadPromise = loadAdminMetrics(companyId)
-    .then((value) => {
-      adminMetricsCache.set(companyId, {
-        expiresAt: Date.now() + ADMIN_METRICS_CACHE_TTL_MS,
-        value,
-      });
-      return value;
-    })
-    .catch((error) => {
-      if (cached) return cached.value;
-      throw error;
-    });
-
-  if (cached) return cached.value;
-
-  return Promise.race([
-    loadPromise,
-    new Promise<AdminMetrics>((resolve) => setTimeout(() => resolve(emptyAdminMetrics()), ADMIN_METRICS_FAST_TIMEOUT_MS)),
-  ]);
+  const value = await loadAdminMetrics(companyId).catch((error) => {
+    if (cached) return cached.value;
+    throw error;
+  });
+  adminMetricsCache.set(companyId, {
+    expiresAt: Date.now() + ADMIN_METRICS_CACHE_TTL_MS,
+    value,
+  });
+  return value;
 }
 
 async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
@@ -87,50 +66,74 @@ async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
   }>(
     companyId,
     `
-      WITH sales AS (
+      WITH sales_summary AS (
         SELECT
-          COALESCE(SUM(monto) FILTER (
-            WHERE fecha >= $2 AND fecha < $3 AND COALESCE(estado_pedido,'entregado') = 'entregado'
+          COALESCE(SUM(total_amount) FILTER (
+            WHERE sale_date >= $2 AND sale_date < $3
+              AND ${normalizedOrderStatusSql("s")} = 'entregado'
           ), 0) AS sales_current,
-          COALESCE(SUM(monto) FILTER (
-            WHERE fecha >= $1 AND fecha < $2 AND COALESCE(estado_pedido,'entregado') = 'entregado'
+          COALESCE(SUM(total_amount) FILTER (
+            WHERE sale_date >= $1 AND sale_date < $2
+              AND ${normalizedOrderStatusSql("s")} = 'entregado'
           ), 0) AS sales_previous,
-          COALESCE(SUM(monto) FILTER (
-            WHERE fecha >= $2 AND fecha < $3
-              AND COALESCE(estado_cobro,'pendiente') = 'recibido'
-              AND COALESCE(estado_pedido,'entregado') = 'entregado'
-          ), 0) AS collections_current,
-          COALESCE(SUM(monto) FILTER (
-            WHERE fecha >= $1 AND fecha < $2
-              AND COALESCE(estado_cobro,'pendiente') = 'recibido'
-              AND COALESCE(estado_pedido,'entregado') = 'entregado'
-          ), 0) AS collections_previous,
-          COALESCE(SUM(monto) FILTER (
-            WHERE COALESCE(estado_cobro,'pendiente') IN ('pendiente','vencido','pendiente_aprobacion','en_proceso')
-              AND COALESCE(estado_pedido,'entregado') = 'entregado'
+          COALESCE(SUM(total_amount) FILTER (
+            WHERE COALESCE(collection_status,'pendiente') IN ('pendiente','vencido','pendiente_aprobacion','en_proceso')
+              AND ${normalizedOrderStatusSql("s")} = 'entregado'
           ), 0) AS open_sales_total
-        FROM ventas
+        FROM sales s
+        WHERE s.empresa_id = $4
+          AND ${canonicalSalesSourceSql("s")}
+      ),
+      payments_summary AS (
+        SELECT
+          COALESCE(SUM(amount) FILTER (
+            WHERE payment_date >= $2 AND payment_date < $3
+              AND COALESCE(status::text, 'registrado') NOT IN ('cancelado','rechazado')
+          ), 0) AS collections_current,
+          COALESCE(SUM(amount) FILTER (
+            WHERE payment_date >= $1 AND payment_date < $2
+              AND COALESCE(status::text, 'registrado') NOT IN ('cancelado','rechazado')
+          ), 0) AS collections_previous
+        FROM payments
         WHERE empresa_id = $4
       ),
       costs AS (
         SELECT
-          COALESCE(SUM(dv.cantidad * p.costo) FILTER (
-            WHERE v.fecha >= $2 AND v.fecha < $3 AND COALESCE(v.estado_pedido,'entregado') = 'entregado'
+          COALESCE(SUM(COALESCE(v.source_cost_amount, line_totals.item_cost, 0)) FILTER (
+            WHERE v.sale_date >= $2 AND v.sale_date < $3
+              AND ${normalizedOrderStatusSql("v")} = 'entregado'
           ), 0) AS gross_cost_current,
-          COALESCE(SUM(dv.cantidad * p.costo) FILTER (
-            WHERE v.fecha >= $1 AND v.fecha < $2 AND COALESCE(v.estado_pedido,'entregado') = 'entregado'
+          COALESCE(SUM(COALESCE(v.source_cost_amount, line_totals.item_cost, 0)) FILTER (
+            WHERE v.sale_date >= $1 AND v.sale_date < $2
+              AND ${normalizedOrderStatusSql("v")} = 'entregado'
           ), 0) AS gross_cost_previous
-        FROM detalle_ventas dv
-        JOIN ventas v ON v.id = dv.id_venta AND v.empresa_id = dv.empresa_id
-        JOIN productos p ON p.id = dv.id_producto AND p.empresa_id = dv.empresa_id
-        WHERE dv.empresa_id = $4
+        FROM sales v
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(dv.quantity * COALESCE(p.cost, 0)), 0) AS item_cost
+          FROM sale_items dv
+          LEFT JOIN products p ON p.id = dv.product_id AND p.empresa_id = dv.empresa_id
+          WHERE dv.sale_id = v.id AND dv.empresa_id = v.empresa_id
+        ) line_totals ON true
+        WHERE v.empresa_id = $4
+          AND ${canonicalSalesSourceSql("v")}
       ),
       stock AS (
-        SELECT COALESCE(SUM(stock * costo) FILTER (WHERE COALESCE(stock, 0) > 0), 0) AS stock_value,
-               COALESCE(SUM(stock) FILTER (WHERE COALESCE(stock, 0) > 0), 0) AS stock_units,
-               COUNT(*) FILTER (WHERE COALESCE(stock, 0) <= 0) AS stock_products
-        FROM productos
-        WHERE empresa_id = $4
+        SELECT COALESCE(SUM(current_stock * COALESCE(cost, 0)) FILTER (WHERE current_stock > 0), 0) AS stock_value,
+               COALESCE(SUM(current_stock) FILTER (WHERE current_stock > 0), 0) AS stock_units,
+               COUNT(*) FILTER (WHERE current_stock <= 0) AS stock_products
+        FROM (
+          SELECT p.id, p.cost,
+                 COALESCE(SUM(
+                   CASE
+                     WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
+                     ELSE -sm.quantity
+                   END
+                 ), 0) AS current_stock
+          FROM products p
+          LEFT JOIN stock_movements sm ON sm.product_id = p.id AND sm.empresa_id = p.empresa_id
+          WHERE p.empresa_id = $4 AND p.active = true
+          GROUP BY p.id, p.cost
+        ) product_stock
       ),
       operating AS (
         SELECT COALESCE(SUM(monto), 0) AS operating_costs_current
@@ -150,11 +153,11 @@ async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
         WHERE empresa_id = $4 AND activo = TRUE
       ),
       purchases AS (
-        SELECT COALESCE(SUM(total) FILTER (WHERE fecha >= $2 AND fecha < $3), 0) AS purchases_current,
-               COALESCE(SUM(GREATEST(total - COALESCE(monto_pagado, 0), 0)) FILTER (
-                 WHERE COALESCE(pagado,0) = 0 AND estado <> 'cancelada'
+        SELECT COALESCE(SUM(total_amount) FILTER (WHERE purchase_date >= $2 AND purchase_date < $3), 0) AS purchases_current,
+               COALESCE(SUM(GREATEST(total_amount - COALESCE(paid_amount, 0), 0)) FILTER (
+                 WHERE status <> 'cancelada'
                ), 0) AS open_purchases_total
-        FROM compras_registro
+        FROM purchases
         WHERE empresa_id = $4
       )
       SELECT sales_current::text, sales_previous::text,
@@ -164,7 +167,7 @@ async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
              (operating_costs_current + salaries_current)::text AS operating_costs_current,
              purchases_current::text,
              open_sales_total::text, open_purchases_total::text
-      FROM sales, costs, stock, operating, salaries, purchases
+      FROM sales_summary, payments_summary, costs, stock, operating, salaries, purchases
     `,
     [bounds.previousStart, bounds.currentStart, bounds.nextStart, companyId],
   );
@@ -210,7 +213,7 @@ async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
 
 export async function getAccountsPayable(companyId: number) {
   const purchases = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     provider: string;
     concept: string;
     total: string;
@@ -221,21 +224,20 @@ export async function getAccountsPayable(companyId: number) {
   }>(
     companyId,
     `
-      SELECT cr.id,
-             COALESCE(p.nombre, 'Compra #' || cr.id::text) AS provider,
-             COALESCE(cr.descripcion, 'Compra pendiente') AS concept,
-             cr.total::text AS total,
-             COALESCE(cr.monto_pagado, 0)::text AS paid,
-             GREATEST(cr.total - COALESCE(cr.monto_pagado, 0), 0)::text AS balance,
-             cr.fecha::text AS date,
-             cr.estado AS status
-      FROM compras_registro cr
-      LEFT JOIN proveedores p ON p.id = cr.id_proveedor AND p.empresa_id = cr.empresa_id
-      WHERE cr.empresa_id = $1
-        AND COALESCE(cr.pagado, 0) = 0
-        AND cr.estado = 'recibida'
-        AND GREATEST(cr.total - COALESCE(cr.monto_pagado, 0), 0) > 0
-      ORDER BY cr.fecha ASC NULLS LAST, cr.id ASC
+      SELECT p.id,
+             COALESCE(s.display_name, 'Compra #' || p.id::text) AS provider,
+             COALESCE(p.description, 'Compra pendiente') AS concept,
+             p.total_amount::text AS total,
+             COALESCE(p.paid_amount, 0)::text AS paid,
+             GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0)::text AS balance,
+             p.purchase_date::text AS date,
+             p.status AS status
+      FROM purchases p
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      WHERE p.empresa_id = $1
+        AND p.status = 'recibida'
+        AND GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0) > 0
+      ORDER BY p.purchase_date ASC NULLS LAST, p.created_at ASC
     `,
     [companyId],
   );
@@ -248,7 +250,7 @@ export async function getAccountsPayable(companyId: number) {
     .slice(0, 10);
 
   const salaries = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     employee: string;
     monthly: string;
     bonus: string;
@@ -258,7 +260,7 @@ export async function getAccountsPayable(companyId: number) {
     companyId,
     `
       SELECT c.id,
-             COALESCE(u.nombre_completo, u.usuario, 'Empleado #' || c.id_usuario::text) AS employee,
+             COALESCE(p.full_name, p.username, c.employee_name, 'Empleado #' || c.id::text) AS employee,
              c.sueldo_mensual::text AS monthly,
              CASE WHEN COALESCE(c.aguinaldo_aplica, TRUE) THEN (c.sueldo_mensual / 12)::text ELSE '0' END AS bonus,
              (c.sueldo_mensual * (COALESCE(c.cargas_pct, 0) / 100))::text AS charges,
@@ -266,11 +268,11 @@ export async function getAccountsPayable(companyId: number) {
                WHERE m.periodo >= $2 AND m.periodo < $3 AND m.tipo IN ('pago','retiro')
              ), 0)::text AS paid
       FROM admin_sueldos_config c
-      LEFT JOIN usuarios u ON u.id = c.id_usuario
+      LEFT JOIN profiles p ON p.id = c.profile_id
       LEFT JOIN admin_sueldo_movimientos m
-        ON m.empresa_id = c.empresa_id AND m.id_usuario = c.id_usuario
+        ON m.empresa_id = c.empresa_id AND m.profile_id IS NOT DISTINCT FROM c.profile_id
       WHERE c.empresa_id = $1 AND c.activo = TRUE
-      GROUP BY c.id, c.id_usuario, u.nombre_completo, u.usuario, c.sueldo_mensual,
+      GROUP BY c.id, c.profile_id, p.full_name, p.username, c.employee_name, c.sueldo_mensual,
                c.aguinaldo_aplica, c.cargas_pct
       ORDER BY employee ASC
     `,
@@ -399,7 +401,7 @@ export async function getAccountsPayable(companyId: number) {
 
 export async function getCashflow(companyId: number) {
   const receivables = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     label: string;
     amount: string;
     date: string | null;
@@ -408,14 +410,15 @@ export async function getCashflow(companyId: number) {
     companyId,
     `
       SELECT id,
-             nombre_cliente AS label,
-             monto::text AS amount,
-             COALESCE(vencimiento_cobro::date, fecha)::text AS date,
+             COALESCE(client_name, 'Venta #' || COALESCE(sale_number, id::text)) AS label,
+             total_amount::text AS amount,
+             sale_date::text AS date,
              'inflow' AS kind
-      FROM ventas
+      FROM sales
       WHERE empresa_id = $1
-        AND COALESCE(estado_cobro,'pendiente') IN ('pendiente','vencido','en_proceso','pendiente_aprobacion')
-        AND COALESCE(estado_pedido,'entregado') = 'entregado'
+        AND ${canonicalSalesSourceSql("sales")}
+        AND COALESCE(collection_status,'pendiente') IN ('pendiente','vencido','en_proceso','pendiente_aprobacion')
+        AND ${normalizedOrderStatusSql("sales")} = 'entregado'
     `,
     [companyId],
   );
@@ -429,17 +432,16 @@ export async function getCashflow(companyId: number) {
   }>(
     companyId,
     `
-      SELECT cr.id,
-             COALESCE(p.nombre, 'Compra #' || cr.id::text) AS label,
-             GREATEST(cr.total - COALESCE(cr.monto_pagado, 0), 0)::text AS amount,
-             cr.fecha::text AS date,
+      SELECT p.id,
+             COALESCE(s.display_name, 'Compra #' || p.id::text) AS label,
+             GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0)::text AS amount,
+             p.purchase_date::text AS date,
              'outflow' AS kind
-      FROM compras_registro cr
-      LEFT JOIN proveedores p ON p.id = cr.id_proveedor AND p.empresa_id = cr.empresa_id
-      WHERE cr.empresa_id = $1
-        AND COALESCE(cr.pagado,0) = 0
-        AND cr.estado <> 'cancelada'
-        AND GREATEST(cr.total - COALESCE(cr.monto_pagado, 0), 0) > 0
+      FROM purchases p
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      WHERE p.empresa_id = $1
+        AND p.status <> 'cancelada'
+        AND GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0) > 0
     `,
     [companyId],
   );
@@ -454,7 +456,7 @@ export async function getCashflow(companyId: number) {
     companyId,
     `
       SELECT c.id,
-             COALESCE(u.nombre_completo, u.usuario, 'Empleado #' || c.id_usuario::text) AS label,
+             COALESCE(p.full_name, p.username, c.employee_name, 'Empleado #' || c.id::text) AS label,
              (
                c.sueldo_mensual
                + CASE WHEN COALESCE(c.aguinaldo_aplica, TRUE) THEN c.sueldo_mensual / 12 ELSE 0 END
@@ -463,7 +465,7 @@ export async function getCashflow(companyId: number) {
              (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month - 1 day')::date::text AS date,
              'outflow' AS kind
       FROM admin_sueldos_config c
-      LEFT JOIN usuarios u ON u.id = c.id_usuario
+      LEFT JOIN profiles p ON p.id = c.profile_id
       WHERE c.empresa_id = $1 AND c.activo = TRUE
     `,
     [companyId],

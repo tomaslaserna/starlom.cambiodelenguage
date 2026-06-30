@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { paySupplierPurchase, supplierPaymentFromBody } from "@/lib/purchases";
-import { positiveId, readRequestBody } from "@/lib/request-body";
+import { paySupplierPurchase, purchaseIdFromParam, supplierPaymentFromBody } from "@/lib/purchases";
+import { readRequestBody } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = await readRequestBody(request);
     const data = await paySupplierPurchase(
       session,
-      positiveId(id, "Compra"),
+      purchaseIdFromParam(id, "Compra"),
       supplierPaymentFromBody(body),
     );
     return ok({ data });
@@ -25,4 +25,3 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return handleApiError(error);
   }
 }
-

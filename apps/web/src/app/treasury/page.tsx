@@ -1,20 +1,14 @@
 import { ModulePage } from "@/components/module-page";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency } from "@/lib/format";
 import { getTreasuryBalances } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/page-auth";
+import { ADMIN_TREASURY_READ_PERMISSION } from "@/lib/route-auth";
 
 export default async function TreasuryPage() {
   const session = await requireStaffSession();
-  const treasury = await fastOr(getTreasuryBalances(session.companyId), {
-    accounts: [],
-    meta: {
-      total: 0,
-      cash: 0,
-      bank: 0,
-      other: 0,
-    },
-  });
+  await requirePagePermission(session, [ADMIN_TREASURY_READ_PERMISSION]);
+  const treasury = await getTreasuryBalances(session.companyId);
 
   return (
     <ModulePage

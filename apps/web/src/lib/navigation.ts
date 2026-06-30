@@ -1,11 +1,26 @@
 import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
 import {
+  ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION,
+  ADMIN_BALANCE_READ_PERMISSION,
+  ADMIN_CASHFLOW_READ_PERMISSION,
+  ADMIN_DIVIDENDS_READ_PERMISSION,
+  ADMIN_METRICS_READ_PERMISSION,
+  ADMIN_MOVEMENTS_READ_PERMISSION,
+  ADMIN_SALARIES_READ_PERMISSION,
+  ADMIN_TREASURY_READ_PERMISSION,
   COLLECTIONS_APPROVE_PERMISSION,
   COLLECTIONS_READ_PERMISSION,
   CUSTOMERS_READ_PERMISSION,
   EMPLOYEES_READ_PERMISSION,
+  ORDERS_CREATE_PERMISSION,
+  ORDERS_READ_PERMISSION,
   PRODUCTS_READ_PERMISSION,
+  PURCHASES_READ_PERMISSION,
+  QUOTES_READ_PERMISSION,
+  REPORTS_READ_PERMISSION,
+  SALES_READ_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
   sessionAllows,
   sessionCanApproveCollections,
@@ -18,9 +33,8 @@ export type NavigationBadgeKey =
   | "collectionApprovals"
   | "messages"
   | "tasks"
-  | "ordersReceived"
-  | "ordersInProcess"
-  | "ordersPendingDelivery"
+  | "ordersLoaded"
+  | "ordersConfirmed"
   | "quotes"
   | "payables"
   | "purchases";
@@ -48,14 +62,13 @@ export type NavigationAuthorization = {
 
 export const navigationGroups: NavigationGroup[] = [
   { href: "/", label: "Inicio", active: "home" },
-  { href: "/metrics", label: "Metricas", active: "metrics" },
   {
     label: "Balance",
     active: "balance",
     items: [
-      { href: "/balance", label: "Resumen", active: "balance" },
-      { href: "/balance/salaries", label: "Sueldos", active: "balance" },
-      { href: "/balance/dividends", label: "Dividendos", active: "balance" },
+      { href: "/balance", label: "Resumen", active: "balance", permission: ADMIN_BALANCE_READ_PERMISSION },
+      { href: "/balance/salaries", label: "Sueldos", active: "balance", permission: ADMIN_SALARIES_READ_PERMISSION },
+      { href: "/balance/dividends", label: "Dividendos", active: "balance", permission: ADMIN_DIVIDENDS_READ_PERMISSION },
     ],
   },
   {
@@ -63,45 +76,71 @@ export const navigationGroups: NavigationGroup[] = [
     active: "treasury",
     badge: "payables",
     items: [
-      { href: "/treasury", label: "Saldos actuales", active: "treasury" },
-      { href: "/treasury/cash-flow", label: "Cash Flow", active: "treasury" },
-      { href: "/treasury/accounts-payable", label: "Cuentas por pagar", active: "treasury", badge: "payables" },
-      { href: "/treasury/movements", label: "Registro de movimientos", active: "treasury" },
+      { href: "/treasury", label: "Saldos actuales", active: "treasury", permission: ADMIN_TREASURY_READ_PERMISSION },
+      { href: "/treasury/cash-flow", label: "Cash Flow", active: "treasury", permission: ADMIN_CASHFLOW_READ_PERMISSION },
+      {
+        href: "/treasury/accounts-payable",
+        label: "Cuentas por pagar",
+        active: "treasury",
+        badge: "payables",
+        permission: ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION,
+      },
+      {
+        href: "/treasury/movements",
+        label: "Registro de movimientos",
+        active: "treasury",
+        permission: ADMIN_MOVEMENTS_READ_PERMISSION,
+      },
     ],
   },
   {
     label: "Pedidos",
     active: "orders",
-    badge: "ordersInProcess",
+    badge: "ordersConfirmed",
     items: [
-      { href: "/orders", label: "Dashboard", active: "orders" },
-      { href: "/orders?status=recibido", label: "Recibidos", active: "orders", badge: "ordersReceived" },
-      { href: "/orders?status=en_proceso", label: "En proceso", active: "orders", badge: "ordersInProcess" },
+      { href: "/orders", label: "Dashboard", active: "orders", permission: ORDERS_READ_PERMISSION },
       {
-        href: "/orders?status=pendiente_entrega",
-        label: "Pendiente entrega",
+        href: "/orders?status=cargado",
+        label: "Cargados",
         active: "orders",
-        badge: "ordersPendingDelivery",
+        badge: "ordersLoaded",
+        permission: ORDERS_READ_PERMISSION,
+      },
+      {
+        href: "/orders?status=confirmado",
+        label: "Confirmados",
+        active: "orders",
+        badge: "ordersConfirmed",
+        permission: ORDERS_READ_PERMISSION,
+      },
+      {
+        href: "/orders?status=entregado",
+        label: "Entregados",
+        active: "orders",
+        permission: ORDERS_READ_PERMISSION,
       },
     ],
   },
   {
-    label: "Ventas",
-    active: "sales",
+    label: "Presupuestador",
+    active: "quotes",
     badge: "quotes",
     items: [
-      { href: "/sales", label: "Ventas", active: "sales" },
-      { href: "/orders/new", label: "Cargar pedido", active: "sales" },
-      { href: "/quotes", label: "Presupuestos", active: "sales", badge: "quotes" },
-      { href: "/billing", label: "Facturacion", active: "billing" },
+      { href: "/orders/new", label: "Cargar pedido", active: "orders", permission: ORDERS_CREATE_PERMISSION },
+      {
+        href: "/quotes",
+        label: "Presupuestador",
+        active: "quotes",
+        badge: "quotes",
+        permission: QUOTES_READ_PERMISSION,
+      },
     ],
   },
+  { href: "/sales", label: "Registro de ventas", active: "sales", permission: SALES_READ_PERMISSION },
   {
     label: "Base de datos",
     active: "database",
     items: [
-      { href: "/database", label: "Resumen", active: "database" },
-      { href: "/employees", label: "Empleados", active: "database", permission: EMPLOYEES_READ_PERMISSION },
       { href: "/products", label: "Precios", active: "database", permission: PRODUCTS_READ_PERMISSION },
       { href: "/pricing", label: "Margenes y listas", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
@@ -122,10 +161,26 @@ export const navigationGroups: NavigationGroup[] = [
     active: "purchases",
     badge: "purchases",
     items: [
-      { href: "/purchases", label: "Nueva compra", active: "purchases" },
-      { href: "/purchases?type=urgente", label: "Urgentes", active: "purchases", badge: "purchases" },
-      { href: "/purchases?type=anticipada", label: "Anticipadas", active: "purchases" },
-      { href: "/purchases?type=solicitud", label: "Solicitudes de compra", active: "purchases" },
+      { href: "/purchases", label: "Nueva compra", active: "purchases", permission: PURCHASES_READ_PERMISSION },
+      {
+        href: "/purchases?type=urgente",
+        label: "Urgentes",
+        active: "purchases",
+        badge: "purchases",
+        permission: PURCHASES_READ_PERMISSION,
+      },
+      {
+        href: "/purchases?type=anticipada",
+        label: "Anticipadas",
+        active: "purchases",
+        permission: PURCHASES_READ_PERMISSION,
+      },
+      {
+        href: "/purchases?type=solicitud",
+        label: "Solicitudes de compra",
+        active: "purchases",
+        permission: PURCHASES_READ_PERMISSION,
+      },
     ],
   },
   {
@@ -140,8 +195,18 @@ export const navigationGroups: NavigationGroup[] = [
         badge: "collectionApprovals",
         permission: COLLECTIONS_READ_PERMISSION,
       },
-      { href: "/treasury/current-accounts", label: "Cuentas corrientes", active: "collections" },
-      { href: "/treasury/movements?type=pago", label: "Pagos proveedores", active: "treasury" },
+      {
+        href: "/treasury/current-accounts",
+        label: "Cuentas corrientes",
+        active: "collections",
+        permission: COLLECTIONS_READ_PERMISSION,
+      },
+      {
+        href: "/treasury/movements?type=pago",
+        label: "Pagos proveedores",
+        active: "treasury",
+        permission: ADMIN_MOVEMENTS_READ_PERMISSION,
+      },
     ],
   },
   {
@@ -150,7 +215,12 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       { href: "/employees", label: "Empleados", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
       { href: "/employees/vendors", label: "Gestion de vendedores", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
-      { href: "/treasury/movements", label: "Registro de movimientos", active: "employees" },
+      {
+        href: "/treasury/movements",
+        label: "Registro de movimientos",
+        active: "employees",
+        permission: ADMIN_MOVEMENTS_READ_PERMISSION,
+      },
     ],
   },
   {
@@ -158,7 +228,8 @@ export const navigationGroups: NavigationGroup[] = [
     active: "admin",
     badge: "approvals",
     items: [
-      { href: "/admin", label: "Panel admin", active: "admin" },
+      { href: "/admin", label: "Panel admin", active: "admin", permission: REPORTS_READ_PERMISSION },
+      { href: "/metrics", label: "Metricas", active: "metrics", permission: ADMIN_METRICS_READ_PERMISSION },
       {
         href: "/admin/approvals",
         label: "Solicitudes y aprobaciones",
@@ -195,7 +266,28 @@ function groupByLabel(label: string) {
 export const navigationSections: NavigationSection[] = [
   {
     label: "Inicio / Panel",
-    groups: [groupByLabel("Inicio"), groupByLabel("Metricas")],
+    groups: [groupByLabel("Inicio")],
+  },
+  {
+    label: "Operaciones",
+    groups: [groupByLabel("Pedidos"), groupByLabel("Registro de ventas"), groupByLabel("Presupuestador")],
+  },
+  {
+    label: "Datos",
+    groups: [groupByLabel("Base de datos"), groupByLabel("Stock")],
+  },
+  {
+    label: "Compras",
+    groups: [groupByLabel("Compras")],
+  },
+  {
+    label: "Administracion",
+    groups: [
+      groupByLabel("Usuarios y permisos"),
+      groupByLabel("Administrador"),
+      groupByLabel("Calendario"),
+      groupByLabel("Mensajes"),
+    ],
   },
   {
     label: "Finanzas",
@@ -204,22 +296,6 @@ export const navigationSections: NavigationSection[] = [
   {
     label: "Tesoreria",
     groups: [groupByLabel("Tesoreria"), groupByLabel("Cobros y pagos")],
-  },
-  {
-    label: "Comercial",
-    groups: [groupByLabel("Pedidos"), groupByLabel("Ventas")],
-  },
-  {
-    label: "Datos",
-    groups: [groupByLabel("Base de datos"), groupByLabel("Stock")],
-  },
-  {
-    label: "Operaciones",
-    groups: [groupByLabel("Compras"), groupByLabel("Calendario"), groupByLabel("Mensajes")],
-  },
-  {
-    label: "Administracion",
-    groups: [groupByLabel("Usuarios y permisos"), groupByLabel("Administrador")],
   },
 ];
 
@@ -235,6 +311,11 @@ type CacheEntry<T> = {
 
 const authorizationCache = new Map<string, CacheEntry<NavigationAuthorization>>();
 const indicatorsCache = new Map<string, CacheEntry<NavigationIndicators>>();
+
+export function clearNavigationCaches() {
+  authorizationCache.clear();
+  indicatorsCache.clear();
+}
 
 function navigationPermissionKey(permission: Permission) {
   return `${permission.resource.trim()}.${permission.action.trim()}`;
@@ -335,9 +416,8 @@ export function emptyNavigationIndicators(): NavigationIndicators {
     collectionApprovals: 0,
     messages: 0,
     tasks: 0,
-    ordersReceived: 0,
-    ordersInProcess: 0,
-    ordersPendingDelivery: 0,
+    ordersLoaded: 0,
+    ordersConfirmed: 0,
     quotes: 0,
     payables: 0,
     purchases: 0,
@@ -355,10 +435,10 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
   ]);
   const shouldCountCollectionApprovals = canReadCollections || canApproveCollections;
   const collectionApprovalsSelect = shouldCountCollectionApprovals
-    ? `(SELECT COUNT(*) FROM ventas
+    ? `(SELECT COUNT(*) FROM sales
          WHERE empresa_id = $1
-           AND COALESCE(estado_cobro,'pendiente') IN ('pendiente_aprobacion','en_proceso')
-           AND COALESCE(estado_pedido,'entregado') = 'entregado')::text`
+           AND COALESCE(collection_status,'pendiente') IN ('pendiente_aprobacion','en_proceso')
+           AND ${normalizedOrderStatusSql("sales")} = 'entregado')::text`
     : `'0'::text`;
 
   const result = await queryWithCompanyContext<{
@@ -366,9 +446,8 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     messages: string;
     personal_tasks: string;
     assigned_tasks: string;
-    orders_received: string;
-    orders_in_process: string;
-    orders_pending_delivery: string;
+    orders_loaded: string;
+    orders_confirmed: string;
     quotes: string;
     payables: string;
     purchases: string;
@@ -389,23 +468,20 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
            AND asignado_a = $2
            AND completado = 0
            AND (fecha_envio IS NULL OR fecha_envio <= NOW()))::text AS assigned_tasks,
-        (SELECT COUNT(*) FROM ventas
-         WHERE empresa_id = $1 AND COALESCE(estado_pedido,'recibido') = 'recibido')::text AS orders_received,
-        (SELECT COUNT(*) FROM ventas
-         WHERE empresa_id = $1 AND COALESCE(estado_pedido,'recibido') = 'en_proceso')::text AS orders_in_process,
-        (SELECT COUNT(*) FROM ventas
-         WHERE empresa_id = $1 AND COALESCE(estado_pedido,'recibido') = 'pendiente_entrega')::text AS orders_pending_delivery,
-        (SELECT COUNT(*) FROM presupuestos
-         WHERE empresa_id = $1 AND estado = 'pendiente')::text AS quotes,
-        (SELECT COUNT(*) FROM compras_registro
+        (SELECT COUNT(*) FROM sales
+         WHERE empresa_id = $1 AND ${normalizedOrderStatusSql("sales")} = 'cargado')::text AS orders_loaded,
+        (SELECT COUNT(*) FROM sales
+         WHERE empresa_id = $1 AND ${normalizedOrderStatusSql("sales")} = 'confirmado')::text AS orders_confirmed,
+        (SELECT COUNT(*) FROM quotes
+         WHERE empresa_id = $1 AND status = 'pendiente')::text AS quotes,
+        (SELECT COUNT(*) FROM purchases
          WHERE empresa_id = $1
-           AND COALESCE(pagado,0) = 0
-           AND estado <> 'cancelada'
-           AND GREATEST(total - COALESCE(monto_pagado, 0), 0) > 0)::text AS payables,
-        (SELECT COUNT(*) FROM compras_registro
+           AND status <> 'cancelada'
+           AND GREATEST(total_amount - COALESCE(paid_amount, 0), 0) > 0)::text AS payables,
+        (SELECT COUNT(*) FROM purchases
          WHERE empresa_id = $1
-           AND estado <> 'cancelada'
-           AND (tipo ILIKE '%urg%' OR estado = 'pendiente'))::text AS purchases
+           AND status <> 'cancelada'
+           AND (purchase_type ILIKE '%urg%' OR status = 'pendiente'))::text AS purchases
     `,
     [session.companyId, session.username],
   );
@@ -418,9 +494,8 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     collectionApprovals: canReadCollections ? collectionApprovals : 0,
     messages: Number(row.messages),
     tasks: Number(row.personal_tasks) + Number(row.assigned_tasks),
-    ordersReceived: Number(row.orders_received),
-    ordersInProcess: Number(row.orders_in_process),
-    ordersPendingDelivery: Number(row.orders_pending_delivery),
+    ordersLoaded: Number(row.orders_loaded),
+    ordersConfirmed: Number(row.orders_confirmed),
     quotes: Number(row.quotes),
     payables: Number(row.payables),
     purchases: Number(row.purchases),

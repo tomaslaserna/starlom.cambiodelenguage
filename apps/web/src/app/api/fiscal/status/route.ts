@@ -1,15 +1,12 @@
-import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { requireApiAccess } from "@/lib/api-auth";
 import { getFiscalStatus } from "@/lib/fiscal";
+import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
 
-export async function GET(request: NextRequest) {
-  const unauthorized = requireApiAccess(request);
-  if (unauthorized) return unauthorized;
-
+export async function GET() {
   try {
+    await requireApiSession([{ resource: "ventas", action: "ver" }]);
     return ok({ data: getFiscalStatus() });
   } catch (error) {
     return handleApiError(error);

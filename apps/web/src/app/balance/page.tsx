@@ -1,28 +1,14 @@
 import { ModulePage } from "@/components/module-page";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { getBalanceDashboard } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/page-auth";
+import { ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION } from "@/lib/route-auth";
 
 export default async function BalancePage() {
   const session = await requireStaffSession();
-  const { metrics, payables, cashflow } = await fastOr(getBalanceDashboard(session.companyId), {
-    metrics: {
-      period: {
-        currentStart: "",
-        nextStart: "",
-        previousStart: "",
-      },
-      sales: { current: 0, previous: 0, deltaPercent: null },
-      collections: { current: 0, previous: 0, deltaPercent: null },
-      margin: { grossCost: 0, grossProfit: 0, operatingCosts: 0, operatingResult: 0 },
-      stock: { value: 0, units: 0, products: 0 },
-      purchases: { current: 0, openTotal: 0 },
-      receivables: { openTotal: 0 },
-    },
-    payables: { data: [], meta: { count: 0, total: 0 } },
-    cashflow: { data: [], meta: { inflow: 0, outflow: 0, net: 0 } },
-  });
+  await requirePagePermission(session, [ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION]);
+  const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId);
   const incomeRows = [
     { label: "Ventas entregadas", amount: metrics.sales.current },
     { label: "Costo de mercaderia vendida", amount: -metrics.margin.grossCost },
@@ -87,7 +73,7 @@ export default async function BalancePage() {
 
           <section className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
             <div className="border-b border-[color:var(--border)] px-4 py-3">
-              <h2 className="font-semibold">Estado de resultados</h2>
+              <h2 className="font-semibold">Resumen</h2>
             </div>
             <table className="w-full border-collapse text-left text-sm">
               <tbody>

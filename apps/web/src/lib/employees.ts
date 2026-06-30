@@ -2,7 +2,9 @@ import { ApiError } from "@/lib/api-response";
 import { supabaseServiceRoleKey, type AuthSession } from "@/lib/auth";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { envValue } from "@/lib/env";
+import { clearNavigationCaches } from "@/lib/navigation";
 import { textField, type RequestBody } from "@/lib/request-body";
+import { clearPermissionCache } from "@/lib/route-auth";
 
 const APP_ROLES = ["administrador", "jefe", "deposito", "logistica", "operador", "vendedor"] as const;
 type AppRole = (typeof APP_ROLES)[number];
@@ -47,6 +49,12 @@ function permissionKeysFromBody(body: RequestBody) {
   const raw = body.permissionKeys ?? body.permissionIds ?? body.permisos ?? [];
   const values = Array.isArray(raw) ? raw : [raw];
   return [...new Set(values.map((item) => String(item).trim()).filter(Boolean))];
+}
+
+function clearEmployeeAccessCaches() {
+  clearPermissionCache();
+  clearNavigationCaches();
+  clearReadQueryCache();
 }
 
 export function employeeInputFromBody(body: RequestBody, isCreate: boolean) {
@@ -312,7 +320,7 @@ export async function createEmployee(session: AuthSession, body: RequestBody) {
       [userId, session.companyId, input.role, input.active],
     );
     await saveEmployeePermissions(client, session.companyId, userId, session.userId, permissionKeys);
-    clearReadQueryCache();
+    clearEmployeeAccessCaches();
     return { id: userId };
   });
 }
@@ -351,31 +359,34 @@ export async function updateEmployee(session: AuthSession, id: string, body: Req
       [id, session.companyId, input.role, input.active],
     );
     await saveEmployeePermissions(client, session.companyId, id, session.userId, permissionKeys);
-    clearReadQueryCache();
+    clearEmployeeAccessCaches();
     return { id };
   });
 }
 
 export async function toggleEmployeeStatus(session: AuthSession, id: string) {
   await assertEmployeeEditable(session, id, session.userId);
-  const result = await queryWithCompanyContext<{ id: string; active: boolean }>(
-    session.companyId,
-    `
-      UPDATE profiles
-      SET active = NOT active, updated_at = now()
-      WHERE id = $1::uuid
-      RETURNING id::text, active
-    `,
-    [id],
-  );
-  if (!result.rows[0]) throw new ApiError(404, "Empleado no encontrado");
+  const result = await withCompanyContext(session.companyId, async (client) => {
+    const profileResult = await client.query<{ id: string; active: boolean }>(
+      `
+        UPDATE profiles
+        SET active = NOT active, updated_at = now()
+        WHERE id = $1::uuid
+        RETURNING id::text, active
+      `,
+      [id],
+    );
+    const profile = profileResult.rows[0];
+    if (!profile) throw new ApiError(404, "Empleado no encontrado");
 
-  await queryWithCompanyContext(
-    session.companyId,
-    "UPDATE usuario_empresa SET activo = $1, updated_at = now() WHERE id_usuario = $2::uuid AND empresa_id = $3",
-    [result.rows[0].active, id, session.companyId],
-  );
-  clearReadQueryCache();
+    await client.query(
+      "UPDATE usuario_empresa SET activo = $1, updated_at = now() WHERE id_usuario = $2::uuid AND empresa_id = $3",
+      [profile.active, id, session.companyId],
+    );
 
-  return { id, active: result.rows[0].active };
+    return { id, active: profile.active };
+  });
+  clearEmployeeAccessCaches();
+
+  return result;
 }

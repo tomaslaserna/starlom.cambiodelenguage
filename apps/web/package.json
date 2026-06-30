@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "env:check": "node scripts/check-env.mjs",
+    "test": "node --test scripts/static.test.mjs",
+    "test:smoke": "node --test scripts/smoke.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

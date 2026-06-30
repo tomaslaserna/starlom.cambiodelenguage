@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
 import { observationFromBody, updateOrderObservation } from "@/lib/orders";
-import { positiveId, readRequestBody } from "@/lib/request-body";
+import { readRequestBody, uuidParam } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const body = await readRequestBody(request);
     const data = await updateOrderObservation(
       session.companyId,
-      positiveId(id),
+      uuidParam(id, "Pedido"),
       observationFromBody(body),
     );
     return ok({ data });
@@ -25,4 +25,3 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return handleApiError(error);
   }
 }
-

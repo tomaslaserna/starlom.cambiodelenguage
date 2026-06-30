@@ -4,6 +4,7 @@ import { getDatabaseEnv } from "@/lib/env";
 let pool: Pool | null = null;
 
 const READ_CACHE_TTL_MS = 90_000;
+const READ_QUERY_RETRY_DELAY_MS = 250;
 const readQueryCache = new Map<string, { expiresAt: number; result: QueryResult<QueryResultRow>; tables: Set<string> }>();
 const inFlightReadQueries = new Map<string, Promise<QueryResult<QueryResultRow>>>();
 
@@ -40,11 +41,33 @@ function extractSqlTables(sql: string) {
   return tables;
 }
 
+function queryTextFromArgs(args: unknown[]) {
+  const first = args[0];
+  if (typeof first === "string") return first;
+  if (first && typeof first === "object" && "text" in first && typeof first.text === "string") {
+    return first.text;
+  }
+  return "";
+}
+
 function cloneQueryResult<T extends QueryResultRow>(result: QueryResult<QueryResultRow>): QueryResult<T> {
   return {
     ...result,
     rows: result.rows.map((row) => ({ ...row })) as T[],
   };
+}
+
+function isTransientDbError(error: unknown) {
+  const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    ["57P01", "57P02", "57P03", "53300", "ECONNRESET", "ETIMEDOUT"].includes(code) ||
+    /connection terminated|connection timeout|timeout exceeded|terminating connection|socket hang up/i.test(message)
+  );
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function clearReadQueryCache() {
@@ -120,14 +143,22 @@ export async function queryWithCompanyContext<T extends QueryResultRow>(
     clearReadQueryCacheForTables(extractSqlTables(sql));
   }
 
-  const queryPromise = withCompanyContext(companyId, (client) => client.query<T>(sql, params)) as Promise<
-    QueryResult<QueryResultRow>
-  >;
+  const executeQuery = () =>
+    withCompanyContext(companyId, (client) => client.query<T>(sql, params)) as Promise<
+      QueryResult<QueryResultRow>
+    >;
 
+  let queryPromise = executeQuery();
   if (cacheable) inFlightReadQueries.set(key, queryPromise);
 
   let result: QueryResult<T>;
   try {
+    result = (await queryPromise) as QueryResult<T>;
+  } catch (error) {
+    if (!cacheable || !isTransientDbError(error)) throw error;
+    await wait(READ_QUERY_RETRY_DELAY_MS);
+    queryPromise = executeQuery();
+    inFlightReadQueries.set(key, queryPromise);
     result = (await queryPromise) as QueryResult<T>;
   } finally {
     if (cacheable) inFlightReadQueries.delete(key);
@@ -149,19 +180,33 @@ export async function withCompanyContext<T>(
   callback: (client: PoolClient) => Promise<T>,
 ) {
   const client = await getDbPool().connect();
+  const originalQuery = client.query.bind(client) as PoolClient["query"];
+  const mutatedTables = new Set<string>();
+  const trackedQuery = ((...args: unknown[]) => {
+    const sql = queryTextFromArgs(args);
+    if (sql && !isCacheableRead(sql)) {
+      for (const table of extractSqlTables(sql)) mutatedTables.add(table);
+    }
+    return (originalQuery as (...queryArgs: unknown[]) => unknown)(...args);
+  }) as PoolClient["query"];
 
   try {
-    await client.query("BEGIN");
-    await client.query("SELECT set_config('app.current_empresa_id', $1, true)", [
+    await originalQuery("BEGIN");
+    await originalQuery("SELECT set_config('app.current_empresa_id', $1, true)", [
       String(companyId),
     ]);
+    client.query = trackedQuery;
     const result = await callback(client);
-    await client.query("COMMIT");
+    client.query = originalQuery;
+    await originalQuery("COMMIT");
+    if (mutatedTables.size) clearReadQueryCacheForTables(mutatedTables);
     return result;
   } catch (error) {
-    await client.query("ROLLBACK");
+    client.query = originalQuery;
+    await originalQuery("ROLLBACK").catch(() => undefined);
     throw error;
   } finally {
+    client.query = originalQuery;
     client.release();
   }
 }

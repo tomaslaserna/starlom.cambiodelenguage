@@ -1,5 +1,4 @@
 import { ModulePage } from "@/components/module-page";
-import { fastOr } from "@/lib/fast-data";
 import { formatDate } from "@/lib/format";
 import { listMessageCenter } from "@/lib/messages";
 import { requireStaffSession } from "@/lib/auth";
@@ -15,18 +14,7 @@ export default async function MessagesPage({ searchParams }: MessagesPageProps) 
   const session = await requireStaffSession();
   const params = await searchParams;
   const box = params.box === "sent" || params.box === "drafts" ? params.box : "inbox";
-  const center = await fastOr(listMessageCenter(session), {
-    messages: [],
-    inbox: [],
-    sent: [],
-    drafts: [],
-    employees: [],
-    meta: {
-      unread: 0,
-      sent: 0,
-      drafts: 0,
-    },
-  });
+  const center = await listMessageCenter(session);
   const messages = box === "sent" ? center.sent : box === "drafts" ? center.drafts : center.inbox;
 
   return (

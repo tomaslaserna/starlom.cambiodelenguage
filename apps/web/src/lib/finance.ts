@@ -19,7 +19,7 @@ export async function getBalanceDashboard(companyId: number) {
 export async function getSalaryPlan(companyId: number) {
   const result = await queryWithCompanyContext<{
     id: number;
-    employee_id: number | null;
+    employee_id: string | null;
     employee: string;
     monthly: string;
     modality: string;
@@ -31,8 +31,8 @@ export async function getSalaryPlan(companyId: number) {
     companyId,
     `
       SELECT c.id,
-             c.id_usuario AS employee_id,
-             COALESCE(u.nombre_completo, u.usuario, 'Empleado #' || c.id_usuario::text) AS employee,
+             c.profile_id::text AS employee_id,
+             COALESCE(p.full_name, p.username, c.employee_name, 'Empleado #' || c.id::text) AS employee,
              c.sueldo_mensual::text AS monthly,
              c.modalidad AS modality,
              c.activo AS active,
@@ -44,11 +44,11 @@ export async function getSalaryPlan(companyId: number) {
                  AND m.tipo IN ('pago','retiro')
              ), 0)::text AS paid_current
       FROM admin_sueldos_config c
-      LEFT JOIN usuarios u ON u.id = c.id_usuario
+      LEFT JOIN profiles p ON p.id = c.profile_id
       LEFT JOIN admin_sueldo_movimientos m
-        ON m.empresa_id = c.empresa_id AND m.id_usuario = c.id_usuario
+        ON m.empresa_id = c.empresa_id AND m.profile_id IS NOT DISTINCT FROM c.profile_id
       WHERE c.empresa_id = $1
-      GROUP BY c.id, c.id_usuario, u.nombre_completo, u.usuario, c.sueldo_mensual,
+      GROUP BY c.id, c.profile_id, p.full_name, p.username, c.employee_name, c.sueldo_mensual,
                c.modalidad, c.activo, c.aguinaldo_aplica, c.cargas_pct
       ORDER BY c.activo DESC, employee ASC
     `,
@@ -148,27 +148,27 @@ export async function getTreasuryBalances(companyId: number) {
     `
       WITH collection_accounts AS (
         SELECT
-          COALESCE(NULLIF(cobro_destino, ''), CASE
-            WHEN cobro_metodo = 'efectivo' THEN 'Efectivo'
-            WHEN cobro_metodo = 'transferencia' THEN 'Cuenta bancaria'
+          COALESCE(NULLIF(collection_destination, ''), CASE
+            WHEN collection_method = 'efectivo' THEN 'Efectivo'
+            WHEN collection_method = 'transferencia' THEN 'Cuenta bancaria'
             ELSE 'Otra'
           END) AS account,
           CASE
-            WHEN cobro_metodo = 'efectivo' THEN 'efectivo'
-            WHEN cobro_metodo = 'transferencia' THEN 'bancaria'
+            WHEN collection_method = 'efectivo' THEN 'efectivo'
+            WHEN collection_method = 'transferencia' THEN 'bancaria'
             ELSE 'otra'
           END AS account_type,
-          COALESCE(cobro_monto_registrado, monto) AS amount
-        FROM ventas
+          COALESCE(collection_registered_amount, total_amount) AS amount
+        FROM sales
         WHERE empresa_id = $1
-          AND COALESCE(estado_cobro, 'pendiente') = 'recibido'
+          AND COALESCE(collection_status, 'pendiente') = 'recibido'
       ),
       provider_payments AS (
         SELECT 'Pagos proveedores aprobados' AS account,
                'otra' AS account_type,
-               -monto AS amount
-        FROM pagos_registro
-        WHERE empresa_id = $1 AND tipo = 'pago'
+               -amount AS amount
+        FROM payments
+        WHERE empresa_id = $1 AND entity_type = 'pago'
       ),
       bank_lines AS (
         SELECT COALESCE(a.nombre, 'Banco') AS account,
@@ -222,17 +222,17 @@ export async function getMovementRegister(input: {
   const pagination = parsePagination(input);
   const type = input.type?.trim() ?? "";
   const params: unknown[] = [input.companyId];
-  const paymentFilter = type && ["cobro", "pago"].includes(type) ? `AND tipo = $2` : "";
+  const paymentFilter = type && ["cobro", "pago"].includes(type) ? `AND entity_type = $2` : "";
   if (paymentFilter) params.push(type);
 
   const count = await queryWithCompanyContext<{ total: string }>(
     input.companyId,
-    `SELECT COUNT(*)::text AS total FROM pagos_registro WHERE empresa_id = $1 ${paymentFilter}`,
+    `SELECT COUNT(*)::text AS total FROM payments WHERE empresa_id = $1 ${paymentFilter}`,
     params,
   );
 
   const rows = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     tipo: string;
     entidad_nombre: string;
     concepto: string;
@@ -243,11 +243,13 @@ export async function getMovementRegister(input: {
   }>(
     input.companyId,
     `
-      SELECT id, tipo, entidad_nombre, concepto, monto::text, fecha::text,
-             comprobante_nombre, notas
-      FROM pagos_registro
+      SELECT id::text AS id, entity_type AS tipo, entity_name AS entidad_nombre,
+             COALESCE(concept, reference, '') AS concepto,
+             amount::text AS monto, payment_date::text AS fecha,
+             receipt_url AS comprobante_nombre, notes AS notas
+      FROM payments
       WHERE empresa_id = $1 ${paymentFilter}
-      ORDER BY fecha DESC NULLS LAST, id DESC
+      ORDER BY payment_date DESC NULLS LAST, created_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `,
     [...params, pagination.pageSize, pagination.offset],

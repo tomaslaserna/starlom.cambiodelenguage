@@ -57,7 +57,6 @@ VALUES
     ('admin.calendario', 'Calendario', 'Eventos, vencimientos y recordatorios administrativos recurrentes.', '/calendar', 90, FALSE, 'recordatorios'),
     ('admin.usuarios', 'Usuarios y permisos', 'Gestion de usuarios y permisos administrativos.', '/employees', 100, TRUE, 'seguridad'),
     ('admin.obligaciones_fiscales', 'Obligaciones fiscales', 'IVA, IIBB, impuestos y vencimientos.', '/billing', 110, TRUE, 'fiscal'),
-    ('admin.resultados', 'Estado de resultados', 'Vista P&L mensual: ventas menos costos y gastos.', '/balance/income-statement', 120, FALSE, 'contabilidad'),
     ('admin.cuentas_por_pagar', 'Cuentas por pagar', 'Deudas a proveedores y socios con vencimientos.', '/treasury/accounts-payable', 130, FALSE, 'tesoreria')
 ON CONFLICT (clave) DO UPDATE
 SET nombre = EXCLUDED.nombre,
@@ -101,8 +100,6 @@ WITH catalogo(clave, modulo, accion, nombre) AS (
         ('admin.obligaciones_fiscales.editar', 'admin.obligaciones_fiscales', 'editar', 'Editar Obligaciones fiscales'),
         ('admin.obligaciones_fiscales.ver_sensible', 'admin.obligaciones_fiscales', 'ver_sensible', 'Ver datos fiscales sensibles'),
         ('admin.obligaciones_fiscales.editar_sensible', 'admin.obligaciones_fiscales', 'editar_sensible', 'Editar datos fiscales sensibles'),
-        ('admin.resultados.ver', 'admin.resultados', 'ver', 'Ver Estado de resultados'),
-        ('admin.resultados.editar', 'admin.resultados', 'editar', 'Editar Estado de resultados'),
         ('admin.cuentas_por_pagar.ver', 'admin.cuentas_por_pagar', 'ver', 'Ver Cuentas por pagar'),
         ('admin.cuentas_por_pagar.editar', 'admin.cuentas_por_pagar', 'editar', 'Editar Cuentas por pagar')
 )

@@ -1,9 +1,11 @@
 .env
+.env.smoke
 *.log
 *.err.log
 __pycache__/
 *.py[cod]
 .pytest_cache/
+tmp/
 .claude/
 .vercel/
 .vercel-xdg/
@@ -12,4 +14,5 @@ node_modules/
 apps/web/node_modules/
 apps/web/.next/
 apps/web/.env*.local
+apps/web/.env.smoke
 apps/web/tsconfig.tsbuildinfo

@@ -14,13 +14,13 @@ export async function saveVendorGoalAction(formData: FormData) {
   await queryWithCompanyContext(
     session.companyId,
     `
-      INSERT INTO app_vendedor_metas (
-        empresa_id, vendedor, periodo, meta_ventas, meta_clientes, updated_by, updated_at
+      INSERT INTO vendor_goals (
+        empresa_id, vendor, period, goal_sales, goal_clients, updated_by, updated_at
       )
       VALUES ($1, $2, date_trunc('month', CURRENT_DATE)::date, $3, $4, $5, NOW())
-      ON CONFLICT (empresa_id, vendedor, periodo) DO UPDATE
-      SET meta_ventas = EXCLUDED.meta_ventas,
-          meta_clientes = EXCLUDED.meta_clientes,
+      ON CONFLICT (empresa_id, vendor, period) DO UPDATE
+      SET goal_sales = EXCLUDED.goal_sales,
+          goal_clients = EXCLUDED.goal_clients,
           updated_by = EXCLUDED.updated_by,
           updated_at = NOW()
     `,

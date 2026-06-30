@@ -1,7 +1,5 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { requireApiAccess } from "@/lib/api-auth";
-import { companyIdFromRequest } from "@/lib/company";
 import { deleteQuote, getQuote } from "@/lib/quotes";
 import { requireApiSession } from "@/lib/route-auth";
 
@@ -12,12 +10,10 @@ type RouteContext = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const unauthorized = requireApiAccess(request);
-  if (unauthorized) return unauthorized;
-
   try {
+    const session = await requireApiSession([{ resource: "presupuestos", action: "ver" }]);
     const { id } = await context.params;
-    const data = await getQuote(companyIdFromRequest(request), id);
+    const data = await getQuote(session.companyId, id);
     return ok({ data });
   } catch (error) {
     return handleApiError(error);

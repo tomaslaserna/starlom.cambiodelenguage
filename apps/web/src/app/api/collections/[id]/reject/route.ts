@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
 import { rejectCollection, rejectionReasonFromBody } from "@/lib/collections";
-import { positiveId, readRequestBody } from "@/lib/request-body";
+import { readRequestBody, uuidParam } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = await readRequestBody(request);
     const data = await rejectCollection(
       session,
-      positiveId(id, "Venta"),
+      uuidParam(id, "Venta"),
       rejectionReasonFromBody(body),
     );
     return ok({ data });
@@ -25,4 +25,3 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return handleApiError(error);
   }
 }
-

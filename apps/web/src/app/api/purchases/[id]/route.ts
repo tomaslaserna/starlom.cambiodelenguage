@@ -1,9 +1,7 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { requireApiAccess } from "@/lib/api-auth";
-import { companyIdFromRequest } from "@/lib/company";
-import { deletePurchase, getPurchase, updatePurchaseStatus } from "@/lib/purchases";
-import { positiveId, readRequestBody, textField } from "@/lib/request-body";
+import { deletePurchase, getPurchase, purchaseIdFromParam, updatePurchaseStatus } from "@/lib/purchases";
+import { readRequestBody, textField } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
@@ -13,12 +11,10 @@ type RouteContext = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const unauthorized = requireApiAccess(request);
-  if (unauthorized) return unauthorized;
-
   try {
+    const session = await requireApiSession([{ resource: "compras", action: "ver" }]);
     const { id } = await context.params;
-    const data = await getPurchase(companyIdFromRequest(request), positiveId(id, "Compra"));
+    const data = await getPurchase(session.companyId, purchaseIdFromParam(id, "Compra"));
     return ok({ data });
   } catch (error) {
     return handleApiError(error);
@@ -31,8 +27,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
     const body = await readRequestBody(request);
     const status = textField(body, "status") || textField(body, "estado");
-    if (!status) return ok({ data: await getPurchase(session.companyId, positiveId(id, "Compra")) });
-    const data = await updatePurchaseStatus(session.companyId, positiveId(id, "Compra"), status);
+    const purchaseId = purchaseIdFromParam(id, "Compra");
+    if (!status) return ok({ data: await getPurchase(session.companyId, purchaseId) });
+    const data = await updatePurchaseStatus(session.companyId, purchaseId, status);
     return ok({ data });
   } catch (error) {
     return handleApiError(error);
@@ -43,10 +40,9 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
   try {
     const session = await requireApiSession([{ resource: "compras", action: "cancelar" }]);
     const { id } = await context.params;
-    const data = await deletePurchase(session.companyId, positiveId(id, "Compra"));
+    const data = await deletePurchase(session.companyId, purchaseIdFromParam(id, "Compra"));
     return ok({ data });
   } catch (error) {
     return handleApiError(error);
   }
 }
-

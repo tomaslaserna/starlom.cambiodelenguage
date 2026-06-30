@@ -1,20 +1,14 @@
 import { ModulePage } from "@/components/module-page";
-import { fastOr } from "@/lib/fast-data";
 import { formatCurrency } from "@/lib/format";
 import { getDividendSheet } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/page-auth";
+import { ADMIN_DIVIDENDS_READ_PERMISSION } from "@/lib/route-auth";
 
 export default async function DividendsPage() {
   const session = await requireStaffSession();
-  const dividends = await fastOr(getDividendSheet(session.companyId), {
-    partners: [],
-    meta: {
-      totalShare: 0,
-      owed: 0,
-      withdrawn: 0,
-      balance: 0,
-    },
-  });
+  await requirePagePermission(session, [ADMIN_DIVIDENDS_READ_PERMISSION]);
+  const dividends = await getDividendSheet(session.companyId);
 
   return (
     <ModulePage

@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api-response";
 import { queryWithCompanyContext } from "@/lib/db";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { getPurchase } from "@/lib/purchases";
 import { getQuote } from "@/lib/quotes";
 import {
@@ -105,10 +106,10 @@ export async function buildQuotePdf(companyId: number, quoteId: string) {
   });
 }
 
-export async function buildDeliveryPdf(companyId: number, deliveryId: number, includePrices: boolean) {
+export async function buildDeliveryPdf(companyId: number, deliveryId: string, includePrices: boolean) {
   const header = await queryWithCompanyContext<{
-    id: number;
-    id_venta: number | null;
+    id: string;
+    sale_id: string | null;
     nro_remito: number;
     nombre_cliente: string;
     dni_cliente: string;
@@ -130,24 +131,29 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: number, in
   }>(
     companyId,
     `
-      SELECT r.id, r.id_venta, r.nro_remito, r.nombre_cliente, r.dni_cliente,
-             r.fecha::text, COALESCE(r.condicion_pago, '') AS condicion_pago,
-             COALESCE(r.monto, 0)::text AS monto, COALESCE(r.vendedor, '') AS vendedor,
-             COALESCE(r.provincia, '') AS provincia,
-             COALESCE(r.sucursal_cliente, '') AS sucursal_cliente,
-             COALESCE(r.deposito, '') AS deposito,
-             COALESCE(r.observacion, '') AS observacion,
-             COALESCE(c.domicilio, '') AS domicilio,
-             COALESCE(c.ciudad, '') AS ciudad,
-             COALESCE(c.provincia, '') AS cliente_provincia,
-             COALESCE(c.tipo_id, '') AS tipo_id,
-             COALESCE(c.nro_id, r.dni_cliente, '') AS nro_id,
-             COALESCE(c.vendedor_cl, '') AS vendedor_cliente,
-             COALESCE(c.observacion, '') AS observacion_cliente
-      FROM remitos r
-      LEFT JOIN clientes c ON c.empresa_id = r.empresa_id
-        AND regexp_replace(c.nro_id, '[^0-9]', '', 'g') = regexp_replace(r.dni_cliente, '[^0-9]', '', 'g')
-      WHERE r.id = $1 AND r.empresa_id = $2
+      SELECT r.id::text AS id, r.sale_id::text,
+             COALESCE(r.delivery_number, 0)::int AS nro_remito,
+             r.client_name AS nombre_cliente,
+             r.client_document AS dni_cliente,
+             r.delivery_date::text AS fecha,
+             COALESCE(r.payment_condition, '') AS condicion_pago,
+             COALESCE(r.total_amount, 0)::text AS monto,
+             COALESCE(r.seller_name, '') AS vendedor,
+             COALESCE(c.province, '') AS provincia,
+             '' AS sucursal_cliente,
+             '' AS deposito,
+             COALESCE(s.notes, '') AS observacion,
+             COALESCE(c.delivery_address, c.address, '') AS domicilio,
+             COALESCE(c.locality, '') AS ciudad,
+             COALESCE(c.province, '') AS cliente_provincia,
+             'DNI/CUIT' AS tipo_id,
+             COALESCE(c.tax_id, r.client_document, '') AS nro_id,
+             COALESCE(c.seller_name, '') AS vendedor_cliente,
+             COALESCE(c.notes, '') AS observacion_cliente
+      FROM delivery_documents r
+      LEFT JOIN sales s ON s.id = r.sale_id AND s.empresa_id = r.empresa_id
+      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      WHERE r.id = $1::uuid AND r.empresa_id = $2
       LIMIT 1
     `,
     [deliveryId, companyId],
@@ -156,20 +162,22 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: number, in
   if (!remito) throw new ApiError(404, "Remito no encontrado");
 
   const detail = await queryWithCompanyContext<{
-    id_producto: number;
+    product_code: string;
     nombre: string;
-    cantidad: number;
+    cantidad: string;
     precio_unit: string;
     subtotal: string;
   }>(
     companyId,
     `
-      SELECT d.id_producto, COALESCE(d.nombre_producto, p.nombre, '(producto eliminado)') AS nombre,
-             d.cantidad, COALESCE(d.precio_unit, 0)::text AS precio_unit,
-             COALESCE(d.subtotal, 0)::text AS subtotal
-      FROM detalle_remitos d
-      LEFT JOIN productos p ON p.id = d.id_producto AND p.empresa_id = d.empresa_id
-      WHERE d.id_remito = $1 AND d.empresa_id = $2
+      SELECT COALESCE(p.sku, p.category_code, '') AS product_code,
+             COALESCE(d.description, p.name, '(producto eliminado)') AS nombre,
+             d.quantity::text AS cantidad,
+             COALESCE(d.unit_price, 0)::text AS precio_unit,
+             COALESCE(d.total_amount, 0)::text AS subtotal
+      FROM delivery_document_items d
+      LEFT JOIN products p ON p.id = d.product_id AND p.empresa_id = d.empresa_id
+      WHERE d.delivery_id = $1::uuid AND d.empresa_id = $2
       ORDER BY d.id ASC
     `,
     [deliveryId, companyId],
@@ -223,8 +231,8 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: number, in
       columns,
       detail.rows.map((row) =>
         includePrices
-          ? [pdfNumber(row.cantidad), row.id_producto, row.nombre, pdfMoney(Number(row.precio_unit)), pdfMoney(Number(row.subtotal))]
-          : [pdfNumber(row.cantidad), row.id_producto, row.nombre, "[ ]"],
+          ? [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, pdfMoney(Number(row.precio_unit)), pdfMoney(Number(row.subtotal))]
+          : [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, "[ ]"],
       ),
     );
     pdf.totals([["Total de unidades", pdfNumber(totalUnits)]], includePrices ? "Total" : "Control", includePrices ? pdfMoney(totalAmount) : "");
@@ -243,36 +251,36 @@ export async function buildAccountStatementPdf(companyId: number, input: {
   const name = input.name.trim();
   if (!name) throw new ApiError(400, "Nombre requerido");
   const params: unknown[] = [companyId, name, type];
-  const filters = ["empresa_id = $1", "entidad_nombre = $2", "tipo = $3"];
+  const filters = ["empresa_id = $1", "entity_name = $2", "entity_type = $3"];
   if (input.from) {
     params.push(input.from);
-    filters.push(`fecha >= $${params.length}`);
+    filters.push(`movement_date >= $${params.length}`);
   }
   if (input.to) {
     params.push(input.to);
-    filters.push(`fecha <= $${params.length}`);
+    filters.push(`movement_date <= $${params.length}`);
   }
 
   const previous = input.from
     ? await queryWithCompanyContext<{ balance: string }>(
         companyId,
-        "SELECT COALESCE(SUM(haber - debe), 0)::text AS balance FROM cuentas_corrientes WHERE empresa_id = $1 AND entidad_nombre = $2 AND tipo = $3 AND fecha < $4",
+        "SELECT COALESCE(SUM(credit - debit), 0)::text AS balance FROM current_account_movements WHERE empresa_id = $1 AND entity_name = $2 AND entity_type = $3 AND movement_date < $4",
         [companyId, name, type, input.from],
       )
     : { rows: [{ balance: "0" }] };
 
   const movements = await queryWithCompanyContext<{
-    descripcion: string;
-    debe: string;
-    haber: string;
-    fecha: string | null;
+    description: string;
+    debit: string;
+    credit: string;
+    movement_date: string | null;
   }>(
     companyId,
     `
-      SELECT descripcion, debe::text, haber::text, fecha::text
-      FROM cuentas_corrientes
+      SELECT description, debit::text, credit::text, movement_date::text
+      FROM current_account_movements
       WHERE ${filters.join(" AND ")}
-      ORDER BY fecha ASC NULLS LAST, id ASC
+      ORDER BY movement_date ASC NULLS LAST, created_at ASC
     `,
     params,
   );
@@ -292,19 +300,19 @@ export async function buildAccountStatementPdf(companyId: number, input: {
     pdf.doc.y += 14;
 
     let balance = Number(previous.rows[0]?.balance ?? 0);
-    const totalDebit = movements.rows.reduce((sum, row) => sum + Number(row.debe), 0);
-    const totalCredit = movements.rows.reduce((sum, row) => sum + Number(row.haber), 0);
+  const totalDebit = movements.rows.reduce((sum, row) => sum + Number(row.debit), 0);
+  const totalCredit = movements.rows.reduce((sum, row) => sum + Number(row.credit), 0);
     const rows: PdfTableCell[][] = [];
     if (input.from && Math.abs(balance) > 0.0001) {
       rows.push([pdfDate(input.from), "Saldo anterior", "-", "-", pdfMoney(balance)]);
     }
     for (const movement of movements.rows) {
-      const debit = Number(movement.debe);
-      const credit = Number(movement.haber);
+      const debit = Number(movement.debit);
+      const credit = Number(movement.credit);
       balance += credit - debit;
       rows.push([
-        pdfDate(movement.fecha),
-        movement.descripcion || "Movimiento de cuenta corriente",
+        pdfDate(movement.movement_date),
+        movement.description || "Movimiento de cuenta corriente",
         debit > 0 ? pdfMoney(debit) : "-",
         credit > 0 ? pdfMoney(credit) : "-",
         pdfMoney(balance),
@@ -333,9 +341,9 @@ export async function buildAccountStatementPdf(companyId: number, input: {
   });
 }
 
-export async function buildPaymentRecordPdf(companyId: number, paymentId: number) {
+export async function buildPaymentRecordPdf(companyId: number, paymentId: string) {
   const recordResult = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     tipo: string;
     entidad_nombre: string;
     concepto: string;
@@ -343,16 +351,25 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: number
     fecha: string | null;
     comprobante_nombre: string;
     notas: string;
-    id_origen: number | null;
+    id_origen: string | null;
     tipo_origen: string;
     created_at: string;
   }>(
     companyId,
     `
-      SELECT id, tipo, entidad_nombre, concepto, monto::text, fecha::text,
-             comprobante_nombre, notas, id_origen, tipo_origen, created_at::text
-      FROM pagos_registro
-      WHERE id = $1 AND empresa_id = $2
+      SELECT id::text AS id,
+             entity_type AS tipo,
+             entity_name AS entidad_nombre,
+             COALESCE(concept, reference, '') AS concepto,
+             amount::text AS monto,
+             payment_date::text AS fecha,
+             receipt_url AS comprobante_nombre,
+             notes AS notas,
+             sale_id::text AS id_origen,
+             CASE WHEN sale_id IS NULL THEN '' ELSE 'venta' END AS tipo_origen,
+             created_at::text
+      FROM payments
+      WHERE id = $1::uuid AND empresa_id = $2
       LIMIT 1
     `,
     [paymentId, companyId],
@@ -396,7 +413,7 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: number
   });
 }
 
-export async function buildPurchaseOrderPdf(companyId: number, purchaseId: number) {
+export async function buildPurchaseOrderPdf(companyId: number, purchaseId: string) {
   const purchase = await getPurchase(companyId, purchaseId);
   return createPdfFile(`orden_compra_${purchaseId}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
@@ -425,7 +442,7 @@ export async function buildPurchaseOrderPdf(companyId: number, purchaseId: numbe
   });
 }
 
-export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseId: number, reason: string) {
+export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseId: string, reason: string) {
   const purchase = await getPurchase(companyId, purchaseId);
   return createPdfFile(`solicitud_devolucion_${purchaseId}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
@@ -493,9 +510,9 @@ export async function buildPriceListPdf(companyId: number, list: number) {
   });
 }
 
-export async function buildOrderRequestPdf(companyId: number, orderId: number) {
+export async function buildOrderRequestPdf(companyId: number, orderId: string) {
   const order = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     nombre_cliente: string;
     dni_cliente: string;
     fecha: string | null;
@@ -504,11 +521,15 @@ export async function buildOrderRequestPdf(companyId: number, orderId: number) {
   }>(
     companyId,
     `
-      SELECT id, nombre_cliente, dni_cliente, fecha::text,
-             COALESCE(estado_pedido, 'recibido') AS estado_pedido,
-             COALESCE(observacion, '') AS observacion
-      FROM ventas
-      WHERE id = $1 AND empresa_id = $2
+      SELECT s.id::text AS id,
+             COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
+             COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
+             s.sale_date::text AS fecha,
+             ${normalizedOrderStatusSql("s")} AS estado_pedido,
+             COALESCE(s.notes, '') AS observacion
+      FROM sales s
+      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      WHERE s.id = $1::uuid AND s.empresa_id = $2
       LIMIT 1
     `,
     [orderId, companyId],
@@ -517,20 +538,30 @@ export async function buildOrderRequestPdf(companyId: number, orderId: number) {
   if (!current) throw new ApiError(404, "Pedido no encontrado");
 
   const detail = await queryWithCompanyContext<{
-    id_producto: number;
+    product_code: string;
     nombre: string;
-    cantidad: number;
+    cantidad: string;
     disponible: string;
   }>(
     companyId,
     `
-      SELECT dv.id_producto,
-             COALESCE(dv.nombre_producto, p.nombre, '(producto eliminado)') AS nombre,
-             dv.cantidad,
-             GREATEST(0, COALESCE(p.stock, 0))::text AS disponible
-      FROM detalle_ventas dv
-      LEFT JOIN productos p ON p.id = dv.id_producto AND p.empresa_id = dv.empresa_id
-      WHERE dv.id_venta = $1 AND dv.empresa_id = $2
+      SELECT COALESCE(p.sku, p.category_code, '') AS product_code,
+             COALESCE(dv.description, p.name, '(producto eliminado)') AS nombre,
+             dv.quantity::text AS cantidad,
+             GREATEST(0, COALESCE(stock.current_stock, 0))::text AS disponible
+      FROM sale_items dv
+      LEFT JOIN products p ON p.id = dv.product_id AND p.empresa_id = dv.empresa_id
+      LEFT JOIN LATERAL (
+        SELECT SUM(
+          CASE
+            WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
+            ELSE -sm.quantity
+          END
+        ) AS current_stock
+        FROM stock_movements sm
+        WHERE sm.product_id = dv.product_id AND sm.empresa_id = dv.empresa_id
+      ) stock ON true
+      WHERE dv.sale_id = $1::uuid AND dv.empresa_id = $2
       ORDER BY dv.id ASC
     `,
     [orderId, companyId],
@@ -540,7 +571,7 @@ export async function buildOrderRequestPdf(companyId: number, orderId: number) {
     pdf.drawHeader({
       title: "Solicitud de pedido",
       code: "SP",
-      number: `SP-${String(orderId).padStart(8, "0")}`,
+      number: `SP-${orderId.slice(0, 8).toUpperCase()}`,
       date: pdfDate(current.fecha),
       extra: [`Estado: ${current.estado_pedido}`],
     });
@@ -559,7 +590,7 @@ export async function buildOrderRequestPdf(companyId: number, orderId: number) {
       detail.rows.map((row) => {
         const requested = Number(row.cantidad);
         const available = Number(row.disponible);
-        return [row.id_producto, row.nombre, pdfNumber(requested), pdfNumber(available), pdfNumber(Math.max(0, requested - available))];
+        return [row.product_code, row.nombre, pdfNumber(requested), pdfNumber(available), pdfNumber(Math.max(0, requested - available))];
       }),
     );
     pdf.note("Solicitud para control interno de stock y despacho. Marcar faltantes antes de avanzar el pedido.");

@@ -1,20 +1,16 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { requireApiAccess } from "@/lib/api-auth";
-import { companyIdFromRequest } from "@/lib/company";
 import { createPriceList, listPriceLists, priceListInputFromBody } from "@/lib/pricing";
 import { readRequestBody } from "@/lib/request-body";
-import { requireAdminApiSession } from "@/lib/route-auth";
+import { requireAdminApiSession, requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const unauthorized = requireApiAccess(request);
-  if (unauthorized) return unauthorized;
-
   try {
+    const session = await requireApiSession([{ resource: "productos", action: "ver" }]);
     const includeInactive = request.nextUrl.searchParams.get("includeInactive") === "true";
-    const data = await listPriceLists(companyIdFromRequest(request), includeInactive);
+    const data = await listPriceLists(session.companyId, includeInactive);
     return ok({ data });
   } catch (error) {
     return handleApiError(error);

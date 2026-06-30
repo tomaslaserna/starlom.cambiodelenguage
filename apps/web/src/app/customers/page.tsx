@@ -22,12 +22,9 @@ import { listCustomers } from "@/lib/catalog";
 import { fastOr } from "@/lib/fast-data";
 import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
-import { redirect } from "next/navigation";
+import { requirePagePermission } from "@/lib/page-auth";
 import { CUSTOMERS_READ_PERMISSION } from "@/lib/route-auth";
-import {
-  getNavigationAuthorization,
-  navigationPermissionAllowed,
-} from "@/lib/navigation";
+import { getNavigationAuthorization } from "@/lib/navigation";
 
 type CustomersPageProps = {
   searchParams: Promise<{
@@ -46,37 +43,20 @@ function customerStatusTone(status: string): StatusBadgeTone {
 
 export default async function CustomersPage({ searchParams }: CustomersPageProps) {
   const session = await requireStaffSession();
+  await requirePagePermission(session, [CUSTOMERS_READ_PERMISSION]);
   const navigationAuthorization = await fastOr(
     getNavigationAuthorization(session),
-    { allowedPermissionKeys: new Set(["clientes.ver"]) },
+    { allowedPermissionKeys: new Set<string>() },
     60,
   );
-  if (!navigationPermissionAllowed(navigationAuthorization, CUSTOMERS_READ_PERMISSION)) {
-    redirect("/");
-  }
 
   const params = await searchParams;
-  const query = params.q?.trim() ?? "";
-  const page = Number.parseInt(params.page ?? "1", 10);
-  const result = await fastOr(
-    listCustomers({
-      companyId: session.companyId,
-      query: params.q,
-      page: params.page,
-      pageSize: "25",
-    }),
-    {
-      data: [],
-      meta: {
-        companyId: session.companyId,
-        query,
-        page: Number.isFinite(page) && page > 0 ? page : 1,
-        pageSize: 25,
-        total: 0,
-        totalPages: 1,
-      },
-    },
-  );
+  const result = await listCustomers({
+    companyId: session.companyId,
+    query: params.q,
+    page: params.page,
+    pageSize: "25",
+  });
 
   return (
     <ModulePage

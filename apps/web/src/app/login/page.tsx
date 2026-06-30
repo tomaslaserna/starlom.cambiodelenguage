@@ -16,6 +16,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   const params = await searchParams;
   const hasError = params.error === "invalid";
+  const isRateLimited = params.error === "rate_limited";
 
   return (
     <main className="grid min-h-screen overflow-x-hidden bg-[#f3f6fb] text-[#172033] lg:grid-cols-[minmax(360px,40%)_minmax(0,60%)]">
@@ -69,12 +70,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
       <section className="grid min-h-0 min-w-0 place-items-center bg-[linear-gradient(90deg,rgba(255,255,255,0.55)_0_1px,transparent_1px_100%),linear-gradient(0deg,rgba(255,255,255,0.62)_0_1px,transparent_1px_100%),#f3f6fb] bg-[length:64px_64px] px-4 py-8 sm:px-8 lg:min-h-screen">
         <div className="w-full max-w-[456px]">
-          {hasError ? (
+          {hasError || isRateLimited ? (
             <div className="mb-3 flex items-start gap-2.5 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] px-3.5 py-3 font-extrabold leading-5 text-[#991b1b] shadow-[0_8px_18px_rgba(153,27,27,0.06)]" role="alert">
               <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#fee2e2] text-xs font-black text-[#b91c1c]">
                 i
               </span>
-              <span>Usuario, correo o contrasena invalida.</span>
+              <span>{isRateLimited ? "Demasiados intentos. Proba nuevamente mas tarde." : "Usuario, correo o contrasena invalida."}</span>
             </div>
           ) : null}
 
@@ -97,7 +98,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                   <Input
                     autoComplete="username"
                     className="min-h-[46px] w-full min-w-0 rounded-[10px] border-[#c9d6e8] bg-[#f8fbff] px-[13px] text-[15px] focus:bg-white"
-                    invalid={hasError}
+                    invalid={hasError || isRateLimited}
                     name="identifier"
                     required
                   />
@@ -106,7 +107,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                   <Input
                     autoComplete="current-password"
                     className="min-h-[46px] w-full min-w-0 rounded-[10px] border-[#c9d6e8] bg-[#f8fbff] px-[13px] text-[15px] focus:bg-white"
-                    invalid={hasError}
+                    invalid={hasError || isRateLimited}
                     name="password"
                     required
                     type="password"

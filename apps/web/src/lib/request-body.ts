@@ -2,6 +2,8 @@ import { ApiError } from "@/lib/api-response";
 
 export type RequestBody = Record<string, unknown>;
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function readRequestBody(request: Request): Promise<RequestBody> {
   const contentType = request.headers.get("content-type") ?? "";
 
@@ -50,3 +52,8 @@ export function positiveId(value: string | number | undefined, label = "ID") {
   return id;
 }
 
+export function uuidParam(value: string | undefined, label = "ID") {
+  const id = String(value ?? "").trim();
+  if (!UUID_PATTERN.test(id)) throw new ApiError(400, `${label} invalido`);
+  return id;
+}

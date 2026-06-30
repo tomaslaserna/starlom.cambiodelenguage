@@ -1,4 +1,6 @@
 import { queryWithCompanyContext } from "@/lib/db";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 
 export async function getVendorManagement(companyId: number) {
   const result = await queryWithCompanyContext<{
@@ -14,44 +16,56 @@ export async function getVendorManagement(companyId: number) {
     companyId,
     `
       WITH vendors AS (
-        SELECT trim(nombre || ' ' || apellido) AS vendor
-        FROM operadores
-        WHERE empresa_id = $1
+        SELECT COALESCE(NULLIF(p.username, ''), NULLIF(p.full_name, ''), p.email) AS vendor
+        FROM usuario_empresa ue
+        JOIN profiles p ON p.id = ue.id_usuario
+        WHERE ue.empresa_id = $1
+          AND ue.activo = TRUE
+          AND ue.role::text = 'vendedor'
         UNION
-        SELECT vendedor_cl AS vendor FROM clientes WHERE empresa_id = $1 AND COALESCE(vendedor_cl, '') <> ''
+        SELECT seller_name AS vendor FROM clients WHERE empresa_id = $1 AND COALESCE(seller_name, '') <> ''
         UNION
-        SELECT vendedor AS vendor FROM ventas WHERE empresa_id = $1 AND COALESCE(vendedor, '') <> ''
+        SELECT seller_name AS vendor FROM sales WHERE empresa_id = $1 AND COALESCE(seller_name, '') <> ''
         UNION
-        SELECT creado_por AS vendor FROM presupuestos WHERE empresa_id = $1 AND COALESCE(creado_por, '') <> ''
+        SELECT p.username AS vendor
+        FROM quotes q
+        JOIN profiles p ON p.id = q.seller_id
+        WHERE q.empresa_id = $1 AND COALESCE(p.username, '') <> ''
       ),
       clients AS (
-        SELECT vendedor_cl AS vendor, COUNT(*) AS clients
-        FROM clientes
-        WHERE empresa_id = $1 AND COALESCE(vendedor_cl, '') <> ''
-        GROUP BY vendedor_cl
+        SELECT seller_name AS vendor, COUNT(*) AS clients
+        FROM clients
+        WHERE empresa_id = $1 AND COALESCE(seller_name, '') <> ''
+        GROUP BY seller_name
       ),
       sales AS (
-        SELECT vendedor AS vendor, COUNT(*) AS sales_count, COALESCE(SUM(monto), 0) AS sales_total
-        FROM ventas
-        WHERE empresa_id = $1
-          AND COALESCE(vendedor, '') <> ''
-          AND fecha >= date_trunc('month', CURRENT_DATE)::date
-          AND fecha < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
-        GROUP BY vendedor
+        SELECT COALESCE(NULLIF(s.seller_name, ''), NULLIF(c.seller_name, '')) AS vendor,
+               COUNT(*) AS sales_count,
+               COALESCE(SUM(s.total_amount), 0) AS sales_total
+        FROM sales s
+        LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+        WHERE s.empresa_id = $1
+          AND ${canonicalSalesSourceSql("s")}
+          AND COALESCE(NULLIF(s.seller_name, ''), NULLIF(c.seller_name, '')) IS NOT NULL
+          AND s.sale_date >= date_trunc('month', CURRENT_DATE)::date
+          AND s.sale_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
+        GROUP BY COALESCE(NULLIF(s.seller_name, ''), NULLIF(c.seller_name, ''))
       ),
       quotes AS (
-        SELECT creado_por AS vendor,
+        SELECT p.username AS vendor,
                COUNT(*) AS quotes_count,
-               COUNT(*) FILTER (WHERE estado = 'aceptada') AS accepted_quotes
-        FROM presupuestos
-        WHERE empresa_id = $1 AND COALESCE(creado_por, '') <> ''
-        GROUP BY creado_por
+               COUNT(*) FILTER (WHERE q.status = 'aceptada') AS accepted_quotes
+        FROM quotes q
+        JOIN profiles p ON p.id = q.seller_id
+        WHERE q.empresa_id = $1 AND COALESCE(p.username, '') <> ''
+        GROUP BY p.username
       ),
       goals AS (
-        SELECT vendedor AS vendor, meta_ventas, meta_clientes
-        FROM app_vendedor_metas
+        SELECT vendor, goal_sales, goal_clients
+        FROM vendor_goals
         WHERE empresa_id = $1
-          AND periodo = date_trunc('month', CURRENT_DATE)::date
+          AND period = date_trunc('month', CURRENT_DATE)::date
       )
       SELECT v.vendor,
              COALESCE(c.clients, 0)::text AS clients,
@@ -59,8 +73,8 @@ export async function getVendorManagement(companyId: number) {
              COALESCE(s.sales_total, 0)::text AS sales_total,
              COALESCE(q.quotes_count, 0)::text AS quotes_count,
              COALESCE(q.accepted_quotes, 0)::text AS accepted_quotes,
-             COALESCE(g.meta_ventas, 0)::text AS goal_sales,
-             COALESCE(g.meta_clientes, 0)::text AS goal_clients
+             COALESCE(g.goal_sales, 0)::text AS goal_sales,
+             COALESCE(g.goal_clients, 0)::text AS goal_clients
       FROM vendors v
       LEFT JOIN clients c ON c.vendor = v.vendor
       LEFT JOIN sales s ON s.vendor = v.vendor

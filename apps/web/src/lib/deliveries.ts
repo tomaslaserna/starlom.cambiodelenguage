@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/api-response";
-import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
-import { intField, type RequestBody } from "@/lib/request-body";
+import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
 
 function normalizePhoneForWhatsapp(phone: string) {
@@ -19,16 +20,22 @@ function todayArgentinaLabel() {
 }
 
 export function deliveryInputFromBody(body: RequestBody) {
-  const deliveryUserId = intField(body, "deliveryUserId", intField(body, "id_repartidor", 0));
+  const deliveryUserId = uuidParam(textField(body, "deliveryUserId") || textField(body, "id_repartidor"), "Repartidor");
   const rawIds = body.orderIds ?? body.ids;
   const orderIds = Array.isArray(rawIds)
-    ? rawIds.map(Number)
+    ? rawIds.map((id) => String(id).trim())
     : String(rawIds ?? "")
         .split(",")
-        .map((id) => Number(id.trim()));
-  const uniqueOrderIds = [...new Set(orderIds.filter((id) => Number.isInteger(id) && id > 0))];
+        .map((id) => id.trim());
+  const uniqueOrderIds = [...new Set(orderIds)].filter((id) => {
+    try {
+      uuidParam(id, "Pedido");
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
-  if (deliveryUserId <= 0) throw new ApiError(400, "Elegi un repartidor");
   if (!uniqueOrderIds.length) throw new ApiError(400, "Selecciona al menos un pedido");
 
   return { deliveryUserId, orderIds: uniqueOrderIds };
@@ -36,19 +43,21 @@ export function deliveryInputFromBody(body: RequestBody) {
 
 export async function listDeliveryPeople() {
   const result = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     nombre_completo: string;
     usuario: string;
     telefono: string;
   }>(
     1,
     `
-      SELECT id, nombre_completo, usuario, COALESCE(telefono, '') AS telefono
-      FROM usuarios
-      WHERE COALESCE(telefono, '') <> ''
-        AND COALESCE(activo, 1) <> 0
-        AND rango NOT IN ('Minorista', 'Mayorista')
-      ORDER BY nombre_completo ASC, usuario ASC
+      SELECT id::text AS id,
+             COALESCE(full_name, username, email, '') AS nombre_completo,
+             COALESCE(username, email, '') AS usuario,
+             '' AS telefono
+      FROM profiles
+      WHERE active = true
+        AND role::text NOT IN ('minorista', 'mayorista')
+      ORDER BY full_name ASC, username ASC
     `,
   );
 
@@ -62,28 +71,23 @@ export async function listDeliveryPeople() {
 
 export async function createDelivery(
   session: AuthSession,
-  input: { deliveryUserId: number; orderIds: number[] },
+  input: { deliveryUserId: string; orderIds: string[] },
 ) {
   return withCompanyContext(session.companyId, async (client) => {
     const deliveryUser = await client.query<{
       nombre_completo: string;
       telefono: string;
     }>(
-      "SELECT nombre_completo, COALESCE(telefono, '') AS telefono FROM usuarios WHERE id = $1 LIMIT 1",
+      "SELECT COALESCE(full_name, username, email, '') AS nombre_completo, '' AS telefono FROM profiles WHERE id = $1::uuid AND active = true LIMIT 1",
       [input.deliveryUserId],
     );
     const person = deliveryUser.rows[0];
     if (!person) throw new ApiError(404, "Repartidor no encontrado");
-    if (!person.telefono.trim()) {
-      throw new ApiError(400, "El repartidor no tiene telefono cargado");
-    }
-
-    const phoneForWhatsapp = normalizePhoneForWhatsapp(person.telefono);
+    const phoneForWhatsapp = person.telefono.trim() ? normalizePhoneForWhatsapp(person.telefono) : "";
 
     const orders = await client.query<{
-      id: number;
+      id: string;
       nombre_cliente: string;
-      dni_cliente: string;
       observacion: string;
       estado_pedido: string;
       domicilio: string;
@@ -91,16 +95,16 @@ export async function createDelivery(
       provincia: string;
     }>(
       `
-        SELECT v.id, v.nombre_cliente, v.dni_cliente, COALESCE(v.observacion,'') AS observacion,
-               COALESCE(v.estado_pedido,'') AS estado_pedido,
-               COALESCE(c.domicilio,'') AS domicilio,
-               COALESCE(c.ciudad,'') AS ciudad,
-               COALESCE(c.provincia,'') AS provincia
-        FROM ventas v
-        LEFT JOIN clientes c ON c.empresa_id = v.empresa_id
-             AND regexp_replace(c.nro_id, '[^0-9]', '', 'g') = regexp_replace(v.dni_cliente, '[^0-9]', '', 'g')
-             AND c.nro_id <> ''
-        WHERE v.id = ANY($1) AND v.empresa_id = $2
+        SELECT v.id::text AS id,
+               COALESCE(v.client_name, c.display_name, '') AS nombre_cliente,
+               COALESCE(v.notes,'') AS observacion,
+               ${normalizedOrderStatusSql("v")} AS estado_pedido,
+               COALESCE(c.delivery_address, c.address, '') AS domicilio,
+               COALESCE(c.locality,'') AS ciudad,
+               COALESCE(c.province,'') AS provincia
+        FROM sales v
+        LEFT JOIN clients c ON c.id = v.client_id AND c.empresa_id = v.empresa_id
+        WHERE v.id = ANY($1::uuid[]) AND v.empresa_id = $2
         ORDER BY v.id
       `,
       [input.orderIds, session.companyId],
@@ -110,13 +114,13 @@ export async function createDelivery(
       throw new ApiError(404, "Algun pedido no existe");
     }
     for (const order of orders.rows) {
-      if (order.estado_pedido !== "pendiente_entrega") {
-        throw new ApiError(400, `El pedido #${order.id} no esta en pendiente de entrega`);
+      if (order.estado_pedido !== "confirmado") {
+        throw new ApiError(400, `El pedido #${order.id} no esta confirmado para stock`);
       }
     }
 
-    const assigned = await client.query<{ id_venta: number }>(
-      "SELECT id_venta FROM reparto_pedidos WHERE empresa_id = $1 AND id_venta = ANY($2)",
+    const assigned = await client.query<{ id_venta: string }>(
+      "SELECT sale_id::text AS id_venta FROM delivery_run_sales WHERE empresa_id = $1 AND sale_id = ANY($2::uuid[])",
       [session.companyId, input.orderIds],
     );
     if (assigned.rows.length) {
@@ -126,19 +130,21 @@ export async function createDelivery(
       );
     }
 
-    const delivery = await client.query<{ id: number }>(
+    const delivery = await client.query<{ id: string }>(
       `
-        INSERT INTO repartos (repartidor_nombre, repartidor_telefono, creado_por, empresa_id)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id
+        INSERT INTO delivery_runs (
+          delivery_person_id, delivery_person_name, delivery_person_phone, created_by, empresa_id
+        )
+        VALUES ($1::uuid, $2, $3, $4::uuid, $5)
+        RETURNING id::text AS id
       `,
-      [person.nombre_completo, person.telefono, session.username, session.companyId],
+      [input.deliveryUserId, person.nombre_completo, person.telefono, session.userId, session.companyId],
     );
     const deliveryId = delivery.rows[0].id;
 
     for (const order of orders.rows) {
       await client.query(
-        "INSERT INTO reparto_pedidos (id_reparto, id_venta, empresa_id) VALUES ($1, $2, $3)",
+        "INSERT INTO delivery_run_sales (delivery_run_id, sale_id, empresa_id) VALUES ($1::uuid, $2::uuid, $3)",
         [deliveryId, order.id, session.companyId],
       );
     }
@@ -166,7 +172,9 @@ export async function createDelivery(
     });
 
     const message = lines.join("\n").trim();
-    const whatsappLink = `https://wa.me/${phoneForWhatsapp}?text=${encodeURIComponent(message)}`;
+    const whatsappLink = phoneForWhatsapp
+      ? `https://wa.me/${phoneForWhatsapp}?text=${encodeURIComponent(message)}`
+      : "";
 
     await client.query(
       "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
@@ -195,12 +203,11 @@ export async function createDelivery(
 }
 
 export function deliveryFromSaleInputFromBody(body: RequestBody) {
-  const saleId = intField(body, "saleId", intField(body, "id_venta", 0));
-  if (saleId <= 0) throw new ApiError(400, "id_venta invalido");
+  const saleId = uuidParam(textField(body, "saleId") || textField(body, "id_venta"), "Venta");
   return { saleId };
 }
 
-export async function createDeliveryDocumentFromSale(session: AuthSession, saleId: number) {
+export async function createDeliveryDocumentFromSale(session: AuthSession, saleId: string) {
   return withCompanyContext(session.companyId, async (client) => {
     const sale = await client.query<{
       nombre_cliente: string;
@@ -212,10 +219,16 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
       lista_precios: string;
     }>(
       `
-        SELECT nombre_cliente, dni_cliente, fecha::text, monto::text,
-               condicion_pago, vendedor, COALESCE(lista_precios, '') AS lista_precios
-        FROM ventas
-        WHERE id = $1 AND empresa_id = $2
+        SELECT COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
+               COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
+               s.sale_date::text AS fecha,
+               COALESCE(s.total_amount, 0)::text AS monto,
+               COALESCE(s.payment_condition, '') AS condicion_pago,
+               COALESCE(s.seller_name, c.seller_name, '') AS vendedor,
+               COALESCE(s.price_list_name, c.price_list_name, '') AS lista_precios
+        FROM sales s
+        LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+        WHERE s.id = $1::uuid AND s.empresa_id = $2
         LIMIT 1
       `,
       [saleId, session.companyId],
@@ -223,44 +236,51 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
     const current = sale.rows[0];
     if (!current) throw new ApiError(404, "Venta no encontrada");
 
-    const existing = await client.query<{ id: number }>(
-      "SELECT id FROM remitos WHERE id_venta = $1 AND empresa_id = $2 LIMIT 1",
+    const existing = await client.query<{ id: string }>(
+      "SELECT id::text AS id FROM delivery_documents WHERE sale_id = $1::uuid AND empresa_id = $2 LIMIT 1",
       [saleId, session.companyId],
     );
     if (existing.rows[0]) throw new ApiError(409, "Esta venta ya tiene un remito");
 
     const lines = await client.query<{
-      id_producto: number;
+      id: string;
+      product_id: string | null;
       nombre_producto: string;
-      cantidad: number;
+      cantidad: string;
       precio_unit: string;
       descuento: string;
       subtotal: string;
     }>(
       `
-        SELECT id_producto, nombre_producto, cantidad, precio_unit::text,
-               COALESCE(descuento, 0)::text AS descuento, subtotal::text
-        FROM detalle_ventas
-        WHERE id_venta = $1 AND empresa_id = $2
+        SELECT si.id::text AS id, si.product_id::text,
+               COALESCE(si.description, p.name, '') AS nombre_producto,
+               si.quantity::text AS cantidad,
+               si.unit_price::text AS precio_unit,
+               COALESCE(si.discount, 0)::text AS descuento,
+               si.total_amount::text AS subtotal
+        FROM sale_items si
+        LEFT JOIN products p ON p.id = si.product_id AND p.empresa_id = si.empresa_id
+        WHERE si.sale_id = $1::uuid AND si.empresa_id = $2
         ORDER BY id ASC
       `,
       [saleId, session.companyId],
     );
 
     const sequence = await client.query<{ value: number }>(
-      "SELECT app_private.next_sequence($1, 'nro_remito') AS value",
+      "SELECT COALESCE(MAX(delivery_number), 0) + 1 AS value FROM delivery_documents WHERE empresa_id = $1",
       [session.companyId],
     );
     const deliveryNumber = sequence.rows[0].value;
 
-    const created = await client.query<{ id: number }>(
+    const created = await client.query<{ id: string }>(
       `
-        INSERT INTO remitos (
-          id_venta, nro_remito, nombre_cliente, lista_precios, dni_cliente,
-          fecha, condicion_pago, monto, vendedor, empresa_id
+        INSERT INTO delivery_documents (
+          sale_id, delivery_number, client_name, price_list_name, client_document,
+          delivery_date, payment_condition, total_amount, seller_name, order_status,
+          created_by, empresa_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING id
+        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, 'confirmado', $10::uuid, $11)
+        RETURNING id::text AS id
       `,
       [
         saleId,
@@ -272,6 +292,7 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
         current.condicion_pago,
         current.monto,
         current.vendedor,
+        session.userId,
         session.companyId,
       ],
     );
@@ -280,17 +301,18 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
     for (const line of lines.rows) {
       await client.query(
         `
-          INSERT INTO detalle_remitos (
-            id_remito, id_producto, nombre_producto, cantidad, precio_unit,
-            descuento, subtotal, empresa_id
+          INSERT INTO delivery_document_items (
+            delivery_id, sale_item_id, product_id, description, quantity,
+            unit_price, discount, total_amount, empresa_id
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9)
         `,
         [
           deliveryId,
-          line.id_producto,
+          line.id,
+          line.product_id,
           line.nombre_producto,
-          line.cantidad,
+          Number(line.cantidad),
           Number(line.precio_unit),
           Number(line.descuento),
           Number(line.subtotal),
@@ -315,26 +337,27 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
       ],
     );
 
+    clearReadQueryCache();
     return { id: deliveryId, number: deliveryNumber, saleId };
   });
 }
 
-export async function getDeliveryItems(companyId: number, deliveryId: number) {
+export async function getDeliveryItems(companyId: number, deliveryId: string) {
   const result = await queryWithCompanyContext<{
     nombre: string;
-    cantidad: number;
+    cantidad: string;
   }>(
     companyId,
     `
-      SELECT COALESCE(p.nombre, d.nombre_producto, '(producto eliminado)') AS nombre,
-             d.cantidad
-      FROM detalle_remitos d
-      LEFT JOIN productos p ON p.id = d.id_producto AND p.empresa_id = d.empresa_id
-      WHERE d.id_remito = $1 AND d.empresa_id = $2
+      SELECT COALESCE(d.description, p.name, '(producto eliminado)') AS nombre,
+             d.quantity::text AS cantidad
+      FROM delivery_document_items d
+      LEFT JOIN products p ON p.id = d.product_id AND p.empresa_id = d.empresa_id
+      WHERE d.delivery_id = $1::uuid AND d.empresa_id = $2
       ORDER BY d.id ASC
     `,
     [deliveryId, companyId],
   );
 
-  return result.rows.map((row) => ({ name: row.nombre, quantity: row.cantidad }));
+  return result.rows.map((row) => ({ name: row.nombre, quantity: Number(row.cantidad) }));
 }

@@ -1,10 +1,11 @@
 import { ApiError } from "@/lib/api-response";
-import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
-import { intField, textField, type RequestBody } from "@/lib/request-body";
+import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
 
 export type SalesDocumentItem = {
-  id: number;
+  id: string;
   name: string;
   quantity: number;
   unitPrice: number;
@@ -12,8 +13,8 @@ export type SalesDocumentItem = {
 };
 
 export type SalesNoteInput = {
-  saleId: number;
-  remittanceId: number;
+  saleId: string;
+  remittanceId: string;
   className: "NC" | "ND";
   fiscal: boolean;
   reason: string;
@@ -48,6 +49,14 @@ function itemNumber(item: Record<string, unknown>, keys: string[]) {
   return 0;
 }
 
+function optionalUuid(body: RequestBody, keys: string[], label: string) {
+  for (const key of keys) {
+    const value = textField(body, key);
+    if (value) return uuidParam(value, label);
+  }
+  return "";
+}
+
 export function salesNoteInputFromBody(body: RequestBody): SalesNoteInput {
   const className = (textField(body, "className") || textField(body, "clase")).toUpperCase();
   if (className !== "NC" && className !== "ND") throw new ApiError(400, "Clase invalida");
@@ -66,7 +75,7 @@ export function salesNoteInputFromBody(body: RequestBody): SalesNoteInput {
       const quantity = Math.trunc(itemNumber(item, ["quantity", "cantidad"]));
       const unitPrice = itemNumber(item, ["unitPrice", "precio_unit"]);
       return {
-        id: Math.trunc(itemNumber(item, ["id", "productId", "id_producto"])),
+        id: itemText(item, ["id", "productId", "id_producto"]),
         name: itemText(item, ["name", "nombre"]),
         quantity,
         unitPrice,
@@ -78,17 +87,17 @@ export function salesNoteInputFromBody(body: RequestBody): SalesNoteInput {
   if (!detail.length) throw new ApiError(400, "Agrega al menos un producto");
 
   return {
-    saleId: intField(body, "saleId", intField(body, "id_venta", 0)),
-    remittanceId: intField(body, "remittanceId", intField(body, "id_remito", 0)),
+    saleId: optionalUuid(body, ["saleId", "id_venta"], "Venta"),
+    remittanceId: optionalUuid(body, ["remittanceId", "id_remito"], "Remito"),
     className,
-    fiscal: intField(body, "fiscal", 0) === 1 || textField(body, "fiscal") === "true",
+    fiscal: ["1", "true", "si", "sí"].includes(textField(body, "fiscal").toLowerCase()),
     reason: textField(body, "reason") || textField(body, "motivo"),
     detail,
   };
 }
 
-export async function getSalesDocumentContext(companyId: number, saleId = 0, remittanceId = 0) {
-  if (saleId <= 0 && remittanceId <= 0) throw new ApiError(400, "Falta id_venta o id_remito");
+export async function getSalesDocumentContext(companyId: number, saleId = "", remittanceId = "") {
+  if (!saleId && !remittanceId) throw new ApiError(400, "Falta id_venta o id_remito");
 
   const response: {
     sale: Record<string, unknown> | null;
@@ -96,9 +105,9 @@ export async function getSalesDocumentContext(companyId: number, saleId = 0, rem
     notes: Record<string, unknown>[];
   } = { sale: null, detail: [], notes: [] };
 
-  if (saleId > 0) {
+  if (saleId) {
     const saleResult = await queryWithCompanyContext<{
-      id: number;
+      id: string;
       cae: string;
       tipo_cbte: number;
       nro_comprobante: number;
@@ -109,11 +118,15 @@ export async function getSalesDocumentContext(companyId: number, saleId = 0, rem
     }>(
       companyId,
       `
-        SELECT id, COALESCE(cae, '') AS cae, tipo_cbte, nro_comprobante,
-               nombre_cliente, dni_cliente, monto::text,
-               COALESCE(estado_pedido, 'entregado') AS estado_pedido
-        FROM ventas
-        WHERE id = $1 AND empresa_id = $2
+        SELECT s.id::text AS id, '' AS cae, 0 AS tipo_cbte,
+               COALESCE(s.receipt_number, nullif(regexp_replace(COALESCE(s.sale_number, ''), '\D', '', 'g'), '')::bigint, 0)::int AS nro_comprobante,
+               COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
+               COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
+               COALESCE(s.total_amount, 0)::text AS monto,
+               ${normalizedOrderStatusSql("s")} AS estado_pedido
+        FROM sales s
+        LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+        WHERE s.id = $1::uuid AND s.empresa_id = $2
         LIMIT 1
       `,
       [saleId, companyId],
@@ -133,20 +146,20 @@ export async function getSalesDocumentContext(companyId: number, saleId = 0, rem
     };
 
     const detailResult = await queryWithCompanyContext<{
-      id_producto: number;
+      id_producto: string;
       nombre: string;
-      cantidad: number;
+      cantidad: string;
       precio_unit: string;
     }>(
       companyId,
       `
-        SELECT d.id_producto,
-               COALESCE(d.nombre_producto, p.nombre, '(producto)') AS nombre,
-               d.cantidad,
-               d.precio_unit::text
-        FROM detalle_ventas d
-        LEFT JOIN productos p ON p.id = d.id_producto AND p.empresa_id = d.empresa_id
-        WHERE d.id_venta = $1 AND d.empresa_id = $2
+        SELECT d.product_id::text AS id_producto,
+               COALESCE(d.description, p.name, '(producto)') AS nombre,
+               d.quantity::text AS cantidad,
+               d.unit_price::text AS precio_unit
+        FROM sale_items d
+        LEFT JOIN products p ON p.id = d.product_id AND p.empresa_id = d.empresa_id
+        WHERE d.sale_id = $1::uuid AND d.empresa_id = $2
         ORDER BY d.id ASC
       `,
       [saleId, companyId],
@@ -155,13 +168,13 @@ export async function getSalesDocumentContext(companyId: number, saleId = 0, rem
     response.detail = detailResult.rows.map((item) => ({
       id: item.id_producto,
       name: item.nombre,
-      quantity: item.cantidad,
+      quantity: Number(item.cantidad),
       unitPrice: Number(item.precio_unit),
-      subtotal: Number((item.cantidad * Number(item.precio_unit)).toFixed(2)),
+      subtotal: Number((Number(item.cantidad) * Number(item.precio_unit)).toFixed(2)),
     }));
   } else {
     const remittanceResult = await queryWithCompanyContext<{
-      id: number;
+      id: string;
       nombre_cliente: string;
       dni_cliente: string;
       nro_remito: number;
@@ -169,9 +182,11 @@ export async function getSalesDocumentContext(companyId: number, saleId = 0, rem
     }>(
       companyId,
       `
-        SELECT id, nombre_cliente, dni_cliente, nro_remito, monto::text
-        FROM remitos
-        WHERE id = $1 AND empresa_id = $2
+        SELECT id::text AS id, client_name AS nombre_cliente, client_document AS dni_cliente,
+               COALESCE(delivery_number, 0)::int AS nro_remito,
+               total_amount::text AS monto
+        FROM delivery_documents
+        WHERE id = $1::uuid AND empresa_id = $2
         LIMIT 1
       `,
       [remittanceId, companyId],
@@ -190,20 +205,20 @@ export async function getSalesDocumentContext(companyId: number, saleId = 0, rem
     };
 
     const detailResult = await queryWithCompanyContext<{
-      id_producto: number;
+      id_producto: string;
       nombre: string;
-      cantidad: number;
+      cantidad: string;
       precio_unit: string;
     }>(
       companyId,
       `
-        SELECT d.id_producto,
-               COALESCE(d.nombre_producto, p.nombre, '(producto)') AS nombre,
-               d.cantidad,
-               d.precio_unit::text
-        FROM detalle_remitos d
-        LEFT JOIN productos p ON p.id = d.id_producto AND p.empresa_id = d.empresa_id
-        WHERE d.id_remito = $1 AND d.empresa_id = $2
+        SELECT d.product_id::text AS id_producto,
+               COALESCE(d.description, p.name, '(producto)') AS nombre,
+               d.quantity::text AS cantidad,
+               d.unit_price::text AS precio_unit
+        FROM delivery_document_items d
+        LEFT JOIN products p ON p.id = d.product_id AND p.empresa_id = d.empresa_id
+        WHERE d.delivery_id = $1::uuid AND d.empresa_id = $2
         ORDER BY d.id ASC
       `,
       [remittanceId, companyId],
@@ -212,16 +227,16 @@ export async function getSalesDocumentContext(companyId: number, saleId = 0, rem
     response.detail = detailResult.rows.map((item) => ({
       id: item.id_producto,
       name: item.nombre,
-      quantity: item.cantidad,
+      quantity: Number(item.cantidad),
       unitPrice: Number(item.precio_unit),
-      subtotal: Number((item.cantidad * Number(item.precio_unit)).toFixed(2)),
+      subtotal: Number((Number(item.cantidad) * Number(item.precio_unit)).toFixed(2)),
     }));
   }
 
   const notesResult = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     clase: string;
-    fiscal: number;
+    fiscal: boolean;
     tipo_cbte: number;
     nro_comprobante: number;
     monto: string;
@@ -230,19 +245,21 @@ export async function getSalesDocumentContext(companyId: number, saleId = 0, rem
   }>(
     companyId,
     `
-      SELECT id, clase, fiscal, tipo_cbte, nro_comprobante, monto::text, motivo, creado_en::text
-      FROM comprobantes_venta
+      SELECT id::text AS id, class_name AS clase, fiscal, receipt_type AS tipo_cbte,
+             COALESCE(receipt_number, 0)::int AS nro_comprobante,
+             amount::text AS monto, reason AS motivo, created_at::text AS creado_en
+      FROM sales_internal_documents
       WHERE empresa_id = $1
-        AND ${saleId > 0 ? "id_venta = $2" : "id_remito = $2"}
-      ORDER BY id DESC
+        AND ${saleId ? "sale_id = $2::uuid" : "delivery_id = $2::uuid"}
+      ORDER BY created_at DESC
     `,
-    [companyId, saleId > 0 ? saleId : remittanceId],
+    [companyId, saleId || remittanceId],
   );
 
   response.notes = notesResult.rows.map((note) => ({
     id: note.id,
     className: note.clase,
-    fiscal: Number(note.fiscal) === 1,
+    fiscal: note.fiscal,
     receiptType: note.tipo_cbte,
     receiptNumber: String(note.nro_comprobante).padStart(8, "0"),
     amount: Number(note.monto),
@@ -260,22 +277,26 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
       "La emision fiscal online esta deshabilitada. Genera solo notas internas.",
     );
   }
-  if (input.saleId <= 0 && input.remittanceId <= 0) {
+  if (!input.saleId && !input.remittanceId) {
     throw new ApiError(400, "Falta la venta o remito");
   }
 
   return withCompanyContext(session.companyId, async (client) => {
-    let reference: { nombre_cliente: string; estado_pedido?: string } | undefined;
+    let reference: { nombre_cliente: string; estado_pedido?: string; client_id?: string | null } | undefined;
 
-    if (input.saleId > 0) {
+    if (input.saleId) {
       const referenceResult = await client.query<{
         nombre_cliente: string;
         estado_pedido: string;
+        client_id: string | null;
       }>(
         `
-          SELECT nombre_cliente, COALESCE(estado_pedido, 'entregado') AS estado_pedido
-          FROM ventas
-          WHERE id = $1 AND empresa_id = $2
+          SELECT COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
+                 ${normalizedOrderStatusSql("s")} AS estado_pedido,
+                 s.client_id::text
+          FROM sales s
+          LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+          WHERE s.id = $1::uuid AND s.empresa_id = $2
           LIMIT 1
         `,
         [input.saleId, session.companyId],
@@ -286,8 +307,14 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
         throw new ApiError(400, "El pedido aun no fue entregado.");
       }
     } else {
-      const referenceResult = await client.query<{ nombre_cliente: string }>(
-        "SELECT nombre_cliente FROM remitos WHERE id = $1 AND empresa_id = $2 LIMIT 1",
+      const referenceResult = await client.query<{ nombre_cliente: string; client_id: string | null }>(
+        `
+          SELECT d.client_name AS nombre_cliente, s.client_id::text
+          FROM delivery_documents d
+          LEFT JOIN sales s ON s.id = d.sale_id AND s.empresa_id = d.empresa_id
+          WHERE d.id = $1::uuid AND d.empresa_id = $2
+          LIMIT 1
+        `,
         [input.remittanceId, session.companyId],
       );
       reference = referenceResult.rows[0];
@@ -297,30 +324,32 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
     const amount = Number(
       input.detail.reduce((total, item) => total + item.subtotal, 0).toFixed(2),
     );
+    await client.query("SELECT pg_advisory_xact_lock(83030, $1::int)", [session.companyId]);
     const nextNumber = await client.query<{ valor: number }>(
-      "SELECT app_private.next_sequence($1, $2) AS valor",
-      [session.companyId, "comprobante_venta"],
+      "SELECT COALESCE(MAX(receipt_number), 0) + 1 AS valor FROM sales_internal_documents WHERE empresa_id = $1",
+      [session.companyId],
     );
     const receiptNumber = nextNumber.rows[0]?.valor;
     if (!receiptNumber) throw new ApiError(500, "No se pudo generar el comprobante");
 
-    const insertResult = await client.query<{ id: number }>(
+    const insertResult = await client.query<{ id: string }>(
       `
-        INSERT INTO comprobantes_venta (
-          id_venta, id_remito, clase, fiscal, tipo_cbte, nro_comprobante, cae,
-          vencimiento_cae, monto, detalle_json, motivo, stock_ajustado, creado_por, empresa_id
+        INSERT INTO sales_internal_documents (
+          sale_id, delivery_id, class_name, fiscal, receipt_type, receipt_number,
+          amount, detail_json, reason, stock_adjusted, created_by, created_by_name, empresa_id
         )
-        VALUES ($1, $2, $3, 0, 0, $4, '', '', $5, $6, $7, 0, $8, $9)
-        RETURNING id
+        VALUES ($1::uuid, $2::uuid, $3, false, 0, $4, $5, $6, $7, false, $8::uuid, $9, $10)
+        RETURNING id::text AS id
       `,
       [
-        input.saleId > 0 ? input.saleId : null,
-        input.remittanceId > 0 ? input.remittanceId : null,
+        input.saleId || null,
+        input.remittanceId || null,
         input.className,
         receiptNumber,
         amount,
         JSON.stringify(input.detail),
         input.reason,
+        session.userId,
         session.username,
         session.companyId,
       ],
@@ -329,34 +358,45 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
 
     const sign = input.className === "NC" ? 1 : -1;
     for (const item of input.detail) {
-      if (item.id <= 0) continue;
+      if (!item.id) continue;
       await client.query(
-        "UPDATE productos SET stock = GREATEST(0, stock + $1) WHERE id = $2 AND empresa_id = $3",
-        [sign * item.quantity, item.id, session.companyId],
+        `
+          INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
+          VALUES ($1::uuid, $2::stock_movement_type, $3, $4, $5)
+        `,
+        [
+          item.id,
+          sign > 0 ? "ajuste_positivo" : "ajuste_negativo",
+          item.quantity,
+          `${input.className === "NC" ? "Nota de credito" : "Nota de debito"} interna #${receiptNumber}`,
+          session.companyId,
+        ],
       );
     }
 
     await client.query(
-      "UPDATE comprobantes_venta SET stock_ajustado = 1 WHERE id = $1 AND empresa_id = $2",
+      "UPDATE sales_internal_documents SET stock_adjusted = true WHERE id = $1::uuid AND empresa_id = $2",
       [documentId, session.companyId],
     );
 
-    if (input.saleId > 0) {
+    if (input.saleId) {
       const debit = input.className === "ND" ? amount : 0;
       const credit = input.className === "NC" ? amount : 0;
       await client.query(
         `
-          INSERT INTO cuentas_corrientes (
-            tipo, entidad_nombre, descripcion, debe, haber, fecha, id_origen, tipo_origen, empresa_id
+          INSERT INTO current_account_movements (
+            client_id, sale_id, entity_type, entity_name, description,
+            debit, credit, movement_date, empresa_id
           )
-          VALUES ('cliente', $1, $2, $3, $4, CURRENT_DATE, $5, 'venta', $6)
+          VALUES ($1::uuid, $2::uuid, 'cliente', $3, $4, $5, $6, CURRENT_DATE, $7)
         `,
         [
+          reference.client_id ?? null,
+          input.saleId,
           reference.nombre_cliente,
           `${input.className === "NC" ? "Nota de credito" : "Nota de debito"} interna #${receiptNumber}`,
           debit,
           credit,
-          input.saleId,
           session.companyId,
         ],
       );
@@ -370,8 +410,8 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
           id: documentId,
           clase: input.className,
           fiscal: false,
-          id_venta: input.saleId,
-          id_remito: input.remittanceId,
+          id_venta: input.saleId || null,
+          id_remito: input.remittanceId || null,
           monto: amount,
           nro: receiptNumber,
         }),
@@ -379,6 +419,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
       ],
     );
 
+    clearReadQueryCache();
     return {
       id: documentId,
       className: input.className,
@@ -388,4 +429,3 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
     };
   });
 }
-

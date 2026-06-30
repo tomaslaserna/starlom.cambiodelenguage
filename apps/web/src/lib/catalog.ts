@@ -2,7 +2,7 @@ import { queryWithCompanyContext } from "@/lib/db";
 import { parsePagination } from "@/lib/pagination";
 
 export type Customer = {
-  id: number;
+  id: string;
   code: string;
   name: string;
   businessName: string;
@@ -19,8 +19,8 @@ export type Customer = {
 };
 
 export type Product = {
-  id: number;
-  productId: number;
+  id: string;
+  productId: string;
   code: string;
   category: string;
   supplier: string;
@@ -66,41 +66,41 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
   if (query) {
     params.push(searchPattern(query));
     filters.push(
-      `(nombre_cliente ILIKE $${params.length} ESCAPE '\\' OR razon_social ILIKE $${params.length} ESCAPE '\\' OR nro_id ILIKE $${params.length} ESCAPE '\\' OR telefono ILIKE $${params.length} ESCAPE '\\')`,
+      `(display_name ILIKE $${params.length} ESCAPE '\\' OR legal_name ILIKE $${params.length} ESCAPE '\\' OR tax_id ILIKE $${params.length} ESCAPE '\\' OR phone ILIKE $${params.length} ESCAPE '\\')`,
     );
   }
 
   const where = filters.join(" AND ");
   const countResult = await queryWithCompanyContext<{ total: string }>(
     companyId,
-    `SELECT COUNT(*)::text AS total FROM clientes WHERE ${where}`,
+    `SELECT COUNT(*)::text AS total FROM clients WHERE ${where}`,
     params,
   );
 
   params.push(pagination.pageSize, pagination.offset);
   const rows = await queryWithCompanyContext<{
-    id: number;
-    codigo_cliente: string;
-    nombre_cliente: string;
-    razon_social: string;
-    tipo_id: string;
-    nro_id: string;
-    cond_iva: string;
-    telefono: string;
-    provincia: string;
-    ciudad: string;
-    lista_precios: string;
-    estado: string;
-    vendedor_cl: string;
+    id: string;
+    external_code: string | null;
+    display_name: string;
+    legal_name: string | null;
+    tax_id: string | null;
+    fiscal_condition: string | null;
+    phone: string | null;
+    locality: string | null;
+    province: string | null;
+    price_list_name: string | null;
+    active: boolean;
+    seller_name: string | null;
+    payment_term_days: number | null;
   }>(
     companyId,
     `
-      SELECT id, codigo_cliente, nombre_cliente, razon_social, tipo_id, nro_id,
-             cond_iva, telefono, provincia, ciudad, lista_precios, estado,
-             vendedor_cl
-      FROM clientes
+      SELECT id, external_code, display_name, legal_name, tax_id,
+             fiscal_condition, phone, locality, province, price_list_name,
+             active, seller_name, payment_term_days
+      FROM clients
       WHERE ${where}
-      ORDER BY nombre_cliente ASC, id ASC
+      ORDER BY display_name ASC, id ASC
       LIMIT $${params.length - 1} OFFSET $${params.length}
     `,
     params,
@@ -111,19 +111,19 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
   return {
     data: rows.rows.map((row) => ({
       id: row.id,
-      code: row.codigo_cliente,
-      name: row.nombre_cliente,
-      businessName: row.razon_social,
-      taxIdType: row.tipo_id,
-      taxId: row.nro_id,
-      vatCondition: row.cond_iva,
-      phone: row.telefono,
-      province: row.provincia,
-      city: row.ciudad,
-      priceList: row.lista_precios,
-      status: row.estado,
-      seller: row.vendedor_cl,
-      paymentTermDays: null,
+      code: row.external_code ?? "",
+      name: row.display_name,
+      businessName: row.legal_name ?? "",
+      taxIdType: row.tax_id ? "CUIT" : "",
+      taxId: row.tax_id ?? "",
+      vatCondition: row.fiscal_condition ?? "",
+      phone: row.phone ?? "",
+      province: row.province ?? "",
+      city: row.locality ?? "",
+      priceList: row.price_list_name ?? "",
+      status: row.active ? "Activo" : "Inactivo",
+      seller: row.seller_name ?? "",
+      paymentTermDays: row.payment_term_days,
     })),
     meta: {
       companyId,
@@ -141,42 +141,66 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
   const query = input.query?.trim() ?? "";
   const pagination = parsePagination(input);
   const params: unknown[] = [companyId];
-  const filters = ["empresa_id = $1"];
+  const filters = ["p.empresa_id = $1"];
 
   if (query) {
     params.push(searchPattern(query));
     filters.push(
-      `(nombre ILIKE $${params.length} ESCAPE '\\' OR codigo ILIKE $${params.length} ESCAPE '\\' OR categoria ILIKE $${params.length} ESCAPE '\\' OR proveedor ILIKE $${params.length} ESCAPE '\\')`,
+      `(p.name ILIKE $${params.length} ESCAPE '\\' OR p.sku ILIKE $${params.length} ESCAPE '\\' OR p.category ILIKE $${params.length} ESCAPE '\\' OR s.display_name ILIKE $${params.length} ESCAPE '\\')`,
     );
   }
 
   const where = filters.join(" AND ");
   const countResult = await queryWithCompanyContext<{ total: string }>(
     companyId,
-    `SELECT COUNT(*)::text AS total FROM vista_stock_disponible WHERE ${where}`,
+    `
+      SELECT COUNT(*)::text AS total
+      FROM products p
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      WHERE ${where}
+    `,
     params,
   );
 
   params.push(pagination.pageSize, pagination.offset);
   const rows = await queryWithCompanyContext<{
-    id: number;
-    id_producto: number;
-    codigo: string;
-    categoria: string;
-    proveedor: string;
-    nombre: string;
-    costo: string;
-    stock_real: number;
-    reservado: string;
-    disponible: string;
+    id: string;
+    sku: string | null;
+    category: string | null;
+    supplier: string | null;
+    name: string;
+    cost: string | null;
+    stock_real: string;
+    reserved: string;
+    available: string;
   }>(
     companyId,
     `
-      SELECT id, id_producto, codigo, categoria, proveedor, nombre, costo,
-             stock_real, reservado, disponible
-      FROM vista_stock_disponible
+      SELECT
+        p.id,
+        p.sku,
+        p.category,
+        s.display_name AS supplier,
+        p.name,
+        p.cost,
+        COALESCE(stock.stock_real, 0)::text AS stock_real,
+        0::text AS reserved,
+        COALESCE(stock.stock_real, 0)::text AS available
+      FROM products p
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      LEFT JOIN LATERAL (
+        SELECT SUM(
+          CASE
+            WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
+            ELSE -sm.quantity
+          END
+        ) AS stock_real
+        FROM stock_movements sm
+        WHERE sm.empresa_id = p.empresa_id
+          AND sm.product_id = p.id
+      ) stock ON true
       WHERE ${where}
-      ORDER BY nombre ASC, id ASC
+      ORDER BY p.name ASC, p.id ASC
       LIMIT $${params.length - 1} OFFSET $${params.length}
     `,
     params,
@@ -187,15 +211,15 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
   return {
     data: rows.rows.map((row) => ({
       id: row.id,
-      productId: row.id_producto,
-      code: row.codigo,
-      category: row.categoria,
-      supplier: row.proveedor,
-      name: row.nombre,
-      cost: Number(row.costo),
-      stockReal: row.stock_real,
-      reserved: Number(row.reservado),
-      available: Number(row.disponible),
+      productId: row.id,
+      code: row.sku ?? "",
+      category: row.category ?? "",
+      supplier: row.supplier ?? "",
+      name: row.name,
+      cost: Number(row.cost ?? 0),
+      stockReal: Number(row.stock_real),
+      reserved: Number(row.reserved),
+      available: Number(row.available),
     })),
     meta: {
       companyId,

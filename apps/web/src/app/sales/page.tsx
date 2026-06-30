@@ -7,25 +7,20 @@ import {
   StatCard,
 } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
-import { fastOr } from "@/lib/fast-data";
 import { getSalesSummary } from "@/lib/sales-admin";
 import { requireStaffSession } from "@/lib/auth";
+import { requirePagePermission } from "@/lib/page-auth";
+import { SALES_READ_PERMISSION } from "@/lib/route-auth";
 
 export default async function SalesPage() {
   const session = await requireStaffSession();
-  const summary = await fastOr(getSalesSummary(session.companyId, "mes"), {
-    totalInvoices: 0,
-    totalAmount: 0,
-    invoiced: 0,
-    notInvoiced: 0,
-    pending: 0,
-    overdue: 0,
-  });
+  await requirePagePermission(session, [SALES_READ_PERMISSION]);
+  const summary = await getSalesSummary(session.companyId, "mes");
 
   return (
     <ModulePage
       active="sales"
-      description="Ventas registradas, carga de pedidos y presupuestos como submodulos comerciales."
+      description="Ventas entregadas, carga de pedidos y presupuestos como submodulos comerciales."
       session={session}
       title="Ventas"
     >
@@ -36,7 +31,7 @@ export default async function SalesPage() {
               Cargar pedido
             </ButtonLink>
           }
-          description="Resumen comercial y accesos operativos a ventas registradas, carga de pedidos y presupuestos."
+          description="Resumen comercial y accesos operativos a ventas entregadas, carga de pedidos y presupuestos."
           title="Ventas"
         />
 
@@ -51,13 +46,13 @@ export default async function SalesPage() {
           <Card>
             <CardContent className="grid h-full gap-4">
               <div>
-                <h2 className="font-semibold">Ventas registradas</h2>
+                <h2 className="font-semibold">Ventas entregadas</h2>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">
-                  Listado operativo de pedidos y ventas con seguimiento de estados.
+                  Listado operativo de pedidos entregados que ya cuentan como venta.
                 </p>
               </div>
               <ButtonLink
-                aria-label="Ver listado de ventas registradas"
+                aria-label="Ver listado de ventas entregadas"
                 className="w-fit"
                 href="/orders"
                 size="sm"
@@ -72,7 +67,7 @@ export default async function SalesPage() {
               <div>
                 <h2 className="font-semibold">Cargar pedido</h2>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--muted)]">
-                  Alta inicial de un pedido en estado recibido.
+                  Alta inicial de un pedido cargado, antes de confirmar stock.
                 </p>
               </div>
               <ButtonLink

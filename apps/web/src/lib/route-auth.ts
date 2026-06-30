@@ -1,4 +1,4 @@
-import { currentSession, isStaffRole, type AuthSession } from "@/lib/auth";
+import { currentSession, isStaffRole, normalizeRole, type AuthSession } from "@/lib/auth";
 import { getDbPool } from "@/lib/db";
 import { ApiError } from "@/lib/api-response";
 
@@ -32,9 +32,104 @@ export const COLLECTIONS_READ_PERMISSION = {
   action: "ver",
 } satisfies Permission;
 
+export const COLLECTIONS_CREATE_PERMISSION = {
+  resource: "cobranzas",
+  action: "crear",
+} satisfies Permission;
+
 export const COLLECTIONS_APPROVE_PERMISSION = {
   resource: "cobranzas",
   action: "aprobar",
+} satisfies Permission;
+
+export const ORDERS_READ_PERMISSION = {
+  resource: "pedidos",
+  action: "ver",
+} satisfies Permission;
+
+export const ORDERS_CREATE_PERMISSION = {
+  resource: "pedidos",
+  action: "crear",
+} satisfies Permission;
+
+export const SALES_READ_PERMISSION = {
+  resource: "ventas",
+  action: "ver",
+} satisfies Permission;
+
+export const QUOTES_READ_PERMISSION = {
+  resource: "presupuestos",
+  action: "ver",
+} satisfies Permission;
+
+export const QUOTES_CREATE_PERMISSION = {
+  resource: "presupuestos",
+  action: "crear",
+} satisfies Permission;
+
+export const QUOTES_APPROVE_PERMISSION = {
+  resource: "presupuestos",
+  action: "aprobar",
+} satisfies Permission;
+
+export const PURCHASES_READ_PERMISSION = {
+  resource: "compras",
+  action: "ver",
+} satisfies Permission;
+
+export const PURCHASES_CREATE_PERMISSION = {
+  resource: "compras",
+  action: "crear",
+} satisfies Permission;
+
+export const PURCHASES_EDIT_PERMISSION = {
+  resource: "compras",
+  action: "editar",
+} satisfies Permission;
+
+export const REPORTS_READ_PERMISSION = {
+  resource: "reportes",
+  action: "ver",
+} satisfies Permission;
+
+export const ADMIN_METRICS_READ_PERMISSION = {
+  resource: "admin.metricas",
+  action: "ver",
+} satisfies Permission;
+
+export const ADMIN_TREASURY_READ_PERMISSION = {
+  resource: "admin.tesoreria",
+  action: "ver",
+} satisfies Permission;
+
+export const ADMIN_CASHFLOW_READ_PERMISSION = {
+  resource: "admin.cashflow",
+  action: "ver",
+} satisfies Permission;
+
+export const ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION = {
+  resource: "admin.cuentas_por_pagar",
+  action: "ver",
+} satisfies Permission;
+
+export const ADMIN_BALANCE_READ_PERMISSION = {
+  resource: "admin.balance",
+  action: "ver",
+} satisfies Permission;
+
+export const ADMIN_SALARIES_READ_PERMISSION = {
+  resource: "admin.sueldos",
+  action: "ver",
+} satisfies Permission;
+
+export const ADMIN_DIVIDENDS_READ_PERMISSION = {
+  resource: "admin.dividendos",
+  action: "ver",
+} satisfies Permission;
+
+export const ADMIN_MOVEMENTS_READ_PERMISSION = {
+  resource: "admin.movimientos",
+  action: "ver",
 } satisfies Permission;
 
 const LEGACY_ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -74,101 +169,47 @@ const LEGACY_ROLE_PERMISSIONS: Record<string, string[]> = {
     "presupuestos.ver",
     "presupuestos.crear",
   ],
-  Empleado: ["pedidos.ver", "stock.ver"],
-  Empleado_1: ["pedidos.ver", "pedidos.editar", "stock.ver", "stock.editar", "productos.ver"],
-  Empleado_2: [
-    "ventas.ver",
-    "ventas.crear",
-    "presupuestos.ver",
-    "presupuestos.crear",
-    "pedidos.ver",
-    "clientes.ver",
-    "stock.ver",
-  ],
-  Jefe: [
-    "ventas.ver",
-    "ventas.crear",
-    "ventas.editar",
-    "presupuestos.ver",
-    "presupuestos.crear",
-    "presupuestos.editar",
-    "presupuestos.aprobar",
-    "pedidos.ver",
-    "pedidos.editar",
-    "pedidos.administrar",
-    "cobranzas.ver",
-    "compras.ver",
-    "compras.crear",
-    "stock.ver",
-    "stock.editar",
-    "clientes.ver",
-    "proveedores.ver",
-    "empleados.ver",
-  ],
-  Jefe1: [
-    "ventas.ver",
-    "ventas.crear",
-    "ventas.editar",
-    "ventas.exportar",
-    "presupuestos.ver",
-    "presupuestos.crear",
-    "presupuestos.editar",
-    "presupuestos.aprobar",
-    "presupuestos.cancelar",
-    "pedidos.ver",
-    "pedidos.editar",
-    "pedidos.cancelar",
-    "pedidos.administrar",
-    "cobranzas.ver",
-    "cobranzas.crear",
-    "cobranzas.editar",
-    "cobranzas.aprobar",
-    "compras.ver",
-    "compras.crear",
-    "compras.editar",
-    "compras.aprobar",
-    "compras.cancelar",
-    "stock.ver",
-    "stock.editar",
-    "stock.administrar",
-    "productos.ver",
-    "productos.crear",
-    "productos.editar",
-    "clientes.ver",
-    "clientes.crear",
-    "clientes.editar",
-    "proveedores.ver",
-    "proveedores.crear",
-    "proveedores.editar",
-    "empleados.ver",
-    "empleados.crear",
-    "empleados.editar",
-    "empleados.administrar",
-    "reportes.ver",
-    "reportes.exportar",
-  ],
 };
 
 const DATABASE_PERMISSION_CACHE_TTL_MS = 60_000;
 const databasePermissionCache = new Map<string, { expiresAt: number; allowed: boolean }>();
 
+export function clearPermissionCache() {
+  databasePermissionCache.clear();
+}
+
 function permissionKey(permission: Permission) {
   return `${permission.resource.trim()}.${permission.action.trim()}`;
 }
 
+function permissionKeyAliases(permission: Permission) {
+  const key = permissionKey(permission);
+  const resource = permission.resource.trim();
+  if (resource.startsWith("admin.") && permission.action.trim() === "ver") {
+    return [key, resource];
+  }
+  return [key];
+}
+
+function permissionKeys(permissions: Permission[]) {
+  return [...new Set(permissions.flatMap(permissionKeyAliases))];
+}
+
 function legacyRoleAllows(session: AuthSession, permissions: Permission[]) {
-  if (session.role === "Admin" || session.role === "administrador") return true;
-  const allowed = new Set(LEGACY_ROLE_PERMISSIONS[session.role] ?? []);
+  const role = normalizeRole(session.role);
+  if (role === "administrador") return true;
+  const allowed = new Set(LEGACY_ROLE_PERMISSIONS[role] ?? []);
   if (allowed.has("*")) return true;
-  return permissions.some((permission) => allowed.has(permissionKey(permission)));
+  return permissions.some((permission) => permissionKeyAliases(permission).some((key) => allowed.has(key)));
 }
 
 async function databaseAllows(session: AuthSession, permissions: Permission[]) {
-  if (session.role === "Admin" || session.role === "administrador") return true;
+  const role = normalizeRole(session.role);
+  if (role === "administrador") return true;
   if (!permissions.length) return true;
 
-  const keys = permissions.map(permissionKey);
-  const cacheKey = `${session.userId}:${session.companyId}:${keys.sort().join("|")}`;
+  const keys = permissionKeys(permissions);
+  const cacheKey = `${session.userId}:${session.companyId}:${role}:${keys.sort().join("|")}`;
   const cached = databasePermissionCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.allowed;
 
@@ -176,20 +217,22 @@ async function databaseAllows(session: AuthSession, permissions: Permission[]) {
     `
       SELECT 1 AS allowed
       FROM profile_permissions pp
+      JOIN app_permissions ap ON ap.key = pp.permission_key AND ap.sensitive = FALSE
       WHERE pp.profile_id = $1::uuid
         AND pp.empresa_id = $2
-        AND pp.permission_key = ANY($3)
+        AND pp.permission_key = ANY($4)
       UNION
       SELECT 1 AS allowed
       FROM usuario_empresa ue
-      JOIN role_permissions rp ON rp.role = ue.role
+      JOIN role_permissions rp ON rp.role::text = $3
+      JOIN app_permissions ap ON ap.key = rp.permission_key AND ap.sensitive = FALSE
       WHERE ue.id_usuario = $1::uuid
         AND ue.empresa_id = $2
         AND ue.activo = TRUE
-        AND rp.permission_key = ANY($3)
+        AND rp.permission_key = ANY($4)
       LIMIT 1
     `,
-    [session.userId, session.companyId, keys],
+    [session.userId, session.companyId, role, keys],
   );
 
   const allowed = Boolean(result.rows[0]);
@@ -249,6 +292,6 @@ export async function requireApiSession(permissions: Permission[] = []) {
 
 export async function requireAdminApiSession() {
   const session = await requireApiSession();
-  if (session.role !== "Admin" && session.role !== "administrador") throw new ApiError(403, "Solo Admin");
+  if (normalizeRole(session.role) !== "administrador") throw new ApiError(403, "Solo Admin");
   return session;
 }
