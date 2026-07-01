@@ -149,7 +149,8 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   const orders = read("apps/web/src/lib/orders.ts");
   assert.match(orders, /'no_aplica', 'cargado'/);
   assert.match(orders, /export async function updateBasicOrder/);
-  assert.match(orders, /Solo se pueden modificar pedidos cargados antes de confirmarlos/);
+  assert.match(orders, /Solo se pueden modificar pedidos cargados o confirmados/);
+  assert.match(orders, /order_status = 'cargado'/);
   assert.match(orders, /"pedido\.cargado"/);
   assert.match(orders, /"pedido\.modificado"/);
   assert.match(orders, /Solo los pedidos cargados pueden confirmarse/);
@@ -164,7 +165,8 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   const editPage = read("apps/web/src/app/orders/[id]/edit/page.tsx");
   assert.match(editPage, /OrderEntryFields/);
   assert.match(editPage, /initialValue/);
-  assert.match(editPage, /order\.orderStatus !== "cargado"/);
+  assert.match(editPage, /order\.orderStatus !== "cargado" && order\.orderStatus !== "confirmado"/);
+  assert.match(editPage, /order\.orderStatus === "confirmado"/);
 
   const editActions = read("apps/web/src/app/orders/[id]/edit/actions.ts");
   assert.match(editActions, /updateBasicOrder/);
@@ -185,10 +187,10 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(navigation, /ordersLoaded/);
   assert.match(navigation, /ordersConfirmed/);
   assert.match(navigation, /label: "Presupuestador"/);
-  assert.match(navigation, /label: "Operaciones"[\s\S]*groups: \[groupByLabel\("Pedidos"\), groupByLabel\("Registro de ventas"\), groupByLabel\("Presupuestador"\)\]/);
+  assert.match(navigation, /label: "Comercial"[\s\S]*groups: \[groupByLabel\("Pedidos"\), groupByLabel\("Ventas"\), groupByLabel\("Presupuestos"\)\]/);
   assert.match(navigation, /label: "Administrador"[\s\S]*href: "\/metrics", label: "Metricas"/);
   assert.match(navigation, /label: "Compras"[\s\S]*groups: \[groupByLabel\("Compras"\)\]/);
-  assert.doesNotMatch(navigation, /label: "Ventas"/);
+  assert.match(navigation, /label: "Ventas"[\s\S]*label: "Registro de ventas"/);
   assert.doesNotMatch(navigation, /label: "Facturacion"/);
   assert.doesNotMatch(navigation, /href: "\/database", label: "Resumen"/);
   assert.doesNotMatch(navigation, /href: "\/employees", label: "Empleados", active: "database"/);
