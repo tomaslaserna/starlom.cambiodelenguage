@@ -89,6 +89,47 @@ Orden tentativo, cada uno con su propio diseño antes de codear:
    - Visibilidad: cada comercial ve su cartera (campo `seller` del cliente), el jefe
      ve todo; reasignación configurable.
 
+## Roadmap — Menú Administración (visión de Augusto)
+
+Estos tableros ya tienen **base parcial** en el ERP (`/metrics`, `/treasury`,
+`/balance`, `/employees`); acá va la visión completa a la que hay que llevarlos.
+
+### Métricas (`/metrics`)
+Todas las métricas del negocio, en 4 bloques:
+- **Resumen Ejecutivo:** tarjetas con los KPI más importantes + un **semáforo de
+  salud** del negocio.
+- **Análisis:** gráficos interactivos de ventas, rentabilidad, gastos y evolución
+  temporal.
+- **Operación:** indicadores de stock, clientes, cobranzas, compras y logística.
+- **Proyección y Alertas:** estimaciones de cierre, metas, y notificaciones
+  automáticas sobre riesgos u oportunidades.
+- **Generar reportes para socios.**
+
+### Tesorería (`/treasury`) — "¿Qué tengo que pagar y cobrar?"
+- **Cobros:** clientes vencidos, clientes por vencer, cheques a cobrar.
+- **Pagos:** proveedores, IVA, IIBB, impuesto al cheque, sueldos, alquiler,
+  tarjetas.
+- **Indicador clave:** caja proyectada a **7, 15 y 30 días**.
+
+### Caja (NUEVO tablero, uso diario) — "¿Cuánta plata tengo hoy?"
+Es el tablero para mirar todos los días.
+- **Ingresos:** cobros contado, transferencias, Mercado Pago, cobranza de cuentas
+  corrientes, otros ingresos.
+- **Egresos:** compras, sueldos, alquiler, combustible, servicios, impuestos, pago
+  a proveedores, dividendos.
+- **Resultado:** Caja inicial + Cobros − Pagos = **Caja final**.
+- **Separado por cuenta:** Banco Galicia, Banco Nación, Banco Macro, Efectivo,
+  Mercado Pago (cada uno por separado).
+
+### RRHH (`/employees`)
+Base de datos de usuarios y empleados: permisos e info relacionada. (Ya existe;
+alinear/ampliar bajo el nombre "RRHH".)
+
+### Balance (`/balance`) — "¿Cuánto vale hoy STARLIM?"
+- **Activos:** caja, bancos, clientes, stock, vehículos, equipos.
+- **Pasivos:** proveedores, AFIP, IIBB, deudas, ex socio.
+- **Patrimonio:** lo que realmente vale la empresa.
+
 ## Cómo trabajamos (por si su IA colabora sobre lo mismo)
 
 - Cada feature: diseño (spec en `docs/superpowers/specs/`) → plan (`.../plans/`) →
