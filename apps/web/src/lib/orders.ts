@@ -880,8 +880,9 @@ export async function updateBasicOrder(
     );
     const current = currentResult.rows[0];
     if (!current) throw new ApiError(404, "Pedido no encontrado");
-    if (normalizeOrderStatus(current.estado_pedido) !== "cargado") {
-      throw new ApiError(400, "Solo se pueden modificar pedidos cargados antes de confirmarlos.");
+    const estadoActual = normalizeOrderStatus(current.estado_pedido);
+    if (estadoActual !== "cargado" && estadoActual !== "confirmado") {
+      throw new ApiError(400, "Solo se pueden modificar pedidos cargados o confirmados.");
     }
 
     const {

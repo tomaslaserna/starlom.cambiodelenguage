@@ -333,7 +333,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                         </DataTableCell>
                         <DataTableCell className="px-2 py-2">
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            {order.orderStatus === "cargado" ? (
+                            {order.orderStatus === "cargado" || order.orderStatus === "confirmado" ? (
                               <ButtonLink
                                 aria-label={`Modificar pedido ${order.id}`}
                                 className="shrink-0"
