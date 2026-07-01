@@ -54,9 +54,14 @@ export default async function PricingPage() {
           title="Precios y margenes"
           description="Gestion operativa de listas y categorias dentro de React."
           actions={
-            <ButtonLink href="/api/pdfs/pricing/price-list?list=1" prefetch={false} size="sm" target="_blank">
-              Lista PDF
-            </ButtonLink>
+            <div className="flex flex-wrap gap-2">
+              <ButtonLink href="/pricing/offers" size="sm" variant="secondary">
+                Ofertas
+              </ButtonLink>
+              <ButtonLink href="/api/pdfs/pricing/price-list?list=1" prefetch={false} size="sm" target="_blank">
+                Lista PDF
+              </ButtonLink>
+            </div>
           }
         />
 
