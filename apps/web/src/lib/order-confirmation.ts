@@ -35,6 +35,7 @@ export function formatDeliveryDate(iso: string): string {
   return `${day}.${month}.${year.slice(2)} (${dayName})`;
 }
 
+// Asume Argentina: antepone el codigo de pais 54 cuando falta.
 export function normalizePhoneForWhatsapp(phone: string): string | null {
   const digits = (phone ?? "").replace(/\D/g, "").replace(/^0+/, "");
   const national = digits.startsWith("54") ? digits.slice(2) : digits;

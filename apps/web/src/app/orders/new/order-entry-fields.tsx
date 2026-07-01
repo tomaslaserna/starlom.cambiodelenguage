@@ -383,9 +383,11 @@ export function OrderEntryFields({ clients, products, initialValue }: OrderEntry
         address={selectedClient?.address ?? ""}
         businessName={selectedClient?.name ?? ""}
         deliveryDate={date}
-        lines={calculatedLines.map((line) => ({ quantity: line.quantity, name: line.product.name }))}
+        lines={calculatedLines
+          .filter((line) => line.quantity > 0)
+          .map((line) => ({ quantity: line.quantity, name: line.product.name }))}
         phone={selectedClient?.phone ?? ""}
-        ready={Boolean(selectedClient) && calculatedLines.length > 0}
+        ready={Boolean(selectedClient) && calculatedLines.some((line) => line.quantity > 0)}
       />
     </div>
   );

@@ -27,6 +27,7 @@ export function OrderConfirmationPreview({
 }: OrderConfirmationPreviewProps) {
   const [offerText, setOfferText] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
 
   const message = useMemo(
     () =>
@@ -47,9 +48,11 @@ export function OrderConfirmationPreview({
     try {
       await navigator.clipboard.writeText(message);
       setCopied(true);
+      setCopyFailed(false);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       setCopied(false);
+      setCopyFailed(true);
     }
   }
 
@@ -100,6 +103,11 @@ export function OrderConfirmationPreview({
           </Button>
         )}
       </div>
+      {copyFailed ? (
+        <p className="erp-text-caption text-[color:var(--muted)]">
+          No se pudo copiar automáticamente. Seleccioná el texto de arriba y copialo a mano.
+        </p>
+      ) : null}
     </div>
   );
 }
