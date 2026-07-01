@@ -40,7 +40,7 @@ export function OrderConfirmationPreview({
     [businessName, lines, address, deliveryDate, offerText],
   );
 
-  const waPhone = normalizePhoneForWhatsapp(phone);
+  const waPhone = useMemo(() => normalizePhoneForWhatsapp(phone), [phone]);
   const waUrl = ready && waPhone ? `https://wa.me/${waPhone}?text=${encodeURIComponent(message)}` : null;
 
   async function copyMessage() {
