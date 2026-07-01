@@ -55,7 +55,7 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
           }
         />
 
-        {order.orderStatus !== "cargado" ? (
+        {order.orderStatus !== "cargado" && order.orderStatus !== "confirmado" ? (
           <Card>
             <CardContent className="grid gap-3 p-5">
               <div className="flex flex-wrap items-center gap-3">
@@ -65,8 +65,7 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
                 </StatusBadge>
               </div>
               <p className="text-sm text-[color:var(--muted)]">
-                Solo se modifican pedidos cargados. Si ya fue confirmado, el cambio tiene que hacerse desde una
-                anulacion o ajuste controlado.
+                Solo se pueden modificar pedidos cargados o confirmados. Un pedido entregado o cancelado no se edita.
               </p>
               <ButtonLink className="w-fit" href="/orders" variant="secondary">
                 Ver pedidos
@@ -79,6 +78,11 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
             className="grid gap-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5"
           >
             <input name="id" type="hidden" value={order.id} />
+            {order.orderStatus === "confirmado" ? (
+              <p className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-3 text-sm text-[color:var(--foreground)]">
+                <strong>Atención:</strong> este pedido está confirmado. Al guardar, volverá a <strong>cargado</strong> y tenés que confirmarlo nuevamente (se libera la reserva de stock hasta reconfirmar).
+              </p>
+            ) : null}
             <OrderEntryFields clients={formData.clients} initialValue={initialValue} products={formData.products} />
             <Button type="submit">Guardar cambios</Button>
           </form>

@@ -61,7 +61,6 @@ export type NavigationAuthorization = {
 };
 
 export const navigationGroups: NavigationGroup[] = [
-  { href: "/", label: "Inicio", active: "home" },
   {
     label: "Balance",
     active: "balance",
@@ -98,35 +97,28 @@ export const navigationGroups: NavigationGroup[] = [
     active: "orders",
     badge: "ordersConfirmed",
     items: [
-      { href: "/orders", label: "Dashboard", active: "orders", permission: ORDERS_READ_PERMISSION },
+      { href: "/orders/new", label: "Cargar pedido", active: "orders", permission: ORDERS_CREATE_PERMISSION },
       {
-        href: "/orders?status=cargado",
-        label: "Cargados",
-        active: "orders",
-        badge: "ordersLoaded",
-        permission: ORDERS_READ_PERMISSION,
-      },
-      {
-        href: "/orders?status=confirmado",
-        label: "Confirmados",
+        href: "/orders",
+        label: "Registro de pedidos",
         active: "orders",
         badge: "ordersConfirmed",
-        permission: ORDERS_READ_PERMISSION,
-      },
-      {
-        href: "/orders?status=entregado",
-        label: "Entregados",
-        active: "orders",
         permission: ORDERS_READ_PERMISSION,
       },
     ],
   },
   {
-    label: "Presupuestador",
+    label: "Ventas",
+    active: "sales",
+    items: [
+      { href: "/sales", label: "Registro de ventas", active: "sales", permission: SALES_READ_PERMISSION },
+    ],
+  },
+  {
+    label: "Presupuestos",
     active: "quotes",
     badge: "quotes",
     items: [
-      { href: "/orders/new", label: "Cargar pedido", active: "orders", permission: ORDERS_CREATE_PERMISSION },
       {
         href: "/quotes",
         label: "Presupuestador",
@@ -136,7 +128,6 @@ export const navigationGroups: NavigationGroup[] = [
       },
     ],
   },
-  { href: "/sales", label: "Registro de ventas", active: "sales", permission: SALES_READ_PERMISSION },
   {
     label: "Base de datos",
     active: "database",
@@ -265,12 +256,12 @@ function groupByLabel(label: string) {
 
 export const navigationSections: NavigationSection[] = [
   {
-    label: "Inicio / Panel",
-    groups: [groupByLabel("Inicio")],
+    label: "Inicio",
+    groups: [groupByLabel("Calendario"), groupByLabel("Mensajes")],
   },
   {
-    label: "Operaciones",
-    groups: [groupByLabel("Pedidos"), groupByLabel("Registro de ventas"), groupByLabel("Presupuestador")],
+    label: "Comercial",
+    groups: [groupByLabel("Pedidos"), groupByLabel("Ventas"), groupByLabel("Presupuestos")],
   },
   {
     label: "Datos",
@@ -285,8 +276,6 @@ export const navigationSections: NavigationSection[] = [
     groups: [
       groupByLabel("Usuarios y permisos"),
       groupByLabel("Administrador"),
-      groupByLabel("Calendario"),
-      groupByLabel("Mensajes"),
     ],
   },
   {
