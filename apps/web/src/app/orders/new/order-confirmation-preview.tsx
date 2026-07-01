@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Button, Field, Input } from "@/components/ui";
+import { Button, Field, Input, Select } from "@/components/ui";
 import {
   buildWhatsappConfirmation,
   normalizePhoneForWhatsapp,
@@ -15,6 +15,7 @@ type OrderConfirmationPreviewProps = {
   lines: ConfirmationLine[];
   deliveryDate: string;
   ready: boolean;
+  offers: { id: string; title: string; description: string }[];
 };
 
 export function OrderConfirmationPreview({
@@ -24,6 +25,7 @@ export function OrderConfirmationPreview({
   lines,
   deliveryDate,
   ready,
+  offers,
 }: OrderConfirmationPreviewProps) {
   const [offerText, setOfferText] = useState("");
   const [copied, setCopied] = useState(false);
@@ -59,6 +61,26 @@ export function OrderConfirmationPreview({
   return (
     <div className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-white p-4">
       <h3 className="erp-text-body font-black">Confirmación para WhatsApp</h3>
+
+      {offers.length > 0 ? (
+        <Field htmlFor="offer-picker" label="Elegir oferta vigente">
+          <Select
+            id="offer-picker"
+            value=""
+            onChange={(event) => {
+              const selected = offers.find((offer) => offer.id === event.target.value);
+              if (selected) setOfferText(selected.description);
+            }}
+          >
+            <option value="">— Elegir oferta —</option>
+            {offers.map((offer) => (
+              <option key={offer.id} value={offer.id}>
+                {offer.title}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
 
       <Field htmlFor="order-offer" label="Oferta (opcional)">
         <Input
