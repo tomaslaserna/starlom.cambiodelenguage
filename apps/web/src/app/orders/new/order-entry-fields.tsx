@@ -10,6 +10,7 @@ import {
   receiptAddsVat,
 } from "@/lib/receipt-types";
 import type { OrderFormClient, OrderFormProduct } from "@/lib/orders";
+import { OrderConfirmationPreview } from "@/app/orders/new/order-confirmation-preview";
 
 type OrderLineDraft = {
   productId: string;
@@ -167,7 +168,7 @@ export function OrderEntryFields({ clients, products, initialValue }: OrderEntry
             ))}
           </Select>
         </Field>
-        <Field htmlFor="order-date" label="Fecha">
+        <Field htmlFor="order-date" label="Fecha de entrega">
           <Input id="order-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </Field>
       </div>
@@ -377,6 +378,15 @@ export function OrderEntryFields({ clients, products, initialValue }: OrderEntry
           </div>
         </div>
       </div>
+
+      <OrderConfirmationPreview
+        address={selectedClient?.address ?? ""}
+        businessName={selectedClient?.name ?? ""}
+        deliveryDate={date}
+        lines={calculatedLines.map((line) => ({ quantity: line.quantity, name: line.product.name }))}
+        phone={selectedClient?.phone ?? ""}
+        ready={Boolean(selectedClient) && calculatedLines.length > 0}
+      />
     </div>
   );
 }
