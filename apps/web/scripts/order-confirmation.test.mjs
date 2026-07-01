@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildWhatsappConfirmation,
+  formatConfirmationQuantity,
   formatDeliveryDate,
   normalizePhoneForWhatsapp,
 } from "../src/lib/order-confirmation.ts";
@@ -46,4 +47,14 @@ test("normalizePhoneForWhatsapp normaliza y valida", () => {
   assert.equal(normalizePhoneForWhatsapp("+54 385 5123456"), "543855123456");
   assert.equal(normalizePhoneForWhatsapp("123"), null);
   assert.equal(normalizePhoneForWhatsapp(""), null);
+});
+
+test("formatConfirmationQuantity: entero sin decimales, decimal con decimales, no-finito a 0", () => {
+  assert.equal(formatConfirmationQuantity(3), "3");
+  assert.equal(formatConfirmationQuantity(2.5), "2.5");
+  assert.equal(formatConfirmationQuantity(Number.NaN), "0");
+});
+
+test("normalizePhoneForWhatsapp rechaza numeros demasiado cortos aunque empiecen con 54", () => {
+  assert.equal(normalizePhoneForWhatsapp("54 385 12"), null);
 });

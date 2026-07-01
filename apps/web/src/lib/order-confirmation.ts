@@ -37,8 +37,9 @@ export function formatDeliveryDate(iso: string): string {
 
 export function normalizePhoneForWhatsapp(phone: string): string | null {
   const digits = (phone ?? "").replace(/\D/g, "").replace(/^0+/, "");
-  if (digits.length < 8) return null;
-  return digits.startsWith("54") ? digits : `54${digits}`;
+  const national = digits.startsWith("54") ? digits.slice(2) : digits;
+  if (national.length < 10) return null;
+  return `54${national}`;
 }
 
 export function buildWhatsappConfirmation(input: ConfirmationInput): string {
