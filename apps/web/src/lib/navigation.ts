@@ -221,6 +221,7 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       { href: "/admin", label: "Panel admin", active: "admin", permission: REPORTS_READ_PERMISSION },
       { href: "/metrics", label: "Metricas", active: "metrics", permission: ADMIN_METRICS_READ_PERMISSION },
+      { href: "/rentabilidad", label: "Rentabilidad", active: "admin", permission: ADMIN_METRICS_READ_PERMISSION },
       {
         href: "/admin/approvals",
         label: "Solicitudes y aprobaciones",
