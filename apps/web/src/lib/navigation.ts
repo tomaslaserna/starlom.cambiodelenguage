@@ -19,7 +19,6 @@ import {
   PRODUCTS_READ_PERMISSION,
   PURCHASES_READ_PERMISSION,
   QUOTES_READ_PERMISSION,
-  REPORTS_READ_PERMISSION,
   SALES_READ_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
   sessionAllows,
@@ -194,7 +193,7 @@ export const navigationGroups: NavigationGroup[] = [
     ],
   },
   {
-    label: "Usuarios y permisos",
+    label: "RR.HH",
     active: "employees",
     items: [
       { href: "/employees", label: "Empleados", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
@@ -207,22 +206,14 @@ export const navigationGroups: NavigationGroup[] = [
       },
     ],
   },
+  { href: "/metrics", label: "Metricas", active: "metrics", permission: ADMIN_METRICS_READ_PERMISSION },
+  { href: "/rentabilidad", label: "Rentabilidad", active: "admin", permission: ADMIN_METRICS_READ_PERMISSION },
   {
-    label: "Administrador",
+    href: "/admin/approvals",
+    label: "Solicitudes y aprobaciones",
     active: "admin",
     badge: "approvals",
-    items: [
-      { href: "/admin", label: "Panel admin", active: "admin", permission: REPORTS_READ_PERMISSION },
-      { href: "/metrics", label: "Metricas", active: "metrics", permission: ADMIN_METRICS_READ_PERMISSION },
-      { href: "/rentabilidad", label: "Rentabilidad", active: "admin", permission: ADMIN_METRICS_READ_PERMISSION },
-      {
-        href: "/admin/approvals",
-        label: "Solicitudes y aprobaciones",
-        active: "admin",
-        badge: "approvals",
-        permission: COLLECTIONS_APPROVE_PERMISSION,
-      },
-    ],
+    permission: COLLECTIONS_APPROVE_PERMISSION,
   },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   {
@@ -268,8 +259,10 @@ export const navigationSections: NavigationSection[] = [
   {
     label: "Administracion",
     groups: [
-      groupByLabel("Usuarios y permisos"),
-      groupByLabel("Administrador"),
+      groupByLabel("RR.HH"),
+      groupByLabel("Metricas"),
+      groupByLabel("Rentabilidad"),
+      groupByLabel("Solicitudes y aprobaciones"),
     ],
   },
   {

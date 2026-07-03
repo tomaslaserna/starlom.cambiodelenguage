@@ -188,7 +188,9 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(navigation, /ordersConfirmed/);
   assert.match(navigation, /href: "\/quotes",\s*label: "Presupuestos"/);
   assert.match(navigation, /label: "Comercial"[\s\S]*groups: \[groupByLabel\("Pedidos"\), groupByLabel\("Ventas"\), groupByLabel\("Presupuestos"\)\]/);
-  assert.match(navigation, /label: "Administrador"[\s\S]*href: "\/metrics", label: "Metricas"/);
+  assert.match(navigation, /href: "\/metrics", label: "Metricas"/);
+  assert.match(navigation, /href: "\/rentabilidad", label: "Rentabilidad"/);
+  assert.doesNotMatch(navigation, /label: "Panel admin"/);
   assert.match(navigation, /label: "Compras"[\s\S]*groups: \[groupByLabel\("Compras"\)\]/);
   assert.match(navigation, /label: "Ventas"[\s\S]*label: "Registro de ventas"/);
   assert.doesNotMatch(navigation, /label: "Facturacion"/);
