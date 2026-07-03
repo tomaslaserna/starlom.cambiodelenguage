@@ -105,27 +105,12 @@ test("cacheable reads retry transient database connection failures once", () => 
   assert.match(db, /ROLLBACK"\)\.catch\(\(\) => undefined\)/);
 });
 
-test("orders page exposes collection registration only after delivery", () => {
+test("collection registration is off the orders register but still guarded", () => {
   const ordersPage = read("apps/web/src/app/orders/page.tsx");
-  assert.match(ordersPage, /registerOrderCollectionAction/);
-  assert.match(ordersPage, /COLLECTIONS_CREATE_PERMISSION/);
-  assert.match(ordersPage, /order\.orderStatus === "entregado"/);
-  assert.match(ordersPage, /Registrar cobro/);
-  assert.match(ordersPage, /name="amount"/);
-  assert.match(ordersPage, /name="method"/);
-  assert.match(ordersPage, /name="destination"/);
-  assert.match(ordersPage, /name="operation"/);
-  assert.match(ordersPage, /defaultCollectionAmount/);
-  assert.match(ordersPage, /order\.outstandingAmount/);
-  assert.match(ordersPage, /max=\{defaultCollectionAmount\.toFixed\(2\)\}/);
-  assert.match(ordersPage, /se envia a aprobacion/);
+  assert.doesNotMatch(ordersPage, /Registrar cobro|registerOrderCollectionAction|name="amount"/);
 
   const ordersActions = read("apps/web/src/app/orders/actions.ts");
-  assert.match(ordersActions, /registerOrderCollectionAction/);
-  assert.match(ordersActions, /collectionRegistrationFromBody/);
-  assert.match(ordersActions, /registerCollection/);
-  assert.match(ordersActions, /revalidatePath\("\/collections"\)/);
-  assert.match(ordersActions, /revalidatePath\("\/admin\/approvals"\)/);
+  assert.doesNotMatch(ordersActions, /registerOrderCollectionAction|registerCollection/);
 
   const routeAuth = read("apps/web/src/lib/route-auth.ts");
   assert.match(routeAuth, /COLLECTIONS_CREATE_PERMISSION/);
