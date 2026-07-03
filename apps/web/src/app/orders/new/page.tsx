@@ -3,17 +3,20 @@ import { createOrderAction } from "@/app/orders/new/actions";
 import { OrderEntryFields } from "@/app/orders/new/order-entry-fields";
 import { Button } from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
+import { currentMonth } from "@/lib/month-range";
 import { listActiveOffers } from "@/lib/offers";
 import { getOrderFormData } from "@/lib/orders";
 import { requirePagePermission } from "@/lib/page-auth";
+import { getBreakEvenStatus } from "@/lib/profitability";
 import { ORDERS_CREATE_PERMISSION } from "@/lib/route-auth";
 
 export default async function NewOrderPage() {
   const session = await requireStaffSession();
   await requirePagePermission(session, [ORDERS_CREATE_PERMISSION]);
-  const [formData, offers] = await Promise.all([
+  const [formData, offers, breakEven] = await Promise.all([
     getOrderFormData(session.companyId),
     listActiveOffers(session.companyId),
+    getBreakEvenStatus(session.companyId, currentMonth()),
   ]);
 
   return (
@@ -29,7 +32,9 @@ export default async function NewOrderPage() {
       >
         <OrderEntryFields
           clients={formData.clients}
-          offers={offers.map((offer) => ({ id: offer.id, title: offer.title, description: offer.description }))}
+          offers={breakEven.reached ? offers.map((offer) => ({ id: offer.id, title: offer.title, description: offer.description })) : []}
+          offersEnabled={breakEven.reached}
+          offersRemaining={breakEven.remaining}
           products={formData.products}
         />
         <Button type="submit">Crear pedido</Button>

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button, Field, Input, Select } from "@/components/ui";
+import { formatCurrency } from "@/lib/format";
 import {
   buildWhatsappConfirmation,
   normalizePhoneForWhatsapp,
@@ -16,6 +17,8 @@ type OrderConfirmationPreviewProps = {
   deliveryDate: string;
   ready: boolean;
   offers: { id: string; title: string; description: string }[];
+  offersEnabled: boolean;
+  offersRemaining: number;
 };
 
 export function OrderConfirmationPreview({
@@ -26,6 +29,8 @@ export function OrderConfirmationPreview({
   deliveryDate,
   ready,
   offers,
+  offersEnabled,
+  offersRemaining,
 }: OrderConfirmationPreviewProps) {
   const [offerText, setOfferText] = useState("");
   const [copied, setCopied] = useState(false);
@@ -62,34 +67,42 @@ export function OrderConfirmationPreview({
     <div className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-white p-4">
       <h3 className="erp-text-body font-black">Confirmación para WhatsApp</h3>
 
-      {offers.length > 0 ? (
-        <Field htmlFor="offer-picker" label="Elegir oferta vigente">
-          <Select
-            id="offer-picker"
-            value=""
-            onChange={(event) => {
-              const selected = offers.find((offer) => offer.id === event.target.value);
-              if (selected) setOfferText(selected.description);
-            }}
-          >
-            <option value="">— Elegir oferta —</option>
-            {offers.map((offer) => (
-              <option key={offer.id} value={offer.id}>
-                {offer.title}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      ) : null}
+      {offersEnabled ? (
+        <>
+          {offers.length > 0 ? (
+            <Field htmlFor="offer-picker" label="Elegir oferta vigente">
+              <Select
+                id="offer-picker"
+                value=""
+                onChange={(event) => {
+                  const selected = offers.find((offer) => offer.id === event.target.value);
+                  if (selected) setOfferText(selected.description);
+                }}
+              >
+                <option value="">— Elegir oferta —</option>
+                {offers.map((offer) => (
+                  <option key={offer.id} value={offer.id}>
+                    {offer.title}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
 
-      <Field htmlFor="order-offer" label="Oferta (opcional)">
-        <Input
-          id="order-offer"
-          placeholder="Ej: llevando 2 bobinas, la 2da 50% OFF"
-          value={offerText}
-          onChange={(event) => setOfferText(event.target.value)}
-        />
-      </Field>
+          <Field htmlFor="order-offer" label="Oferta (opcional)">
+            <Input
+              id="order-offer"
+              placeholder="Ej: llevando 2 bobinas, la 2da 50% OFF"
+              value={offerText}
+              onChange={(event) => setOfferText(event.target.value)}
+            />
+          </Field>
+        </>
+      ) : (
+        <p className="erp-text-body-sm rounded-md border border-dashed border-[color:var(--border)] p-3 text-[color:var(--muted)]">
+          🔒 Las ofertas se habilitan al alcanzar el punto de equilibrio del mes (faltan {formatCurrency(offersRemaining)}).
+        </p>
+      )}
 
       {ready ? (
         <pre className="erp-text-body-sm max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-3 font-sans">

@@ -36,6 +36,8 @@ type OrderEntryFieldsProps = {
   products: OrderFormProduct[];
   initialValue?: OrderEntryInitialValue;
   offers?: { id: string; title: string; description: string }[];
+  offersEnabled?: boolean;
+  offersRemaining?: number;
 };
 
 const emptyLine = (): OrderLineDraft => ({ productId: "", quantity: "1", discount: "0" });
@@ -53,7 +55,14 @@ function numericInput(value: string, fallback = 0) {
   return Number.isFinite(numberValue) ? numberValue : fallback;
 }
 
-export function OrderEntryFields({ clients, products, initialValue, offers = [] }: OrderEntryFieldsProps) {
+export function OrderEntryFields({
+  clients,
+  products,
+  initialValue,
+  offers = [],
+  offersEnabled = true,
+  offersRemaining = 0,
+}: OrderEntryFieldsProps) {
   const [customerId, setCustomerId] = useState(initialValue?.customerId ?? "");
   const [draftLine, setDraftLine] = useState<OrderLineDraft>(emptyLine());
   const [lines, setLines] = useState<OrderLineState[]>(() =>
@@ -388,6 +397,8 @@ export function OrderEntryFields({ clients, products, initialValue, offers = [] 
           .filter((line) => line.quantity > 0)
           .map((line) => ({ quantity: line.quantity, name: line.product.name }))}
         offers={offers}
+        offersEnabled={offersEnabled}
+        offersRemaining={offersRemaining}
         phone={selectedClient?.phone ?? ""}
         ready={Boolean(selectedClient) && calculatedLines.some((line) => line.quantity > 0)}
       />
