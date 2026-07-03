@@ -265,48 +265,6 @@ export async function listOrders(input: ListInput = {}) {
   };
 }
 
-export async function getOrdersDashboard(companyId: number) {
-  const result = await queryWithCompanyContext<{
-    loaded_month: string;
-    confirmed: string;
-    delivered_month: string;
-    total_month: string;
-  }>(
-    companyId,
-    `
-      SELECT
-        COUNT(*) FILTER (
-          WHERE sale_date >= date_trunc('month', CURRENT_DATE)::date
-            AND sale_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
-            AND ${normalizedOrderStatusSql("s")} = 'cargado'
-        )::text AS loaded_month,
-        COUNT(*) FILTER (WHERE ${normalizedOrderStatusSql("s")} = 'confirmado')::text AS confirmed,
-        COUNT(*) FILTER (
-          WHERE sale_date >= date_trunc('month', CURRENT_DATE)::date
-            AND sale_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
-            AND ${normalizedOrderStatusSql("s")} = 'entregado'
-        )::text AS delivered_month,
-        COALESCE(SUM(s.total_amount) FILTER (
-          WHERE s.sale_date >= date_trunc('month', CURRENT_DATE)::date
-            AND s.sale_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
-            AND ${normalizedOrderStatusSql("s")} = 'entregado'
-        ), 0)::text AS total_month
-      FROM sales s
-      WHERE s.empresa_id = $1
-        AND ${canonicalSalesSourceSql("s")}
-    `,
-    [companyId],
-  );
-
-  const row = result.rows[0];
-  return {
-    loadedMonth: Number(row?.loaded_month ?? 0),
-    confirmed: Number(row?.confirmed ?? 0),
-    deliveredMonth: Number(row?.delivered_month ?? 0),
-    totalMonth: Number(row?.total_month ?? 0),
-  };
-}
-
 export async function getOrder(companyId: number, id: string): Promise<OrderDetail> {
   const orderResult = await queryWithCompanyContext<Parameters<typeof mapOrder>[0]>(
     companyId,
@@ -1015,9 +973,6 @@ export async function updateOrderStatus(
     if (nextStatus === "confirmado" && currentStatus !== "cargado") {
       throw new ApiError(400, "Solo los pedidos cargados pueden confirmarse.");
     }
-    if (nextStatus === "entregado" && currentStatus !== "confirmado") {
-      throw new ApiError(400, "Solo los pedidos confirmados pueden marcarse como entregados.");
-    }
 
     let stockDiscounted = false;
     if (nextStatus === "entregado") {
@@ -1031,8 +986,10 @@ export async function updateOrderStatus(
 
     const nextCollectionStatus =
       nextStatus === "entregado" ? "pendiente" : nextStatus === "cancelado" ? "cancelado" : "no_aplica";
+    // Entregar un pedido cargado lo confirma como venta en el mismo paso.
+    const confirmsAsSale = nextStatus === "entregado" && currentStatus === "cargado";
     const confirmationDocument =
-      nextStatus === "confirmado"
+      nextStatus === "confirmado" || confirmsAsSale
         ? normalizeOrderConfirmationDocument(
             options.confirmationDocument ?? "",
             order.fiscal_condition,

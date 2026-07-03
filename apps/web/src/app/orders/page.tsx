@@ -16,16 +16,14 @@ import {
   Input,
   PageHeader,
   Select,
-  StatCard,
   StatusBadge,
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
-import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
+import { formatCurrency, formatDate } from "@/lib/format";
 import { ORDER_STATUS_OPTIONS, orderStatusLabel } from "@/lib/order-status";
 import { localDateIso } from "@/lib/timezone";
-import { getOrdersDashboard, listOrders, type OrderSummary } from "@/lib/orders";
-import { desiredDocumentLabel, invoiceDocumentForFiscalCondition } from "@/lib/receipt-types";
+import { listOrders } from "@/lib/orders";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import {
@@ -59,12 +57,6 @@ const collectionStates = [
   { value: "cancelado", label: "Cancelado" },
 ];
 
-function statusLabel(value: string) {
-  const normalized = value.replaceAll("_", " ").trim();
-  if (!normalized) return "-";
-  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
 function orderStatusTone(value: string): StatusBadgeTone {
   if (value === "entregado") return "success";
   if (value === "confirmado") return "warning";
@@ -72,87 +64,18 @@ function orderStatusTone(value: string): StatusBadgeTone {
   return "neutral";
 }
 
-function collectionStatusTone(value: string): StatusBadgeTone {
-  if (value === "recibido") return "success";
-  if (value === "pendiente_aprobacion" || value === "en_proceso") return "warning";
-  if (value === "cancelado") return "danger";
-  return "neutral";
-}
-
-function collectionStatusLabel(value: string) {
-  if (value === "recibido") return "Cobrado";
-  if (value === "pendiente_aprobacion") return "Pendiente aprobacion";
-  return statusLabel(value);
-}
-
 function canRegisterCollectionStatus(value: string) {
   return value === "pendiente" || value === "vencido";
 }
 
-function orderCollectionLabel(orderStatus: string, collectionStatus: string) {
-  if (orderStatus !== "entregado") return "No habilitado";
-  return collectionStatusLabel(collectionStatus);
-}
-
-function stockLabel(orderStatus: string, stockDiscounted: boolean) {
-  if (stockDiscounted) return "Descontado";
-  if (orderStatus === "confirmado") return "Para stock";
-  if (orderStatus === "entregado") return "Pendiente";
-  return "-";
-}
-
-type OrderStatusAction = {
-  status: string;
-  document: string;
-  label: string;
-  variant: "default" | "secondary";
-};
-
-function confirmationActions(order: OrderSummary): OrderStatusAction[] {
-  const invoiceDocument = invoiceDocumentForFiscalCondition(
-    order.customerFiscalCondition,
-    order.desiredDocument,
-  );
-  const actions: OrderStatusAction[] = [];
-  if (invoiceDocument !== "remito") {
-    actions.push({
-      status: "confirmado",
-      document: invoiceDocument,
-      label: "Factura",
-      variant: "default" as const,
-    });
-  }
-  actions.push({
-    status: "confirmado",
-    document: "remito",
-    label: "Remito sin factura",
-    variant: invoiceDocument === "remito" ? ("default" as const) : ("secondary" as const),
-  });
-  actions.push({
-    status: "cancelado",
-    document: "",
-    label: "Cancelar",
-    variant: "secondary" as const,
-  });
-  return actions;
-}
-
-function statusActions(order: OrderSummary): OrderStatusAction[] {
-  if (order.orderStatus === "cargado") return confirmationActions(order);
-  if (order.orderStatus === "confirmado") {
-    return [
-      { status: "entregado", document: "", label: "Entregado", variant: "default" as const },
-      { status: "cancelado", document: "", label: "Cancelar", variant: "secondary" as const },
-    ];
-  }
-  return [];
-}
+const actionItemClass =
+  "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-xs font-semibold text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--hover)] hover:text-[color:var(--accent-strong)]";
 
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [ORDERS_READ_PERMISSION]);
   const params = await searchParams;
-  const [result, dashboard, canRegisterCollections] = await Promise.all([
+  const [result, canRegisterCollections] = await Promise.all([
     listOrders({
       companyId: session.companyId,
       query: params.q,
@@ -161,7 +84,6 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
       page: params.page,
       pageSize: "25",
     }),
-    getOrdersDashboard(session.companyId),
     sessionAllows(session, [COLLECTIONS_CREATE_PERMISSION]),
   ]);
   const today = localDateIso();
@@ -175,14 +97,6 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
     >
       <div className="grid gap-5">
         <PageHeader
-          actions={
-            <ButtonLink
-              aria-label="Cargar nuevo pedido"
-              href="/orders/new"
-            >
-              Cargar pedido
-            </ButtonLink>
-          }
           description="Carga, confirmacion para stock, entrega y apertura de cobro."
           title="Gestion de pedidos"
         />
@@ -232,12 +146,6 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           </form>
         </Toolbar>
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <StatCard className="p-3" label="Cargados este mes" value={formatNumber(dashboard.loadedMonth)} />
-          <StatCard className="p-3" label="Confirmados para stock" value={formatNumber(dashboard.confirmed)} />
-          <StatCard className="p-3" label="Entregados este mes" value={formatNumber(dashboard.deliveredMonth)} />
-        </div>
-
         <Card className="overflow-hidden">
           <DataTable
             caption="Listado de pedidos filtrados"
@@ -248,21 +156,18 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[9%] px-2">Pedido</DataTableHead>
-                <DataTableHead className="w-[17%] px-2">Cliente</DataTableHead>
-                <DataTableHead className="w-[8%] px-2">Vendedor</DataTableHead>
-                <DataTableHead className="w-[8%] px-2">Fecha</DataTableHead>
-                <DataTableHead className="w-[9%] px-2">Estado</DataTableHead>
-                <DataTableHead className="w-[9%] px-2">Cobro</DataTableHead>
-                <DataTableHead align="right" className="w-[8%] px-2">Total</DataTableHead>
-                <DataTableHead className="w-[9%] px-2">Stock</DataTableHead>
-                <DataTableHead className="w-[23%] px-2">Acciones</DataTableHead>
+                <DataTableHead className="w-[11%] px-2">Pedido</DataTableHead>
+                <DataTableHead className="w-[27%] px-2">Cliente</DataTableHead>
+                <DataTableHead className="w-[14%] px-2">Vendedor</DataTableHead>
+                <DataTableHead className="w-[12%] px-2">Fecha</DataTableHead>
+                <DataTableHead className="w-[14%] px-2">Estado</DataTableHead>
+                <DataTableHead className="w-[22%] px-2">Acciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={9}>
+                  <DataTableCell colSpan={6}>
                     <EmptyState
                       description="Ajusta la busqueda o limpia los filtros para volver al listado completo."
                       title="No hay pedidos para los filtros actuales"
@@ -279,12 +184,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                   const operationInputId = `order-${order.id}-collection-operation`;
                   const notesInputId = `order-${order.id}-collection-notes`;
                   const orderNumberLabel = order.receiptNumber ? String(order.receiptNumber) : order.id.slice(0, 8);
-                  const actions = statusActions(order);
-                  const stockBadgeTone: StatusBadgeTone = order.stockDiscounted
-                    ? "success"
-                    : order.orderStatus === "confirmado"
-                      ? "warning"
-                      : "neutral";
+                  const isOpenOrder = order.orderStatus === "cargado" || order.orderStatus === "confirmado";
                   const canRegisterCollection =
                     canRegisterCollections &&
                     order.orderStatus === "entregado" &&
@@ -312,87 +212,60 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                           </StatusBadge>
                         </DataTableCell>
                         <DataTableCell className="px-2 py-2">
-                          <StatusBadge tone={order.orderStatus === "entregado" ? collectionStatusTone(order.collectionStatus) : "neutral"}>
-                            {orderCollectionLabel(order.orderStatus, order.collectionStatus)}
-                          </StatusBadge>
-                        </DataTableCell>
-                        <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                          <div>{formatCurrency(order.amount)}</div>
-                          <div className="mt-1 text-[11px] text-[color:var(--muted)]">
-                            {desiredDocumentLabel(order.desiredDocument)}
-                          </div>
-                          {order.collectedAmount > 0 ? (
-                            <div className="mt-1 text-[11px] text-[color:var(--muted)]">
-                              Saldo {formatCurrency(order.outstandingAmount)}
-                            </div>
-                          ) : null}
-                        </DataTableCell>
-                        <DataTableCell className="px-2 py-2">
-                          <StatusBadge tone={stockBadgeTone}>
-                            {stockLabel(order.orderStatus, order.stockDiscounted)}
-                          </StatusBadge>
-                        </DataTableCell>
-                        <DataTableCell className="px-2 py-2">
-                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            {order.orderStatus === "cargado" || order.orderStatus === "confirmado" ? (
-                              <ButtonLink
-                                aria-label={`Modificar pedido ${order.id}`}
-                                className="shrink-0"
-                                href={`/orders/${order.id}/edit`}
-                                size="sm"
-                                variant="secondary"
-                              >
-                                Modificar
-                              </ButtonLink>
-                            ) : null}
-                            {order.orderStatus !== "cargado" ? (
-                              <ButtonLink
-                                aria-label={`Abrir orden de stock del pedido ${order.id}`}
-                                className="shrink-0"
+                          <details className="rounded-[8px] border border-[color:var(--border)] bg-white">
+                            <summary className="cursor-pointer select-none rounded-[8px] px-2.5 py-1.5 text-xs font-black text-[color:var(--accent-strong)]">
+                              Acciones
+                            </summary>
+                            <div className="grid gap-0.5 border-t border-[color:var(--border)] p-1">
+                              <a
+                                aria-label={`Ver PDF de solicitud del pedido ${order.id}`}
+                                className={actionItemClass}
                                 href={`/api/pdfs/orders/${order.id}/request`}
-                                prefetch={false}
                                 rel="noreferrer"
-                                size="sm"
                                 target="_blank"
-                                variant="secondary"
                               >
-                                PDF stock
-                              </ButtonLink>
-                            ) : null}
-                            {actions.length > 0 ? (
-                              actions.map((action) => (
-                                <form action={updateOrderStatusAction} key={`${action.status}-${action.document}`}>
-                                  <input name="id" type="hidden" value={order.id} />
-                                  <input name="status" type="hidden" value={action.status} />
-                                  {action.document ? (
-                                    <input
-                                      name="confirmationDocument"
-                                      type="hidden"
-                                      value={action.document}
-                                    />
-                                  ) : null}
-                                  <Button
-                                    aria-label={`${action.label} pedido ${order.id}`}
-                                    className="min-h-9 px-2 text-xs"
-                                    size="sm"
-                                    type="submit"
-                                    variant={action.variant}
+                                Ver PDF solicitud
+                              </a>
+                              {isOpenOrder ? (
+                                <>
+                                  <a
+                                    aria-label={`Modificar pedido ${order.id}`}
+                                    className={actionItemClass}
+                                    href={`/orders/${order.id}/edit`}
                                   >
-                                    {action.label}
-                                  </Button>
-                                </form>
-                              ))
-                            ) : (
-                              <span className="text-xs font-semibold text-[color:var(--muted)]">
-                                {order.orderStatus === "entregado" ? "Venta generada" : "Sin acciones"}
-                              </span>
-                            )}
-                          </div>
+                                    Modificar
+                                  </a>
+                                  <form action={updateOrderStatusAction}>
+                                    <input name="id" type="hidden" value={order.id} />
+                                    <input name="status" type="hidden" value="entregado" />
+                                    <button
+                                      aria-label={`Marcar entregado el pedido ${order.id}`}
+                                      className={actionItemClass}
+                                      type="submit"
+                                    >
+                                      Entregado
+                                    </button>
+                                  </form>
+                                  <form action={updateOrderStatusAction}>
+                                    <input name="id" type="hidden" value={order.id} />
+                                    <input name="status" type="hidden" value="cancelado" />
+                                    <button
+                                      aria-label={`Cancelar pedido ${order.id}`}
+                                      className={`${actionItemClass} text-[color:var(--danger)] hover:text-[color:var(--danger)]`}
+                                      type="submit"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </form>
+                                </>
+                              ) : null}
+                            </div>
+                          </details>
                         </DataTableCell>
                       </DataTableRow>
                       {canRegisterCollection ? (
                         <DataTableRow className="bg-[#f8fbff] hover:bg-[#f8fbff]">
-                          <DataTableCell className="px-2 py-2" colSpan={9}>
+                          <DataTableCell className="px-2 py-2" colSpan={6}>
                             <details className="rounded-md border border-[color:var(--border)] bg-white px-3 py-2">
                               <summary className="cursor-pointer select-none font-black text-[color:var(--accent-strong)]">
                                 Registrar cobro

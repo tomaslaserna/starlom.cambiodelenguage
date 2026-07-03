@@ -154,7 +154,7 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(orders, /"pedido\.cargado"/);
   assert.match(orders, /"pedido\.modificado"/);
   assert.match(orders, /Solo los pedidos cargados pueden confirmarse/);
-  assert.match(orders, /Solo los pedidos confirmados pueden marcarse como entregados/);
+  assert.match(orders, /confirmsAsSale = nextStatus === "entregado" && currentStatus === "cargado"/);
   assert.match(orders, /confirmationDocument/);
   assert.match(orders, /normalizeOrderConfirmationDocument/);
   assert.match(orders, /nextStatus === "entregado" \? "pendiente"/);
@@ -205,10 +205,12 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.doesNotMatch(databasePage, /EMPLOYEES_READ_PERMISSION|label: "Empleados"|href: "\/employees"|Empleados/);
 
   const ordersPage = read("apps/web/src/app/orders/page.tsx");
+  assert.match(ordersPage, /Ver PDF solicitud/);
   assert.match(ordersPage, /Modificar/);
-  assert.match(ordersPage, /Factura/);
-  assert.match(ordersPage, /Remito sin factura/);
-  assert.match(ordersPage, /name="confirmationDocument"/);
+  assert.match(ordersPage, /value="entregado"/);
+  assert.match(ordersPage, /value="cancelado"/);
+  assert.doesNotMatch(ordersPage, /Factura|Remito sin factura|name="confirmationDocument"/);
+  assert.doesNotMatch(ordersPage, /StatCard|getOrdersDashboard|Cargar pedido/);
 
   const homePage = read("apps/web/src/app/page.tsx");
   assert.match(homePage, /listTasks/);
