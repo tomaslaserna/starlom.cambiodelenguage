@@ -7,6 +7,7 @@ import { getOrder, getOrderFormData } from "@/lib/orders";
 import { orderStatusLabel } from "@/lib/order-status";
 import { uuidParam } from "@/lib/request-body";
 import { requirePagePermission } from "@/lib/page-auth";
+import { localDateIso } from "@/lib/timezone";
 
 type EditOrderPageProps = {
   params: Promise<{ id: string }>;
@@ -24,7 +25,7 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
 
   const initialValue: OrderEntryInitialValue = {
     customerId: order.customerId ?? "",
-    date: order.date ?? new Date().toISOString().slice(0, 10),
+    date: order.date ?? localDateIso(),
     observation: order.observation,
     priceListOverride: order.priceList,
     desiredDocumentOverride: order.desiredDocument,

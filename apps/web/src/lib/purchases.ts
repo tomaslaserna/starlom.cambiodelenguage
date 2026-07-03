@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
+import { localDateIso } from "@/lib/timezone";
 
 type PurchaseItem = {
   productId: string;
@@ -21,9 +22,7 @@ type PurchaseInput = {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PURCHASE_STATUSES = new Set(["pendiente", "recibida", "cancelada"]);
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayIso = localDateIso;
 
 function uuidField(body: RequestBody, key: string, label: string) {
   const value = textField(body, key);

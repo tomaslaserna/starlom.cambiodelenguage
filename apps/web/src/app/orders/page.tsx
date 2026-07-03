@@ -23,6 +23,7 @@ import {
 } from "@/components/ui";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import { ORDER_STATUS_OPTIONS, orderStatusLabel } from "@/lib/order-status";
+import { localDateIso } from "@/lib/timezone";
 import { getOrdersDashboard, listOrders, type OrderSummary } from "@/lib/orders";
 import { desiredDocumentLabel, invoiceDocumentForFiscalCondition } from "@/lib/receipt-types";
 import { requireStaffSession } from "@/lib/auth";
@@ -163,7 +164,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
     getOrdersDashboard(session.companyId),
     sessionAllows(session, [COLLECTIONS_CREATE_PERMISSION]),
   ]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateIso();
 
   return (
     <ModulePage

@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/api-response";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { currentMonth, monthRange } from "@/lib/month-range";
 import {
   ORDER_STATUSES,
   normalizeOrderStatusValue,
@@ -33,18 +34,14 @@ const SALE_EDIT_FIELDS = {
 type SaleEditField = keyof typeof SALE_EDIT_FIELDS;
 
 function currentPeriod(period: string | null) {
-  const now = new Date();
+  const month = currentMonth();
   if (period === "anio") {
-    return {
-      start: new Date(Date.UTC(now.getUTCFullYear(), 0, 1)).toISOString().slice(0, 10),
-      end: new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1)).toISOString().slice(0, 10),
-    };
+    const year = Number(month.slice(0, 4));
+    return { start: `${year}-01-01`, end: `${year + 1}-01-01` };
   }
   if (period === "todos") return { start: null, end: null };
-  return {
-    start: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10),
-    end: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString().slice(0, 10),
-  };
+  const range = monthRange(month);
+  return { start: range.start, end: range.endExclusive };
 }
 
 function parseMaybeDate(value: string) {

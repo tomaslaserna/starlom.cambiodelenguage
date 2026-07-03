@@ -4,6 +4,7 @@ import { listPendingCollections } from "@/lib/collections";
 import { queryWithCompanyContext } from "@/lib/db";
 import { executeSupplierPayment, purchaseIdFromParam } from "@/lib/purchases";
 import { COLLECTIONS_APPROVE_PERMISSION, sessionAllows } from "@/lib/route-auth";
+import { localDateIso } from "@/lib/timezone";
 
 export const COLLECTION_APPROVAL_PERMISSION = COLLECTIONS_APPROVE_PERMISSION;
 
@@ -165,7 +166,7 @@ export async function resolveGenericApproval(
   if (nextState === "aprobada" && metadata.action === "supplier_payment") {
     await executeSupplierPayment(session, purchaseIdFromParam(String(metadata.purchaseId ?? ""), "Compra"), {
       amount: Number(metadata.amount),
-      date: String(metadata.date || new Date().toISOString().slice(0, 10)),
+      date: String(metadata.date || localDateIso()),
       notes: String(metadata.notes || ""),
     });
   }

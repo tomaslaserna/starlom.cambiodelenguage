@@ -13,6 +13,7 @@ import {
   PURCHASES_READ_PERMISSION,
   sessionAllows,
 } from "@/lib/route-auth";
+import { localDateIso } from "@/lib/timezone";
 import {
   Button,
   ButtonLink,
@@ -201,7 +202,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                   </Select>
                 </Field>
                 <Field htmlFor="purchase-date" label="Fecha">
-                  <Input defaultValue={new Date().toISOString().slice(0, 10)} id="purchase-date" name="date" type="date" />
+                  <Input defaultValue={localDateIso()} id="purchase-date" name="date" type="date" />
                 </Field>
                 <Field htmlFor="purchase-status" label="Estado inicial">
                   <Select defaultValue="pendiente" id="purchase-status" name="status">

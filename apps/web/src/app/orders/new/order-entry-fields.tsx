@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { Button, Card, CardContent, Field, Input, Select } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { lineSubtotal, money, priceForList } from "@/lib/order-pricing";
+import { localDateIso } from "@/lib/timezone";
 import {
   ORDER_CREATION_RECEIPT_OPTIONS,
   normalizeOrderCreationDocument,
@@ -71,7 +72,7 @@ export function OrderEntryFields({
       id: `order-line-${index}`,
     })),
   );
-  const [date, setDate] = useState(() => initialValue?.date || new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => initialValue?.date || localDateIso());
   const [observation, setObservation] = useState(initialValue?.observation ?? "");
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
   const [documentOverride, setDocumentOverride] = useState(initialValue?.desiredDocumentOverride ?? "");

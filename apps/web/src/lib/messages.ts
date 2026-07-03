@@ -3,6 +3,7 @@ import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { textField, type RequestBody } from "@/lib/request-body";
+import { localDateIso } from "@/lib/timezone";
 
 const PRIORITIES = new Set(["urgente", "alta", "normal"]);
 const MESSAGE_IMPORTANCE = new Set(["baja", "normal", "alta", "urgente"]);
@@ -497,7 +498,7 @@ export async function completeTask(
 }
 
 function dayStart(date: Date) {
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  return Date.parse(`${localDateIso(date)}T00:00:00-03:00`);
 }
 
 function median(values: number[]) {

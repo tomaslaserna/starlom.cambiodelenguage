@@ -1,16 +1,16 @@
 import { queryWithCompanyContext } from "@/lib/db";
+import { currentMonth, monthRange, shiftMonthKey } from "@/lib/month-range";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 
 function monthBounds(date = new Date()) {
-  const current = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-  const next = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
-  const previous = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 1, 1));
+  const month = currentMonth(date);
+  const range = monthRange(month);
 
   return {
-    currentStart: current.toISOString().slice(0, 10),
-    nextStart: next.toISOString().slice(0, 10),
-    previousStart: previous.toISOString().slice(0, 10),
+    currentStart: range.start,
+    nextStart: range.endExclusive,
+    previousStart: monthRange(shiftMonthKey(month, -1)).start,
   };
 }
 
@@ -242,12 +242,9 @@ export async function getAccountsPayable(companyId: number) {
     [companyId],
   );
 
-  const currentStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1))
-    .toISOString()
-    .slice(0, 10);
-  const nextStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1))
-    .toISOString()
-    .slice(0, 10);
+  const monthNow = monthRange(currentMonth());
+  const currentStart = monthNow.start;
+  const nextStart = monthNow.endExclusive;
 
   const salaries = await queryWithCompanyContext<{
     id: string;

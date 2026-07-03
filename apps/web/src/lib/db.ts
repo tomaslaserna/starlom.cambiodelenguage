@@ -1,5 +1,6 @@
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 import { getDatabaseEnv } from "@/lib/env";
+import { BUSINESS_TIME_ZONE } from "@/lib/timezone";
 
 let pool: Pool | null = null;
 
@@ -102,6 +103,12 @@ export function getDbPool(): Pool {
       ssl: {
         rejectUnauthorized: false,
       },
+    });
+
+    // CURRENT_DATE, NOW() y NOW()::date deben reflejar la hora del negocio (Argentina),
+    // no la del servidor de Postgres (Supabase usa UTC por defecto).
+    pool.on("connect", (client) => {
+      client.query(`SET TIME ZONE '${BUSINESS_TIME_ZONE}'`).catch(() => {});
     });
   }
 

@@ -28,6 +28,7 @@ import { currentMonth } from "@/lib/month-range";
 import { requirePagePermission } from "@/lib/page-auth";
 import { getBreakEvenStatus, listOperatingCosts } from "@/lib/profitability";
 import { ADMIN_METRICS_READ_PERMISSION } from "@/lib/route-auth";
+import { localDateIso } from "@/lib/timezone";
 
 type RentabilidadPageProps = {
   searchParams: Promise<{ month?: string }>;
@@ -43,7 +44,7 @@ export default async function RentabilidadPage({ searchParams }: RentabilidadPag
     getBreakEvenStatus(session.companyId, month),
     listOperatingCosts(session.companyId, month),
   ]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateIso();
 
   return (
     <ModulePage

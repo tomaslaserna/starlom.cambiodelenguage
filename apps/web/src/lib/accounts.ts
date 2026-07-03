@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext } from "@/lib/db";
 import { parsePagination } from "@/lib/pagination";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
+import { localDateIso } from "@/lib/timezone";
 
 type ListInput = {
   companyId: number;
@@ -16,9 +17,7 @@ type ListInput = {
 const ACCOUNT_TYPES = new Set(["cliente", "proveedor"]);
 const PAYMENT_TYPES = new Set(["cobro", "pago"]);
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayIso = localDateIso;
 
 function normalizeAccountType(value: string) {
   return ACCOUNT_TYPES.has(value) ? value : "cliente";

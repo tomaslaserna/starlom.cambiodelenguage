@@ -1,7 +1,15 @@
+import { localDateIso } from "./timezone.ts";
+
 export function currentMonth(now: Date = new Date()): string {
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
+  return localDateIso(now).slice(0, 7);
+}
+
+export function shiftMonthKey(month: string, delta: number): string {
+  const [year, monthNum] = month.split("-").map(Number);
+  const zeroBased = (monthNum - 1) + delta;
+  const nextYear = year + Math.floor(zeroBased / 12);
+  const nextMonth = ((zeroBased % 12) + 12) % 12;
+  return `${String(nextYear).padStart(4, "0")}-${String(nextMonth + 1).padStart(2, "0")}`;
 }
 
 export type MonthRange = {

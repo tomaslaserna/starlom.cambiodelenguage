@@ -11,6 +11,7 @@ import {
   safeFilename,
   type PdfTableCell,
 } from "@/lib/pdf/renderer";
+import { localDateIso } from "@/lib/timezone";
 
 type QuoteProduct = {
   id?: number;
@@ -285,13 +286,13 @@ export async function buildAccountStatementPdf(companyId: number, input: {
     params,
   );
 
-  const filename = `cuenta_corriente_${safeFilename(name) || "entidad"}_${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `cuenta_corriente_${safeFilename(name) || "entidad"}_${localDateIso()}.pdf`;
   return createPdfFile(filename, ({ pdf }) => {
     pdf.drawHeader({
       title: "Cuenta corriente",
       code: "CC",
-      number: `CC-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}`,
-      date: pdfDate(new Date().toISOString()),
+      number: `CC-${localDateIso().replaceAll("-", "")}`,
+      date: pdfDate(localDateIso()),
       extra: [`Tipo: ${type === "cliente" ? "Cliente" : "Proveedor"}`, `Periodo: ${dateRangeLabel(input.from, input.to)}`],
     });
     pdf.section(type === "cliente" ? "Cliente" : "Proveedor");
@@ -449,7 +450,7 @@ export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseI
       title: "Solicitud de devolucion",
       code: "SD",
       number: `SD-${String(purchase.id).padStart(8, "0")}`,
-      date: pdfDate(new Date().toISOString()),
+      date: pdfDate(localDateIso()),
       extra: [`Compra: #${purchase.id}`, `Estado: ${purchase.status}`],
     });
     pdf.section("Proveedor");
@@ -496,7 +497,7 @@ export async function buildPriceListPdf(companyId: number, list: number) {
       title: "Lista de precios",
       code: "LP",
       number: selected.label,
-      date: pdfDate(new Date().toISOString()),
+      date: pdfDate(localDateIso()),
       extra: [`Productos: ${result.rows.length}`],
     });
     pdf.table(

@@ -3,6 +3,7 @@ import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from
 import { normalizeOrderStatusValue, normalizedOrderStatusSql } from "@/lib/order-status";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
+import { localDateIso } from "@/lib/timezone";
 import type { AuthSession } from "@/lib/auth";
 import type { PoolClient } from "pg";
 
@@ -39,9 +40,7 @@ export type CollectionRegistrationInput = {
   notes: string;
 };
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
+const todayIso = localDateIso;
 
 function remittanceLabel(value: { nro_remito?: number | null; nro_comprobante?: number | null; id?: string | number }) {
   const numberValue = value.nro_remito ?? value.nro_comprobante ?? value.id ?? 0;
