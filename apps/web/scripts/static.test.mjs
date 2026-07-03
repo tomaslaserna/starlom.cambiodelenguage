@@ -187,13 +187,16 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(navigation, /ordersLoaded/);
   assert.match(navigation, /ordersConfirmed/);
   assert.match(navigation, /href: "\/quotes",\s*label: "Presupuestos"/);
-  assert.match(navigation, /label: "Comercial"[\s\S]*groups: \[groupByLabel\("Pedidos"\), groupByLabel\("Ventas"\), groupByLabel\("Presupuestos"\)\]/);
+  assert.match(
+    navigation,
+    /label: "Comercial"[\s\S]*groupByLabel\("Pedidos"\)[\s\S]*groupByLabel\("Ventas"\)[\s\S]*groupByLabel\("Presupuestos"\)[\s\S]*groupByLabel\("Facturacion"\)/,
+  );
+  assert.match(navigation, /href: "\/billing",\s*label: "Facturacion"/);
   assert.match(navigation, /href: "\/metrics", label: "Metricas"/);
   assert.match(navigation, /href: "\/rentabilidad", label: "Rentabilidad"/);
   assert.doesNotMatch(navigation, /label: "Panel admin"/);
   assert.match(navigation, /label: "Compras"[\s\S]*groups: \[groupByLabel\("Compras"\)\]/);
   assert.match(navigation, /label: "Ventas"[\s\S]*label: "Registro de ventas"/);
-  assert.doesNotMatch(navigation, /label: "Facturacion"/);
   assert.doesNotMatch(navigation, /href: "\/database", label: "Resumen"/);
   assert.doesNotMatch(navigation, /href: "\/employees", label: "Empleados", active: "database"/);
   assert.doesNotMatch(navigation, /ordersReceived|ordersInProcess|ordersPendingDelivery/);

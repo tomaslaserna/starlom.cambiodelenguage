@@ -121,6 +121,12 @@ export const navigationGroups: NavigationGroup[] = [
     permission: QUOTES_READ_PERMISSION,
   },
   {
+    href: "/billing",
+    label: "Facturacion",
+    active: "billing",
+    permission: SALES_READ_PERMISSION,
+  },
+  {
     label: "Base de datos",
     active: "database",
     items: [
@@ -246,7 +252,12 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     label: "Comercial",
-    groups: [groupByLabel("Pedidos"), groupByLabel("Ventas"), groupByLabel("Presupuestos")],
+    groups: [
+      groupByLabel("Pedidos"),
+      groupByLabel("Ventas"),
+      groupByLabel("Presupuestos"),
+      groupByLabel("Facturacion"),
+    ],
   },
   {
     label: "Datos",
