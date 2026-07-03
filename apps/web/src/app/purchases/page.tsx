@@ -3,6 +3,7 @@ import { formatCurrency, formatDate } from "@/lib/format";
 import {
   listPurchaseFormProducts,
   listPurchaseFormSuppliers,
+  listPurchaseItemsByPurchaseIds,
   listPurchases,
 } from "@/lib/purchases";
 import { requireStaffSession } from "@/lib/auth";
@@ -31,11 +32,13 @@ import {
   Select,
   StatCard,
   StatusBadge,
+  Textarea,
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
 import {
   createPurchaseAction,
+  reviewPurchasePackageAction,
   updatePurchaseStatusAction,
   uploadPurchaseReceiptAction,
 } from "@/app/purchases/actions";
@@ -165,6 +168,12 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   );
   const openBalance = purchases.reduce((sum, item) => sum + item.balance, 0);
   const total = purchases.reduce((sum, item) => sum + item.total, 0);
+  const pendingReviewIds = purchases
+    .filter((item) => item.status === "recibida" && item.packageStatus === "pendiente")
+    .map((item) => item.id);
+  const itemsByPurchase = canEditPurchases
+    ? await listPurchaseItemsByPurchaseIds(session.companyId, pendingReviewIds)
+    : new Map<string, { productId: string; name: string; quantity: number }[]>();
 
   return (
     <ModulePage
@@ -422,6 +431,74 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                                 Subir recibo
                               </Button>
                             </form>
+                          ) : null}
+                          {purchase.status === "recibida" &&
+                          purchase.packageStatus === "pendiente" &&
+                          canEditPurchases ? (
+                            <div className="grid gap-2 rounded-[var(--radius-md)] border border-[color:var(--border)] p-2">
+                              <form action={reviewPurchasePackageAction}>
+                                <input name="id" type="hidden" value={purchase.id} />
+                                <input name="action" type="hidden" value="marcar_revisado" />
+                                <Button
+                                  aria-label={`Marcar revisado el paquete de la compra ${purchase.id}`}
+                                  className="w-full text-xs"
+                                  size="sm"
+                                  type="submit"
+                                  variant="secondary"
+                                >
+                                  Marcar revisado (acredita stock)
+                                </Button>
+                              </form>
+                              <details className="text-xs">
+                                <summary className="cursor-pointer select-none font-medium text-[color:var(--muted)]">
+                                  Reportar falla
+                                </summary>
+                                <form action={reviewPurchasePackageAction} className="mt-2 grid gap-2">
+                                  <input name="id" type="hidden" value={purchase.id} />
+                                  <input name="action" type="hidden" value="reportar_falla" />
+                                  <Field
+                                    className="gap-1"
+                                    htmlFor={`purchase-${purchase.id}-failure`}
+                                    label="Motivo de la falla"
+                                  >
+                                    <Textarea
+                                      id={`purchase-${purchase.id}-failure`}
+                                      name="failure"
+                                      required
+                                      rows={2}
+                                    />
+                                  </Field>
+                                  {(itemsByPurchase.get(purchase.id) ?? []).map((item) => (
+                                    <div
+                                      className="grid grid-cols-[1fr_90px] items-center gap-2"
+                                      key={item.productId}
+                                    >
+                                      <span className="truncate" title={item.name || item.productId}>
+                                        {item.name || item.productId} (pidio {item.quantity})
+                                      </span>
+                                      <input name="itemProductId" type="hidden" value={item.productId} />
+                                      <Input
+                                        aria-label={`Cantidad llegada de ${item.name || item.productId} en compra ${purchase.id}`}
+                                        defaultValue={0}
+                                        min="0"
+                                        name="itemQuantity"
+                                        step="1"
+                                        type="number"
+                                      />
+                                    </div>
+                                  ))}
+                                  <Button
+                                    aria-label={`Reportar falla en la compra ${purchase.id}`}
+                                    className="w-full text-xs"
+                                    size="sm"
+                                    type="submit"
+                                    variant="secondary"
+                                  >
+                                    Reportar falla
+                                  </Button>
+                                </form>
+                              </details>
+                            </div>
                           ) : null}
                         </div>
                       </DataTableCell>

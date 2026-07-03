@@ -166,6 +166,35 @@ export async function listPurchases(companyId: number) {
   return result.rows.map(mapPurchase);
 }
 
+export async function listPurchaseItemsByPurchaseIds(companyId: number, purchaseIds: string[]) {
+  if (purchaseIds.length === 0) return new Map<string, { productId: string; name: string; quantity: number }[]>();
+
+  const result = await queryWithCompanyContext<{
+    purchase_id: string;
+    product_id: string;
+    name: string;
+    quantity: string;
+  }>(
+    companyId,
+    `
+      SELECT i.purchase_id, i.product_id, COALESCE(p.name, '') AS name, i.quantity::text
+      FROM purchase_items i
+      LEFT JOIN products p ON p.id = i.product_id AND p.empresa_id = i.empresa_id
+      WHERE i.empresa_id = $1 AND i.purchase_id = ANY($2::uuid[]) AND i.product_id IS NOT NULL
+      ORDER BY i.id ASC
+    `,
+    [companyId, purchaseIds],
+  );
+
+  const byPurchase = new Map<string, { productId: string; name: string; quantity: number }[]>();
+  for (const row of result.rows) {
+    const list = byPurchase.get(row.purchase_id) ?? [];
+    list.push({ productId: row.product_id, name: row.name, quantity: Number(row.quantity) });
+    byPurchase.set(row.purchase_id, list);
+  }
+  return byPurchase;
+}
+
 export async function getPurchase(companyId: number, id: string) {
   const purchaseResult = await queryWithCompanyContext<Parameters<typeof mapPurchase>[0]>(
     companyId,
