@@ -1,6 +1,7 @@
 import { ModulePage } from "@/components/module-page";
 import {
   Button,
+  ButtonLink,
   Card,
   CardContent,
   CardDescription,
@@ -14,11 +15,13 @@ import {
 import { completeCalendarTaskAction } from "@/app/calendar/actions";
 import { requireStaffSession } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
-import { listTasks } from "@/lib/messages";
+import { listMessageCenter, listTasks } from "@/lib/messages";
 
 type TaskList = Awaited<ReturnType<typeof listTasks>>;
 type PendingTask = TaskList["personal"][number] | TaskList["received"][number];
 type AssignedTask = TaskList["assigned"][number];
+type MessageCenter = Awaited<ReturnType<typeof listMessageCenter>>;
+type MessagePreview = MessageCenter["inbox"][number];
 
 function statusTone(status: string): StatusBadgeTone {
   const normalized = status.toLowerCase();
@@ -106,11 +109,26 @@ function AssignedTaskRow({ task }: { task: AssignedTask }) {
   );
 }
 
+function UnreadMessageRow({ message }: { message: MessagePreview }) {
+  return (
+    <li className="grid gap-1 border-t border-[#e5ebf4] px-4 py-3 first:border-t-0">
+      <div className="flex items-center justify-between gap-2">
+        <span className="erp-text-body-sm min-w-0 truncate font-black text-[#0f172a]">
+          {message.subject || "(Sin asunto)"}
+        </span>
+        <span className="erp-text-caption shrink-0 font-semibold text-[#64748b]">{formatDate(message.date)}</span>
+      </div>
+      <span className="erp-text-caption font-medium text-[#475569]">De {message.from}</span>
+    </li>
+  );
+}
+
 export default async function Home() {
   const session = await requireStaffSession();
-  const tasks = await listTasks(session);
+  const [tasks, center] = await Promise.all([listTasks(session), listMessageCenter(session)]);
   const pendingTasks = [...tasks.personal, ...tasks.received];
   const openAssignedTasks = tasks.assigned.filter((task) => !task.completed);
+  const unreadMessages = center.inbox.filter((message) => !message.read).slice(0, 5);
 
   return (
     <ModulePage
@@ -126,7 +144,7 @@ export default async function Home() {
           title="Recordatorios y tareas"
         />
 
-        <section className="grid gap-4 xl:grid-cols-[1.35fr_0.85fr]">
+        <section className="grid gap-4 xl:grid-cols-[1.1fr_0.85fr_0.85fr]">
           <Card>
             <CardHeader>
               <CardTitle>Pendientes para vos</CardTitle>
@@ -162,6 +180,31 @@ export default async function Home() {
                   <AssignedTaskRow key={`delegada-${task.id}`} task={task} />
                 ))}
               </ul>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Mensajes sin leer</CardTitle>
+              <CardDescription>Mensajes internos que todavia no abriste.</CardDescription>
+            </CardHeader>
+            {unreadMessages.length === 0 ? (
+              <CardContent>
+                <EmptyState title="Sin mensajes sin leer" description="No tenes mensajes internos pendientes de leer." />
+              </CardContent>
+            ) : (
+              <>
+                <ul>
+                  {unreadMessages.map((message) => (
+                    <UnreadMessageRow key={`mensaje-${message.id}`} message={message} />
+                  ))}
+                </ul>
+                <CardContent>
+                  <ButtonLink href="/messages" size="sm" variant="secondary">
+                    Ver todos los mensajes
+                  </ButtonLink>
+                </CardContent>
+              </>
             )}
           </Card>
         </section>

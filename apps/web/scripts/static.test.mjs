@@ -372,3 +372,13 @@ test("Escritorio is listed first in the Inicio menu and links to the home page",
     /label: "Inicio"[\s\S]*groups: \[groupByLabel\("Escritorio"\), groupByLabel\("Calendario"\), groupByLabel\("Mensajes"\)\]/,
   );
 });
+
+test("Escritorio previews up to 5 unread messages alongside pending tasks", () => {
+  const home = read("apps/web/src/app/page.tsx");
+  assert.match(home, /listMessageCenter/);
+  assert.match(home, /unreadMessages/);
+  assert.match(home, /\.filter\(\(message\) => !message\.read\)/);
+  assert.match(home, /\.slice\(0, 5\)/);
+  assert.match(home, /Mensajes sin leer/);
+  assert.match(home, /href="\/messages"/);
+});
