@@ -137,6 +137,45 @@ function NavigationItemLink({
   );
 }
 
+function GroupItemsList({
+  activeGroup,
+  current,
+  group,
+  indicators,
+}: {
+  activeGroup: boolean;
+  current: CurrentLocation;
+  group: NavigationGroup;
+  indicators: NavigationIndicators;
+}) {
+  const childHrefs = (group.items ?? []).map((item) => item.href);
+
+  return (
+    <div className="mt-1.5 grid gap-1 border-l border-white/18 pl-4">
+      {(group.items ?? []).map((item) => (
+        <NavigationItemLink
+          activeGroup={activeGroup}
+          competingHrefs={childHrefs}
+          current={current}
+          indicators={indicators}
+          item={item}
+          key={item.href}
+        />
+      ))}
+    </div>
+  );
+}
+
+function isRedundantSoleGroup(section: NavigationSection) {
+  const [group] = section.groups;
+  return (
+    section.groups.length === 1 &&
+    !group.href &&
+    Boolean(group.items) &&
+    group.label.trim().toLowerCase() === section.label.trim().toLowerCase()
+  );
+}
+
 function NavigationGroupBlock({
   active,
   current,
@@ -150,7 +189,6 @@ function NavigationGroupBlock({
 }) {
   const activeGroup = groupIsActive(group, active);
   const groupBadge = groupBadgeValue(group, indicators);
-  const childHrefs = (group.items ?? []).map((item) => item.href);
 
   if (group.href) {
     const groupCurrent = hrefMatchesCurrent(group.href, current, []);
@@ -175,18 +213,7 @@ function NavigationGroupBlock({
         <span className="min-w-0 flex-1 truncate">{group.label}</span>
         <Badge active={activeGroup} value={groupBadge} />
       </summary>
-      <div className="mt-1.5 grid gap-1 border-l border-white/18 pl-4">
-        {(group.items ?? []).map((item) => (
-          <NavigationItemLink
-            activeGroup={activeGroup}
-            competingHrefs={childHrefs}
-            current={current}
-            indicators={indicators}
-            item={item}
-            key={item.href}
-          />
-        ))}
-      </div>
+      <GroupItemsList activeGroup={activeGroup} current={current} group={group} indicators={indicators} />
     </details>
   );
 }
@@ -222,15 +249,24 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
               <Badge active={activeSection} value={sectionBadge} />
             </summary>
             <div className="mt-1.5 grid gap-1 pb-2 pl-2">
-              {section.groups.map((group) => (
-                <NavigationGroupBlock
-                  active={active}
+              {isRedundantSoleGroup(section) ? (
+                <GroupItemsList
+                  activeGroup={activeSection}
                   current={current}
-                  group={group}
+                  group={section.groups[0]}
                   indicators={indicators}
-                  key={group.label}
                 />
-              ))}
+              ) : (
+                section.groups.map((group) => (
+                  <NavigationGroupBlock
+                    active={active}
+                    current={current}
+                    group={group}
+                    indicators={indicators}
+                    key={group.label}
+                  />
+                ))
+              )}
             </div>
           </details>
         );
