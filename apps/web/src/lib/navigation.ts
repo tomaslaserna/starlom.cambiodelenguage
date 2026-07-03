@@ -115,18 +115,11 @@ export const navigationGroups: NavigationGroup[] = [
     ],
   },
   {
+    href: "/quotes",
     label: "Presupuestos",
     active: "quotes",
     badge: "quotes",
-    items: [
-      {
-        href: "/quotes",
-        label: "Presupuestador",
-        active: "quotes",
-        badge: "quotes",
-        permission: QUOTES_READ_PERMISSION,
-      },
-    ],
+    permission: QUOTES_READ_PERMISSION,
   },
   {
     label: "Base de datos",

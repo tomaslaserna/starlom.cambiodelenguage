@@ -186,7 +186,7 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   const navigation = read("apps/web/src/lib/navigation.ts");
   assert.match(navigation, /ordersLoaded/);
   assert.match(navigation, /ordersConfirmed/);
-  assert.match(navigation, /label: "Presupuestador"/);
+  assert.match(navigation, /href: "\/quotes",\s*label: "Presupuestos"/);
   assert.match(navigation, /label: "Comercial"[\s\S]*groups: \[groupByLabel\("Pedidos"\), groupByLabel\("Ventas"\), groupByLabel\("Presupuestos"\)\]/);
   assert.match(navigation, /label: "Administrador"[\s\S]*href: "\/metrics", label: "Metricas"/);
   assert.match(navigation, /label: "Compras"[\s\S]*groups: \[groupByLabel\("Compras"\)\]/);
