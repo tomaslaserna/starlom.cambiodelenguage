@@ -363,3 +363,12 @@ test("sales reporting uses the canonical imported sales source", () => {
     assert.match(read(path), /canonicalSalesSourceSql/);
   }
 });
+
+test("Escritorio is listed first in the Inicio menu and links to the home page", () => {
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.match(navigation, /href: "\/",\s*label: "Escritorio",\s*active: "home",/);
+  assert.match(
+    navigation,
+    /label: "Inicio"[\s\S]*groups: \[groupByLabel\("Escritorio"\), groupByLabel\("Calendario"\), groupByLabel\("Mensajes"\)\]/,
+  );
+});

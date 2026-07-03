@@ -61,20 +61,39 @@ export type NavigationAuthorization = {
 
 export const navigationGroups: NavigationGroup[] = [
   {
+    href: "/",
+    label: "Escritorio",
+    active: "home",
+  },
+  {
+    href: "/balance",
     label: "Balance",
     active: "balance",
-    items: [
-      { href: "/balance", label: "Resumen", active: "balance", permission: ADMIN_BALANCE_READ_PERMISSION },
-      { href: "/balance/salaries", label: "Sueldos", active: "balance", permission: ADMIN_SALARIES_READ_PERMISSION },
-      { href: "/balance/dividends", label: "Dividendos", active: "balance", permission: ADMIN_DIVIDENDS_READ_PERMISSION },
-    ],
+    permission: ADMIN_BALANCE_READ_PERMISSION,
+  },
+  {
+    href: "/balance/salaries",
+    label: "Sueldos",
+    active: "balance",
+    permission: ADMIN_SALARIES_READ_PERMISSION,
+  },
+  {
+    href: "/balance/dividends",
+    label: "Dividendos",
+    active: "balance",
+    permission: ADMIN_DIVIDENDS_READ_PERMISSION,
+  },
+  {
+    href: "/treasury",
+    label: "Caja",
+    active: "treasury",
+    permission: ADMIN_TREASURY_READ_PERMISSION,
   },
   {
     label: "Tesoreria",
     active: "treasury",
     badge: "payables",
     items: [
-      { href: "/treasury", label: "Saldos actuales", active: "treasury", permission: ADMIN_TREASURY_READ_PERMISSION },
       { href: "/treasury/cash-flow", label: "Cash Flow", active: "treasury", permission: ADMIN_CASHFLOW_READ_PERMISSION },
       {
         href: "/treasury/accounts-payable",
@@ -82,12 +101,6 @@ export const navigationGroups: NavigationGroup[] = [
         active: "treasury",
         badge: "payables",
         permission: ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION,
-      },
-      {
-        href: "/treasury/movements",
-        label: "Registro de movimientos",
-        active: "treasury",
-        permission: ADMIN_MOVEMENTS_READ_PERMISSION,
       },
     ],
   },
@@ -248,7 +261,7 @@ function groupByLabel(label: string) {
 export const navigationSections: NavigationSection[] = [
   {
     label: "Inicio",
-    groups: [groupByLabel("Calendario"), groupByLabel("Mensajes")],
+    groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes")],
   },
   {
     label: "Comercial",
@@ -278,11 +291,17 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     label: "Finanzas",
-    groups: [groupByLabel("Balance")],
+    groups: [
+      groupByLabel("Balance"),
+      groupByLabel("Sueldos"),
+      groupByLabel("Dividendos"),
+      groupByLabel("Caja"),
+      groupByLabel("Tesoreria"),
+    ],
   },
   {
-    label: "Tesoreria",
-    groups: [groupByLabel("Tesoreria"), groupByLabel("Cobros y pagos")],
+    label: "Cobros y pagos",
+    groups: [groupByLabel("Cobros y pagos")],
   },
 ];
 
