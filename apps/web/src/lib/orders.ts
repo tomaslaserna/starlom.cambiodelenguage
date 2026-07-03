@@ -19,6 +19,7 @@ import {
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { discountSaleStockIfAvailable } from "@/lib/stock";
+import { localDateIso } from "@/lib/timezone";
 import type { AuthSession } from "@/lib/auth";
 import type { PoolClient } from "pg";
 
@@ -677,7 +678,7 @@ export async function getOrderFormData(companyId: number) {
              COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), p.sale_price, 0)::text AS price_1,
              COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_2, 1), 2), p.sale_price, 0)::text AS price_2,
              COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_3, 1), 2), p.sale_price, 0)::text AS price_3,
-             COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_3, 1), 2), p.sale_price, 0)::text AS price_4,
+             COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_3, 1) * 1.10, 2), p.sale_price, 0)::text AS price_4,
              COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.margen_minorista, 1), 2), p.sale_price, 0)::text AS price_rev
       FROM products p
       LEFT JOIN margenes m
@@ -772,7 +773,7 @@ export function basicOrderInputFromBody(body: RequestBody) {
   return {
     customerId,
     lines,
-    date: textField(body, "date") || textField(body, "fecha") || new Date().toISOString().slice(0, 10),
+    date: textField(body, "date") || textField(body, "fecha") || localDateIso(),
     priceListOverride: textField(body, "priceListOverride") || textField(body, "lista_precios"),
     desiredDocumentOverride: textField(body, "desiredDocumentOverride") || textField(body, "comprobante_deseado"),
     observation: textField(body, "observation") || textField(body, "observacion"),

@@ -7,8 +7,9 @@ export function priceSqlExpression(key: PriceListKey) {
     case "2":
       return "ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_2, 1), 2)";
     case "3":
-    case "4":
       return "ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_3, 1), 2)";
+    case "4":
+      return "ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_3, 1) * 1.10, 2)";
     case "rev":
       return "ROUND(COALESCE(p.cost, 0) * COALESCE(m.margen_minorista, 1), 2)";
     case "1":
