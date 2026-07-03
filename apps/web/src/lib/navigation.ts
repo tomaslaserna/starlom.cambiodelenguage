@@ -124,6 +124,7 @@ export const navigationGroups: NavigationGroup[] = [
     active: "sales",
     items: [
       { href: "/sales", label: "Registro de ventas", active: "sales", permission: SALES_READ_PERMISSION },
+      { href: "/billing", label: "Registro de facturas", active: "billing", permission: SALES_READ_PERMISSION },
     ],
   },
   {
@@ -132,12 +133,6 @@ export const navigationGroups: NavigationGroup[] = [
     active: "quotes",
     badge: "quotes",
     permission: QUOTES_READ_PERMISSION,
-  },
-  {
-    href: "/billing",
-    label: "Facturacion",
-    active: "billing",
-    permission: SALES_READ_PERMISSION,
   },
   {
     label: "Base de datos",
@@ -212,17 +207,11 @@ export const navigationGroups: NavigationGroup[] = [
     ],
   },
   {
-    label: "RR.HH",
+    label: "Recursos humanos",
     active: "employees",
     items: [
-      { href: "/employees", label: "Empleados", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
+      { href: "/employees", label: "Empleados y permisos", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
       { href: "/employees/vendors", label: "Gestion de vendedores", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
-      {
-        href: "/treasury/movements",
-        label: "Registro de movimientos",
-        active: "employees",
-        permission: ADMIN_MOVEMENTS_READ_PERMISSION,
-      },
     ],
   },
   { href: "/metrics", label: "Metricas", active: "metrics", permission: ADMIN_METRICS_READ_PERMISSION },
@@ -233,6 +222,12 @@ export const navigationGroups: NavigationGroup[] = [
     active: "admin",
     badge: "approvals",
     permission: COLLECTIONS_APPROVE_PERMISSION,
+  },
+  {
+    href: "/cash",
+    label: "Caja",
+    active: "cash",
+    permission: ADMIN_CASHFLOW_READ_PERMISSION,
   },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   {
@@ -264,13 +259,8 @@ export const navigationSections: NavigationSection[] = [
     groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes")],
   },
   {
-    label: "Comercial",
-    groups: [
-      groupByLabel("Pedidos"),
-      groupByLabel("Ventas"),
-      groupByLabel("Presupuestos"),
-      groupByLabel("Facturacion"),
-    ],
+    label: "Operaciones",
+    groups: [groupByLabel("Pedidos"), groupByLabel("Ventas"), groupByLabel("Presupuestos")],
   },
   {
     label: "Datos",
@@ -281,27 +271,23 @@ export const navigationSections: NavigationSection[] = [
     groups: [groupByLabel("Compras")],
   },
   {
+    label: "Caja",
+    groups: [groupByLabel("Caja")],
+  },
+  {
+    label: "Recursos humanos",
+    groups: [groupByLabel("Recursos humanos")],
+  },
+  {
     label: "Administracion",
     groups: [
-      groupByLabel("RR.HH"),
       groupByLabel("Metricas"),
       groupByLabel("Rentabilidad"),
       groupByLabel("Solicitudes y aprobaciones"),
-    ],
-  },
-  {
-    label: "Finanzas",
-    groups: [
-      groupByLabel("Balance"),
-      groupByLabel("Sueldos"),
-      groupByLabel("Dividendos"),
-      groupByLabel("Caja"),
       groupByLabel("Tesoreria"),
+      groupByLabel("Cobros y pagos"),
+      groupByLabel("Balance"),
     ],
-  },
-  {
-    label: "Cobros y pagos",
-    groups: [groupByLabel("Cobros y pagos")],
   },
 ];
 

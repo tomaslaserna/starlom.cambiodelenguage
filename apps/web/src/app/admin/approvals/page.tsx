@@ -26,18 +26,30 @@ import {
 import { requireStaffSession } from "@/lib/auth";
 import { approveApprovalAction, rejectApprovalAction } from "@/app/admin/approvals/actions";
 
+type ApprovalsPageProps = {
+  searchParams: Promise<{
+    status?: string;
+    message?: string;
+  }>;
+};
+
 function sourceLabel(source: ApprovalSource) {
-  return source === "collection" ? "Cobro" : "Solicitud interna";
+  if (source === "collection") return "Cobro";
+  if (source === "fiscal") return "Factura";
+  return "Solicitud interna";
 }
 
 function sourceTone(source: ApprovalSource): StatusBadgeTone {
-  return source === "collection" ? "accent" : "info";
+  if (source === "collection") return "accent";
+  if (source === "fiscal") return "warning";
+  return "info";
 }
 
-export default async function ApprovalsPage() {
+export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps) {
   const session = await requireStaffSession();
   const approvalAccess = await approvalCenterAccessForSession(session);
-  if (!approvalAccess.collections && !approvalAccess.requests) redirect("/");
+  if (!approvalAccess.collections && !approvalAccess.requests && !approvalAccess.fiscal) redirect("/");
+  const params = await searchParams;
   const approvals = await listApprovalCenter(session.companyId, approvalAccess);
 
   return (
@@ -53,10 +65,20 @@ export default async function ApprovalsPage() {
           title="Solicitudes y aprobaciones"
         />
 
-        <div className="grid gap-3 md:grid-cols-4">
+        {params.status === "error" ? (
+          <div
+            className="rounded-lg border border-[color:var(--danger)] bg-[color:var(--danger-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--danger)]"
+            role="alert"
+          >
+            {params.message ?? "No se pudo resolver la solicitud."}
+          </div>
+        ) : null}
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <StatCard className="p-3" label="Pendientes" value={approvals.meta.total} />
           <StatCard className="p-3" label="Cobros" value={approvals.meta.collections} />
           <StatCard className="p-3" label="Solicitudes internas" value={approvals.meta.requests} />
+          <StatCard className="p-3" label="Facturas" value={approvals.meta.fiscal} />
           <StatCard className="p-3" label="Monto en revision" value={formatCurrency(approvals.meta.amount)} />
         </div>
 

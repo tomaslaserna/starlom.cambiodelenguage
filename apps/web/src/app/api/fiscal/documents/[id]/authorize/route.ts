@@ -5,7 +5,7 @@ import {
   type FiscalDocumentKind,
   type FiscalDocumentSource,
 } from "@/lib/fiscal";
-import { positiveId, readRequestBody, textField } from "@/lib/request-body";
+import { readRequestBody, textField, uuidParam } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = await readRequestBody(request);
     const data = await authorizeFiscalDocument(
       session,
-      positiveId(id, "Documento fiscal"),
+      uuidParam(id, "Documento fiscal"),
       fiscalSource(textField(body, "source")),
       fiscalKind(textField(body, "kind")),
     );

@@ -79,8 +79,8 @@ export function imageFileFromFormData(formData: FormData, names = ["file", "foto
   return null;
 }
 
-export function stringFieldsFromFormData(formData: FormData) {
-  const body: Record<string, unknown> = {};
+export function stringFieldsFromFormData(formData: FormData): Record<string, string> {
+  const body: Record<string, string> = {};
   for (const [key, value] of formData.entries()) {
     if (typeof value === "string") body[key] = value;
   }

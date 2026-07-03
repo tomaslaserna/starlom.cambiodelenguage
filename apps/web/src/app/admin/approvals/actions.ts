@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { approveCollection, rejectCollection, rejectionReasonFromBody } from "@/lib/collections";
+import { authorizeSaleFiscalDocument, rejectSaleFiscalDocument } from "@/lib/fiscal";
 import {
   COLLECTION_APPROVAL_PERMISSION,
   parseApprovalSource,
@@ -22,47 +24,81 @@ function revalidateCollectionFlow() {
   revalidatePath("/metrics");
 }
 
-export async function approveApprovalAction(formData: FormData) {
-  const session = await requireApiSession();
-  const source = parseApprovalSource(formData.get("source"));
-  const rawId = String(formData.get("id") ?? "");
+function revalidateFiscalFlow() {
+  revalidatePath("/admin/approvals");
+  revalidatePath("/billing");
+  revalidatePath("/sales");
+}
 
-  switch (source) {
-    case "collection":
-      await requireSessionPermission(session, [COLLECTION_APPROVAL_PERMISSION]);
-      await approveCollection(session, uuidParam(rawId, "Cobro"));
-      revalidateCollectionFlow();
-      return;
-    case "request": {
-      const id = positiveId(rawId, "Solicitud");
-      await resolveGenericApproval(session, id, "aprobada");
-      revalidatePath("/admin/approvals");
-      return;
+function actionErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  return "No se pudo resolver la solicitud.";
+}
+
+function redirectApprovalError(error: unknown): never {
+  const message = encodeURIComponent(actionErrorMessage(error).slice(0, 900));
+  redirect(`/admin/approvals?status=error&message=${message}`);
+}
+
+export async function approveApprovalAction(formData: FormData) {
+  try {
+    const session = await requireApiSession();
+    const source = parseApprovalSource(formData.get("source"));
+    const rawId = String(formData.get("id") ?? "");
+
+    switch (source) {
+      case "collection":
+        await requireSessionPermission(session, [COLLECTION_APPROVAL_PERMISSION]);
+        await approveCollection(session, uuidParam(rawId, "Cobro"));
+        revalidateCollectionFlow();
+        return;
+      case "request": {
+        const id = positiveId(rawId, "Solicitud");
+        await resolveGenericApproval(session, id, "aprobada");
+        revalidatePath("/admin/approvals");
+        return;
+      }
+      case "fiscal":
+        await authorizeSaleFiscalDocument(session, uuidParam(rawId, "Venta"));
+        revalidateFiscalFlow();
+        return;
+      default:
+        assertNeverApprovalSource(source);
     }
-    default:
-      assertNeverApprovalSource(source);
+  } catch (error) {
+    revalidatePath("/admin/approvals");
+    redirectApprovalError(error);
   }
 }
 
 export async function rejectApprovalAction(formData: FormData) {
-  const session = await requireApiSession();
-  const source = parseApprovalSource(formData.get("source"));
-  const rawId = String(formData.get("id") ?? "");
-  const reason = rejectionReasonFromBody({ reason: String(formData.get("reason") ?? "") });
+  try {
+    const session = await requireApiSession();
+    const source = parseApprovalSource(formData.get("source"));
+    const rawId = String(formData.get("id") ?? "");
+    const reason = rejectionReasonFromBody({ reason: String(formData.get("reason") ?? "") });
 
-  switch (source) {
-    case "collection":
-      await requireSessionPermission(session, [COLLECTION_APPROVAL_PERMISSION]);
-      await rejectCollection(session, uuidParam(rawId, "Cobro"), reason);
-      revalidateCollectionFlow();
-      return;
-    case "request": {
-      const id = positiveId(rawId, "Solicitud");
-      await resolveGenericApproval(session, id, "rechazada", reason);
-      revalidatePath("/admin/approvals");
-      return;
+    switch (source) {
+      case "collection":
+        await requireSessionPermission(session, [COLLECTION_APPROVAL_PERMISSION]);
+        await rejectCollection(session, uuidParam(rawId, "Cobro"), reason);
+        revalidateCollectionFlow();
+        return;
+      case "request": {
+        const id = positiveId(rawId, "Solicitud");
+        await resolveGenericApproval(session, id, "rechazada", reason);
+        revalidatePath("/admin/approvals");
+        return;
+      }
+      case "fiscal":
+        await rejectSaleFiscalDocument(session, uuidParam(rawId, "Venta"), reason);
+        revalidateFiscalFlow();
+        return;
+      default:
+        assertNeverApprovalSource(source);
     }
-    default:
-      assertNeverApprovalSource(source);
+  } catch (error) {
+    revalidatePath("/admin/approvals");
+    redirectApprovalError(error);
   }
 }

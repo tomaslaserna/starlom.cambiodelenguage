@@ -28,6 +28,18 @@ type QuoteProduct = {
 
 type AccountType = "cliente" | "proveedor";
 
+const FISCAL_RECEIPT_LABELS: Record<number, { title: string; code: string }> = {
+  1: { title: "Factura A", code: "A" },
+  2: { title: "Nota de Debito A", code: "NDA" },
+  3: { title: "Nota de Credito A", code: "NCA" },
+  6: { title: "Factura B", code: "B" },
+  7: { title: "Nota de Debito B", code: "NDB" },
+  8: { title: "Nota de Credito B", code: "NCB" },
+  11: { title: "Factura C", code: "C" },
+  12: { title: "Nota de Debito C", code: "NDC" },
+  13: { title: "Nota de Credito C", code: "NCC" },
+};
+
 function asQuoteProducts(value: unknown): QuoteProduct[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is QuoteProduct => Boolean(item) && typeof item === "object");
@@ -35,6 +47,40 @@ function asQuoteProducts(value: unknown): QuoteProduct[] {
 
 function parseAccountType(value: string | null): AccountType {
   return value === "proveedor" ? "proveedor" : "cliente";
+}
+
+function fiscalReceiptLabel(receiptType: number) {
+  return FISCAL_RECEIPT_LABELS[receiptType] ?? { title: `Comprobante ${receiptType}`, code: String(receiptType) };
+}
+
+function fiscalReceiptNumber(pointOfSale: number | null, receiptNumber: number | null) {
+  if (!pointOfSale || !receiptNumber) return "-";
+  return `${String(pointOfSale).padStart(4, "0")}-${String(receiptNumber).padStart(8, "0")}`;
+}
+
+function fiscalAmounts(receiptType: number, total: number) {
+  const hasVat = [1, 2, 3, 6, 7, 8].includes(receiptType);
+  if (!hasVat) return { net: total, vat: 0, total };
+  const net = Number((total / 1.21).toFixed(2));
+  const vat = Number((total - net).toFixed(2));
+  return { net, vat, total };
+}
+
+function asFiscalDetail(value: unknown): Array<{ name: string; quantity: number; unitPrice: number; subtotal: number }> {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => {
+      const quantity = Number(item.quantity ?? item.cantidad ?? 1);
+      const unitPrice = Number(item.unitPrice ?? item.precio_unit ?? 0);
+      const subtotal = Number(item.subtotal ?? quantity * unitPrice);
+      return {
+        name: String(item.name ?? item.nombre ?? item.description ?? "Concepto"),
+        quantity: Number.isFinite(quantity) ? quantity : 1,
+        unitPrice: Number.isFinite(unitPrice) ? unitPrice : 0,
+        subtotal: Number.isFinite(subtotal) ? subtotal : 0,
+      };
+    });
 }
 
 function dateRangeLabel(from: string, to: string) {
@@ -411,6 +457,221 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: string
       pdf.note([record.notas, record.comprobante_nombre ? "Comprobante adjunto: si" : ""].filter(Boolean).join(" "));
     }
     pdf.signatures(isCollection ? "Recibi conforme - Starlim" : "Autorizo pago - Starlim", "Aclaracion y firma");
+  });
+}
+
+export async function buildFiscalSalePdf(companyId: number, saleId: string) {
+  const header = await queryWithCompanyContext<{
+    id: string;
+    sale_number: string;
+    nombre_cliente: string;
+    dni_cliente: string;
+    fecha: string | null;
+    monto: string;
+    condicion_pago: string;
+    fiscal_point_of_sale: number | null;
+    fiscal_receipt_type: number | null;
+    fiscal_receipt_number: number | null;
+    cae: string;
+    cae_expires_at: string | null;
+  }>(
+    companyId,
+    `
+      SELECT s.id::text AS id,
+             COALESCE(s.sale_number, '') AS sale_number,
+             COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
+             COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
+             s.sale_date::text AS fecha,
+             COALESCE(s.total_amount, 0)::text AS monto,
+             COALESCE(s.payment_condition, '') AS condicion_pago,
+             s.fiscal_point_of_sale,
+             s.fiscal_receipt_type,
+             s.fiscal_receipt_number,
+             COALESCE(s.cae, '') AS cae,
+             s.cae_expires_at::text
+      FROM sales s
+      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      WHERE s.id = $1::uuid
+        AND s.empresa_id = $2
+        AND COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
+        AND COALESCE(s.cae, '') <> ''
+        AND COALESCE(s.cae, '') <> 'manual'
+        AND s.fiscal_point_of_sale IS NOT NULL
+        AND s.fiscal_receipt_type IS NOT NULL
+        AND s.fiscal_receipt_number IS NOT NULL
+      LIMIT 1
+    `,
+    [saleId, companyId],
+  );
+  const sale = header.rows[0];
+  if (!sale) throw new ApiError(404, "Factura fiscal no encontrada");
+
+  const detail = await queryWithCompanyContext<{
+    nombre: string;
+    cantidad: string;
+    precio_unit: string;
+    subtotal: string;
+  }>(
+    companyId,
+    `
+      SELECT COALESCE(si.description, p.name, 'Concepto') AS nombre,
+             COALESCE(si.quantity, 0)::text AS cantidad,
+             COALESCE(si.unit_price, 0)::text AS precio_unit,
+             COALESCE(si.total_amount, si.quantity * si.unit_price, 0)::text AS subtotal
+      FROM sale_items si
+      LEFT JOIN products p ON p.id = si.product_id AND p.empresa_id = si.empresa_id
+      WHERE si.sale_id = $1::uuid AND si.empresa_id = $2
+      ORDER BY si.id ASC
+    `,
+    [saleId, companyId],
+  );
+
+  const receiptType = Number(sale.fiscal_receipt_type ?? 0);
+  const receipt = fiscalReceiptLabel(receiptType);
+  const total = Number(sale.monto);
+  const amounts = fiscalAmounts(receiptType, total);
+  const number = fiscalReceiptNumber(sale.fiscal_point_of_sale, sale.fiscal_receipt_number);
+
+  return createPdfFile(`factura_${safeFilename(number)}.pdf`, ({ pdf }) => {
+    pdf.drawHeader({
+      title: receipt.title,
+      code: receipt.code,
+      number,
+      date: pdfDate(sale.fecha),
+      extra: [`CAE ${sale.cae}`, sale.cae_expires_at ? `Vto. CAE ${pdfDate(sale.cae_expires_at)}` : ""].filter(Boolean),
+    });
+    pdf.section("Cliente");
+    pdf.title(sale.nombre_cliente || "Sin cliente", 12);
+    pdf.muted([sale.dni_cliente ? `CUIT/DNI ${sale.dni_cliente}` : "", sale.condicion_pago].filter(Boolean).join(" - ") || "-");
+    pdf.doc.y += 14;
+    pdf.table(
+      [
+        { label: "Cant.", width: 54 },
+        { label: "Descripcion", width: 272 },
+        { label: "P. unit.", width: 92, align: "right" },
+        { label: "Importe", width: 93, align: "right" },
+      ],
+      detail.rows.map((row) => [
+        pdfNumber(Number(row.cantidad)),
+        row.nombre,
+        pdfMoney(Number(row.precio_unit)),
+        pdfMoney(Number(row.subtotal)),
+      ]),
+    );
+    pdf.totals(
+      [
+        ["Neto gravado", pdfMoney(amounts.net)],
+        ["IVA 21%", pdfMoney(amounts.vat)],
+      ],
+      "Total",
+      pdfMoney(amounts.total),
+    );
+    pdf.note("Comprobante emitido desde Starlim ERP con CAE registrado en ARCA.");
+  });
+}
+
+export async function buildFiscalSalesNotePdf(companyId: number, noteId: string) {
+  const result = await queryWithCompanyContext<{
+    id: string;
+    class_name: string;
+    receipt_type: number;
+    receipt_number: number | null;
+    amount: string;
+    detail_json: unknown;
+    reason: string;
+    created_at: string;
+    fiscal_point_of_sale: number | null;
+    fiscal_receipt_type: number | null;
+    fiscal_receipt_number: number | null;
+    cae: string;
+    cae_expires_at: string | null;
+    sale_fiscal_point_of_sale: number | null;
+    sale_fiscal_receipt_type: number | null;
+    sale_fiscal_receipt_number: number | null;
+    cliente: string;
+    documento: string;
+  }>(
+    companyId,
+    `
+      SELECT sid.id::text AS id,
+             sid.class_name,
+             COALESCE(sid.receipt_type, 0)::int AS receipt_type,
+             sid.receipt_number,
+             COALESCE(sid.amount, 0)::text AS amount,
+             sid.detail_json,
+             COALESCE(sid.reason, '') AS reason,
+             sid.created_at::text,
+             sid.fiscal_point_of_sale,
+             sid.fiscal_receipt_type,
+             sid.fiscal_receipt_number,
+             COALESCE(sid.cae, '') AS cae,
+             sid.cae_expires_at::text,
+             s.fiscal_point_of_sale AS sale_fiscal_point_of_sale,
+             s.fiscal_receipt_type AS sale_fiscal_receipt_type,
+             s.fiscal_receipt_number AS sale_fiscal_receipt_number,
+             COALESCE(s.client_name, c.display_name, '') AS cliente,
+             COALESCE(s.client_document, c.tax_id, '') AS documento
+      FROM sales_internal_documents sid
+      LEFT JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
+      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      WHERE sid.id = $1::uuid
+        AND sid.empresa_id = $2
+        AND sid.fiscal = true
+        AND COALESCE(sid.fiscal_status, 'no_enviado') = 'aprobado'
+        AND COALESCE(sid.cae, '') <> ''
+        AND sid.fiscal_point_of_sale IS NOT NULL
+        AND sid.fiscal_receipt_type IS NOT NULL
+        AND sid.fiscal_receipt_number IS NOT NULL
+      LIMIT 1
+    `,
+    [noteId, companyId],
+  );
+  const note = result.rows[0];
+  if (!note) throw new ApiError(404, "Nota fiscal no encontrada");
+
+  const receiptType = Number(note.fiscal_receipt_type ?? note.receipt_type);
+  const receipt = fiscalReceiptLabel(receiptType);
+  const number = fiscalReceiptNumber(note.fiscal_point_of_sale, note.fiscal_receipt_number ?? note.receipt_number);
+  const total = Number(note.amount);
+  const amounts = fiscalAmounts(receiptType, total);
+  const detail = asFiscalDetail(note.detail_json);
+  const associated = fiscalReceiptNumber(note.sale_fiscal_point_of_sale, note.sale_fiscal_receipt_number);
+
+  return createPdfFile(`${safeFilename(receipt.title)}_${safeFilename(number)}.pdf`, ({ pdf }) => {
+    pdf.drawHeader({
+      title: receipt.title,
+      code: receipt.code,
+      number,
+      date: pdfDate(note.created_at),
+      extra: [`CAE ${note.cae}`, note.cae_expires_at ? `Vto. CAE ${pdfDate(note.cae_expires_at)}` : ""].filter(Boolean),
+    });
+    pdf.section("Cliente");
+    pdf.title(note.cliente || "Sin cliente", 12);
+    pdf.muted([note.documento ? `CUIT/DNI ${note.documento}` : "", associated !== "-" ? `Asociado a factura ${associated}` : ""].filter(Boolean).join(" - ") || "-");
+    pdf.doc.y += 14;
+    pdf.table(
+      [
+        { label: "Cant.", width: 54 },
+        { label: "Descripcion", width: 272 },
+        { label: "P. unit.", width: 92, align: "right" },
+        { label: "Importe", width: 93, align: "right" },
+      ],
+      detail.map((row) => [
+        pdfNumber(row.quantity),
+        row.name,
+        pdfMoney(row.unitPrice),
+        pdfMoney(row.subtotal),
+      ]),
+    );
+    pdf.totals(
+      [
+        ["Neto gravado", pdfMoney(amounts.net)],
+        ["IVA 21%", pdfMoney(amounts.vat)],
+      ],
+      "Total",
+      pdfMoney(amounts.total),
+    );
+    pdf.note(note.reason || `Comprobante asociado a factura ${associated}.`);
   });
 }
 

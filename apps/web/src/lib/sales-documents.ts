@@ -118,7 +118,7 @@ export async function getSalesDocumentContext(companyId: number, saleId = "", re
     }>(
       companyId,
       `
-        SELECT s.id::text AS id, '' AS cae, 0 AS tipo_cbte,
+        SELECT s.id::text AS id, COALESCE(s.cae, '') AS cae, COALESCE(s.receipt_type, 0)::int AS tipo_cbte,
                COALESCE(s.receipt_number, nullif(regexp_replace(COALESCE(s.sale_number, ''), '\D', '', 'g'), '')::bigint, 0)::int AS nro_comprobante,
                COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
                COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
@@ -274,7 +274,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
   if (input.fiscal) {
     throw new ApiError(
       400,
-      "La emision fiscal online esta deshabilitada. Genera solo notas internas.",
+      "Esta ruta solo genera notas internas. Las notas fiscales se emiten desde Registro de facturas.",
     );
   }
   if (!input.saleId && !input.remittanceId) {

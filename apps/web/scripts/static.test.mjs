@@ -174,9 +174,10 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(navigation, /href: "\/quotes",\s*label: "Presupuestos"/);
   assert.match(
     navigation,
-    /label: "Comercial"[\s\S]*groupByLabel\("Pedidos"\)[\s\S]*groupByLabel\("Ventas"\)[\s\S]*groupByLabel\("Presupuestos"\)[\s\S]*groupByLabel\("Facturacion"\)/,
+    /label: "Operaciones"[\s\S]*groupByLabel\("Pedidos"\)[\s\S]*groupByLabel\("Ventas"\)[\s\S]*groupByLabel\("Presupuestos"\)/,
   );
-  assert.match(navigation, /href: "\/billing",\s*label: "Facturacion"/);
+  assert.match(navigation, /href: "\/billing",\s*label: "Registro de facturas"/);
+  assert.doesNotMatch(navigation, /label: "Facturacion"/);
   assert.match(navigation, /href: "\/metrics", label: "Metricas"/);
   assert.match(navigation, /href: "\/rentabilidad", label: "Rentabilidad"/);
   assert.doesNotMatch(navigation, /label: "Panel admin"/);
@@ -305,8 +306,9 @@ test("order creation exposes the full legacy receipt type set", () => {
 
   const salesAdmin = read("apps/web/src/lib/sales-admin.ts");
   assert.match(salesAdmin, /TYPE_CODES = new Set\(\[1, 2, 3, 6, 7, 8, 11, 12, 13\]\)/);
-  assert.match(salesAdmin, /receipt_type IN \(3,8,13\)/);
-  assert.match(salesAdmin, /receipt_type IN \(2,7,12\)/);
+  assert.match(salesAdmin, /FROM sales_internal_documents sid/);
+  assert.match(salesAdmin, /sid\.class_name = 'NC'/);
+  assert.match(salesAdmin, /sid\.class_name = 'ND'/);
 });
 
 test("admin sales edits cannot bypass the order lifecycle", () => {
@@ -368,4 +370,74 @@ test("Escritorio previews up to 5 unread messages alongside pending tasks", () =
   assert.match(home, /\.slice\(0, 5\)/);
   assert.match(home, /Mensajes sin leer/);
   assert.match(home, /href="\/messages"/);
+});
+
+test("billing uses real ARCA authorization state for invoices and fiscal notes", () => {
+  assert.equal(existsSync(join(repoRoot, "migrations/035_sales_fiscal_authorization_state.sql")), true);
+  assert.equal(existsSync(join(repoRoot, "migrations/036_sales_fiscal_receipt_identity.sql")), true);
+  assert.equal(existsSync(join(repoRoot, "migrations/037_sales_internal_documents_fiscal_identity.sql")), true);
+
+  const fiscal = read("apps/web/src/lib/fiscal.ts");
+  assert.match(fiscal, /export async function authorizeSaleFiscalDocument/);
+  assert.match(fiscal, /export async function authorizeSaleCreditNote/);
+  assert.match(fiscal, /export async function authorizeSaleDebitNote/);
+  assert.match(fiscal, /export async function getSaleCreditNotePreview/);
+  assert.match(fiscal, /export async function getSaleDebitNotePreview/);
+  assert.match(fiscal, /class ArcaFiscalProvider/);
+  assert.doesNotMatch(fiscal, /PendingArcaFiscalProvider/);
+  assert.match(fiscal, /associatedReceipt/);
+  assert.match(fiscal, /findLastArcaAuthorizedReceipt/);
+  assert.match(fiscal, /recoverSaleFiscalNoteApproval/);
+  assert.match(fiscal, /No reemito para evitar duplicados/);
+  assert.ok((fiscal.match(/fiscal_receipt_number = \$3::integer/g) ?? []).length >= 2);
+  assert.ok((fiscal.match(/receipt_number = \$9::bigint/g) ?? []).length >= 2);
+  assert.doesNotMatch(fiscal, /fiscal_receipt_number = \$3,\s*receipt_type = \$2,\s*receipt_number = \$3/);
+
+  const arcaWsaa = read("apps/web/src/lib/arca/wsaa.ts");
+  assert.match(arcaWsaa, /loginTicketRequest/);
+  assert.match(arcaWsaa, /forge\.pkcs7\.createSignedData/);
+
+  const arcaXml = read("apps/web/src/lib/arca/xml.ts");
+  assert.match(arcaXml, /ERR_SSL_DH_KEY_TOO_SMALL/);
+  assert.match(arcaXml, /legacyTlsPostSoapXml/);
+
+  const arcaWsfe = read("apps/web/src/lib/arca/wsfe.ts");
+  assert.match(arcaWsfe, /FECompUltimoAutorizado/);
+  assert.match(arcaWsfe, /FECompConsultar/);
+  assert.match(arcaWsfe, /FECAESolicitar/);
+  assert.match(arcaWsfe, /CondicionIVAReceptorId/);
+  assert.match(arcaWsfe, /CbtesAsoc/);
+  assert.match(arcaWsfe, /export async function findLastArcaAuthorizedReceipt/);
+  assert.match(arcaWsfe, /export async function consultArcaAuthorizedReceipt/);
+
+  const billingPage = read("apps/web/src/app/billing/page.tsx");
+  assert.match(billingPage, /Registro de facturas/);
+  assert.match(billingPage, /\/billing\/credit-note\/\$\{item\.saleId\}/);
+  assert.match(billingPage, /\/billing\/debit-note\/\$\{item\.saleId\}/);
+  assert.match(billingPage, /\/api\/pdfs\/fiscal\/sales\/\$\{item\.saleId\}/);
+  assert.match(billingPage, /\/api\/pdfs\/fiscal\/notes\/\$\{item\.creditNoteId\}/);
+  assert.match(billingPage, /\/api\/pdfs\/fiscal\/notes\/\$\{item\.debitNoteId\}/);
+  assert.match(billingPage, /hasFiscalIdentity/);
+
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.match(navigation, /label: "Ventas"[\s\S]*label: "Registro de facturas"/);
+  assert.doesNotMatch(navigation, /label: "Facturacion"/);
+
+  const billingActions = read("apps/web/src/app/billing/actions.ts");
+  assert.match(billingActions, /issueCreditNoteAction/);
+  assert.match(billingActions, /issueDebitNoteAction/);
+  assert.match(billingActions, /Solo Administrador o Jefe/);
+
+  const fiscalNotePage = read("apps/web/src/app/billing/fiscal-note-page.tsx");
+  assert.match(fiscalNotePage, /Emitir NC en ARCA/);
+  assert.match(fiscalNotePage, /Emitir ND en ARCA/);
+  assert.match(fiscalNotePage, /No modifica ni borra el CAE/);
+
+  const fiscalPdfSalesRoute = read("apps/web/src/app/api/pdfs/fiscal/sales/[id]/route.ts");
+  assert.match(fiscalPdfSalesRoute, /buildFiscalSalePdf/);
+  const fiscalPdfNotesRoute = read("apps/web/src/app/api/pdfs/fiscal/notes/[id]/route.ts");
+  assert.match(fiscalPdfNotesRoute, /buildFiscalSalesNotePdf/);
+  const pdfDocuments = read("apps/web/src/lib/pdf/documents.ts");
+  assert.match(pdfDocuments, /export async function buildFiscalSalePdf/);
+  assert.match(pdfDocuments, /export async function buildFiscalSalesNotePdf/);
 });

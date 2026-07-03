@@ -2,17 +2,19 @@ import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { ApiError } from "@/lib/api-response";
 import { listPendingCollections } from "@/lib/collections";
 import { queryWithCompanyContext } from "@/lib/db";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { executeSupplierPayment, purchaseIdFromParam } from "@/lib/purchases";
 import { COLLECTIONS_APPROVE_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
 
 export const COLLECTION_APPROVAL_PERMISSION = COLLECTIONS_APPROVE_PERMISSION;
 
-export type ApprovalSource = "collection" | "request";
+export type ApprovalSource = "collection" | "request" | "fiscal";
 
 export type ApprovalCenterAccess = {
   collections: boolean;
   requests: boolean;
+  fiscal: boolean;
 };
 
 type ApprovalRequestRow = {
@@ -23,6 +25,19 @@ type ApprovalRequestRow = {
   monto: string;
   solicitante: string;
   created_at: string;
+};
+
+type FiscalApprovalRow = {
+  id: string;
+  client_name: string;
+  client_document: string;
+  receipt_number: number | null;
+  receipt_type: number | null;
+  total_amount: string;
+  seller_name: string | null;
+  sale_date: string | null;
+  fiscal_status: string;
+  fiscal_error_message: string;
 };
 
 export type ApprovalItem = {
@@ -46,6 +61,8 @@ export function parseApprovalSource(value: FormDataEntryValue | null): ApprovalS
       return "collection";
     case "request":
       return "request";
+    case "fiscal":
+      return "fiscal";
     default:
       throw new ApiError(400, "Tipo de solicitud invalido");
   }
@@ -60,6 +77,7 @@ export async function approvalCenterAccessForSession(session: AuthSession): Prom
   return {
     collections: await sessionAllows(session, [COLLECTION_APPROVAL_PERMISSION]),
     requests: canResolveGenericApproval(session),
+    fiscal: canResolveGenericApproval(session),
   };
 }
 
@@ -69,6 +87,8 @@ export function canOperateApprovalSource(access: ApprovalCenterAccess, source: A
       return access.collections;
     case "request":
       return access.requests;
+    case "fiscal":
+      return access.fiscal;
   }
 }
 
@@ -86,10 +106,42 @@ async function listPendingApprovalRequests(companyId: number) {
   return result.rows;
 }
 
+async function listPendingFiscalApprovals(companyId: number) {
+  const result = await queryWithCompanyContext<FiscalApprovalRow>(
+    companyId,
+    `
+      SELECT s.id::text AS id,
+             COALESCE(s.client_name, c.display_name, '') AS client_name,
+             COALESCE(s.client_document, c.tax_id, '') AS client_document,
+             s.receipt_number,
+             s.receipt_type,
+             COALESCE(s.total_amount, 0)::text AS total_amount,
+             COALESCE(s.seller_name, '') AS seller_name,
+             s.sale_date::text,
+             COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
+             COALESCE(s.fiscal_error_message, '') AS fiscal_error_message
+      FROM sales s
+      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      WHERE s.empresa_id = $1
+        AND ${normalizedOrderStatusSql("s")} = 'entregado'
+        AND (
+          COALESCE(s.desired_document, '') IN ('factura_a', 'factura_b', 'factura_c')
+          OR COALESCE(s.receipt_type, 0) IN (1, 6, 11)
+        )
+        AND COALESCE(s.fiscal_status, 'no_enviado') IN ('no_enviado', 'error')
+      ORDER BY s.sale_date DESC NULLS LAST, s.updated_at DESC NULLS LAST, s.id DESC
+      LIMIT 200
+    `,
+    [companyId],
+  );
+  return result.rows;
+}
+
 export async function listApprovalCenter(companyId: number, access: ApprovalCenterAccess) {
-  const [collections, requests] = await Promise.all([
+  const [collections, requests, fiscal] = await Promise.all([
     access.collections ? listPendingCollections(companyId) : Promise.resolve([]),
     access.requests ? listPendingApprovalRequests(companyId) : Promise.resolve([]),
+    access.fiscal ? listPendingFiscalApprovals(companyId) : Promise.resolve([]),
   ]);
 
   const collectionItems: ApprovalItem[] = collections.map((item) => ({
@@ -116,7 +168,24 @@ export async function listApprovalCenter(companyId: number, access: ApprovalCent
     source: "request",
   }));
 
-  const items = [...collectionItems, ...requestItems].sort((a, b) =>
+  const fiscalItems: ApprovalItem[] = fiscal.map((row) => ({
+    id: row.id,
+    type: row.fiscal_status === "error" ? "Factura con error ARCA" : "Factura fiscal pendiente",
+    title: `Factura ${row.client_name || "sin cliente"}`,
+    detail: [
+      row.client_document ? `CUIT/DNI ${row.client_document}` : "",
+      row.receipt_number ? `Comp. ${String(row.receipt_number).padStart(8, "0")}` : "Sin numero fiscal",
+      row.fiscal_error_message ? `Error: ${row.fiscal_error_message}` : "",
+    ]
+      .filter(Boolean)
+      .join(" - "),
+    amount: Number(row.total_amount),
+    requester: row.seller_name || "Sistema",
+    createdAt: row.sale_date,
+    source: "fiscal",
+  }));
+
+  const items = [...collectionItems, ...requestItems, ...fiscalItems].sort((a, b) =>
     String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")),
   );
 
@@ -126,6 +195,7 @@ export async function listApprovalCenter(companyId: number, access: ApprovalCent
       total: items.length,
       collections: collectionItems.length,
       requests: requestItems.length,
+      fiscal: fiscalItems.length,
       amount: items.reduce((sum, item) => sum + item.amount, 0),
     },
   };

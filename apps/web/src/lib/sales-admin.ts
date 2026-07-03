@@ -209,7 +209,8 @@ export async function getSalesSummary(companyId: number, period: string | null) 
              COALESCE(SUM(CASE WHEN NOT con_factura THEN monto ELSE 0 END), 0)::text AS no_facturadas
       FROM (
         SELECT COALESCE(s.total_amount, 0) AS monto,
-               COALESCE(s.tracking_status, 'no_facturada') = 'facturada' AS con_factura,
+               COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
+                 AND COALESCE(s.cae, '') <> '' AS con_factura,
                s.sale_date
         FROM sales s
         WHERE s.empresa_id = $1
@@ -468,7 +469,8 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     year: searchParams.get("anio") ?? "",
     collection: searchParams.get("cobro") ?? "",
     tracking: searchParams.get("seguimiento") ?? "",
-    priceList: searchParams.get("lista_precios") ?? "",
+    fiscalStatus: searchParams.get("estado_fiscal") ?? "",
+    priceList: (searchParams.get("lista_precios") ?? "").trim(),
   };
 
   const params: unknown[] = [companyId];
@@ -487,17 +489,35 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     saleConditions.push(`regexp_replace(COALESCE(v.client_document, ''), '[^0-9]', '', 'g') = ${pushParam(filters.taxId)}`);
   }
   if (filters.receiptNumber) {
-    saleConditions.push(`COALESCE(v.receipt_number, 0)::text LIKE ${pushParam(`%${filters.receiptNumber.replace(/^0+/, "") || "0"}%`)}`);
+    saleConditions.push(`COALESCE(v.fiscal_receipt_number, v.receipt_number, 0)::text LIKE ${pushParam(`%${filters.receiptNumber.replace(/^0+/, "") || "0"}%`)}`);
   }
   const receiptMap: Record<string, string> = { a: "1", b: "6", c: "11" };
   if (filters.receiptType === "remito") {
     saleConditions.push("COALESCE(v.tracking_status, 'no_facturada') = 'no_facturada'");
   } else if (filters.receiptType === "nc") {
-    saleConditions.push("v.receipt_type IN (3,8,13)");
+    saleConditions.push(`EXISTS (
+      SELECT 1
+      FROM sales_internal_documents sid
+      WHERE sid.empresa_id = v.empresa_id
+        AND sid.sale_id = v.id
+        AND sid.class_name = 'NC'
+        AND sid.fiscal = true
+        AND COALESCE(sid.fiscal_status, 'no_enviado') = 'aprobado'
+        AND COALESCE(sid.cae, '') <> ''
+    )`);
   } else if (filters.receiptType === "nd") {
-    saleConditions.push("v.receipt_type IN (2,7,12)");
+    saleConditions.push(`EXISTS (
+      SELECT 1
+      FROM sales_internal_documents sid
+      WHERE sid.empresa_id = v.empresa_id
+        AND sid.sale_id = v.id
+        AND sid.class_name = 'ND'
+        AND sid.fiscal = true
+        AND COALESCE(sid.fiscal_status, 'no_enviado') = 'aprobado'
+        AND COALESCE(sid.cae, '') <> ''
+    )`);
   } else if (receiptMap[filters.receiptType]) {
-    saleConditions.push(`v.receipt_type = ${receiptMap[filters.receiptType]}`);
+    saleConditions.push(`COALESCE(v.fiscal_receipt_type, v.receipt_type) = ${receiptMap[filters.receiptType]}`);
   }
   for (const [key, expression] of [
     ["day", "EXTRACT(DAY FROM v.sale_date)"],
@@ -515,20 +535,45 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
   if (TRACKING_STATES.has(filters.tracking)) {
     saleConditions.push(`v.tracking_status = ${pushParam(filters.tracking)}`);
   }
-  if (["rev", "1", "2", "3", "4"].includes(filters.priceList)) {
-    saleConditions.push(`v.price_list_name = ${pushParam(filters.priceList)}`);
+  if (["no_enviado", "pendiente", "aprobado", "rechazado", "error"].includes(filters.fiscalStatus)) {
+    saleConditions.push(`COALESCE(v.fiscal_status, 'no_enviado') = ${pushParam(filters.fiscalStatus)}`);
+    if (filters.fiscalStatus === "aprobado") {
+      saleConditions.push("COALESCE(v.cae, '') <> ''");
+    }
+  }
+  if (filters.priceList) {
+    saleConditions.push(`lower(COALESCE(v.price_list_name, '')) = lower(${pushParam(filters.priceList)})`);
   }
 
   const includeDeliveries =
-    filters.receiptType === "remito" ||
+    !filters.fiscalStatus &&
+    (filters.receiptType === "remito" ||
     (!filters.receiptNumber &&
       !["a", "b", "c", "nc", "nd"].includes(filters.receiptType) &&
       !["en_proceso", "pendiente_aprobacion", "recibido", "pendiente", "vencido"].includes(filters.collection) &&
-      filters.tracking !== "facturada");
+      filters.tracking !== "facturada"));
 
   const saleSql = `
-    SELECT v.id::text AS id_venta, v.receipt_number AS nro_comprobante, v.receipt_type AS tipo_cbte,
-           CASE WHEN COALESCE(v.tracking_status, 'no_facturada') = 'facturada' THEN 'manual' ELSE '' END AS cae,
+    SELECT v.id::text AS id_venta,
+           COALESCE(v.fiscal_receipt_number, v.receipt_number) AS nro_comprobante,
+           COALESCE(v.fiscal_receipt_type, v.receipt_type) AS tipo_cbte,
+           v.fiscal_point_of_sale,
+           COALESCE(v.cae, '') AS cae,
+           COALESCE(v.cae_expires_at::text, '') AS cae_vencimiento,
+           COALESCE(v.fiscal_status, 'no_enviado') AS estado_fiscal,
+           COALESCE(v.fiscal_provider, '') AS proveedor_fiscal,
+           COALESCE(v.fiscal_mode, '') AS modo_fiscal,
+           COALESCE(v.fiscal_error_message, '') AS error_fiscal,
+           COALESCE(nc.fiscal_status, '') AS nota_credito_estado,
+           nc.id AS nota_credito_id,
+           COALESCE(nc.cae, '') AS nota_credito_cae,
+           nc.fiscal_point_of_sale AS nota_credito_pto_vta,
+           nc.fiscal_receipt_number AS nota_credito_numero,
+           COALESCE(nd.fiscal_status, '') AS nota_debito_estado,
+           nd.id AS nota_debito_id,
+           COALESCE(nd.cae, '') AS nota_debito_cae,
+           nd.fiscal_point_of_sale AS nota_debito_pto_vta,
+           nd.fiscal_receipt_number AS nota_debito_numero,
            v.sale_date::text AS fecha, COALESCE(v.total_amount, 0)::text AS monto, COALESCE(v.payment_condition, '') AS condicion_pago,
            COALESCE(v.collection_status, 'pendiente') AS estado_cobro,
            COALESCE(v.tracking_status, 'no_facturada') AS seguimiento,
@@ -537,6 +582,30 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
            rj.id::text AS id_remito, rj.delivery_number AS nro_remito
     FROM sales v
     LEFT JOIN delivery_documents rj ON rj.empresa_id = v.empresa_id AND rj.sale_id = v.id
+    LEFT JOIN LATERAL (
+      SELECT sid.id::text AS id, sid.fiscal_status, sid.cae, sid.fiscal_point_of_sale, sid.fiscal_receipt_number
+      FROM sales_internal_documents sid
+      WHERE sid.empresa_id = v.empresa_id
+        AND sid.sale_id = v.id
+        AND sid.class_name = 'NC'
+        AND sid.fiscal = true
+      ORDER BY
+        CASE WHEN sid.fiscal_status = 'aprobado' AND COALESCE(sid.cae, '') <> '' THEN 0 ELSE 1 END,
+        sid.created_at DESC
+      LIMIT 1
+    ) nc ON true
+    LEFT JOIN LATERAL (
+      SELECT sid.id::text AS id, sid.fiscal_status, sid.cae, sid.fiscal_point_of_sale, sid.fiscal_receipt_number
+      FROM sales_internal_documents sid
+      WHERE sid.empresa_id = v.empresa_id
+        AND sid.sale_id = v.id
+        AND sid.class_name = 'ND'
+        AND sid.fiscal = true
+      ORDER BY
+        CASE WHEN sid.fiscal_status = 'aprobado' AND COALESCE(sid.cae, '') <> '' THEN 0 ELSE 1 END,
+        sid.created_at DESC
+      LIMIT 1
+    ) nd ON true
     WHERE ${saleConditions.join(" AND ")}
   `;
   let deliverySql = "";
@@ -559,13 +628,17 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
         deliveryConditions.push(`${expression} = ${pushParam(Number(value))}`);
       }
     }
-    if (["rev", "1", "2", "3", "4"].includes(filters.priceList)) {
-      deliveryConditions.push(`r.price_list_name = ${pushParam(filters.priceList)}`);
+    if (filters.priceList) {
+      deliveryConditions.push(`lower(COALESCE(r.price_list_name, '')) = lower(${pushParam(filters.priceList)})`);
     }
 
     deliverySql = `
       UNION ALL
-      SELECT NULL AS id_venta, NULL AS nro_comprobante, 0 AS tipo_cbte, '' AS cae,
+      SELECT NULL AS id_venta, NULL AS nro_comprobante, 0 AS tipo_cbte, NULL AS fiscal_point_of_sale, '' AS cae,
+             '' AS cae_vencimiento, 'no_enviado' AS estado_fiscal, '' AS proveedor_fiscal,
+             '' AS modo_fiscal, '' AS error_fiscal,
+             '' AS nota_credito_estado, NULL AS nota_credito_id, '' AS nota_credito_cae, NULL AS nota_credito_pto_vta, NULL AS nota_credito_numero,
+             '' AS nota_debito_estado, NULL AS nota_debito_id, '' AS nota_debito_cae, NULL AS nota_debito_pto_vta, NULL AS nota_debito_numero,
              r.delivery_date::text AS fecha, r.total_amount::text AS monto, r.payment_condition AS condicion_pago,
              NULL AS estado_cobro, NULL AS seguimiento,
              COALESCE(r.order_status, 'entregado') AS estado_pedido,
@@ -586,7 +659,23 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     id_venta: string | null;
     nro_comprobante: number | null;
     tipo_cbte: number;
+    fiscal_point_of_sale: number | null;
     cae: string;
+    cae_vencimiento: string;
+    estado_fiscal: string;
+    proveedor_fiscal: string;
+    modo_fiscal: string;
+    error_fiscal: string;
+    nota_credito_estado: string;
+    nota_credito_id: string | null;
+    nota_credito_cae: string;
+    nota_credito_pto_vta: number | null;
+    nota_credito_numero: number | null;
+    nota_debito_estado: string;
+    nota_debito_id: string | null;
+    nota_debito_cae: string;
+    nota_debito_pto_vta: number | null;
+    nota_debito_numero: number | null;
     fecha: string | null;
     monto: string;
     condicion_pago: string;
@@ -610,12 +699,39 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
 
   const typeLabels: Record<number, string> = { 0: "Remito", 1: "A", 2: "ND", 3: "NC", 6: "B", 7: "ND", 8: "NC", 11: "C", 12: "ND", 13: "NC" };
   const data = rows.rows.map((row) => {
-    const hasInvoice = Boolean(row.cae);
+    const hasInvoice = row.estado_fiscal === "aprobado" && Boolean(row.cae);
+    const hasFiscalIdentity = Boolean(hasInvoice && row.cae !== "manual" && row.fiscal_point_of_sale && row.nro_comprobante);
     return {
       saleId: row.id_venta,
-      receiptNumber: row.id_venta !== null ? String(row.nro_comprobante ?? 0).padStart(8, "0") : null,
-      type: row.id_venta !== null && !hasInvoice ? "Remito" : typeLabels[row.tipo_cbte] ?? "?",
+      receiptNumber:
+        row.id_venta !== null
+          ? row.fiscal_point_of_sale
+            ? `${String(row.fiscal_point_of_sale).padStart(4, "0")}-${String(row.nro_comprobante ?? 0).padStart(8, "0")}`
+            : String(row.nro_comprobante ?? 0).padStart(8, "0")
+          : null,
+      type: row.id_venta !== null ? typeLabels[row.tipo_cbte] ?? "?" : "Remito",
       hasInvoice,
+      hasFiscalIdentity,
+      cae: row.cae,
+      caeExpiresAt: row.cae_vencimiento || null,
+      fiscalStatus: row.estado_fiscal || "no_enviado",
+      fiscalProvider: row.proveedor_fiscal,
+      fiscalMode: row.modo_fiscal,
+      fiscalErrorMessage: row.error_fiscal,
+      creditNoteStatus: row.nota_credito_estado || "",
+      creditNoteId: row.nota_credito_id,
+      creditNoteCae: row.nota_credito_cae || "",
+      creditNoteReceiptNumber:
+        row.nota_credito_pto_vta && row.nota_credito_numero
+          ? `${String(row.nota_credito_pto_vta).padStart(4, "0")}-${String(row.nota_credito_numero).padStart(8, "0")}`
+          : "",
+      debitNoteStatus: row.nota_debito_estado || "",
+      debitNoteId: row.nota_debito_id,
+      debitNoteCae: row.nota_debito_cae || "",
+      debitNoteReceiptNumber:
+        row.nota_debito_pto_vta && row.nota_debito_numero
+          ? `${String(row.nota_debito_pto_vta).padStart(4, "0")}-${String(row.nota_debito_numero).padStart(8, "0")}`
+          : "",
       date: row.fecha,
       amount: Number(row.monto),
       paymentCondition: row.condicion_pago,

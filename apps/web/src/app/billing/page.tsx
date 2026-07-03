@@ -21,12 +21,11 @@ import {
   Select,
   StatCard,
   StatusBadge,
-  Textarea,
   Toolbar,
+  type StatusBadgeTone,
 } from "@/components/ui";
-import { createSalesNoteAction } from "@/app/billing/actions";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
-import { getFiscalStatus } from "@/lib/fiscal";
+import { fiscalStatusLabel, getFiscalStatus } from "@/lib/fiscal";
 import { orderStatusLabel } from "@/lib/order-status";
 import { getSalesSummary, listSalesLedger } from "@/lib/sales-admin";
 import { requireStaffSession } from "@/lib/auth";
@@ -44,6 +43,8 @@ type BillingPageProps = {
     mes?: string;
     anio?: string;
     created?: string;
+    arca?: string;
+    message?: string;
   }>;
 };
 
@@ -55,9 +56,11 @@ function paramsToUrlSearchParams(params: Awaited<BillingPageProps["searchParams"
   return search;
 }
 
-function trackingTone(value: string) {
-  if (value === "facturada") return "success";
-  return "warning";
+function fiscalTone(value: string): StatusBadgeTone {
+  if (value === "aprobado") return "success";
+  if (value === "pendiente") return "warning";
+  if (value === "rechazado" || value === "error") return "danger";
+  return "neutral";
 }
 
 export default async function BillingPage({ searchParams }: BillingPageProps) {
@@ -65,6 +68,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   await requirePagePermission(session, [SALES_READ_PERMISSION]);
   const params = await searchParams;
   const search = paramsToUrlSearchParams(params);
+  search.set("estado_fiscal", "aprobado");
   const [ledger, summary] = await Promise.all([
     listSalesLedger(session.companyId, search),
     getSalesSummary(session.companyId, "todos"),
@@ -74,20 +78,31 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   return (
     <ModulePage
       active="billing"
-      description="Facturacion, remitos, seguimiento fiscal y notas internas desde React."
+      description="Registro de ventas facturadas y aprobadas fiscalmente."
       session={session}
-      title="Facturacion"
+      title="Registro de facturas"
     >
       <div className="grid gap-5">
         <PageHeader
-          title="Facturacion"
-          description="Ledger de comprobantes, remitos y notas internas dentro de React."
+          title="Registro de facturas"
+          description="Solo ventas con factura aprobada fiscalmente. Las pendientes se aprueban desde Solicitudes y aprobaciones."
           actions={
-            <ButtonLink href="/orders/new" size="sm">
-              Cargar pedido
+            <ButtonLink href="/admin/approvals" size="sm">
+              Solicitudes y aprobaciones
             </ButtonLink>
           }
         />
+
+        {params.arca === "approved" ? (
+          <div className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 font-semibold text-[color:var(--success)]">
+            Factura aprobada fiscalmente. Revisa el CAE en el ledger.
+          </div>
+        ) : null}
+        {params.arca === "error" ? (
+          <div className="rounded-lg border border-[color:var(--danger)] bg-[color:var(--danger-subtle)] px-4 py-3 font-semibold text-[color:var(--danger)]">
+            {params.message ?? "No se pudo autorizar la factura fiscal."}
+          </div>
+        ) : null}
 
         <Toolbar ariaLabel="Filtros de facturacion">
           <form
@@ -106,7 +121,6 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 <option value="a">Factura A</option>
                 <option value="b">Factura B</option>
                 <option value="c">Factura C</option>
-                <option value="remito">Remito</option>
                 <option value="nc">Nota credito</option>
                 <option value="nd">Nota debito</option>
               </Select>
@@ -152,20 +166,21 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
 
         <Card className="overflow-hidden">
           <DataTable
-            caption="Ledger de ventas, facturas y remitos"
+            caption="Ledger de facturas aprobadas"
             className="rounded-none border-0 shadow-none"
-            minWidth="1120px"
-            tableLabel="Comprobantes"
+            minWidth="0"
+            tableLabel="Registro de facturas"
+            tableProps={{ className: "table-fixed" }}
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
-                <DataTableHead>Comprobante</DataTableHead>
-                <DataTableHead>Cliente</DataTableHead>
-                <DataTableHead>Fecha</DataTableHead>
-                <DataTableHead align="right">Monto</DataTableHead>
-                <DataTableHead>Pedido</DataTableHead>
-                <DataTableHead>Seguimiento</DataTableHead>
-                <DataTableHead>Acciones</DataTableHead>
+                <DataTableHead className="w-[14%] px-2">Comprobante</DataTableHead>
+                <DataTableHead className="w-[23%] px-2">Cliente</DataTableHead>
+                <DataTableHead className="w-[9%] px-2">Fecha</DataTableHead>
+                <DataTableHead align="right" className="w-[11%] px-2">Monto</DataTableHead>
+                <DataTableHead className="w-[18%] px-2">Fiscal</DataTableHead>
+                <DataTableHead className="w-[10%] px-2">Pedido</DataTableHead>
+                <DataTableHead className="w-[15%] px-2">Acciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
@@ -174,37 +189,121 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                   <DataTableCell colSpan={7}>
                     <EmptyState
                       title="No hay comprobantes para estos filtros"
-                      description="Ajusta los filtros o revisa ventas entregadas y remitos pendientes."
+                      description="Ajusta los filtros o revisa las facturas pendientes en Solicitudes y aprobaciones."
                     />
                   </DataTableCell>
                 </DataTableRow>
               ) : (
                 ledger.data.map((item) => (
                   <DataTableRow key={`${item.saleId ?? "r"}-${item.deliveryId ?? "d"}`}>
-                    <DataTableCell>
-                      <div className="font-medium">{item.type}</div>
+                    <DataTableCell className="px-2 py-2">
+                      <div className="truncate font-medium">{item.type}</div>
                       <div className="mt-1 font-mono text-xs text-[color:var(--muted)]">
                         {item.receiptNumber ?? item.deliveryNumber ?? "-"}
                       </div>
                     </DataTableCell>
-                    <DataTableCell>
-                      <div className="max-w-[260px] break-words font-medium">{item.customerName || "-"}</div>
-                      <div className="mt-1 font-mono text-xs text-[color:var(--muted)]">{item.customerDocument || "-"}</div>
+                    <DataTableCell className="px-2 py-2">
+                      <div className="truncate font-medium">{item.customerName || "-"}</div>
+                      <div className="mt-1 truncate font-mono text-xs text-[color:var(--muted)]">{item.customerDocument || "-"}</div>
                     </DataTableCell>
-                    <DataTableCell className="whitespace-nowrap">{formatDate(item.date)}</DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                    <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">{formatDate(item.date)}</DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
                       {formatCurrency(item.amount)}
                     </DataTableCell>
-                    <DataTableCell>
+                    <DataTableCell className="px-2 py-2">
+                      <StatusBadge tone={fiscalTone(item.fiscalStatus)}>
+                        {fiscalStatusLabel(item.fiscalStatus)}
+                      </StatusBadge>
+                      {item.cae ? (
+                        <div className="mt-1 truncate font-mono text-xs text-[color:var(--muted)]">
+                          CAE {item.cae}
+                        </div>
+                      ) : null}
+                      {item.fiscalErrorMessage ? (
+                        <div className="mt-1 line-clamp-2 text-xs text-[color:var(--danger)]">
+                          {item.fiscalErrorMessage}
+                        </div>
+                      ) : null}
+                      {item.creditNoteCae ? (
+                        <div className="mt-1 truncate font-mono text-xs text-[color:var(--danger)]">
+                          NC {item.creditNoteReceiptNumber} · CAE {item.creditNoteCae}
+                        </div>
+                      ) : item.creditNoteStatus ? (
+                        <div className="mt-1 text-xs text-[color:var(--danger)]">
+                          NC {fiscalStatusLabel(item.creditNoteStatus)}
+                        </div>
+                      ) : null}
+                      {item.debitNoteCae ? (
+                        <div className="mt-1 truncate font-mono text-xs text-[color:var(--danger)]">
+                          ND {item.debitNoteReceiptNumber} · CAE {item.debitNoteCae}
+                        </div>
+                      ) : item.debitNoteStatus ? (
+                        <div className="mt-1 text-xs text-[color:var(--danger)]">
+                          ND {fiscalStatusLabel(item.debitNoteStatus)}
+                        </div>
+                      ) : null}
+                    </DataTableCell>
+                    <DataTableCell className="px-2 py-2">
                       <StatusBadge tone={item.orderStatus === "entregado" ? "success" : "warning"}>
                         {orderStatusLabel(item.orderStatus)}
                       </StatusBadge>
                     </DataTableCell>
-                    <DataTableCell>
-                      <StatusBadge tone={trackingTone(item.trackingStatus)}>{item.trackingStatus}</StatusBadge>
-                    </DataTableCell>
-                    <DataTableCell>
+                    <DataTableCell className="px-2 py-2">
                       <div className="flex flex-wrap gap-2">
+                        {item.saleId && item.hasFiscalIdentity ? (
+                          <ButtonLink
+                            href={`/api/pdfs/fiscal/sales/${item.saleId}`}
+                            prefetch={false}
+                            rel="noreferrer"
+                            size="sm"
+                            target="_blank"
+                            variant="secondary"
+                          >
+                            Factura PDF
+                          </ButtonLink>
+                        ) : null}
+                        {item.saleId && item.hasFiscalIdentity && !item.creditNoteCae ? (
+                          <ButtonLink
+                            href={`/billing/credit-note/${item.saleId}`}
+                            size="sm"
+                            variant="danger"
+                          >
+                            Nota credito
+                          </ButtonLink>
+                        ) : null}
+                        {item.creditNoteId && item.creditNoteCae ? (
+                          <ButtonLink
+                            href={`/api/pdfs/fiscal/notes/${item.creditNoteId}`}
+                            prefetch={false}
+                            rel="noreferrer"
+                            size="sm"
+                            target="_blank"
+                            variant="secondary"
+                          >
+                            NC PDF
+                          </ButtonLink>
+                        ) : null}
+                        {item.saleId && item.hasFiscalIdentity && !item.debitNoteCae ? (
+                          <ButtonLink
+                            href={`/billing/debit-note/${item.saleId}`}
+                            size="sm"
+                            variant="outline"
+                          >
+                            Nota debito
+                          </ButtonLink>
+                        ) : null}
+                        {item.debitNoteId && item.debitNoteCae ? (
+                          <ButtonLink
+                            href={`/api/pdfs/fiscal/notes/${item.debitNoteId}`}
+                            prefetch={false}
+                            rel="noreferrer"
+                            size="sm"
+                            target="_blank"
+                            variant="secondary"
+                          >
+                            ND PDF
+                          </ButtonLink>
+                        ) : null}
                         {item.deliveryId ? (
                           <ButtonLink
                             href={`/api/pdfs/deliveries/${item.deliveryId}?prices=1`}
@@ -217,13 +316,6 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                             Remito PDF
                           </ButtonLink>
                         ) : null}
-                        <ButtonLink
-                          href={`/billing?saleId=${item.saleId ?? ""}&remittanceId=${item.deliveryId ?? ""}`}
-                          size="sm"
-                          variant="outline"
-                        >
-                          Nota interna
-                        </ButtonLink>
                       </div>
                     </DataTableCell>
                   </DataTableRow>
@@ -248,49 +340,6 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
           />
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Crear nota interna</CardTitle>
-            <CardDescription>
-              Flujo React de notas no fiscales. ARCA/CAE queda reservado para la etapa fiscal.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form action={createSalesNoteAction} className="grid gap-4 lg:grid-cols-2">
-              <Field htmlFor="note-sale-id" label="ID venta">
-                <Input id="note-sale-id" name="saleId" defaultValue={params["saleId" as keyof typeof params] ?? ""} />
-              </Field>
-              <Field htmlFor="note-remittance-id" label="ID remito">
-                <Input
-                  id="note-remittance-id"
-                  name="remittanceId"
-                  defaultValue={params["remittanceId" as keyof typeof params] ?? ""}
-                />
-              </Field>
-              <Field htmlFor="note-class" label="Clase">
-                <Select id="note-class" name="className" defaultValue="NC">
-                  <option value="NC">Nota de credito</option>
-                  <option value="ND">Nota de debito</option>
-                </Select>
-              </Field>
-              <Field htmlFor="note-reason" label="Motivo">
-                <Input id="note-reason" name="reason" placeholder="Ajuste interno" />
-              </Field>
-              <Field
-                className="lg:col-span-2"
-                htmlFor="note-detail"
-                label="Detalle JSON"
-                description='Formato: [{"id":123,"name":"Producto","quantity":1,"unitPrice":1000}]'
-              >
-                <Textarea id="note-detail" name="detail" rows={5} />
-              </Field>
-              <input name="fiscal" type="hidden" value="0" />
-              <div className="lg:col-span-2">
-                <Button type="submit">Crear nota interna</Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
       </div>
     </ModulePage>
   );
