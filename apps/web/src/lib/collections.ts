@@ -529,3 +529,62 @@ export async function rejectCollection(session: AuthSession, saleId: string, rea
     return { id: saleId, status: "pendiente" };
   });
 }
+
+export async function listSalesToCollect(companyId: number) {
+  const result = await queryWithCompanyContext<{
+    id: string;
+    fecha: string | null;
+    nro_comprobante: number;
+    nombre_cliente: string;
+    cuit_cliente: string;
+    saldo: string;
+    fecha_vencimiento: string | null;
+    vencida: boolean;
+    comprobante_deseado: string;
+    estado_cobro: string;
+    cobro_monto_registrado: string;
+  }>(
+    companyId,
+    `
+      SELECT v.id::text AS id,
+             v.sale_date::text AS fecha,
+             COALESCE(v.receipt_number, nullif(regexp_replace(COALESCE(v.sale_number, ''), '\\D', '', 'g'), '')::bigint, 0)::int AS nro_comprobante,
+             COALESCE(v.client_name, cli.display_name, '') AS nombre_cliente,
+             COALESCE(cli.tax_id, v.client_document, '') AS cuit_cliente,
+             GREATEST(COALESCE(v.total_amount, 0) - COALESCE(approved.total_credit, 0), 0)::text AS saldo,
+             (v.sale_date::date + COALESCE(cli.payment_term_days, 0))::text AS fecha_vencimiento,
+             (v.sale_date::date + COALESCE(cli.payment_term_days, 0)) < CURRENT_DATE AS vencida,
+             COALESCE(v.desired_document, 'remito') AS comprobante_deseado,
+             COALESCE(v.collection_status, 'pendiente') AS estado_cobro,
+             COALESCE(v.collection_registered_amount, 0)::text AS cobro_monto_registrado
+      FROM sales v
+      LEFT JOIN clients cli ON cli.id = v.client_id AND cli.empresa_id = v.empresa_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(cam.credit), 0) AS total_credit
+        FROM current_account_movements cam
+        WHERE cam.empresa_id = v.empresa_id AND cam.sale_id = v.id
+      ) approved ON true
+      WHERE COALESCE(v.collection_status,'pendiente') IN ('pendiente','vencido','pendiente_aprobacion','en_proceso')
+        AND v.empresa_id = $1
+        AND ${canonicalSalesSourceSql("v")}
+        AND ${normalizedOrderStatusSql("v")} = 'entregado'
+        AND GREATEST(COALESCE(v.total_amount, 0) - COALESCE(approved.total_credit, 0), 0) > 0.005
+      ORDER BY fecha_vencimiento ASC, v.sale_date ASC, v.id ASC
+    `,
+    [companyId],
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    date: row.fecha,
+    receiptNumber: row.nro_comprobante,
+    customerName: row.nombre_cliente,
+    customerTaxId: row.cuit_cliente,
+    outstandingAmount: Number(row.saldo),
+    dueDate: row.fecha_vencimiento,
+    overdue: row.vencida,
+    desiredDocument: row.comprobante_deseado,
+    collectionStatus: row.estado_cobro,
+    registeredAmount: Number(row.cobro_monto_registrado),
+  }));
+}

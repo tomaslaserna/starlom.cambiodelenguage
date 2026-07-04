@@ -122,6 +122,15 @@ test("collection registration is off the orders register but still guarded", () 
   assert.match(collections, /normalizedOrderStatusSql\("v"\)\} = 'entregado'/);
 });
 
+test("collections screen lists delivered sales to collect with due dates", () => {
+  const collections = read("apps/web/src/lib/collections.ts");
+  assert.match(collections, /export async function listSalesToCollect\(companyId: number\)/);
+  assert.match(collections, /payment_term_days/);
+  assert.match(collections, /IN \('pendiente','vencido','pendiente_aprobacion','en_proceso'\)/);
+  assert.match(collections, /fecha_vencimiento/);
+  assert.match(collections, /vencida/);
+});
+
 test("orders lifecycle follows cargado-confirmado-entregado and opens collection only on delivery", () => {
   const orderStatus = read("apps/web/src/lib/order-status.ts");
   assert.match(orderStatus, /"cargado"/);
