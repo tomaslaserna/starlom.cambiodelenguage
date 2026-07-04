@@ -88,6 +88,12 @@ function dateRangeLabel(from: string, to: string) {
   return `${from ? pdfDate(from) : "inicio"} a ${to ? pdfDate(to) : "hoy"}`;
 }
 
+function compactPdfCode(value: string | number | null | undefined) {
+  const text = String(value ?? "").trim();
+  if (/^[0-9a-f]{8}-[0-9a-f-]{18,}$/i.test(text)) return text.slice(0, 8).toUpperCase();
+  return text || "-";
+}
+
 export async function buildQuotePdf(companyId: number, quoteId: string) {
   const quote = await getQuote(companyId, quoteId);
   const products = asQuoteProducts(quote.products);
@@ -100,6 +106,8 @@ export async function buildQuotePdf(companyId: number, quoteId: string) {
       number: `P-${String(quote.id).padStart(6, "0")}`,
       date: pdfDate(quote.issueDate),
       extra: [`Validez hasta ${pdfDate(quote.expirationDate)}`],
+      footerLeft: "Validez del presupuesto",
+      footerRight: `Total ${pdfMoney(quote.total)}`,
     });
 
     pdf.section("Presupuestado a");
@@ -119,7 +127,7 @@ export async function buildQuotePdf(companyId: number, quoteId: string) {
     pdf.table(
       [
         { label: "Cant.", width: 52 },
-        { label: "Descripcion", width: 250 },
+        { label: "Descripcion", width: 243 },
         { label: "P. unit.", width: 86, align: "right" },
         { label: "Bonif.", width: 58, align: "right" },
         { label: "Importe", width: 65, align: "right" },
@@ -238,6 +246,8 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
       number,
       date: pdfDate(remito.fecha),
       extra: [includePrices ? "Documento valorizado" : "Control de mercaderia", remito.deposito ? `Deposito: ${remito.deposito}` : ""].filter(Boolean),
+      footerLeft: includePrices ? "Documento no valido como factura" : "Control de mercaderia - sin valores",
+      footerRight: includePrices ? `Total ${pdfMoney(Number(remito.monto))}` : "Deposito",
     });
 
     pdf.section("Destinatario");
@@ -252,24 +262,24 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
         .join(" - "),
     );
     const infoY = pdf.y + 16;
-    pdf.keyValue("Cond. vta.", remito.condicion_pago || "-", 42, infoY, 74, 165);
-    pdf.keyValue("Vendedor", remito.vendedor || remito.vendedor_cliente || "-", 314, infoY, 64, 150);
-    pdf.keyValue("Provincia", remito.provincia || "-", 42, infoY + 18, 74, 165);
-    pdf.keyValue("Sucursal", remito.sucursal_cliente || "-", 314, infoY + 18, 64, 150);
+    pdf.keyValue("Cond. vta.", remito.condicion_pago || "-", 54, infoY, 74, 165);
+    pdf.keyValue("Vendedor", remito.vendedor || remito.vendedor_cliente || "-", 318, infoY, 64, 150);
+    pdf.keyValue("Provincia", remito.provincia || "-", 54, infoY + 18, 74, 165);
+    pdf.keyValue("Sucursal", remito.sucursal_cliente || "-", 318, infoY + 18, 64, 150);
     pdf.setY(infoY + 42);
 
     const columns = includePrices
       ? [
           { label: "Cant.", width: 54 },
           { label: "Codigo", width: 70 },
-          { label: "Descripcion", width: 218 },
+          { label: "Descripcion", width: 211 },
           { label: "P. unit.", width: 84, align: "right" as const },
           { label: "Importe", width: 85, align: "right" as const },
         ]
       : [
           { label: "Cant.", width: 54 },
           { label: "Codigo", width: 78 },
-          { label: "Descripcion", width: 319 },
+          { label: "Descripcion", width: 312 },
           { label: "Control", width: 60, align: "center" as const },
         ];
     const totalUnits = detail.rows.reduce((sum, row) => sum + Number(row.cantidad), 0);
@@ -340,6 +350,8 @@ export async function buildAccountStatementPdf(companyId: number, input: {
       number: `CC-${localDateIso().replaceAll("-", "")}`,
       date: pdfDate(localDateIso()),
       extra: [`Tipo: ${type === "cliente" ? "Cliente" : "Proveedor"}`, `Periodo: ${dateRangeLabel(input.from, input.to)}`],
+      footerLeft: `Cuenta corriente - ${name}`,
+      footerRight: dateRangeLabel(input.from, input.to),
     });
     pdf.section(type === "cliente" ? "Cliente" : "Proveedor");
     pdf.title(name, 12);
@@ -347,8 +359,8 @@ export async function buildAccountStatementPdf(companyId: number, input: {
     pdf.doc.y += 14;
 
     let balance = Number(previous.rows[0]?.balance ?? 0);
-  const totalDebit = movements.rows.reduce((sum, row) => sum + Number(row.debit), 0);
-  const totalCredit = movements.rows.reduce((sum, row) => sum + Number(row.credit), 0);
+    const totalDebit = movements.rows.reduce((sum, row) => sum + Number(row.debit), 0);
+    const totalCredit = movements.rows.reduce((sum, row) => sum + Number(row.credit), 0);
     const rows: PdfTableCell[][] = [];
     if (input.from && Math.abs(balance) > 0.0001) {
       rows.push([pdfDate(input.from), "Saldo anterior", "-", "-", pdfMoney(balance)]);
@@ -368,10 +380,10 @@ export async function buildAccountStatementPdf(companyId: number, input: {
     pdf.table(
       [
         { label: "Fecha", width: 70, align: "center" },
-        { label: "Concepto", width: 241 },
-        { label: "Debe", width: 68, align: "right" },
-        { label: "Haber", width: 68, align: "right" },
-        { label: "Saldo", width: 64, align: "right" },
+        { label: "Concepto", width: 236 },
+        { label: "Debe", width: 66, align: "right" },
+        { label: "Haber", width: 66, align: "right" },
+        { label: "Saldo", width: 66, align: "right" },
       ],
       rows,
     );
@@ -426,13 +438,16 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: string
 
   const isCollection = record.tipo === "cobro";
   const filename = `registro_pago_${paymentId}.pdf`;
+  const paymentNumber = `${isCollection ? "RP" : "PG"}-${paymentId.slice(0, 8).toUpperCase()}`;
   return createPdfFile(filename, ({ pdf }) => {
     pdf.drawHeader({
       title: isCollection ? "Recibo de pago" : "Comprobante de pago",
       code: isCollection ? "RP" : "PG",
-      number: `${isCollection ? "RP" : "PG"}-${String(paymentId).padStart(6, "0")}`,
+      number: paymentNumber,
       date: pdfDate(record.fecha || record.created_at),
       extra: [isCollection ? "Cobro de cliente" : "Pago a proveedor"],
+      footerLeft: isCollection ? "Comprobante de cobranza" : "Comprobante de pago",
+      footerRight: pdfMoney(Number(record.monto)),
     });
     pdf.section(isCollection ? "Recibimos de" : "Pagamos a");
     pdf.title(record.entidad_nombre || "-", 12);
@@ -441,15 +456,15 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: string
       pdfMoney(Number(record.monto)),
     ]);
     pdf.section("Medio de pago");
-    pdf.keyValue("Origen", record.tipo_origen || "-", 42, pdf.y + 2, 70, 160);
-    pdf.keyValue("Registro", String(record.id), 314, pdf.y + 2, 70, 130);
+    pdf.keyValue("Origen", record.tipo_origen || "-", 54, pdf.y + 2, 70, 160);
+    pdf.keyValue("Registro", String(record.id), 318, pdf.y + 2, 70, 130);
     pdf.setY(pdf.y + 34);
     pdf.table(
       [
-        { label: "Comprobante", width: 210 },
+        { label: "Comprobante", width: 207 },
         { label: "Fecha", width: 90, align: "center" },
-        { label: "Importe", width: 105, align: "right" },
-        { label: "Aplicado", width: 106, align: "right" },
+        { label: "Importe", width: 103, align: "right" },
+        { label: "Aplicado", width: 104, align: "right" },
       ],
       [[record.concepto || `Registro #${record.id}`, pdfDate(record.fecha), pdfMoney(Number(record.monto)), pdfMoney(Number(record.monto))]],
     );
@@ -539,6 +554,9 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
       number,
       date: pdfDate(sale.fecha),
       extra: [`CAE ${sale.cae}`, sale.cae_expires_at ? `Vto. CAE ${pdfDate(sale.cae_expires_at)}` : ""].filter(Boolean),
+      variant: "fiscal",
+      footerLeft: "Comprobante autorizado - ARCA",
+      footerRight: `Total ${pdfMoney(amounts.total)}`,
     });
     pdf.section("Cliente");
     pdf.title(sale.nombre_cliente || "Sin cliente", 12);
@@ -547,7 +565,7 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
     pdf.table(
       [
         { label: "Cant.", width: 54 },
-        { label: "Descripcion", width: 272 },
+        { label: "Descripcion", width: 265 },
         { label: "P. unit.", width: 92, align: "right" },
         { label: "Importe", width: 93, align: "right" },
       ],
@@ -557,6 +575,7 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
         pdfMoney(Number(row.precio_unit)),
         pdfMoney(Number(row.subtotal)),
       ]),
+      { accentHeader: true },
     );
     pdf.totals(
       [
@@ -644,6 +663,9 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
       number,
       date: pdfDate(note.created_at),
       extra: [`CAE ${note.cae}`, note.cae_expires_at ? `Vto. CAE ${pdfDate(note.cae_expires_at)}` : ""].filter(Boolean),
+      variant: "fiscal",
+      footerLeft: "Nota fiscal autorizada - ARCA",
+      footerRight: `Total ${pdfMoney(amounts.total)}`,
     });
     pdf.section("Cliente");
     pdf.title(note.cliente || "Sin cliente", 12);
@@ -652,7 +674,7 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
     pdf.table(
       [
         { label: "Cant.", width: 54 },
-        { label: "Descripcion", width: 272 },
+        { label: "Descripcion", width: 265 },
         { label: "P. unit.", width: 92, align: "right" },
         { label: "Importe", width: 93, align: "right" },
       ],
@@ -662,6 +684,7 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
         pdfMoney(row.unitPrice),
         pdfMoney(row.subtotal),
       ]),
+      { accentHeader: true },
     );
     pdf.totals(
       [
@@ -677,13 +700,16 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
 
 export async function buildPurchaseOrderPdf(companyId: number, purchaseId: string) {
   const purchase = await getPurchase(companyId, purchaseId);
+  const purchaseNumber = `OC-${String(purchase.id).slice(0, 8).toUpperCase()}`;
   return createPdfFile(`orden_compra_${purchaseId}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Orden de compra",
       code: "OC",
-      number: `OC-${String(purchase.id).padStart(8, "0")}`,
+      number: purchaseNumber,
       date: pdfDate(purchase.date),
       extra: [`Estado: ${purchase.status}`, `Tipo: ${purchase.type}`],
+      footerLeft: `Proveedor: ${purchase.supplierName || "-"}`,
+      footerRight: `Total ${pdfMoney(purchase.total)}`,
     });
     pdf.section("Proveedor");
     pdf.title(purchase.supplierName || `Compra #${purchase.id}`, 12);
@@ -692,11 +718,11 @@ export async function buildPurchaseOrderPdf(companyId: number, purchaseId: strin
     pdf.table(
       [
         { label: "Codigo", width: 72 },
-        { label: "Descripcion", width: 260 },
+        { label: "Descripcion", width: 253 },
         { label: "Cant.", width: 64, align: "center" },
         { label: "Costo ref.", width: 115, align: "right" },
       ],
-      purchase.items.map((item) => [item.productId, item.name, pdfNumber(item.quantity), "-"]),
+      purchase.items.map((item) => [compactPdfCode(item.productId), item.name, pdfNumber(item.quantity), "-"]),
     );
     pdf.totals([["Items", String(purchase.items.length)]], "Total", pdfMoney(purchase.total));
     pdf.note("Orden emitida desde Starlim. Verificar cantidades, condiciones comerciales y recepcion de mercaderia.");
@@ -706,13 +732,16 @@ export async function buildPurchaseOrderPdf(companyId: number, purchaseId: strin
 
 export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseId: string, reason: string) {
   const purchase = await getPurchase(companyId, purchaseId);
+  const returnNumber = `SD-${String(purchase.id).slice(0, 8).toUpperCase()}`;
   return createPdfFile(`solicitud_devolucion_${purchaseId}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Solicitud de devolucion",
       code: "SD",
-      number: `SD-${String(purchase.id).padStart(8, "0")}`,
+      number: returnNumber,
       date: pdfDate(localDateIso()),
-      extra: [`Compra: #${purchase.id}`, `Estado: ${purchase.status}`],
+      extra: [`Compra: ${String(purchase.id).slice(0, 8).toUpperCase()}`, `Estado: ${purchase.status}`],
+      footerLeft: "Devolucion a proveedor",
+      footerRight: `Ref. compra ${purchase.id}`,
     });
     pdf.section("Proveedor");
     pdf.title(purchase.supplierName || `Compra #${purchase.id}`, 12);
@@ -721,11 +750,11 @@ export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseI
     pdf.table(
       [
         { label: "Codigo", width: 72 },
-        { label: "Descripcion", width: 300 },
+        { label: "Descripcion", width: 293 },
         { label: "Cant.", width: 64, align: "center" },
         { label: "Motivo", width: 75 },
       ],
-      purchase.items.map((item) => [item.productId, item.name, pdfNumber(item.quantity), reason || "A revisar"]),
+      purchase.items.map((item) => [compactPdfCode(item.productId), item.name, pdfNumber(item.quantity), reason || "A revisar"]),
     );
     pdf.note(reason || "Solicitud operativa de devolucion. Confirmar productos y cantidades antes del despacho.");
     pdf.signatures("Solicita Starlim", "Recibe proveedor");
@@ -760,10 +789,12 @@ export async function buildPriceListPdf(companyId: number, list: number) {
       number: selected.label,
       date: pdfDate(localDateIso()),
       extra: [`Productos: ${result.rows.length}`],
+      footerLeft: "Lista de precios",
+      footerRight: selected.label,
     });
     pdf.table(
       [
-        { label: "Producto", width: 386 },
+        { label: "Producto", width: 379 },
         { label: "Precio", width: 125, align: "right" },
       ],
       result.rows.map((row) => [row.nombre, pdfMoney(Number(row.precio))]),
@@ -836,6 +867,9 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
       number: `SP-${orderId.slice(0, 8).toUpperCase()}`,
       date: pdfDate(current.fecha),
       extra: [`Estado: ${current.estado_pedido}`],
+      variant: "internal",
+      footerLeft: "Control de deposito - paso previo al armado",
+      footerRight: "Uso interno",
     });
     pdf.section("Pedido");
     pdf.title(current.nombre_cliente || `Pedido #${orderId}`, 12);
@@ -844,7 +878,7 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
     pdf.table(
       [
         { label: "Codigo", width: 70 },
-        { label: "Descripcion", width: 260 },
+        { label: "Descripcion", width: 253 },
         { label: "Solic.", width: 58, align: "center" },
         { label: "Disp.", width: 58, align: "center" },
         { label: "Falta", width: 65, align: "center" },

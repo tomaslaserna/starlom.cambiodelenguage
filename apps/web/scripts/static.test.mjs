@@ -452,4 +452,11 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   const pdfDocuments = read("apps/web/src/lib/pdf/documents.ts");
   assert.match(pdfDocuments, /export async function buildFiscalSalePdf/);
   assert.match(pdfDocuments, /export async function buildFiscalSalesNotePdf/);
+  assert.match(pdfDocuments, /variant: "fiscal"/);
+  assert.match(pdfDocuments, /accentHeader: true/);
+
+  const pdfRenderer = read("apps/web/src/lib/pdf/renderer.ts");
+  assert.match(pdfRenderer, /size: "LETTER"/);
+  assert.match(pdfRenderer, /drawFiscalHeader/);
+  assert.doesNotMatch(pdfRenderer, /Starlim - documento operativo/);
 });
