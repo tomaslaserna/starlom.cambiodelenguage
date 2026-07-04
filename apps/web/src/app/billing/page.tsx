@@ -95,7 +95,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
 
         {params.arca === "approved" ? (
           <div className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 font-semibold text-[color:var(--success)]">
-            Factura aprobada fiscalmente. Revisa el CAE en el ledger.
+            Factura aprobada fiscalmente. El comprobante quedo disponible en Registro de facturas.
           </div>
         ) : null}
         {params.arca === "error" ? (
@@ -214,19 +214,14 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                       <StatusBadge tone={fiscalTone(item.fiscalStatus)}>
                         {fiscalStatusLabel(item.fiscalStatus)}
                       </StatusBadge>
-                      {item.cae ? (
-                        <div className="mt-1 truncate font-mono text-xs text-[color:var(--muted)]">
-                          CAE {item.cae}
-                        </div>
-                      ) : null}
                       {item.fiscalErrorMessage ? (
                         <div className="mt-1 line-clamp-2 text-xs text-[color:var(--danger)]">
                           {item.fiscalErrorMessage}
                         </div>
                       ) : null}
                       {item.creditNoteCae ? (
-                        <div className="mt-1 truncate font-mono text-xs text-[color:var(--danger)]">
-                          NC {item.creditNoteReceiptNumber} · CAE {item.creditNoteCae}
+                        <div className="mt-1 text-xs text-[color:var(--danger)]">
+                          Nota credito emitida
                         </div>
                       ) : item.creditNoteStatus ? (
                         <div className="mt-1 text-xs text-[color:var(--danger)]">
@@ -234,8 +229,8 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                         </div>
                       ) : null}
                       {item.debitNoteCae ? (
-                        <div className="mt-1 truncate font-mono text-xs text-[color:var(--danger)]">
-                          ND {item.debitNoteReceiptNumber} · CAE {item.debitNoteCae}
+                        <div className="mt-1 text-xs text-[color:var(--danger)]">
+                          Nota debito emitida
                         </div>
                       ) : item.debitNoteStatus ? (
                         <div className="mt-1 text-xs text-[color:var(--danger)]">

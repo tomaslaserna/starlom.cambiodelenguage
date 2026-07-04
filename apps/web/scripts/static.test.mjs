@@ -430,6 +430,9 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.match(billingPage, /\/api\/pdfs\/fiscal\/notes\/\$\{item\.creditNoteId\}/);
   assert.match(billingPage, /\/api\/pdfs\/fiscal\/notes\/\$\{item\.debitNoteId\}/);
   assert.match(billingPage, /hasFiscalIdentity/);
+  assert.doesNotMatch(billingPage, /CAE \{item\.cae\}/);
+  assert.doesNotMatch(billingPage, /CAE \{item\.creditNoteCae\}/);
+  assert.doesNotMatch(billingPage, /CAE \{item\.debitNoteCae\}/);
 
   const navigation = read("apps/web/src/lib/navigation.ts");
   assert.match(navigation, /label: "Ventas"[\s\S]*label: "Registro de facturas"/);
