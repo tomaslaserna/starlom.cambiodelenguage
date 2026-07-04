@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { resolvePriceListName } from "@/lib/order-pricing";
 import { parsePagination } from "@/lib/pagination";
 import { intField, numberField, textField, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
@@ -92,6 +93,20 @@ export type ProductUpdateInput = {
 };
 
 const DEFAULT_COMPANY_ID = 1;
+
+async function resolveCustomerPriceList(companyId: number, value: string) {
+  const result = await queryWithCompanyContext<{ nombre: string }>(
+    companyId,
+    `
+      SELECT nombre
+      FROM listas_precio
+      WHERE empresa_id = $1 AND activa = 1
+      ORDER BY orden ASC, nombre ASC
+    `,
+    [companyId],
+  );
+  return resolvePriceListName(value, result.rows.map((row) => row.nombre));
+}
 
 function searchPattern(query: string) {
   return `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
@@ -293,6 +308,7 @@ export async function getCustomer(companyId: number, id: string) {
 
 export async function createCustomer(companyId: number, input: CustomerInput) {
   const normalizedTaxId = normalizeTaxId(input.taxId);
+  const priceList = await resolveCustomerPriceList(companyId, input.priceList);
 
   if (normalizedTaxId) {
     const duplicate = await queryWithCompanyContext<{ id: string }>(
@@ -330,7 +346,7 @@ export async function createCustomer(companyId: number, input: CustomerInput) {
       input.address,
       input.city,
       input.province,
-      input.priceList,
+      priceList,
       input.status,
       input.seller,
       input.observation,
@@ -342,6 +358,7 @@ export async function createCustomer(companyId: number, input: CustomerInput) {
 }
 
 export async function updateCustomer(companyId: number, id: string, input: CustomerInput) {
+  const priceList = await resolveCustomerPriceList(companyId, input.priceList);
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,
     `
@@ -371,7 +388,7 @@ export async function updateCustomer(companyId: number, id: string, input: Custo
       input.address,
       input.city,
       input.province,
-      input.priceList,
+      priceList,
       input.status,
       input.seller,
       input.observation,

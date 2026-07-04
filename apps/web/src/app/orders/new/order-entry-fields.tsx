@@ -3,14 +3,14 @@
 import { useMemo, useRef, useState } from "react";
 import { Button, Card, CardContent, Field, Input, Select } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { lineSubtotal, money, priceForList } from "@/lib/order-pricing";
+import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, money, priceForList, resolvePriceListName } from "@/lib/order-pricing";
 import { localDateIso } from "@/lib/timezone";
 import {
   ORDER_CREATION_RECEIPT_OPTIONS,
   normalizeOrderCreationDocument,
   receiptAddsVat,
 } from "@/lib/receipt-types";
-import type { OrderFormClient, OrderFormProduct } from "@/lib/orders";
+import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
 import { OrderConfirmationPreview } from "@/app/orders/new/order-confirmation-preview";
 
 type OrderLineDraft = {
@@ -34,6 +34,7 @@ export type OrderEntryInitialValue = {
 
 type OrderEntryFieldsProps = {
   clients: OrderFormClient[];
+  priceLists: OrderFormPriceList[];
   products: OrderFormProduct[];
   initialValue?: OrderEntryInitialValue;
   offers?: { id: string; title: string; description: string }[];
@@ -42,14 +43,6 @@ type OrderEntryFieldsProps = {
 };
 
 const emptyLine = (): OrderLineDraft => ({ productId: "", quantity: "1", discount: "0" });
-const PRICE_LIST_OPTIONS = [
-  { value: "PRECIO 0", label: "Precio 0" },
-  { value: "PRECIO 1", label: "Precio 1" },
-  { value: "PRECIO 2", label: "Precio 2" },
-  { value: "PRECIO 3", label: "Precio 3" },
-  { value: "PRECIO 4", label: "Precio 4" },
-  { value: "REVENDEDOR", label: "Revendedor" },
-] as const;
 
 function numericInput(value: string, fallback = 0) {
   const numberValue = Number(value);
@@ -58,6 +51,7 @@ function numericInput(value: string, fallback = 0) {
 
 export function OrderEntryFields({
   clients,
+  priceLists,
   products,
   initialValue,
   offers = [],
@@ -80,11 +74,12 @@ export function OrderEntryFields({
 
   const selectedClient = clients.find((client) => client.id === customerId) ?? null;
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const priceListOptions = priceLists.length ? priceLists : [{ name: DEFAULT_PRICE_LIST_NAME }];
   const suggestedDocument = selectedClient
     ? normalizeOrderCreationDocument(selectedClient.receiptType, selectedClient.fiscalCondition)
     : "remito";
   const desiredDocument = documentOverride || suggestedDocument;
-  const activePriceList = priceListOverride || selectedClient?.priceList || "PRECIO 1";
+  const activePriceList = resolvePriceListName(priceListOverride || selectedClient?.priceList, priceListOptions);
   const addVat = receiptAddsVat(desiredDocument);
 
   const calculatedLines = lines
@@ -165,7 +160,7 @@ export function OrderEntryFields({
             onChange={(event) => {
               const nextClient = clients.find((client) => client.id === event.target.value) ?? null;
               setCustomerId(event.target.value);
-              setPriceListOverride(nextClient?.priceList || "PRECIO 1");
+              setPriceListOverride(resolvePriceListName(nextClient?.priceList, priceListOptions));
               setDocumentOverride(
                 nextClient ? normalizeOrderCreationDocument(nextClient.receiptType, nextClient.fiscalCondition) : "remito",
               );
@@ -209,15 +204,17 @@ export function OrderEntryFields({
               value={activePriceList}
               onChange={(event) => setPriceListOverride(event.target.value)}
             >
-              {selectedClient.priceList ? (
-                <option value={selectedClient.priceList}>Sugerida: {selectedClient.priceList}</option>
-              ) : null}
-              {PRICE_LIST_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
+              {priceListOptions.map((option) => (
+                <option key={option.name} value={option.name}>
+                  {option.name}
                 </option>
               ))}
             </Select>
+            {selectedClient.priceList && selectedClient.priceList !== activePriceList ? (
+              <div className="mt-1 text-xs text-[color:var(--muted)]">
+                Sugerida por cliente: {activePriceList}
+              </div>
+            ) : null}
           </Field>
           <div>
             <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Vendedor</div>

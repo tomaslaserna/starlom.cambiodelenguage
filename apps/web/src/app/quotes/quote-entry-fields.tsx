@@ -3,13 +3,13 @@
 import { useMemo, useRef, useState } from "react";
 import { Button, ButtonLink, Field, Input, Select } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { lineSubtotal, money, priceForList } from "@/lib/order-pricing";
+import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, money, priceForList, resolvePriceListName } from "@/lib/order-pricing";
 import {
   normalizeOrderCreationDocument,
   receiptAddsVat,
   desiredDocumentLabel,
 } from "@/lib/receipt-types";
-import type { OrderFormClient, OrderFormProduct } from "@/lib/orders";
+import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
 
 type QuoteLineDraft = {
   productId: string;
@@ -23,19 +23,11 @@ type QuoteLineState = QuoteLineDraft & {
 
 type QuoteEntryFieldsProps = {
   clients: OrderFormClient[];
+  priceLists: OrderFormPriceList[];
   products: OrderFormProduct[];
 };
 
 const emptyLine = (): QuoteLineDraft => ({ productId: "", quantity: "1", discount: "0" });
-
-const PRICE_LIST_OPTIONS = [
-  { value: "PRECIO 0", label: "Precio 0" },
-  { value: "PRECIO 1", label: "Precio 1" },
-  { value: "PRECIO 2", label: "Precio 2" },
-  { value: "PRECIO 3", label: "Precio 3" },
-  { value: "PRECIO 4", label: "Precio 4" },
-  { value: "REVENDEDOR", label: "Revendedor" },
-] as const;
 
 function numericInput(value: string, fallback = 0) {
   const numberValue = Number(value);
@@ -49,7 +41,7 @@ function whatsappPhone(phone: string) {
   return `54${digits.replace(/^0+/, "")}`;
 }
 
-export function QuoteEntryFields({ clients, products }: QuoteEntryFieldsProps) {
+export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFieldsProps) {
   const [customerId, setCustomerId] = useState("");
   const [validityDays, setValidityDays] = useState("15");
   const [priceListOverride, setPriceListOverride] = useState("");
@@ -59,7 +51,8 @@ export function QuoteEntryFields({ clients, products }: QuoteEntryFieldsProps) {
 
   const selectedClient = clients.find((client) => client.id === customerId) ?? null;
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
-  const activePriceList = priceListOverride || selectedClient?.priceList || "PRECIO 1";
+  const priceListOptions = priceLists.length ? priceLists : [{ name: DEFAULT_PRICE_LIST_NAME }];
+  const activePriceList = resolvePriceListName(priceListOverride || selectedClient?.priceList, priceListOptions);
   const suggestedDocument = selectedClient
     ? normalizeOrderCreationDocument(selectedClient.receiptType, selectedClient.fiscalCondition)
     : "remito";
@@ -164,7 +157,7 @@ export function QuoteEntryFields({ clients, products }: QuoteEntryFieldsProps) {
             onChange={(event) => {
               const nextClient = clients.find((client) => client.id === event.target.value) ?? null;
               setCustomerId(event.target.value);
-              setPriceListOverride(nextClient?.priceList || "PRECIO 1");
+              setPriceListOverride(resolvePriceListName(nextClient?.priceList, priceListOptions));
             }}
           >
             <option value="">Seleccionar cliente</option>
@@ -220,15 +213,17 @@ export function QuoteEntryFields({ clients, products }: QuoteEntryFieldsProps) {
               value={activePriceList}
               onChange={(event) => setPriceListOverride(event.target.value)}
             >
-              {selectedClient.priceList ? (
-                <option value={selectedClient.priceList}>Sugerida: {selectedClient.priceList}</option>
-              ) : null}
-              {PRICE_LIST_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
+              {priceListOptions.map((option) => (
+                <option key={option.name} value={option.name}>
+                  {option.name}
                 </option>
               ))}
             </Select>
+            {selectedClient.priceList && selectedClient.priceList !== activePriceList ? (
+              <div className="mt-1 text-xs text-[color:var(--muted)]">
+                Sugerida por cliente: {activePriceList}
+              </div>
+            ) : null}
           </Field>
           <div>
             <div className="erp-text-caption font-semibold text-[color:var(--muted)]">IVA</div>

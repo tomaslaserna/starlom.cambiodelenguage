@@ -1,8 +1,8 @@
 import type { PoolClient } from "pg";
 import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
-import { lineSubtotal, money, normalizePriceListKey, type PriceListKey } from "@/lib/order-pricing";
-import { priceSqlExpression, productMarginCodeExpression } from "@/lib/product-pricing-sql";
+import { lineSubtotal, money, normalizePriceListKey, resolvePriceListName, type PriceListKey } from "@/lib/order-pricing";
+import { dynamicPriceSqlExpression, productMarginCodeExpression } from "@/lib/product-pricing-sql";
 import {
   normalizeOrderCreationDocument,
   receiptAddsVat,
@@ -110,8 +110,21 @@ function priceListNumber(key: PriceListKey) {
 }
 
 function priceListNameFromNumber(value: number) {
-  if (value === 5) return "REVENDEDOR";
-  return value > 0 ? `PRECIO ${value}` : "";
+  if (value === 4 || value === 5) return "MINORISTA";
+  return value >= 0 && value <= 3 ? `LISTA ${value}` : "";
+}
+
+async function getActivePriceListNames(client: PoolClient, companyId: number) {
+  const result = await client.query<{ nombre: string }>(
+    `
+      SELECT nombre
+      FROM listas_precio
+      WHERE empresa_id = $1 AND activa = 1
+      ORDER BY orden ASC, nombre ASC
+    `,
+    [companyId],
+  );
+  return result.rows.map((row) => row.nombre);
 }
 
 export function quoteInputFromBody(body: RequestBody): QuoteInput {
@@ -183,6 +196,7 @@ function mapQuote(row: {
   cliente_cuit: string | null;
   total: string;
   active_price_list: number;
+  price_list_name?: string | null;
   discount_percent: string;
   include_vat: boolean;
   net_amount: string;
@@ -214,6 +228,7 @@ function mapQuote(row: {
       taxId: row.cliente_cuit ?? "",
     },
     activePriceList: row.active_price_list,
+    priceListName: row.price_list_name || priceListNameFromNumber(row.active_price_list),
     discountPercent: Number(row.discount_percent),
     includeVat: row.include_vat,
     netAmount: Number(row.net_amount),
@@ -246,6 +261,7 @@ export async function listQuotes(companyId: number, status = "pendiente") {
              c.tax_id AS cliente_cuit,
              q.total_amount::text AS total,
              q.active_price_list,
+             COALESCE(q.price_list_name, '') AS price_list_name,
              q.discount_percent::text,
              q.include_vat,
              q.net_amount::text,
@@ -301,6 +317,7 @@ export async function getQuote(companyId: number, id: string) {
              c.tax_id AS cliente_cuit,
              q.total_amount::text AS total,
              q.active_price_list,
+             COALESCE(q.price_list_name, '') AS price_list_name,
              q.discount_percent::text,
              q.include_vat,
              q.net_amount::text,
@@ -345,12 +362,13 @@ async function resolveQuoteProductsFromCatalog(
   companyId: number,
   products: QuoteProduct[],
   priceListKey: PriceListKey,
+  priceListName: string,
 ) {
   const productIds = products.map((product) => product.id);
   const quantities = products.map((product) => product.quantity);
   const discounts = products.map((product) => product.discount);
   const sortOrders = products.map((_, index) => index);
-  const unitPriceExpression = priceSqlExpression(priceListKey);
+  const unitPriceExpression = dynamicPriceSqlExpression(priceListKey);
 
   const result = await client.query<{
     product_id: string;
@@ -377,9 +395,17 @@ async function resolveQuoteProductsFromCatalog(
       LEFT JOIN margenes m
         ON m.empresa_id = p.empresa_id
        AND m.codigo = ${productMarginCodeExpression("p")}
+      LEFT JOIN listas_precio selected_list
+        ON selected_list.empresa_id = p.empresa_id
+       AND selected_list.activa = 1
+       AND lower(selected_list.nombre) = lower($6)
+      LEFT JOIN margenes_listas selected_margin
+        ON selected_margin.empresa_id = p.empresa_id
+       AND selected_margin.lista_id = selected_list.id
+       AND selected_margin.codigo = ${productMarginCodeExpression("p")}
       ORDER BY request.sort_order ASC
     `,
-    [productIds, quantities, discounts, sortOrders, companyId],
+    [productIds, quantities, discounts, sortOrders, companyId, priceListName],
   );
 
   if (result.rowCount !== products.length) {
@@ -477,8 +503,11 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
 
     if (!customer) throw new ApiError(400, "No se pudo resolver el cliente del presupuesto");
 
-    const priceListName =
-      input.priceListOverride || customer.price_list_name || priceListNameFromNumber(input.activePriceList) || "PRECIO 1";
+    const activePriceLists = await getActivePriceListNames(client, session.companyId);
+    const priceListName = resolvePriceListName(
+      input.priceListOverride || customer.price_list_name || priceListNameFromNumber(input.activePriceList),
+      activePriceLists,
+    );
     const priceListKey = normalizePriceListKey(priceListName);
     const desiredDocument = normalizeOrderCreationDocument(
       customer.receipt_type ?? "",
@@ -487,7 +516,7 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
     const includeVat = input.includeVat ?? receiptAddsVat(desiredDocument);
     const allProductsHaveIds = input.products.every((product) => Boolean(product.id));
     const detail = allProductsHaveIds
-      ? await resolveQuoteProductsFromCatalog(client, session.companyId, input.products, priceListKey)
+      ? await resolveQuoteProductsFromCatalog(client, session.companyId, input.products, priceListKey, priceListName)
       : input.products.map((product) => {
           const unitPrice = money(Number(product.unitPrice ?? 0));
           if (unitPrice <= 0) {
@@ -514,7 +543,7 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
       `
         INSERT INTO quotes (
           quote_number, client_id, seller_id, status, total_amount,
-          validity_days, include_vat, active_price_list, discount_percent,
+          validity_days, include_vat, active_price_list, price_list_name, discount_percent,
           net_amount, discount_amount, subtotal_amount, vat_amount, empresa_id
         )
         VALUES (
@@ -531,7 +560,8 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
           $9,
           $10,
           $11,
-          $12
+          $12,
+          $13
         )
         RETURNING id::text
       `,
@@ -542,6 +572,7 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
         input.validityDays,
         includeVat,
         priceListNumber(priceListKey),
+        priceListName,
         input.discountPercent,
         netAmount,
         discountAmount,
@@ -591,6 +622,7 @@ export async function acceptQuote(session: AuthSession, id: string) {
       subtotal_amount: string;
       vat_amount: string;
       active_price_list: number;
+      price_list_name: string | null;
       converted_order_id: string | null;
       client_name: string | null;
       client_document: string | null;
@@ -605,6 +637,7 @@ export async function acceptQuote(session: AuthSession, id: string) {
                q.subtotal_amount::text,
                q.vat_amount::text,
                q.active_price_list,
+               COALESCE(q.price_list_name, '') AS price_list_name,
                q.converted_order_id::text,
                COALESCE(c.display_name, c.legal_name, '') AS client_name,
                COALESCE(c.tax_id, '') AS client_document,
@@ -658,7 +691,7 @@ export async function acceptQuote(session: AuthSession, id: string) {
     const receiptNumber = Number(sequence.rows[0]?.value ?? 0);
     const saleNumber = `P-${String(receiptNumber).padStart(6, "0")}`;
     const desiredDocument = "remito";
-    const priceList = priceListNameFromNumber(quote.active_price_list);
+    const priceList = quote.price_list_name || priceListNameFromNumber(quote.active_price_list);
     const receiptType = receiptTypeCode(desiredDocument);
 
     const saleResult = await client.query<{ id: string }>(

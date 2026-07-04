@@ -5,6 +5,7 @@ import iconv from "iconv-lite";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { resolvePriceListName } from "@/lib/order-pricing";
 import { numberField, textField, uuidParam, type RequestBody } from "@/lib/request-body";
 
 type CsvImportResult = {
@@ -196,6 +197,18 @@ export async function importCustomersFromCsv(request: Request, companyId: number
   const result: CsvImportResult = { inserted: 0, skipped: 0, errors: [], processed: 0 };
 
   await withCompanyContext(companyId, async (client) => {
+    const activePriceLists = (
+      await client.query<{ nombre: string }>(
+        `
+          SELECT nombre
+          FROM listas_precio
+          WHERE empresa_id = $1 AND activa = 1
+          ORDER BY orden ASC, nombre ASC
+        `,
+        [companyId],
+      )
+    ).rows.map((row) => row.nombre);
+
     for (const [index, row] of dataRows.entries()) {
       const rowNumber = index + 2;
       if (!hasData(row)) continue;
@@ -213,7 +226,7 @@ export async function importCustomersFromCsv(request: Request, companyId: number
       const phone = value(row, 7).replace(/\D/g, "");
       const status = parseCustomerStatus(value(row, 8));
       const address = value(row, 9);
-      const priceList = value(row, 10);
+      const priceList = resolvePriceListName(value(row, 10), activePriceLists);
       const hours = value(row, 11);
       const notes = value(row, 12);
       const receipt = parseReceiptType(value(row, 13));

@@ -276,6 +276,8 @@ test("order creation exposes the full legacy receipt type set", () => {
   assert.match(orderEntryFields, /name="desiredDocumentOverride"/);
   assert.match(orderEntryFields, /ORDER_CREATION_RECEIPT_OPTIONS/);
   assert.match(orderEntryFields, /priceForList/);
+  assert.match(orderEntryFields, /priceLists/);
+  assert.doesNotMatch(orderEntryFields, /PRECIO 1/);
 
   assert.match(orders, /priceListOverride/);
   assert.match(orders, /desiredDocumentOverride/);
@@ -291,6 +293,8 @@ test("order creation exposes the full legacy receipt type set", () => {
   assert.match(quoteEntryFields, /name="customerId"/);
   assert.match(quoteEntryFields, /name="productsJson"/);
   assert.match(quoteEntryFields, /priceForList/);
+  assert.match(quoteEntryFields, /priceLists/);
+  assert.doesNotMatch(quoteEntryFields, /PRECIO 1/);
   assert.match(quoteEntryFields, /WhatsApp rapido/);
   assert.match(quoteEntryFields, /quickQuoteHref/);
   assert.match(quoteEntryFields, /<ButtonLink href=\{quickQuoteHref\}/);
@@ -299,7 +303,15 @@ test("order creation exposes the full legacy receipt type set", () => {
 
   const quotes = read("apps/web/src/lib/quotes.ts");
   assert.match(quotes, /resolveQuoteProductsFromCatalog/);
-  assert.match(quotes, /priceSqlExpression/);
+  assert.match(quotes, /dynamicPriceSqlExpression/);
+  assert.match(quotes, /price_list_name/);
+
+  const catalogManagement = read("apps/web/src/lib/catalog-management.ts");
+  assert.match(catalogManagement, /resolveCustomerPriceList/);
+  assert.match(catalogManagement, /resolvePriceListName/);
+
+  const imports = read("apps/web/src/lib/imports.ts");
+  assert.match(imports, /resolvePriceListName\(value\(row, 10\), activePriceLists\)/);
 
   const billingPage = read("apps/web/src/app/billing/page.tsx");
   assert.match(billingPage, /<option value="c">Factura C<\/option>/);

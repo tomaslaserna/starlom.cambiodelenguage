@@ -35,6 +35,7 @@ export default async function NewOrderPage() {
           offers={breakEven.reached ? offers.map((offer) => ({ id: offer.id, title: offer.title, description: offer.description })) : []}
           offersEnabled={breakEven.reached}
           offersRemaining={breakEven.remaining}
+          priceLists={formData.priceLists}
           products={formData.products}
         />
         <Button type="submit">Crear pedido</Button>

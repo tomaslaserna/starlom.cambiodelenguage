@@ -18,6 +18,19 @@ export function priceSqlExpression(key: PriceListKey) {
   }
 }
 
+export function dynamicPriceSqlExpression(key: PriceListKey, selectedMarginAlias = "selected_margin") {
+  const legacyExpression = priceSqlExpression(key);
+  return `
+    COALESCE(
+      NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(${selectedMarginAlias}.multiplicador, 1), 2), 0),
+      NULLIF(${legacyExpression}, 0),
+      p.sale_price,
+      p.cost,
+      0
+    )
+  `;
+}
+
 export function productMarginCodeExpression(alias = "p") {
   return `CASE
     WHEN NULLIF(REGEXP_REPLACE(UPPER(COALESCE(${alias}.category_code, '')), '[^A-Z0-9]', '', 'g'), '') IS NOT NULL

@@ -1,8 +1,17 @@
 import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
-import { lineSubtotal, money, normalizePriceListKey, type PriceListKey } from "@/lib/order-pricing";
+import {
+  lineSubtotal,
+  money,
+  normalizePriceListKey,
+  resolvePriceListName,
+  samePriceListName,
+  type PriceListOption,
+  type ProductPriceMap,
+} from "@/lib/order-pricing";
 import { parsePagination } from "@/lib/pagination";
-import { priceSqlExpression, productMarginCodeExpression } from "@/lib/product-pricing-sql";
+import { dynamicPriceSqlExpression, productMarginCodeExpression } from "@/lib/product-pricing-sql";
+import { listPriceLists } from "@/lib/pricing";
 import {
   type OrderStatus,
   isOrderStatus,
@@ -88,8 +97,10 @@ export type OrderFormProduct = {
   code: string;
   name: string;
   available: number;
-  prices: Record<PriceListKey, number>;
+  prices: ProductPriceMap;
 };
+
+export type OrderFormPriceList = PriceListOption;
 
 type BasicOrderLineInput = {
   productId: string;
@@ -460,13 +471,27 @@ async function getOrderCustomer(client: PoolClient, companyId: number, customerI
   return customer;
 }
 
+async function getActivePriceListNames(client: PoolClient, companyId: number) {
+  const result = await client.query<{ nombre: string }>(
+    `
+      SELECT nombre
+      FROM listas_precio
+      WHERE empresa_id = $1 AND activa = 1
+      ORDER BY orden ASC, nombre ASC
+    `,
+    [companyId],
+  );
+  return result.rows.map((row) => row.nombre);
+}
+
 async function resolveBasicOrderDetail(
   client: PoolClient,
   companyId: number,
   input: ReturnType<typeof basicOrderInputFromBody>,
 ) {
   const customer = await getOrderCustomer(client, companyId, input.customerId);
-  const priceListName = input.priceListOverride || customer.price_list_name || "";
+  const activePriceLists = await getActivePriceListNames(client, companyId);
+  const priceListName = resolvePriceListName(input.priceListOverride || customer.price_list_name, activePriceLists);
   const desiredDocument = normalizeOrderCreationDocument(
     input.desiredDocumentOverride || customer.receipt_type || "",
     customer.fiscal_condition ?? "",
@@ -478,7 +503,7 @@ async function resolveBasicOrderDetail(
   const quantities = input.lines.map((line) => line.quantity);
   const discounts = input.lines.map((line) => line.discount);
   const sortOrders = input.lines.map((_, index) => index);
-  const unitPriceExpression = priceSqlExpression(priceListKey);
+  const unitPriceExpression = dynamicPriceSqlExpression(priceListKey);
 
   const products = await client.query<{
     product_id: string;
@@ -505,9 +530,17 @@ async function resolveBasicOrderDetail(
       LEFT JOIN margenes m
         ON m.empresa_id = p.empresa_id
        AND m.codigo = ${productMarginCodeExpression("p")}
+      LEFT JOIN listas_precio selected_list
+        ON selected_list.empresa_id = p.empresa_id
+       AND selected_list.activa = 1
+       AND lower(selected_list.nombre) = lower($6)
+      LEFT JOIN margenes_listas selected_margin
+        ON selected_margin.empresa_id = p.empresa_id
+       AND selected_margin.lista_id = selected_list.id
+       AND selected_margin.codigo = ${productMarginCodeExpression("p")}
       ORDER BY request.sort_order ASC
     `,
-    [productIds, quantities, discounts, sortOrders, companyId],
+    [productIds, quantities, discounts, sortOrders, companyId, priceListName],
   );
 
   if (products.rowCount !== input.lines.length) {
@@ -590,7 +623,8 @@ async function replaceOrderDetailLines(
 }
 
 export async function getOrderFormData(companyId: number) {
-  const clients = await queryWithCompanyContext<{
+  const [clients, priceLists] = await Promise.all([
+    queryWithCompanyContext<{
     id: string;
     display_name: string;
     legal_name: string | null;
@@ -612,19 +646,17 @@ export async function getOrderFormData(companyId: number) {
       ORDER BY display_name ASC, id ASC
     `,
     [companyId],
-  );
+  ),
+    listPriceLists(companyId),
+  ]);
 
   const products = await queryWithCompanyContext<{
     id: string;
     code: string;
     name: string;
     available: string;
-    price_0: string;
-    price_1: string;
-    price_2: string;
-    price_3: string;
-    price_4: string;
-    price_rev: string;
+    list_prices: Record<string, string | number> | null;
+    fallback_price: string;
   }>(
     companyId,
     `
@@ -632,16 +664,30 @@ export async function getOrderFormData(companyId: number) {
              COALESCE(p.sku, p.category_code, '') AS code,
              p.name,
              GREATEST(COALESCE(stock.stock_real, 0) - COALESCE(reserved.reserved, 0), 0)::text AS available,
-             COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_0, 1), 2), p.sale_price, 0)::text AS price_0,
-             COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), p.sale_price, 0)::text AS price_1,
-             COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_2, 1), 2), p.sale_price, 0)::text AS price_2,
-             COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_3, 1), 2), p.sale_price, 0)::text AS price_3,
-             COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_3, 1) * 1.10, 2), p.sale_price, 0)::text AS price_4,
-             COALESCE(ROUND(COALESCE(p.cost, 0) * COALESCE(m.margen_minorista, 1), 2), p.sale_price, 0)::text AS price_rev
+             COALESCE(price_map.list_prices, '{}'::jsonb) AS list_prices,
+             COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0), p.sale_price, p.cost, 0)::text AS fallback_price
       FROM products p
       LEFT JOIN margenes m
         ON m.empresa_id = p.empresa_id
        AND m.codigo = ${productMarginCodeExpression("p")}
+      LEFT JOIN LATERAL (
+        SELECT jsonb_object_agg(
+          lp.nombre,
+          COALESCE(
+            NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(ml.multiplicador, 1), 2), 0),
+            NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
+            p.sale_price,
+            p.cost,
+            0
+          )
+        ) AS list_prices
+        FROM listas_precio lp
+        LEFT JOIN margenes_listas ml
+          ON ml.empresa_id = lp.empresa_id
+         AND ml.lista_id = lp.id
+         AND ml.codigo = ${productMarginCodeExpression("p")}
+        WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1
+      ) price_map ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(
           CASE
@@ -681,19 +727,23 @@ export async function getOrderFormData(companyId: number) {
       seller: row.seller_name ?? "",
       paymentTermDays: row.payment_term_days,
     })),
+    priceLists: priceLists
+      .filter((list) => priceLists.length === 1 || !samePriceListName(list.name, "General"))
+      .map<OrderFormPriceList>((list) => ({
+      id: list.id,
+      name: list.name,
+    })),
     products: products.rows.map<OrderFormProduct>((row) => ({
       id: row.id,
       code: row.code,
       name: row.name,
       available: Number(row.available),
-      prices: {
-        0: Number(row.price_0),
-        1: Number(row.price_1),
-        2: Number(row.price_2),
-        3: Number(row.price_3),
-        4: Number(row.price_4),
-        rev: Number(row.price_rev),
-      },
+      prices: Object.fromEntries(
+        Object.entries(row.list_prices ?? { General: row.fallback_price }).map(([name, value]) => [
+          name,
+          Number(value),
+        ]),
+      ),
     })),
   };
 }

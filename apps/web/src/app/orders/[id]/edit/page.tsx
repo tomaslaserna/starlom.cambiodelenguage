@@ -84,7 +84,12 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
                 <strong>Atención:</strong> este pedido está confirmado. Al guardar, volverá a <strong>cargado</strong> y tenés que confirmarlo nuevamente (se libera la reserva de stock hasta reconfirmar).
               </p>
             ) : null}
-            <OrderEntryFields clients={formData.clients} initialValue={initialValue} products={formData.products} />
+            <OrderEntryFields
+              clients={formData.clients}
+              initialValue={initialValue}
+              priceLists={formData.priceLists}
+              products={formData.products}
+            />
             <Button type="submit">Guardar cambios</Button>
           </form>
         )}
