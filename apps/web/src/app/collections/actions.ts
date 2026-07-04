@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { approveCollection, rejectCollection, rejectionReasonFromBody } from "@/lib/collections";
+import { collectionRegistrationFromBody, registerCollection } from "@/lib/collections";
 import { uuidParam } from "@/lib/request-body";
-import { requireApiSession } from "@/lib/route-auth";
+import { COLLECTIONS_CREATE_PERMISSION, requireApiSession } from "@/lib/route-auth";
 
 function revalidateCollectionFlow() {
   revalidatePath("/collections");
@@ -13,17 +13,13 @@ function revalidateCollectionFlow() {
   revalidatePath("/metrics");
 }
 
-export async function approveCollectionAction(formData: FormData) {
-  const session = await requireApiSession([{ resource: "cobranzas", action: "aprobar" }]);
-  const id = uuidParam(String(formData.get("id") ?? ""), "Cobro");
-  await approveCollection(session, id);
-  revalidateCollectionFlow();
-}
-
-export async function rejectCollectionAction(formData: FormData) {
-  const session = await requireApiSession([{ resource: "cobranzas", action: "aprobar" }]);
-  const id = uuidParam(String(formData.get("id") ?? ""), "Cobro");
-  const reason = rejectionReasonFromBody({ reason: String(formData.get("reason") ?? "") });
-  await rejectCollection(session, id, reason);
+export async function registerCollectionAction(formData: FormData) {
+  const session = await requireApiSession([COLLECTIONS_CREATE_PERMISSION]);
+  const id = uuidParam(String(formData.get("id") ?? ""), "Venta");
+  await registerCollection(
+    session,
+    id,
+    collectionRegistrationFromBody(Object.fromEntries(formData.entries())),
+  );
   revalidateCollectionFlow();
 }

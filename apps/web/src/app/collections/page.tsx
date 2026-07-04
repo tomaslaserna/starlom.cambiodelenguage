@@ -1,7 +1,6 @@
 import { ModulePage } from "@/components/module-page";
 import {
   Button,
-  ButtonLink,
   Card,
   DataTable,
   DataTableBody,
@@ -13,20 +12,23 @@ import {
   Field,
   Input,
   PageHeader,
+  Select,
   StatCard,
   StatusBadge,
   Toolbar,
-  type StatusBadgeTone,
 } from "@/components/ui";
-import { listPendingCollections } from "@/lib/collections";
+import { listSalesToCollect } from "@/lib/collections";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { desiredDocumentLabel } from "@/lib/receipt-types";
+import { localDateIso } from "@/lib/timezone";
 import { requireStaffSession } from "@/lib/auth";
-import { sessionCanReadCollections } from "@/lib/route-auth";
-import { redirect } from "next/navigation";
 import {
-  approveCollectionAction,
-  rejectCollectionAction,
-} from "@/app/collections/actions";
+  COLLECTIONS_CREATE_PERMISSION,
+  sessionAllows,
+  sessionCanReadCollections,
+} from "@/lib/route-auth";
+import { redirect } from "next/navigation";
+import { registerCollectionAction } from "@/app/collections/actions";
 
 type CollectionsPageProps = {
   searchParams: Promise<{
@@ -34,32 +36,18 @@ type CollectionsPageProps = {
   }>;
 };
 
-function matchesQuery(item: Awaited<ReturnType<typeof listPendingCollections>>[number], query: string) {
+type SaleToCollect = Awaited<ReturnType<typeof listSalesToCollect>>[number];
+
+function matchesQuery(item: SaleToCollect, query: string) {
   if (!query) return true;
-  const haystack = [
-    item.customerName,
-    item.customerDocument,
-    item.customerCode,
-    item.customerTaxId,
-    item.destination,
-    item.operation,
-    item.registeredBy,
-  ]
+  const haystack = [item.customerName, item.customerTaxId, String(item.receiptNumber)]
     .join(" ")
     .toLowerCase();
   return haystack.includes(query);
 }
 
-function statusLabel(value: string) {
-  const normalized = value.replaceAll("_", " ").trim();
-  if (!normalized) return "-";
-  return normalized.replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-function collectionStatusTone(value: string): StatusBadgeTone {
-  if (value === "recibido") return "success";
-  if (value === "pendiente_aprobacion" || value === "en_proceso") return "warning";
-  return "neutral";
+function awaitingApproval(item: SaleToCollect) {
+  return item.collectionStatus === "pendiente_aprobacion" || item.collectionStatus === "en_proceso";
 }
 
 export default async function CollectionsPage({ searchParams }: CollectionsPageProps) {
@@ -68,24 +56,29 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
 
   const params = await searchParams;
   const query = params.q?.trim().toLowerCase() ?? "";
-  const allCollections = await listPendingCollections(session.companyId);
-  const collections = allCollections.filter((item) => matchesQuery(item, query));
-  const totalPending = collections.reduce((sum, item) => sum + item.registeredAmount, 0);
+  const [allSales, canRegister] = await Promise.all([
+    listSalesToCollect(session.companyId),
+    sessionAllows(session, [COLLECTIONS_CREATE_PERMISSION]),
+  ]);
+  const sales = allSales.filter((item) => matchesQuery(item, query));
+  const totalOutstanding = sales.reduce((sum, item) => sum + item.outstandingAmount, 0);
+  const overdueCount = sales.filter((item) => item.overdue).length;
+  const today = localDateIso();
 
   return (
     <ModulePage
       active="collections"
-      description="Cola de cobros registrados que administracion debe aprobar o rechazar."
+      description="Ventas entregadas con saldo pendiente de cobro."
       session={session}
       title="Cobros"
     >
       <div className="grid gap-5">
         <PageHeader
-          description="Revision de cobros registrados por usuarios antes de impactar cuentas corrientes y tesoreria."
-          title="Cobranzas"
+          description="Registra el cobro de cada venta entregada. La aprobacion se resuelve en Solicitudes y aprobaciones."
+          title="Ventas a cobrar"
         />
 
-        <Toolbar ariaLabel="Busqueda de cobros pendientes">
+        <Toolbar ariaLabel="Busqueda de ventas a cobrar">
           <form
             action="/collections"
             className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto] lg:items-end"
@@ -95,7 +88,7 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                 defaultValue={params.q ?? ""}
                 id="collections-query"
                 name="q"
-                placeholder="Cliente, CUIT, operacion o responsable"
+                placeholder="Cliente, CUIT o nro de comprobante"
                 type="search"
               />
             </Field>
@@ -106,149 +99,173 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
         <div className="grid gap-3 md:grid-cols-2">
           <StatCard
             className="p-3"
-            detail="Calculado sobre los cobros visibles"
-            label="Monto visible pendiente de aprobacion"
-            value={formatCurrency(totalPending)}
+            detail="Calculado sobre las ventas visibles"
+            label="Saldo total a cobrar"
+            value={formatCurrency(totalOutstanding)}
           />
           <StatCard
             className="p-3"
-            detail={`${collections.length} visibles con la busqueda actual`}
-            label="Cola total sin filtro"
-            value={allCollections.length}
+            detail={`${sales.length} ventas visibles con la busqueda actual`}
+            label="Ventas vencidas"
+            value={overdueCount}
           />
         </div>
 
         <Card className="overflow-hidden">
           <DataTable
-            caption="Cobros pendientes de aprobacion"
+            caption="Ventas entregadas con saldo pendiente"
             className="rounded-none border-0 shadow-none"
             minWidth="0"
-            tableLabel="Cobros pendientes"
+            tableLabel="Ventas a cobrar"
             tableProps={{ className: "table-fixed" }}
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[11%] px-2">Venta</DataTableHead>
-                <DataTableHead className="w-[18%] px-2">Cliente</DataTableHead>
-                <DataTableHead className="w-[20%] px-2">Cobro</DataTableHead>
-                <DataTableHead className="w-[12%] px-2">Registro</DataTableHead>
-                <DataTableHead className="w-[13%] px-2">Estado</DataTableHead>
-                <DataTableHead align="right" className="w-[11%] px-2">Monto</DataTableHead>
-                <DataTableHead className="w-[15%] px-2">Accion</DataTableHead>
+                <DataTableHead className="w-[9%] px-2">Fecha</DataTableHead>
+                <DataTableHead className="w-[11%] px-2">Comprobante</DataTableHead>
+                <DataTableHead className="w-[20%] px-2">Nombre</DataTableHead>
+                <DataTableHead className="w-[12%] px-2">CUIT</DataTableHead>
+                <DataTableHead align="right" className="w-[12%] px-2">Monto a cobrar</DataTableHead>
+                <DataTableHead className="w-[12%] px-2">Vencimiento</DataTableHead>
+                <DataTableHead className="w-[10%] px-2">Documento</DataTableHead>
+                <DataTableHead className="w-[14%] px-2">Accion</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
-              {collections.length === 0 ? (
+              {sales.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={7}>
+                  <DataTableCell colSpan={8}>
                     <EmptyState
-                      description="Ajusta la busqueda para revisar otros cobros pendientes de aprobacion."
-                      title="No hay cobros pendientes para esta busqueda"
+                      description="No hay ventas entregadas con saldo pendiente para la busqueda actual."
+                      title="Sin ventas a cobrar"
                     />
                   </DataTableCell>
                 </DataTableRow>
               ) : (
-                collections.map((item) => {
-                  const reasonInputId = `collection-${item.id}-reason`;
+                sales.map((item) => {
+                  const amountInputId = `sale-${item.id}-amount`;
+                  const dateInputId = `sale-${item.id}-date`;
+                  const methodSelectId = `sale-${item.id}-method`;
+                  const destinationInputId = `sale-${item.id}-destination`;
+                  const operationInputId = `sale-${item.id}-operation`;
+                  const notesInputId = `sale-${item.id}-notes`;
 
                   return (
                     <DataTableRow key={item.id}>
-                      <DataTableCell className="px-2 py-2">
-                        <div className="truncate font-mono text-xs">#{item.id.slice(0, 8)}</div>
-                        <div className="mt-1 truncate text-xs text-[color:var(--muted)]">
-                          Remito {item.remittanceLabel}
-                        </div>
-                        <ButtonLink
-                          aria-label={`Abrir comprobantes asociados al cobro ${item.id}`}
-                          className="mt-2 h-8 px-2 text-[11px]"
-                          href={`/api/sales-documents?saleId=${item.id}`}
-                          prefetch={false}
-                          rel="noreferrer"
-                          size="sm"
-                          target="_blank"
-                          variant="secondary"
-                        >
-                          {item.associatedDocuments} comp.
-                        </ButtonLink>
+                      <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
+                        {formatDate(item.date)}
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
-                        <div className="truncate font-medium">
-                          {item.customerName || "Sin cliente"}
-                        </div>
-                        <div className="mt-1 truncate font-mono text-xs text-[color:var(--muted)]">
-                          {item.customerTaxId || item.customerDocument || "-"}
-                        </div>
+                        <span className="font-mono text-xs font-black">
+                          #{String(item.receiptNumber).padStart(4, "0")}
+                        </span>
                       </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        <div className="truncate font-medium">{item.method || "-"}</div>
-                        <div className="mt-1 truncate text-xs leading-5 text-[color:var(--muted)]">
-                          {item.destination || "-"} · {item.operation || "Sin operacion"}
-                        </div>
-                        {item.notes ? (
-                          <div className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--muted)]">
-                            {item.notes}
-                          </div>
-                        ) : null}
+                      <DataTableCell className="truncate px-2 py-2 font-medium">
+                        {item.customerName || "Sin cliente"}
                       </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        <div className="whitespace-nowrap text-xs">{formatDate(item.collectionDate)}</div>
-                        <div className="mt-1 truncate text-xs text-[color:var(--muted)]">
-                          {item.registeredBy || "-"}
-                        </div>
-                      </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        <StatusBadge tone={collectionStatusTone(item.status)}>
-                          {statusLabel(item.status)}
-                        </StatusBadge>
-                        <div className="mt-2 text-xs leading-5 text-[color:var(--muted)]">
-                          Saldo actual {formatCurrency(item.outstandingAmount)}
-                        </div>
+                      <DataTableCell className="truncate px-2 py-2 font-mono text-xs">
+                        {item.customerTaxId || "-"}
                       </DataTableCell>
                       <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                        <div>{formatCurrency(item.registeredAmount)}</div>
-                        <div className="mt-1 text-[11px] text-[color:var(--muted)]">
-                          Queda {formatCurrency(item.outstandingAfterApproval)}
-                        </div>
+                        {formatCurrency(item.outstandingAmount)}
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
-                        <div className="grid gap-2">
-                          <form action={approveCollectionAction}>
-                            <input name="id" type="hidden" value={item.id} />
-                            <Button
-                              aria-label={`Aprobar cobro ${item.id}`}
-                              className="w-full text-xs"
-                              size="sm"
-                              type="submit"
-                            >
-                              Aprobar
-                            </Button>
-                          </form>
-                          <form action={rejectCollectionAction} className="grid gap-2">
-                            <input name="id" type="hidden" value={item.id} />
-                            <label className="sr-only" htmlFor={reasonInputId}>
-                              Motivo de rechazo del cobro {item.id}
-                            </label>
-                            <Input
-                              aria-describedby={`${reasonInputId}-hint`}
-                              className="min-h-9 px-2 text-xs"
-                              id={reasonInputId}
-                              name="reason"
-                              placeholder="Motivo de rechazo"
-                            />
-                            <span className="sr-only" id={`${reasonInputId}-hint`}>
-                              Este motivo se envia junto con el rechazo del cobro.
-                            </span>
-                            <Button
-                              aria-label={`Rechazar cobro ${item.id}`}
-                              className="min-h-9 px-3 text-xs"
-                              size="sm"
-                              type="submit"
-                              variant="outline"
-                            >
-                              Rechazar
-                            </Button>
-                          </form>
+                        <div className={`whitespace-nowrap text-xs ${item.overdue ? "font-black text-[color:var(--danger)]" : ""}`}>
+                          {formatDate(item.dueDate)}
                         </div>
+                        {item.overdue ? (
+                          <StatusBadge className="mt-1" tone="danger">
+                            Vencida
+                          </StatusBadge>
+                        ) : null}
+                      </DataTableCell>
+                      <DataTableCell className="truncate px-2 py-2 text-xs">
+                        {desiredDocumentLabel(item.desiredDocument)}
+                      </DataTableCell>
+                      <DataTableCell className="px-2 py-2">
+                        {awaitingApproval(item) ? (
+                          <div>
+                            <StatusBadge tone="warning">En aprobacion</StatusBadge>
+                            <div className="mt-1 text-[11px] text-[color:var(--muted)]">
+                              {formatCurrency(item.registeredAmount)} registrado
+                            </div>
+                          </div>
+                        ) : canRegister ? (
+                          <details className="rounded-md border border-[color:var(--border)] bg-white px-2 py-1.5">
+                            <summary className="cursor-pointer select-none text-xs font-black text-[color:var(--accent-strong)]">
+                              Registrar cobro
+                            </summary>
+                            <form action={registerCollectionAction} className="mt-2 grid gap-2">
+                              <input name="id" type="hidden" value={item.id} />
+                              <Field htmlFor={amountInputId} label="Monto">
+                                <Input
+                                  className="min-h-9 px-2 text-xs"
+                                  defaultValue={item.outstandingAmount.toFixed(2)}
+                                  id={amountInputId}
+                                  max={item.outstandingAmount.toFixed(2)}
+                                  min="0.01"
+                                  name="amount"
+                                  required
+                                  step="0.01"
+                                  type="number"
+                                />
+                              </Field>
+                              <Field htmlFor={dateInputId} label="Fecha">
+                                <Input
+                                  className="min-h-9 px-2 text-xs"
+                                  defaultValue={today}
+                                  id={dateInputId}
+                                  name="date"
+                                  required
+                                  type="date"
+                                />
+                              </Field>
+                              <Field htmlFor={methodSelectId} label="Metodo">
+                                <Select
+                                  className="min-h-9 px-2 text-xs"
+                                  defaultValue="efectivo"
+                                  id={methodSelectId}
+                                  name="method"
+                                >
+                                  <option value="efectivo">Efectivo</option>
+                                  <option value="transferencia">Transferencia</option>
+                                  <option value="echeck">E-check</option>
+                                </Select>
+                              </Field>
+                              <Field htmlFor={destinationInputId} label="Destino">
+                                <Input
+                                  className="min-h-9 px-2 text-xs"
+                                  defaultValue="Caja"
+                                  id={destinationInputId}
+                                  name="destination"
+                                  placeholder="Cuenta o caja"
+                                  required
+                                />
+                              </Field>
+                              <Field htmlFor={operationInputId} label="Operacion">
+                                <Input
+                                  className="min-h-9 px-2 text-xs"
+                                  id={operationInputId}
+                                  name="operation"
+                                  placeholder="Nro. o referencia"
+                                />
+                              </Field>
+                              <Field htmlFor={notesInputId} label="Notas">
+                                <Input
+                                  className="min-h-9 px-2 text-xs"
+                                  id={notesInputId}
+                                  name="notes"
+                                  placeholder="Opcional"
+                                />
+                              </Field>
+                              <Button className="min-h-9 px-3 text-xs" size="sm" type="submit">
+                                Registrar
+                              </Button>
+                            </form>
+                          </details>
+                        ) : (
+                          <span className="text-xs text-[color:var(--muted)]">Sin permiso</span>
+                        )}
                       </DataTableCell>
                     </DataTableRow>
                   );

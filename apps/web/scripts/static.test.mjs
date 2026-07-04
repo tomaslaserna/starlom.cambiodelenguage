@@ -129,6 +129,23 @@ test("collections screen lists delivered sales to collect with due dates", () =>
   assert.match(collections, /IN \('pendiente','vencido','pendiente_aprobacion','en_proceso'\)/);
   assert.match(collections, /fecha_vencimiento/);
   assert.match(collections, /vencida/);
+
+  const collectionsActions = read("apps/web/src/app/collections/actions.ts");
+  assert.match(collectionsActions, /registerCollectionAction/);
+  assert.match(collectionsActions, /COLLECTIONS_CREATE_PERMISSION/);
+  assert.doesNotMatch(collectionsActions, /approveCollectionAction|rejectCollectionAction/);
+
+  const approvalsPage = read("apps/web/src/app/admin/approvals/page.tsx");
+  assert.match(approvalsPage, /approveApprovalAction/);
+
+  const collectionsPage = read("apps/web/src/app/collections/page.tsx");
+  assert.match(collectionsPage, /listSalesToCollect/);
+  assert.match(collectionsPage, /registerCollectionAction/);
+  assert.match(collectionsPage, /Registrar cobro/);
+  assert.match(collectionsPage, /desiredDocumentLabel/);
+  assert.match(collectionsPage, /Vencimiento/);
+  assert.match(collectionsPage, /En aprobacion/);
+  assert.doesNotMatch(collectionsPage, /listPendingCollections|approveCollectionAction|rejectCollectionAction/);
 });
 
 test("orders lifecycle follows cargado-confirmado-entregado and opens collection only on delivery", () => {
@@ -248,8 +265,7 @@ test("collection approval enforces outstanding balance and refreshes related scr
   assert.match(orders, /saldo_pendiente/);
 
   const collectionsPage = read("apps/web/src/app/collections/page.tsx");
-  assert.match(collectionsPage, /Saldo actual/);
-  assert.match(collectionsPage, /outstandingAfterApproval/);
+  assert.match(collectionsPage, /outstandingAmount/);
   assert.match(collectionsPage, /tableProps=\{\{ className: "table-fixed" \}\}/);
 
   for (const path of [
