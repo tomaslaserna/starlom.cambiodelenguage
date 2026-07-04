@@ -200,10 +200,9 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(navigation, /href: "\/quotes",\s*label: "Presupuestos"/);
   assert.match(
     navigation,
-    /label: "Operaciones"[\s\S]*groupByLabel\("Pedidos"\)[\s\S]*groupByLabel\("Ventas"\)[\s\S]*groupByLabel\("Presupuestos"\)/,
+    /label: "Comercial"[\s\S]*groupByLabel\("Pedidos"\)[\s\S]*groupByLabel\("Ventas"\)[\s\S]*groupByLabel\("Presupuestos"\)[\s\S]*groupByLabel\("Facturacion"\)/,
   );
-  assert.match(navigation, /href: "\/billing",\s*label: "Registro de facturas"/);
-  assert.doesNotMatch(navigation, /label: "Facturacion"/);
+  assert.match(navigation, /href: "\/billing",\s*label: "Facturacion"/);
   assert.match(navigation, /href: "\/metrics", label: "Metricas"/);
   assert.match(navigation, /href: "\/rentabilidad", label: "Rentabilidad"/);
   assert.doesNotMatch(navigation, /label: "Panel admin"/);
@@ -474,8 +473,7 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.doesNotMatch(billingPage, /CAE \{item\.debitNoteCae\}/);
 
   const navigation = read("apps/web/src/lib/navigation.ts");
-  assert.match(navigation, /label: "Ventas"[\s\S]*label: "Registro de facturas"/);
-  assert.doesNotMatch(navigation, /label: "Facturacion"/);
+  assert.match(navigation, /href: "\/billing",\s*label: "Facturacion"/);
 
   const billingActions = read("apps/web/src/app/billing/actions.ts");
   assert.match(billingActions, /issueCreditNoteAction/);
