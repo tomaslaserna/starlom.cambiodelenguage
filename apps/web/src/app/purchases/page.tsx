@@ -1,4 +1,5 @@
 import { ModulePage } from "@/components/module-page";
+import { redirect } from "next/navigation";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
   listPurchaseFormProducts,
@@ -48,6 +49,7 @@ type PurchasesPageProps = {
     q?: string;
     status?: string;
     type?: string;
+    view?: string;
   }>;
 };
 
@@ -60,38 +62,22 @@ const purchaseStates = [
 
 type PurchaseRow = Awaited<ReturnType<typeof listPurchases>>[number];
 
+const purchaseRequestTypes = ["solicitud", "solicitud_compra", "solicitud de compra"] as const;
+
 const purchaseViews = {
   nueva: {
-    href: "/purchases",
+    href: "/purchases?view=nueva",
     title: "Nueva compra",
-    description: "Carga una compra y revisa las operaciones recientes.",
-    filterTypes: null,
-    createType: "compra",
-    emptyTitle: "No hay compras cargadas",
+    description: "Carga una compra de proveedor con los datos operativos necesarios.",
+    excludeTypes: null,
+    emptyTitle: "No hay compras recientes",
   },
-  urgente: {
-    href: "/purchases?type=urgente",
-    title: "Compras urgentes",
-    description: "Bandeja de compras que requieren prioridad operativa.",
-    filterTypes: ["urgente"],
-    createType: "urgente",
-    emptyTitle: "No hay compras urgentes",
-  },
-  anticipada: {
-    href: "/purchases?type=anticipada",
-    title: "Compras anticipadas",
-    description: "Compras planificadas antes de la necesidad inmediata.",
-    filterTypes: ["anticipada"],
-    createType: "anticipada",
-    emptyTitle: "No hay compras anticipadas",
-  },
-  solicitud: {
-    href: "/purchases?type=solicitud",
-    title: "Solicitudes de compra",
-    description: "Solicitudes pendientes o cargadas por el equipo.",
-    filterTypes: ["solicitud", "solicitud_compra", "solicitud de compra"],
-    createType: "solicitud",
-    emptyTitle: "No hay solicitudes de compra",
+  registro: {
+    href: "/purchases",
+    title: "Registro de compras",
+    description: "Historial de compras, pagos, saldos y control de paquetes.",
+    excludeTypes: purchaseRequestTypes,
+    emptyTitle: "No hay compras registradas",
   },
 } as const;
 
@@ -99,23 +85,28 @@ function normalizePurchaseType(value: string) {
   return value.trim().toLowerCase().replaceAll("-", "_");
 }
 
-function viewForType(type: string) {
+type PurchaseView = (typeof purchaseViews)[keyof typeof purchaseViews];
+
+function viewForParams(type: string, viewParam: string) {
+  if (normalizePurchaseType(viewParam) === "nueva") return purchaseViews.nueva;
   const normalized = normalizePurchaseType(type);
-  if (normalized === "urgente") return purchaseViews.urgente;
-  if (normalized === "anticipada") return purchaseViews.anticipada;
-  if (["solicitud", "solicitud_compra", "solicitud de compra"].includes(normalized)) return purchaseViews.solicitud;
-  return purchaseViews.nueva;
+  if (purchaseRequestTypes.some((requestType) => normalizePurchaseType(requestType) === normalized)) {
+    redirect("/admin/approvals");
+  }
+  return purchaseViews.registro;
 }
 
-function matchesType(item: PurchaseRow, filterTypes: readonly string[] | null) {
-  if (!filterTypes) return true;
+function matchesType(item: PurchaseRow, view: PurchaseView) {
   const normalized = normalizePurchaseType(item.type);
-  return filterTypes.some((type) => normalizePurchaseType(type) === normalized);
+  if (view.excludeTypes?.some((type) => normalizePurchaseType(type) === normalized)) {
+    return false;
+  }
+  return true;
 }
 
 function matchesQuery(item: PurchaseRow, query: string) {
   if (!query) return true;
-  return [item.supplierName, item.description, item.status, item.type]
+  return [item.supplierName, item.description, item.status]
     .join(" ")
     .toLowerCase()
     .includes(query);
@@ -149,29 +140,33 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   const query = params.q?.trim().toLowerCase() ?? "";
   const status = params.status?.trim() ?? "";
   const type = params.type?.trim() ?? "";
-  const view = viewForType(type);
+  const viewParam = params.view?.trim() ?? "";
+  const view = viewForParams(type, viewParam);
   const [canCreatePurchases, canEditPurchases] = await Promise.all([
     sessionAllows(session, [PURCHASES_CREATE_PERMISSION]),
     sessionAllows(session, [PURCHASES_EDIT_PERMISSION]),
   ]);
   const showCreateForm = view === purchaseViews.nueva && canCreatePurchases;
+  const showRegistry = view !== purchaseViews.nueva;
   const [allPurchases, suppliers, products] = await Promise.all([
     listPurchases(session.companyId),
     showCreateForm ? listPurchaseFormSuppliers(session.companyId) : Promise.resolve([]),
     showCreateForm ? listPurchaseFormProducts(session.companyId) : Promise.resolve([]),
   ]);
-  const purchases = allPurchases.filter(
-    (item) =>
-      matchesQuery(item, query) &&
-      (!status || item.status === status) &&
-      matchesType(item, view.filterTypes),
-  );
+  const purchases = showRegistry
+    ? allPurchases.filter(
+        (item) =>
+          matchesQuery(item, query) &&
+          (!status || item.status === status) &&
+          matchesType(item, view),
+      )
+    : [];
   const openBalance = purchases.reduce((sum, item) => sum + item.balance, 0);
   const total = purchases.reduce((sum, item) => sum + item.total, 0);
   const pendingReviewIds = purchases
     .filter((item) => item.status === "recibida" && item.packageStatus === "pendiente")
     .map((item) => item.id);
-  const itemsByPurchase = canEditPurchases
+  const itemsByPurchase = showRegistry && canEditPurchases
     ? await listPurchaseItemsByPurchaseIds(session.companyId, pendingReviewIds)
     : new Map<string, { productId: string; name: string; quantity: number }[]>();
 
@@ -191,7 +186,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
         {showCreateForm ? (
           <Card className="p-4">
             <form action={createPurchaseAction} className="grid gap-4">
-              <div className="grid gap-3 md:grid-cols-4">
+              <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px]">
                 <Field htmlFor="purchase-supplier" label="Proveedor">
                   <Select id="purchase-supplier" name="supplierId" required>
                     <option value="">Seleccionar proveedor</option>
@@ -202,36 +197,11 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                     ))}
                   </Select>
                 </Field>
-                <Field htmlFor="purchase-type" label="Tipo">
-                  <Select defaultValue={view.createType} id="purchase-type" name="type">
-                    <option value="compra">Compra</option>
-                    <option value="urgente">Urgente</option>
-                    <option value="anticipada">Anticipada</option>
-                    <option value="solicitud">Solicitud</option>
-                  </Select>
-                </Field>
                 <Field htmlFor="purchase-date" label="Fecha">
                   <Input defaultValue={localDateIso()} id="purchase-date" name="date" type="date" />
                 </Field>
-                <Field htmlFor="purchase-status" label="Estado inicial">
-                  <Select defaultValue="pendiente" id="purchase-status" name="status">
-                    <option value="pendiente">Pendiente</option>
-                    <option value="recibida">Recibida</option>
-                  </Select>
-                </Field>
               </div>
-              <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_160px_160px]">
-                <Field htmlFor="purchase-description" label="Descripcion">
-                  <Input id="purchase-description" name="description" placeholder="Detalle o referencia interna" />
-                </Field>
-                <Field htmlFor="purchase-total" label="Total">
-                  <Input id="purchase-total" min="0" name="total" required step="0.01" type="number" />
-                </Field>
-                <Field htmlFor="purchase-quantity" label="Cantidad opcional">
-                  <Input id="purchase-quantity" min="1" name="quantity" step="1" type="number" />
-                </Field>
-              </div>
-              <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_auto] md:items-end">
+              <div className="grid gap-3 xl:grid-cols-[minmax(260px,1fr)_minmax(120px,150px)_minmax(140px,180px)]">
                 <Field htmlFor="purchase-product" label="Producto opcional">
                   <Select id="purchase-product" name="productId">
                     <option value="">Sin producto asociado</option>
@@ -242,172 +212,194 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                     ))}
                   </Select>
                 </Field>
+                <Field htmlFor="purchase-quantity" label="Cantidad">
+                  <Input id="purchase-quantity" min="1" name="quantity" step="1" type="number" />
+                </Field>
+                <Field htmlFor="purchase-total" label="Total">
+                  <Input id="purchase-total" min="0" name="total" required step="0.01" type="number" />
+                </Field>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_auto] lg:items-end">
+                <Field htmlFor="purchase-description" label="Descripcion">
+                  <Input id="purchase-description" name="description" placeholder="Detalle o referencia interna" />
+                </Field>
                 <Button type="submit">Crear compra</Button>
               </div>
             </form>
           </Card>
         ) : null}
 
-        <Toolbar ariaLabel="Filtros de compras">
-          <form
-            action="/purchases"
-            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_220px_auto_auto] lg:items-end"
-          >
-            <Field htmlFor="purchases-query" label="Buscar">
-              <Input
-                defaultValue={params.q ?? ""}
-                id="purchases-query"
-                name="q"
-                placeholder="Proveedor, descripcion o tipo"
-                type="search"
-              />
-            </Field>
-            <Field htmlFor="purchases-status" label="Estado">
-              <Select defaultValue={status} id="purchases-status" name="status">
-                {purchaseStates.map((state) => (
-                  <option key={state.value} value={state.value}>
-                    {state.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Button type="submit">Filtrar</Button>
-            <ButtonLink href={view.href} variant="secondary">
-              Limpiar
-            </ButtonLink>
-            {type ? <input name="type" type="hidden" value={type} /> : null}
-          </form>
-        </Toolbar>
+        {view === purchaseViews.nueva && !canCreatePurchases ? (
+          <Card className="p-4">
+            <EmptyState
+              description="Tu usuario puede consultar compras, pero no tiene permiso para cargar una nueva."
+              title="Sin permiso para crear compras"
+            />
+          </Card>
+        ) : null}
 
-        <div className="grid gap-3 md:grid-cols-3">
-          <StatCard className="p-3" label="Compras filtradas" value={purchases.length} />
-          <StatCard className="p-3" label="Total filtrado" value={formatCurrency(total)} />
-          <StatCard className="p-3" label="Saldo abierto" value={formatCurrency(openBalance)} />
-        </div>
+        {showRegistry ? (
+          <>
+            <Toolbar ariaLabel="Filtros de compras">
+              <form
+                action="/purchases"
+                className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_220px_auto_auto] lg:items-end"
+              >
+                <Field htmlFor="purchases-query" label="Buscar">
+                  <Input
+                    defaultValue={params.q ?? ""}
+                    id="purchases-query"
+                    name="q"
+                    placeholder="Proveedor, descripcion o estado"
+                    type="search"
+                  />
+                </Field>
+                <Field htmlFor="purchases-status" label="Estado">
+                  <Select defaultValue={status} id="purchases-status" name="status">
+                    {purchaseStates.map((state) => (
+                      <option key={state.value} value={state.value}>
+                        {state.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Button type="submit">Filtrar</Button>
+                <ButtonLink href={view.href} variant="secondary">
+                  Limpiar
+                </ButtonLink>
+                {type ? <input name="type" type="hidden" value={type} /> : null}
+              </form>
+            </Toolbar>
 
-        <Card className="overflow-hidden">
-          <DataTable
-            caption="Listado de compras filtradas"
-            className="rounded-none border-0 shadow-none"
-            minWidth="1120px"
-            tableLabel="Compras"
-          >
-            <DataTableHeader>
-              <DataTableRow className="hover:bg-transparent">
-                <DataTableHead>Compra</DataTableHead>
-                <DataTableHead>Proveedor</DataTableHead>
-                <DataTableHead>Fecha</DataTableHead>
-                <DataTableHead>Estado</DataTableHead>
-                <DataTableHead>Paquete</DataTableHead>
-                <DataTableHead align="right">Total</DataTableHead>
-                <DataTableHead align="right">Pagado</DataTableHead>
-                <DataTableHead align="right">Saldo</DataTableHead>
-                <DataTableHead>Acciones</DataTableHead>
-              </DataTableRow>
-            </DataTableHeader>
-            <DataTableBody>
-              {purchases.length === 0 ? (
-                <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={9}>
-                    <EmptyState
-                      description="Ajusta la busqueda o limpia los filtros para revisar esta bandeja."
-                      title={view.emptyTitle}
-                    />
-                  </DataTableCell>
-                </DataTableRow>
-              ) : (
-                purchases.map((purchase) => {
-                  const statusSelectId = `purchase-${purchase.id}-status`;
-                  const receiptInputId = `purchase-${purchase.id}-receipt`;
+            <div className="grid gap-3 md:grid-cols-3">
+              <StatCard className="p-3" label="Compras filtradas" value={purchases.length} />
+              <StatCard className="p-3" label="Total filtrado" value={formatCurrency(total)} />
+              <StatCard className="p-3" label="Saldo abierto" value={formatCurrency(openBalance)} />
+            </div>
 
-                  return (
-                    <DataTableRow key={purchase.id}>
-                      <DataTableCell>
-                        <div className="font-mono text-xs">#{purchase.id}</div>
-                        <div className="mt-1 text-xs text-[color:var(--muted)]">
-                          {purchase.description || purchase.type || "-"}
-                        </div>
+            <Card className="overflow-hidden">
+              <DataTable
+                caption="Listado de compras filtradas"
+                className="rounded-none border-0 shadow-none"
+                minWidth="100%"
+                tableLabel="Compras"
+                tableProps={{ className: "table-fixed" }}
+              >
+                <DataTableHeader>
+                  <DataTableRow className="hover:bg-transparent">
+                    <DataTableHead className="w-[14%]">Compra</DataTableHead>
+                    <DataTableHead className="w-[16%]">Proveedor</DataTableHead>
+                    <DataTableHead className="w-[9%]">Fecha</DataTableHead>
+                    <DataTableHead className="w-[10%]">Estado</DataTableHead>
+                    <DataTableHead className="w-[10%]">Paquete</DataTableHead>
+                    <DataTableHead align="right" className="w-[9%]">Total</DataTableHead>
+                    <DataTableHead align="right" className="w-[9%]">Pagado</DataTableHead>
+                    <DataTableHead align="right" className="w-[9%]">Saldo</DataTableHead>
+                    <DataTableHead className="w-[14%]">Acciones</DataTableHead>
+                  </DataTableRow>
+                </DataTableHeader>
+                <DataTableBody>
+                  {purchases.length === 0 ? (
+                    <DataTableRow className="hover:bg-transparent">
+                      <DataTableCell colSpan={9}>
+                        <EmptyState
+                          description="Ajusta la busqueda o limpia los filtros para revisar esta bandeja."
+                          title={view.emptyTitle}
+                        />
                       </DataTableCell>
-                      <DataTableCell>
-                        <div className="font-medium">{purchase.supplierName || "Sin proveedor"}</div>
-                        <div className="mt-1 text-xs text-[color:var(--muted)]">{purchase.type || "-"}</div>
-                      </DataTableCell>
-                      <DataTableCell className="whitespace-nowrap">{formatDate(purchase.date)}</DataTableCell>
-                      <DataTableCell>
-                        <StatusBadge tone={purchaseStatusTone(purchase.status)}>
-                          {statusLabel(purchase.status)}
-                        </StatusBadge>
-                      </DataTableCell>
-                      <DataTableCell>
-                        <StatusBadge tone={packageStatusTone(purchase.packageStatus)}>
-                          {statusLabel(purchase.packageStatus)}
-                        </StatusBadge>
-                      </DataTableCell>
-                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
-                        {formatCurrency(purchase.total)}
-                      </DataTableCell>
-                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
-                        {formatCurrency(purchase.paidAmount)}
-                      </DataTableCell>
-                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
-                        {formatCurrency(purchase.balance)}
-                      </DataTableCell>
-                      <DataTableCell>
-                        <div className="grid min-w-[300px] gap-2">
-                          <div className="flex gap-2">
-                            <ButtonLink
-                              aria-label={`Abrir orden de compra PDF ${purchase.id}`}
-                              className="flex-1"
-                              href={`/api/pdfs/purchases/${purchase.id}/order`}
-                              prefetch={false}
-                              rel="noreferrer"
-                              size="sm"
-                              target="_blank"
-                              variant="secondary"
-                            >
-                              OC PDF
-                            </ButtonLink>
-                            <ButtonLink
-                              aria-label={`Abrir solicitud de devolucion PDF ${purchase.id}`}
-                              className="flex-1"
-                              href={`/api/pdfs/purchases/${purchase.id}/return-request`}
-                              prefetch={false}
-                              rel="noreferrer"
-                              size="sm"
-                              target="_blank"
-                              variant="secondary"
-                            >
-                              Devol.
-                            </ButtonLink>
-                          </div>
-                          {canEditPurchases ? (
-                          <form action={updatePurchaseStatusAction} className="flex min-w-0 gap-2">
-                            <input name="id" type="hidden" value={purchase.id} />
-                            <label className="sr-only" htmlFor={statusSelectId}>
-                              Cambiar estado de compra {purchase.id}
-                            </label>
-                            <Select
-                              className="min-h-9 flex-1 px-2 text-xs"
-                              defaultValue={purchase.status}
-                              id={statusSelectId}
-                              name="status"
-                            >
-                              {purchaseStates.slice(1).map((state) => (
-                                <option key={state.value} value={state.value}>
-                                  {state.label}
-                                </option>
-                              ))}
-                            </Select>
-                            <Button
-                              aria-label={`Guardar estado de compra ${purchase.id}`}
-                              className="min-h-9 px-3 text-xs"
-                              size="sm"
-                              type="submit"
-                            >
-                              Guardar
-                            </Button>
-                          </form>
-                          ) : null}
+                    </DataTableRow>
+                  ) : (
+                    purchases.map((purchase) => {
+                      const statusSelectId = `purchase-${purchase.id}-status`;
+                      const receiptInputId = `purchase-${purchase.id}-receipt`;
+
+                      return (
+                        <DataTableRow key={purchase.id}>
+                          <DataTableCell>
+                            <div className="break-all font-mono text-xs">#{purchase.id}</div>
+                            <div className="mt-1 text-xs text-[color:var(--muted)]">
+                              {purchase.description || "-"}
+                            </div>
+                          </DataTableCell>
+                          <DataTableCell>
+                            <div className="font-medium">{purchase.supplierName || "Sin proveedor"}</div>
+                          </DataTableCell>
+                          <DataTableCell className="whitespace-nowrap">{formatDate(purchase.date)}</DataTableCell>
+                          <DataTableCell>
+                            <StatusBadge tone={purchaseStatusTone(purchase.status)}>
+                              {statusLabel(purchase.status)}
+                            </StatusBadge>
+                          </DataTableCell>
+                          <DataTableCell>
+                            <StatusBadge tone={packageStatusTone(purchase.packageStatus)}>
+                              {statusLabel(purchase.packageStatus)}
+                            </StatusBadge>
+                          </DataTableCell>
+                          <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                            {formatCurrency(purchase.total)}
+                          </DataTableCell>
+                          <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                            {formatCurrency(purchase.paidAmount)}
+                          </DataTableCell>
+                          <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                            {formatCurrency(purchase.balance)}
+                          </DataTableCell>
+                          <DataTableCell>
+                            <div className="grid min-w-0 gap-2">
+                              <div className="grid gap-2">
+                                <ButtonLink
+                                  aria-label={`Abrir orden de compra PDF ${purchase.id}`}
+                                  className="w-full"
+                                  href={`/api/pdfs/purchases/${purchase.id}/order`}
+                                  prefetch={false}
+                                  rel="noreferrer"
+                                  size="sm"
+                                  target="_blank"
+                                  variant="secondary"
+                                >
+                                  OC PDF
+                                </ButtonLink>
+                                <ButtonLink
+                                  aria-label={`Abrir solicitud de devolucion PDF ${purchase.id}`}
+                                  className="w-full"
+                                  href={`/api/pdfs/purchases/${purchase.id}/return-request`}
+                                  prefetch={false}
+                                  rel="noreferrer"
+                                  size="sm"
+                                  target="_blank"
+                                  variant="secondary"
+                                >
+                                  Devol.
+                                </ButtonLink>
+                              </div>
+                              {canEditPurchases ? (
+                                <form action={updatePurchaseStatusAction} className="grid min-w-0 gap-2">
+                                  <input name="id" type="hidden" value={purchase.id} />
+                                  <label className="sr-only" htmlFor={statusSelectId}>
+                                    Cambiar estado de compra {purchase.id}
+                                  </label>
+                                  <Select
+                                    className="min-h-9 flex-1 px-2 text-xs"
+                                    defaultValue={purchase.status}
+                                    id={statusSelectId}
+                                    name="status"
+                                  >
+                                    {purchaseStates.slice(1).map((state) => (
+                                      <option key={state.value} value={state.value}>
+                                        {state.label}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                  <Button
+                                    aria-label={`Guardar estado de compra ${purchase.id}`}
+                                    className="min-h-9 px-3 text-xs"
+                                    size="sm"
+                                    type="submit"
+                                  >
+                                    Guardar
+                                  </Button>
+                                </form>
+                              ) : null}
                           {purchase.status === "recibida" && canEditPurchases ? (
                             <form action={uploadPurchaseReceiptAction} className="grid gap-2">
                               <input name="id" type="hidden" value={purchase.id} />
@@ -507,8 +499,10 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                 })
               )}
             </DataTableBody>
-          </DataTable>
-        </Card>
+              </DataTable>
+            </Card>
+          </>
+        ) : null}
       </div>
     </ModulePage>
   );

@@ -24,8 +24,6 @@ export async function createPurchaseAction(formData: FormData) {
       description: formData.get("description"),
       total: formData.get("total"),
       date: formData.get("date"),
-      status: formData.get("status"),
-      type: formData.get("type"),
       items:
         formData.get("productId") && formData.get("quantity")
           ? [{ productId: formData.get("productId"), quantity: formData.get("quantity") }]

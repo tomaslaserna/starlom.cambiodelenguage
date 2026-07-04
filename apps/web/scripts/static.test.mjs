@@ -182,10 +182,24 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(navigation, /href: "\/rentabilidad", label: "Rentabilidad"/);
   assert.doesNotMatch(navigation, /label: "Panel admin"/);
   assert.match(navigation, /label: "Compras"[\s\S]*groups: \[groupByLabel\("Compras"\)\]/);
+  assert.match(navigation, /href: "\/purchases\?view=nueva", label: "Nueva compra"/);
+  assert.match(navigation, /href: "\/purchases",\s*label: "Registro de compras"/);
+  assert.doesNotMatch(navigation, /label: "Urgentes"|label: "Anticipadas"|label: "Solicitudes de compra"/);
   assert.match(navigation, /label: "Ventas"[\s\S]*label: "Registro de ventas"/);
   assert.doesNotMatch(navigation, /href: "\/database", label: "Resumen"/);
   assert.doesNotMatch(navigation, /href: "\/employees", label: "Empleados", active: "database"/);
   assert.doesNotMatch(navigation, /ordersReceived|ordersInProcess|ordersPendingDelivery/);
+
+  const purchasesPage = read("apps/web/src/app/purchases/page.tsx");
+  assert.match(purchasesPage, /label="Cantidad"/);
+  assert.match(purchasesPage, /purchaseViews[\s\S]*registro/);
+  assert.match(purchasesPage, /redirect\("\/admin\/approvals"\)/);
+  assert.doesNotMatch(purchasesPage, /label="Tipo"|label="Estado inicial"|Cantidad opcional|title: "Solicitudes de compra"|purchase\.description \|\| purchase\.type/);
+
+  const approvals = read("apps/web/src/lib/approvals.ts");
+  assert.match(approvals, /ApprovalSource = "collection" \| "request" \| "purchase" \| "fiscal"/);
+  assert.match(approvals, /listPendingPurchaseApprovals/);
+  assert.match(approvals, /resolvePurchaseApproval/);
 
   const databasePage = read("apps/web/src/app/database/page.tsx");
   assert.doesNotMatch(databasePage, /EMPLOYEES_READ_PERMISSION|label: "Empleados"|href: "\/employees"|Empleados/);

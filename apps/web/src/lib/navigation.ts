@@ -1,4 +1,4 @@
-import type { AuthSession } from "@/lib/auth";
+import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import {
@@ -158,23 +158,10 @@ export const navigationGroups: NavigationGroup[] = [
     active: "purchases",
     badge: "purchases",
     items: [
-      { href: "/purchases", label: "Nueva compra", active: "purchases", permission: PURCHASES_READ_PERMISSION },
+      { href: "/purchases?view=nueva", label: "Nueva compra", active: "purchases", permission: PURCHASES_READ_PERMISSION },
       {
-        href: "/purchases?type=urgente",
-        label: "Urgentes",
-        active: "purchases",
-        badge: "purchases",
-        permission: PURCHASES_READ_PERMISSION,
-      },
-      {
-        href: "/purchases?type=anticipada",
-        label: "Anticipadas",
-        active: "purchases",
-        permission: PURCHASES_READ_PERMISSION,
-      },
-      {
-        href: "/purchases?type=solicitud",
-        label: "Solicitudes de compra",
+        href: "/purchases",
+        label: "Registro de compras",
         active: "purchases",
         permission: PURCHASES_READ_PERMISSION,
       },
@@ -425,6 +412,8 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     sessionCanReadCollections(session),
     sessionCanApproveCollections(session),
   ]);
+  const role = normalizeRole(session.role);
+  const canResolveRequests = role === "administrador" || role === "jefe";
   const shouldCountCollectionApprovals = canReadCollections || canApproveCollections;
   const collectionApprovalsSelect = shouldCountCollectionApprovals
     ? `(SELECT COUNT(*) FROM sales
@@ -443,6 +432,9 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     quotes: string;
     payables: string;
     purchases: string;
+    internal_requests: string;
+    purchase_requests: string;
+    fiscal_approvals: string;
   }>(
     session.companyId,
     `
@@ -469,11 +461,27 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
         (SELECT COUNT(*) FROM purchases
          WHERE empresa_id = $1
            AND status <> 'cancelada'
+           AND LOWER(REPLACE(purchase_type, '-', '_')) <> ALL(ARRAY['solicitud','solicitud_compra','solicitud de compra']::text[])
            AND GREATEST(total_amount - COALESCE(paid_amount, 0), 0) > 0)::text AS payables,
         (SELECT COUNT(*) FROM purchases
          WHERE empresa_id = $1
            AND status <> 'cancelada'
-           AND (purchase_type ILIKE '%urg%' OR status = 'pendiente'))::text AS purchases
+           AND status = 'pendiente'
+           AND LOWER(REPLACE(purchase_type, '-', '_')) <> ALL(ARRAY['solicitud','solicitud_compra','solicitud de compra']::text[]))::text AS purchases,
+        (SELECT COUNT(*) FROM app_solicitudes
+         WHERE empresa_id = $1 AND estado = 'pendiente')::text AS internal_requests,
+        (SELECT COUNT(*) FROM purchases
+         WHERE empresa_id = $1
+           AND status = 'pendiente'
+           AND LOWER(REPLACE(purchase_type, '-', '_')) = ANY(ARRAY['solicitud','solicitud_compra','solicitud de compra']::text[]))::text AS purchase_requests,
+        (SELECT COUNT(*) FROM sales
+         WHERE empresa_id = $1
+           AND ${normalizedOrderStatusSql("sales")} = 'entregado'
+           AND (
+             COALESCE(desired_document, '') IN ('factura_a', 'factura_b', 'factura_c')
+             OR COALESCE(receipt_type, 0) IN (1, 6, 11)
+           )
+           AND COALESCE(fiscal_status, 'no_enviado') IN ('no_enviado', 'error'))::text AS fiscal_approvals
     `,
     [session.companyId, session.username],
   );
@@ -481,8 +489,11 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
   const row = result.rows[0];
   if (!row) return emptyNavigationIndicators();
   const collectionApprovals = Number(row.collection_approvals);
+  const requestApprovals = canResolveRequests
+    ? Number(row.internal_requests) + Number(row.purchase_requests) + Number(row.fiscal_approvals)
+    : 0;
   const indicators = {
-    approvals: canApproveCollections ? collectionApprovals : 0,
+    approvals: (canApproveCollections ? collectionApprovals : 0) + requestApprovals,
     collectionApprovals: canReadCollections ? collectionApprovals : 0,
     messages: Number(row.messages),
     tasks: Number(row.personal_tasks) + Number(row.assigned_tasks),

@@ -8,6 +8,7 @@ import {
   COLLECTION_APPROVAL_PERMISSION,
   parseApprovalSource,
   resolveGenericApproval,
+  resolvePurchaseApproval,
 } from "@/lib/approvals";
 import { positiveId, uuidParam } from "@/lib/request-body";
 import { requireApiSession, requireSessionPermission } from "@/lib/route-auth";
@@ -28,6 +29,13 @@ function revalidateFiscalFlow() {
   revalidatePath("/admin/approvals");
   revalidatePath("/billing");
   revalidatePath("/sales");
+}
+
+function revalidatePurchaseApprovalFlow() {
+  revalidatePath("/admin/approvals");
+  revalidatePath("/purchases");
+  revalidatePath("/treasury/accounts-payable");
+  revalidatePath("/metrics");
 }
 
 function actionErrorMessage(error: unknown) {
@@ -58,6 +66,10 @@ export async function approveApprovalAction(formData: FormData) {
         revalidatePath("/admin/approvals");
         return;
       }
+      case "purchase":
+        await resolvePurchaseApproval(session, uuidParam(rawId, "Solicitud de compra"), "aprobada");
+        revalidatePurchaseApprovalFlow();
+        return;
       case "fiscal":
         await authorizeSaleFiscalDocument(session, uuidParam(rawId, "Venta"));
         revalidateFiscalFlow();
@@ -90,6 +102,10 @@ export async function rejectApprovalAction(formData: FormData) {
         revalidatePath("/admin/approvals");
         return;
       }
+      case "purchase":
+        await resolvePurchaseApproval(session, uuidParam(rawId, "Solicitud de compra"), "rechazada", reason);
+        revalidatePurchaseApprovalFlow();
+        return;
       case "fiscal":
         await rejectSaleFiscalDocument(session, uuidParam(rawId, "Venta"), reason);
         revalidateFiscalFlow();

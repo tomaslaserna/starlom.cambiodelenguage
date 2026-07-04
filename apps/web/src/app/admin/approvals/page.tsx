@@ -35,12 +35,14 @@ type ApprovalsPageProps = {
 
 function sourceLabel(source: ApprovalSource) {
   if (source === "collection") return "Cobro";
+  if (source === "purchase") return "Compra";
   if (source === "fiscal") return "Factura";
   return "Solicitud interna";
 }
 
 function sourceTone(source: ApprovalSource): StatusBadgeTone {
   if (source === "collection") return "accent";
+  if (source === "purchase") return "info";
   if (source === "fiscal") return "warning";
   return "info";
 }
@@ -74,9 +76,10 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
           </div>
         ) : null}
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           <StatCard className="p-3" label="Pendientes" value={approvals.meta.total} />
           <StatCard className="p-3" label="Cobros" value={approvals.meta.collections} />
+          <StatCard className="p-3" label="Compras" value={approvals.meta.purchaseRequests} />
           <StatCard className="p-3" label="Solicitudes internas" value={approvals.meta.requests} />
           <StatCard className="p-3" label="Facturas" value={approvals.meta.fiscal} />
           <StatCard className="p-3" label="Monto en revision" value={formatCurrency(approvals.meta.amount)} />

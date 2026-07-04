@@ -707,7 +707,7 @@ export async function buildPurchaseOrderPdf(companyId: number, purchaseId: strin
       code: "OC",
       number: purchaseNumber,
       date: pdfDate(purchase.date),
-      extra: [`Estado: ${purchase.status}`, `Tipo: ${purchase.type}`],
+      extra: [`Estado: ${purchase.status}`],
       footerLeft: `Proveedor: ${purchase.supplierName || "-"}`,
       footerRight: `Total ${pdfMoney(purchase.total)}`,
     });
