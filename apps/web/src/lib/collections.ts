@@ -68,35 +68,29 @@ function assertCollectionAmountWithinBalance(amount: number, outstanding: number
   }
 }
 
-async function saleCollectedCredit(
-  client: {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: { total_credit: string | null }[] }>;
-  },
-  companyId: number,
-  saleId: string,
-) {
-  const totalResult = await client.query(
-    `
-      SELECT COALESCE(SUM(credit), 0)::text AS total_credit
-      FROM current_account_movements
-      WHERE empresa_id = $1 AND sale_id = $2::uuid
-    `,
-    [companyId, saleId],
-  );
-
-  return moneyValue(totalResult.rows[0]?.total_credit);
-}
-
 async function saleOutstandingBalance(
   client: {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: { total_credit: string | null }[] }>;
+    query: (
+      sql: string,
+      params?: unknown[],
+    ) => Promise<{ rows: { total_credit: string | null; debit_notes: string | null }[] }>;
   },
   companyId: number,
   saleId: string,
   saleTotal: string | number,
 ) {
-  const collected = await saleCollectedCredit(client, companyId, saleId);
-  return Math.max(0, moneyValue(saleTotal) - collected);
+  const totalsResult = await client.query(
+    `
+      SELECT COALESCE(SUM(credit), 0)::text AS total_credit,
+             COALESCE(SUM(debit) FILTER (WHERE description ILIKE 'nota de debito%'), 0)::text AS debit_notes
+      FROM current_account_movements
+      WHERE empresa_id = $1 AND sale_id = $2::uuid
+    `,
+    [companyId, saleId],
+  );
+  const collected = moneyValue(totalsResult.rows[0]?.total_credit);
+  const debitNotes = moneyValue(totalsResult.rows[0]?.debit_notes);
+  return Math.max(0, moneyValue(saleTotal) + debitNotes - collected);
 }
 
 async function lockCollectionSaleForResolution(
@@ -246,12 +240,13 @@ export async function listPendingCollections(companyId: number) {
              COALESCE(v.collection_status,'pendiente') AS estado_cobro,
              0::text AS documentos_asociados,
              COALESCE(approved.total_credit, 0)::text AS cobrado_aprobado,
-             GREATEST(COALESCE(v.total_amount, 0) - COALESCE(approved.total_credit, 0), 0)::text AS saldo_actual,
-             GREATEST(COALESCE(v.total_amount, 0) - COALESCE(approved.total_credit, 0) - COALESCE(v.collection_registered_amount, 0), 0)::text AS saldo_despues_aprobar
+             GREATEST(COALESCE(v.total_amount, 0) + COALESCE(approved.debit_notes, 0) - COALESCE(approved.total_credit, 0), 0)::text AS saldo_actual,
+             GREATEST(COALESCE(v.total_amount, 0) + COALESCE(approved.debit_notes, 0) - COALESCE(approved.total_credit, 0) - COALESCE(v.collection_registered_amount, 0), 0)::text AS saldo_despues_aprobar
       FROM sales v
       LEFT JOIN clients cli ON cli.id = v.client_id AND cli.empresa_id = v.empresa_id
       LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(cam.credit), 0) AS total_credit
+        SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
+               COALESCE(SUM(cam.debit) FILTER (WHERE cam.description ILIKE 'nota de debito%'), 0) AS debit_notes
         FROM current_account_movements cam
         WHERE cam.empresa_id = v.empresa_id AND cam.sale_id = v.id
       ) approved ON true
@@ -537,13 +532,16 @@ export async function listSalesToCollect(companyId: number) {
     nro_comprobante: number;
     nombre_cliente: string;
     cuit_cliente: string;
+    telefono_cliente: string;
     saldo: string;
     fecha_vencimiento: string | null;
     vencida: boolean;
+    dias_atraso: number;
     comprobante_deseado: string;
     estado_cobro: string;
     cobro_monto_registrado: string;
     tiene_pdf_fiscal: boolean;
+    remito_id: string | null;
   }>(
     companyId,
     `
@@ -552,9 +550,11 @@ export async function listSalesToCollect(companyId: number) {
              COALESCE(v.receipt_number, nullif(regexp_replace(COALESCE(v.sale_number, ''), '\\D', '', 'g'), '')::bigint, 0)::int AS nro_comprobante,
              COALESCE(v.client_name, cli.display_name, '') AS nombre_cliente,
              COALESCE(cli.tax_id, v.client_document, '') AS cuit_cliente,
-             GREATEST(COALESCE(v.total_amount, 0) - COALESCE(approved.total_credit, 0), 0)::text AS saldo,
+             COALESCE(cli.phone, '') AS telefono_cliente,
+             GREATEST(COALESCE(v.total_amount, 0) + COALESCE(approved.debit_notes, 0) - COALESCE(approved.total_credit, 0), 0)::text AS saldo,
              (v.sale_date::date + COALESCE(cli.payment_term_days, 0))::text AS fecha_vencimiento,
              (v.sale_date::date + COALESCE(cli.payment_term_days, 0)) < CURRENT_DATE AS vencida,
+             GREATEST(CURRENT_DATE - (v.sale_date::date + COALESCE(cli.payment_term_days, 0)), 0)::int AS dias_atraso,
              COALESCE(v.desired_document, 'remito') AS comprobante_deseado,
              COALESCE(v.collection_status, 'pendiente') AS estado_cobro,
              COALESCE(v.collection_registered_amount, 0)::text AS cobro_monto_registrado,
@@ -562,19 +562,27 @@ export async function listSalesToCollect(companyId: number) {
                AND COALESCE(v.cae, '') NOT IN ('', 'manual')
                AND v.fiscal_point_of_sale IS NOT NULL
                AND v.fiscal_receipt_type IS NOT NULL
-               AND v.fiscal_receipt_number IS NOT NULL) AS tiene_pdf_fiscal
+               AND v.fiscal_receipt_number IS NOT NULL) AS tiene_pdf_fiscal,
+             remito.id AS remito_id
       FROM sales v
       LEFT JOIN clients cli ON cli.id = v.client_id AND cli.empresa_id = v.empresa_id
       LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(cam.credit), 0) AS total_credit
+        SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
+               COALESCE(SUM(cam.debit) FILTER (WHERE cam.description ILIKE 'nota de debito%'), 0) AS debit_notes
         FROM current_account_movements cam
         WHERE cam.empresa_id = v.empresa_id AND cam.sale_id = v.id
       ) approved ON true
+      LEFT JOIN LATERAL (
+        SELECT dd.id::text AS id
+        FROM delivery_documents dd
+        WHERE dd.sale_id = v.id AND dd.empresa_id = v.empresa_id
+        LIMIT 1
+      ) remito ON true
       WHERE COALESCE(v.collection_status,'pendiente') IN ('pendiente','vencido','pendiente_aprobacion','en_proceso')
         AND v.empresa_id = $1
         AND ${canonicalSalesSourceSql("v")}
         AND ${normalizedOrderStatusSql("v")} = 'entregado'
-        AND GREATEST(COALESCE(v.total_amount, 0) - COALESCE(approved.total_credit, 0), 0) > 0.005
+        AND GREATEST(COALESCE(v.total_amount, 0) + COALESCE(approved.debit_notes, 0) - COALESCE(approved.total_credit, 0), 0) > 0.005
       ORDER BY fecha_vencimiento ASC, v.sale_date ASC, v.id ASC
     `,
     [companyId],
@@ -586,12 +594,15 @@ export async function listSalesToCollect(companyId: number) {
     receiptNumber: row.nro_comprobante,
     customerName: row.nombre_cliente,
     customerTaxId: row.cuit_cliente,
+    phone: row.telefono_cliente,
     outstandingAmount: Number(row.saldo),
     dueDate: row.fecha_vencimiento,
     overdue: row.vencida,
+    overdueDays: row.dias_atraso,
     desiredDocument: row.comprobante_deseado,
     collectionStatus: row.estado_cobro,
     registeredAmount: Number(row.cobro_monto_registrado),
     hasFiscalPdf: row.tiene_pdf_fiscal,
+    deliveryDocumentId: row.remito_id,
   }));
 }

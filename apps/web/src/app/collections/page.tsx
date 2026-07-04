@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { ModulePage } from "@/components/module-page";
 import {
   Button,
@@ -14,13 +13,14 @@ import {
   Field,
   Input,
   PageHeader,
-  Select,
   StatCard,
   StatusBadge,
   Toolbar,
 } from "@/components/ui";
 import { listSalesToCollect } from "@/lib/collections";
+import { buildCollectionOrderMessage } from "@/lib/collection-order";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { normalizePhoneForWhatsapp } from "@/lib/order-confirmation";
 import { desiredDocumentLabel } from "@/lib/receipt-types";
 import { localDateIso } from "@/lib/timezone";
 import { requireStaffSession } from "@/lib/auth";
@@ -31,6 +31,7 @@ import {
 } from "@/lib/route-auth";
 import { redirect } from "next/navigation";
 import { registerCollectionAction } from "@/app/collections/actions";
+import { RegisterCollectionDialog } from "@/app/collections/register-collection-dialog";
 
 type CollectionsPageProps = {
   searchParams: Promise<{
@@ -50,6 +51,23 @@ function matchesQuery(item: SaleToCollect, query: string) {
 
 function awaitingApproval(item: SaleToCollect) {
   return item.collectionStatus === "pendiente_aprobacion" || item.collectionStatus === "en_proceso";
+}
+
+const actionItemClass =
+  "block w-full rounded-[6px] px-2.5 py-1.5 text-left text-xs font-semibold text-[#0f172a] transition-colors hover:bg-[color:var(--panel-subtle)] hover:text-[color:var(--accent-strong)]";
+
+function collectionOrderHref(item: SaleToCollect) {
+  const phone = normalizePhoneForWhatsapp(item.phone);
+  if (!phone) return null;
+  const message = buildCollectionOrderMessage({
+    customerName: item.customerName,
+    documentLabel: desiredDocumentLabel(item.desiredDocument),
+    receiptNumber: item.receiptNumber,
+    amountLabel: formatCurrency(item.outstandingAmount),
+    dueDateLabel: formatDate(item.dueDate),
+    overdueDays: item.overdueDays,
+  });
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
 export default async function CollectionsPage({ searchParams }: CollectionsPageProps) {
@@ -152,163 +170,106 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                 </DataTableRow>
               ) : (
                 sales.map((item) => {
-                  const amountInputId = `sale-${item.id}-amount`;
-                  const dateInputId = `sale-${item.id}-date`;
-                  const methodSelectId = `sale-${item.id}-method`;
-                  const destinationInputId = `sale-${item.id}-destination`;
-                  const operationInputId = `sale-${item.id}-operation`;
-                  const notesInputId = `sale-${item.id}-notes`;
                   const pdfHref = item.hasFiscalPdf
                     ? `/api/pdfs/fiscal/sales/${item.id}`
-                    : `/api/pdfs/orders/${item.id}/request`;
-                  const showRegisterRow = canRegister && !awaitingApproval(item);
+                    : item.deliveryDocumentId
+                      ? `/api/pdfs/deliveries/${item.deliveryDocumentId}`
+                      : `/api/pdfs/orders/${item.id}/request`;
+                  const orderHref = collectionOrderHref(item);
+                  const receiptLabel = `${desiredDocumentLabel(item.desiredDocument)} #${String(item.receiptNumber).padStart(4, "0")}`;
+                  const showRegister = canRegister && !awaitingApproval(item);
 
                   return (
-                    <Fragment key={item.id}>
-                      <DataTableRow>
-                        <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
-                          {formatDate(item.date)}
-                        </DataTableCell>
-                        <DataTableCell className="px-2 py-2">
-                          <span className="font-mono text-xs font-black">
-                            #{String(item.receiptNumber).padStart(4, "0")}
-                          </span>
-                        </DataTableCell>
-                        <DataTableCell className="truncate px-2 py-2 font-medium">
-                          {item.customerName || "Sin cliente"}
-                        </DataTableCell>
-                        <DataTableCell className="truncate px-2 py-2 font-mono text-xs">
-                          {item.customerTaxId || "-"}
-                        </DataTableCell>
-                        <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                          {formatCurrency(item.outstandingAmount)}
-                        </DataTableCell>
-                        <DataTableCell className="px-2 py-2">
-                          <div className={`whitespace-nowrap text-xs ${item.overdue ? "font-black text-[color:var(--danger)]" : ""}`}>
-                            {formatDate(item.dueDate)}
+                    <DataTableRow key={item.id}>
+                      <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
+                        {formatDate(item.date)}
+                      </DataTableCell>
+                      <DataTableCell className="px-2 py-2">
+                        <span className="font-mono text-xs font-black">
+                          #{String(item.receiptNumber).padStart(4, "0")}
+                        </span>
+                      </DataTableCell>
+                      <DataTableCell className="truncate px-2 py-2 font-medium">
+                        {item.customerName || "Sin cliente"}
+                      </DataTableCell>
+                      <DataTableCell className="truncate px-2 py-2 font-mono text-xs">
+                        {item.customerTaxId || "-"}
+                      </DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
+                        {formatCurrency(item.outstandingAmount)}
+                      </DataTableCell>
+                      <DataTableCell className="px-2 py-2">
+                        <div className={`whitespace-nowrap text-xs ${item.overdue ? "font-black text-[color:var(--danger)]" : ""}`}>
+                          {formatDate(item.dueDate)}
+                        </div>
+                        {item.overdue ? (
+                          <StatusBadge className="mt-1" tone="danger">
+                            Vencida
+                          </StatusBadge>
+                        ) : null}
+                      </DataTableCell>
+                      <DataTableCell className="px-2 py-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="truncate text-xs">{desiredDocumentLabel(item.desiredDocument)}</span>
+                          <ButtonLink
+                            aria-label={`Descargar PDF de ${receiptLabel}`}
+                            className="shrink-0"
+                            href={pdfHref}
+                            prefetch={false}
+                            rel="noreferrer"
+                            size="sm"
+                            target="_blank"
+                            variant="secondary"
+                          >
+                            PDF
+                          </ButtonLink>
+                        </div>
+                      </DataTableCell>
+                      <DataTableCell className="px-2 py-2">
+                        {awaitingApproval(item) ? (
+                          <div className="min-w-0">
+                            <StatusBadge tone="warning">En aprobacion</StatusBadge>
+                            <div className="mt-1 text-[11px] text-[color:var(--muted)]">
+                              {formatCurrency(item.registeredAmount)} registrado
+                            </div>
                           </div>
-                          {item.overdue ? (
-                            <StatusBadge className="mt-1" tone="danger">
-                              Vencida
-                            </StatusBadge>
-                          ) : null}
-                        </DataTableCell>
-                        <DataTableCell className="truncate px-2 py-2 text-xs">
-                          {desiredDocumentLabel(item.desiredDocument)}
-                        </DataTableCell>
-                        <DataTableCell className="px-2 py-2">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <ButtonLink
-                              aria-label={`Descargar PDF del documento de la venta ${item.id}`}
-                              className="shrink-0"
-                              href={pdfHref}
-                              prefetch={false}
-                              rel="noreferrer"
-                              size="sm"
-                              target="_blank"
-                              variant="secondary"
-                            >
-                              PDF
-                            </ButtonLink>
-                            {awaitingApproval(item) ? (
-                              <div className="min-w-0">
-                                <StatusBadge tone="warning">En aprobacion</StatusBadge>
-                                <div className="mt-1 text-[11px] text-[color:var(--muted)]">
-                                  {formatCurrency(item.registeredAmount)} registrado
-                                </div>
-                              </div>
-                            ) : null}
-                            {!canRegister && !awaitingApproval(item) ? (
-                              <span className="text-xs text-[color:var(--muted)]">Sin permiso</span>
-                            ) : null}
-                          </div>
-                        </DataTableCell>
-                      </DataTableRow>
-                      {showRegisterRow ? (
-                        <DataTableRow className="bg-[#f8fbff] hover:bg-[#f8fbff]">
-                          <DataTableCell className="px-2 py-2" colSpan={8}>
-                            <details className="rounded-md border border-[color:var(--border)] bg-white px-3 py-2">
-                              <summary className="cursor-pointer select-none text-xs font-black text-[color:var(--accent-strong)]">
-                                Registrar cobro
-                                <span className="ml-2 font-semibold text-[color:var(--muted)]">
-                                  Saldo {formatCurrency(item.outstandingAmount)} - se envia a aprobacion
-                                </span>
-                              </summary>
-                              <form
-                                action={registerCollectionAction}
-                                className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-[120px_145px_150px_minmax(160px,1fr)_minmax(150px,1fr)_minmax(180px,1fr)_auto] xl:items-end"
-                              >
-                                <input name="id" type="hidden" value={item.id} />
-                                <Field htmlFor={amountInputId} label="Monto">
-                                  <Input
-                                    className="min-h-9 px-2 text-xs"
-                                    defaultValue={item.outstandingAmount.toFixed(2)}
-                                    id={amountInputId}
-                                    max={item.outstandingAmount.toFixed(2)}
-                                    min="0.01"
-                                    name="amount"
-                                    required
-                                    step="0.01"
-                                    type="number"
-                                  />
-                                </Field>
-                                <Field htmlFor={dateInputId} label="Fecha">
-                                  <Input
-                                    className="min-h-9 px-2 text-xs"
-                                    defaultValue={today}
-                                    id={dateInputId}
-                                    name="date"
-                                    required
-                                    type="date"
-                                  />
-                                </Field>
-                                <Field htmlFor={methodSelectId} label="Metodo">
-                                  <Select
-                                    className="min-h-9 px-2 text-xs"
-                                    defaultValue="efectivo"
-                                    id={methodSelectId}
-                                    name="method"
-                                  >
-                                    <option value="efectivo">Efectivo</option>
-                                    <option value="transferencia">Transferencia</option>
-                                    <option value="echeck">E-check</option>
-                                  </Select>
-                                </Field>
-                                <Field htmlFor={destinationInputId} label="Destino">
-                                  <Input
-                                    className="min-h-9 px-2 text-xs"
-                                    defaultValue="Caja"
-                                    id={destinationInputId}
-                                    name="destination"
-                                    placeholder="Cuenta o caja"
-                                    required
-                                  />
-                                </Field>
-                                <Field htmlFor={operationInputId} label="Operacion">
-                                  <Input
-                                    className="min-h-9 px-2 text-xs"
-                                    id={operationInputId}
-                                    name="operation"
-                                    placeholder="Nro. o referencia"
-                                  />
-                                </Field>
-                                <Field htmlFor={notesInputId} label="Notas">
-                                  <Input
-                                    className="min-h-9 px-2 text-xs"
-                                    id={notesInputId}
-                                    name="notes"
-                                    placeholder="Opcional"
-                                  />
-                                </Field>
-                                <Button className="min-h-9 px-3 text-xs" size="sm" type="submit">
-                                  Registrar
-                                </Button>
-                              </form>
-                            </details>
-                          </DataTableCell>
-                        </DataTableRow>
-                      ) : null}
-                    </Fragment>
+                        ) : (
+                          <details className="relative rounded-[8px] border border-[color:var(--border)] bg-white">
+                            <summary className="cursor-pointer select-none rounded-[8px] px-2.5 py-1.5 text-xs font-black text-[color:var(--accent-strong)]">
+                              Acciones
+                            </summary>
+                            <div className="grid gap-0.5 border-t border-[color:var(--border)] p-1">
+                              {showRegister ? (
+                                <RegisterCollectionDialog
+                                  action={registerCollectionAction}
+                                  customerName={item.customerName}
+                                  outstandingAmount={item.outstandingAmount}
+                                  receiptLabel={receiptLabel}
+                                  saleId={item.id}
+                                  today={today}
+                                  triggerClassName={actionItemClass}
+                                />
+                              ) : (
+                                <span className="block px-2.5 py-1.5 text-xs text-[color:var(--muted)]">Sin permiso para registrar</span>
+                              )}
+                              {orderHref ? (
+                                <a
+                                  aria-label={`Emitir orden de cobro por WhatsApp para ${receiptLabel}`}
+                                  className={actionItemClass}
+                                  href={orderHref}
+                                  rel="noreferrer"
+                                  target="_blank"
+                                >
+                                  Emitir orden de cobro
+                                </a>
+                              ) : (
+                                <span className="block px-2.5 py-1.5 text-xs text-[color:var(--muted)]">Sin telefono</span>
+                              )}
+                            </div>
+                          </details>
+                        )}
+                      </DataTableCell>
+                    </DataTableRow>
                   );
                 })
               )}

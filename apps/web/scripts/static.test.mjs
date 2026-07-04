@@ -141,18 +141,39 @@ test("collections screen lists delivered sales to collect with due dates", () =>
   const collectionsPage = read("apps/web/src/app/collections/page.tsx");
   assert.match(collectionsPage, /listSalesToCollect/);
   assert.match(collectionsPage, /registerCollectionAction/);
-  assert.match(collectionsPage, /Registrar cobro/);
+  assert.match(collectionsPage, /RegisterCollectionDialog/);
+  assert.match(collectionsPage, /Emitir orden de cobro/);
+  assert.match(collectionsPage, /Sin telefono/);
+  assert.match(collectionsPage, /buildCollectionOrderMessage/);
+  assert.match(collectionsPage, /normalizePhoneForWhatsapp/);
   assert.match(collectionsPage, /desiredDocumentLabel/);
   assert.match(collectionsPage, /Vencimiento/);
   assert.match(collectionsPage, /En aprobacion/);
   assert.match(collectionsPage, /Monto vencido/);
   assert.match(collectionsPage, /item\.hasFiscalPdf/);
   assert.match(collectionsPage, /\/api\/pdfs\/fiscal\/sales\/\$\{item\.id\}/);
+  assert.match(collectionsPage, /\/api\/pdfs\/deliveries\/\$\{item\.deliveryDocumentId\}/);
   assert.match(collectionsPage, /\/api\/pdfs\/orders\/\$\{item\.id\}\/request/);
   assert.doesNotMatch(collectionsPage, /listPendingCollections|approveCollectionAction|rejectCollectionAction/);
 
   assert.match(collections, /tiene_pdf_fiscal/);
   assert.match(collections, /hasFiscalPdf/);
+  assert.match(collections, /nota de debito%/);
+  assert.match(collections, /delivery_documents/);
+  assert.match(collections, /overdueDays/);
+  assert.match(collections, /phone/);
+
+  const collectionOrder = read("apps/web/src/lib/collection-order.ts");
+  assert.match(collectionOrder, /export function buildCollectionOrderMessage/);
+  assert.match(collectionOrder, /overdueDays/);
+  assert.match(collectionOrder, /vencido hace/);
+  assert.match(collectionOrder, /vencimiento/);
+
+  const registerDialog = read("apps/web/src/app/collections/register-collection-dialog.tsx");
+  assert.match(registerDialog, /"use client"/);
+  assert.match(registerDialog, /Registrar pago/);
+  assert.match(registerDialog, /fixed inset-0/);
+  assert.match(registerDialog, /action=\{action\}/);
 });
 
 test("orders lifecycle follows cargado-confirmado-entregado and opens collection only on delivery", () => {
