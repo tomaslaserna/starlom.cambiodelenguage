@@ -543,6 +543,7 @@ export async function listSalesToCollect(companyId: number) {
     comprobante_deseado: string;
     estado_cobro: string;
     cobro_monto_registrado: string;
+    tiene_pdf_fiscal: boolean;
   }>(
     companyId,
     `
@@ -556,7 +557,12 @@ export async function listSalesToCollect(companyId: number) {
              (v.sale_date::date + COALESCE(cli.payment_term_days, 0)) < CURRENT_DATE AS vencida,
              COALESCE(v.desired_document, 'remito') AS comprobante_deseado,
              COALESCE(v.collection_status, 'pendiente') AS estado_cobro,
-             COALESCE(v.collection_registered_amount, 0)::text AS cobro_monto_registrado
+             COALESCE(v.collection_registered_amount, 0)::text AS cobro_monto_registrado,
+             (COALESCE(v.fiscal_status, 'no_enviado') = 'aprobado'
+               AND COALESCE(v.cae, '') NOT IN ('', 'manual')
+               AND v.fiscal_point_of_sale IS NOT NULL
+               AND v.fiscal_receipt_type IS NOT NULL
+               AND v.fiscal_receipt_number IS NOT NULL) AS tiene_pdf_fiscal
       FROM sales v
       LEFT JOIN clients cli ON cli.id = v.client_id AND cli.empresa_id = v.empresa_id
       LEFT JOIN LATERAL (
@@ -586,5 +592,6 @@ export async function listSalesToCollect(companyId: number) {
     desiredDocument: row.comprobante_deseado,
     collectionStatus: row.estado_cobro,
     registeredAmount: Number(row.cobro_monto_registrado),
+    hasFiscalPdf: row.tiene_pdf_fiscal,
   }));
 }

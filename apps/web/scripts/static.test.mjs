@@ -145,7 +145,14 @@ test("collections screen lists delivered sales to collect with due dates", () =>
   assert.match(collectionsPage, /desiredDocumentLabel/);
   assert.match(collectionsPage, /Vencimiento/);
   assert.match(collectionsPage, /En aprobacion/);
+  assert.match(collectionsPage, /Monto vencido/);
+  assert.match(collectionsPage, /item\.hasFiscalPdf/);
+  assert.match(collectionsPage, /\/api\/pdfs\/fiscal\/sales\/\$\{item\.id\}/);
+  assert.match(collectionsPage, /\/api\/pdfs\/orders\/\$\{item\.id\}\/request/);
   assert.doesNotMatch(collectionsPage, /listPendingCollections|approveCollectionAction|rejectCollectionAction/);
+
+  assert.match(collections, /tiene_pdf_fiscal/);
+  assert.match(collections, /hasFiscalPdf/);
 });
 
 test("orders lifecycle follows cargado-confirmado-entregado and opens collection only on delivery", () => {

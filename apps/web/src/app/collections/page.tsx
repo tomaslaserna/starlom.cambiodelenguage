@@ -1,6 +1,8 @@
+import { Fragment } from "react";
 import { ModulePage } from "@/components/module-page";
 import {
   Button,
+  ButtonLink,
   Card,
   DataTable,
   DataTableBody,
@@ -62,7 +64,8 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
   ]);
   const sales = allSales.filter((item) => matchesQuery(item, query));
   const totalOutstanding = sales.reduce((sum, item) => sum + item.outstandingAmount, 0);
-  const overdueCount = sales.filter((item) => item.overdue).length;
+  const overdueSales = sales.filter((item) => item.overdue);
+  const overdueAmount = overdueSales.reduce((sum, item) => sum + item.outstandingAmount, 0);
   const today = localDateIso();
 
   return (
@@ -96,7 +99,7 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
           </form>
         </Toolbar>
 
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-3">
           <StatCard
             className="p-3"
             detail="Calculado sobre las ventas visibles"
@@ -105,9 +108,15 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
           />
           <StatCard
             className="p-3"
-            detail={`${sales.length} ventas visibles con la busqueda actual`}
-            label="Ventas vencidas"
-            value={overdueCount}
+            detail={`${overdueSales.length} ventas vencidas`}
+            label="Monto vencido"
+            value={formatCurrency(overdueAmount)}
+          />
+          <StatCard
+            className="p-3"
+            detail="Con la busqueda actual"
+            label="Ventas visibles"
+            value={sales.length}
           />
         </div>
 
@@ -149,125 +158,157 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                   const destinationInputId = `sale-${item.id}-destination`;
                   const operationInputId = `sale-${item.id}-operation`;
                   const notesInputId = `sale-${item.id}-notes`;
+                  const pdfHref = item.hasFiscalPdf
+                    ? `/api/pdfs/fiscal/sales/${item.id}`
+                    : `/api/pdfs/orders/${item.id}/request`;
+                  const showRegisterRow = canRegister && !awaitingApproval(item);
 
                   return (
-                    <DataTableRow key={item.id}>
-                      <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
-                        {formatDate(item.date)}
-                      </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        <span className="font-mono text-xs font-black">
-                          #{String(item.receiptNumber).padStart(4, "0")}
-                        </span>
-                      </DataTableCell>
-                      <DataTableCell className="truncate px-2 py-2 font-medium">
-                        {item.customerName || "Sin cliente"}
-                      </DataTableCell>
-                      <DataTableCell className="truncate px-2 py-2 font-mono text-xs">
-                        {item.customerTaxId || "-"}
-                      </DataTableCell>
-                      <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                        {formatCurrency(item.outstandingAmount)}
-                      </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        <div className={`whitespace-nowrap text-xs ${item.overdue ? "font-black text-[color:var(--danger)]" : ""}`}>
-                          {formatDate(item.dueDate)}
-                        </div>
-                        {item.overdue ? (
-                          <StatusBadge className="mt-1" tone="danger">
-                            Vencida
-                          </StatusBadge>
-                        ) : null}
-                      </DataTableCell>
-                      <DataTableCell className="truncate px-2 py-2 text-xs">
-                        {desiredDocumentLabel(item.desiredDocument)}
-                      </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        {awaitingApproval(item) ? (
-                          <div>
-                            <StatusBadge tone="warning">En aprobacion</StatusBadge>
-                            <div className="mt-1 text-[11px] text-[color:var(--muted)]">
-                              {formatCurrency(item.registeredAmount)} registrado
-                            </div>
+                    <Fragment key={item.id}>
+                      <DataTableRow>
+                        <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
+                          {formatDate(item.date)}
+                        </DataTableCell>
+                        <DataTableCell className="px-2 py-2">
+                          <span className="font-mono text-xs font-black">
+                            #{String(item.receiptNumber).padStart(4, "0")}
+                          </span>
+                        </DataTableCell>
+                        <DataTableCell className="truncate px-2 py-2 font-medium">
+                          {item.customerName || "Sin cliente"}
+                        </DataTableCell>
+                        <DataTableCell className="truncate px-2 py-2 font-mono text-xs">
+                          {item.customerTaxId || "-"}
+                        </DataTableCell>
+                        <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
+                          {formatCurrency(item.outstandingAmount)}
+                        </DataTableCell>
+                        <DataTableCell className="px-2 py-2">
+                          <div className={`whitespace-nowrap text-xs ${item.overdue ? "font-black text-[color:var(--danger)]" : ""}`}>
+                            {formatDate(item.dueDate)}
                           </div>
-                        ) : canRegister ? (
-                          <details className="rounded-md border border-[color:var(--border)] bg-white px-2 py-1.5">
-                            <summary className="cursor-pointer select-none text-xs font-black text-[color:var(--accent-strong)]">
-                              Registrar cobro
-                            </summary>
-                            <form action={registerCollectionAction} className="mt-2 grid gap-2">
-                              <input name="id" type="hidden" value={item.id} />
-                              <Field htmlFor={amountInputId} label="Monto">
-                                <Input
-                                  className="min-h-9 px-2 text-xs"
-                                  defaultValue={item.outstandingAmount.toFixed(2)}
-                                  id={amountInputId}
-                                  max={item.outstandingAmount.toFixed(2)}
-                                  min="0.01"
-                                  name="amount"
-                                  required
-                                  step="0.01"
-                                  type="number"
-                                />
-                              </Field>
-                              <Field htmlFor={dateInputId} label="Fecha">
-                                <Input
-                                  className="min-h-9 px-2 text-xs"
-                                  defaultValue={today}
-                                  id={dateInputId}
-                                  name="date"
-                                  required
-                                  type="date"
-                                />
-                              </Field>
-                              <Field htmlFor={methodSelectId} label="Metodo">
-                                <Select
-                                  className="min-h-9 px-2 text-xs"
-                                  defaultValue="efectivo"
-                                  id={methodSelectId}
-                                  name="method"
-                                >
-                                  <option value="efectivo">Efectivo</option>
-                                  <option value="transferencia">Transferencia</option>
-                                  <option value="echeck">E-check</option>
-                                </Select>
-                              </Field>
-                              <Field htmlFor={destinationInputId} label="Destino">
-                                <Input
-                                  className="min-h-9 px-2 text-xs"
-                                  defaultValue="Caja"
-                                  id={destinationInputId}
-                                  name="destination"
-                                  placeholder="Cuenta o caja"
-                                  required
-                                />
-                              </Field>
-                              <Field htmlFor={operationInputId} label="Operacion">
-                                <Input
-                                  className="min-h-9 px-2 text-xs"
-                                  id={operationInputId}
-                                  name="operation"
-                                  placeholder="Nro. o referencia"
-                                />
-                              </Field>
-                              <Field htmlFor={notesInputId} label="Notas">
-                                <Input
-                                  className="min-h-9 px-2 text-xs"
-                                  id={notesInputId}
-                                  name="notes"
-                                  placeholder="Opcional"
-                                />
-                              </Field>
-                              <Button className="min-h-9 px-3 text-xs" size="sm" type="submit">
-                                Registrar
-                              </Button>
-                            </form>
-                          </details>
-                        ) : (
-                          <span className="text-xs text-[color:var(--muted)]">Sin permiso</span>
-                        )}
-                      </DataTableCell>
-                    </DataTableRow>
+                          {item.overdue ? (
+                            <StatusBadge className="mt-1" tone="danger">
+                              Vencida
+                            </StatusBadge>
+                          ) : null}
+                        </DataTableCell>
+                        <DataTableCell className="truncate px-2 py-2 text-xs">
+                          {desiredDocumentLabel(item.desiredDocument)}
+                        </DataTableCell>
+                        <DataTableCell className="px-2 py-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <ButtonLink
+                              aria-label={`Descargar PDF del documento de la venta ${item.id}`}
+                              className="shrink-0"
+                              href={pdfHref}
+                              prefetch={false}
+                              rel="noreferrer"
+                              size="sm"
+                              target="_blank"
+                              variant="secondary"
+                            >
+                              PDF
+                            </ButtonLink>
+                            {awaitingApproval(item) ? (
+                              <div className="min-w-0">
+                                <StatusBadge tone="warning">En aprobacion</StatusBadge>
+                                <div className="mt-1 text-[11px] text-[color:var(--muted)]">
+                                  {formatCurrency(item.registeredAmount)} registrado
+                                </div>
+                              </div>
+                            ) : null}
+                            {!canRegister && !awaitingApproval(item) ? (
+                              <span className="text-xs text-[color:var(--muted)]">Sin permiso</span>
+                            ) : null}
+                          </div>
+                        </DataTableCell>
+                      </DataTableRow>
+                      {showRegisterRow ? (
+                        <DataTableRow className="bg-[#f8fbff] hover:bg-[#f8fbff]">
+                          <DataTableCell className="px-2 py-2" colSpan={8}>
+                            <details className="rounded-md border border-[color:var(--border)] bg-white px-3 py-2">
+                              <summary className="cursor-pointer select-none text-xs font-black text-[color:var(--accent-strong)]">
+                                Registrar cobro
+                                <span className="ml-2 font-semibold text-[color:var(--muted)]">
+                                  Saldo {formatCurrency(item.outstandingAmount)} - se envia a aprobacion
+                                </span>
+                              </summary>
+                              <form
+                                action={registerCollectionAction}
+                                className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-[120px_145px_150px_minmax(160px,1fr)_minmax(150px,1fr)_minmax(180px,1fr)_auto] xl:items-end"
+                              >
+                                <input name="id" type="hidden" value={item.id} />
+                                <Field htmlFor={amountInputId} label="Monto">
+                                  <Input
+                                    className="min-h-9 px-2 text-xs"
+                                    defaultValue={item.outstandingAmount.toFixed(2)}
+                                    id={amountInputId}
+                                    max={item.outstandingAmount.toFixed(2)}
+                                    min="0.01"
+                                    name="amount"
+                                    required
+                                    step="0.01"
+                                    type="number"
+                                  />
+                                </Field>
+                                <Field htmlFor={dateInputId} label="Fecha">
+                                  <Input
+                                    className="min-h-9 px-2 text-xs"
+                                    defaultValue={today}
+                                    id={dateInputId}
+                                    name="date"
+                                    required
+                                    type="date"
+                                  />
+                                </Field>
+                                <Field htmlFor={methodSelectId} label="Metodo">
+                                  <Select
+                                    className="min-h-9 px-2 text-xs"
+                                    defaultValue="efectivo"
+                                    id={methodSelectId}
+                                    name="method"
+                                  >
+                                    <option value="efectivo">Efectivo</option>
+                                    <option value="transferencia">Transferencia</option>
+                                    <option value="echeck">E-check</option>
+                                  </Select>
+                                </Field>
+                                <Field htmlFor={destinationInputId} label="Destino">
+                                  <Input
+                                    className="min-h-9 px-2 text-xs"
+                                    defaultValue="Caja"
+                                    id={destinationInputId}
+                                    name="destination"
+                                    placeholder="Cuenta o caja"
+                                    required
+                                  />
+                                </Field>
+                                <Field htmlFor={operationInputId} label="Operacion">
+                                  <Input
+                                    className="min-h-9 px-2 text-xs"
+                                    id={operationInputId}
+                                    name="operation"
+                                    placeholder="Nro. o referencia"
+                                  />
+                                </Field>
+                                <Field htmlFor={notesInputId} label="Notas">
+                                  <Input
+                                    className="min-h-9 px-2 text-xs"
+                                    id={notesInputId}
+                                    name="notes"
+                                    placeholder="Opcional"
+                                  />
+                                </Field>
+                                <Button className="min-h-9 px-3 text-xs" size="sm" type="submit">
+                                  Registrar
+                                </Button>
+                              </form>
+                            </details>
+                          </DataTableCell>
+                        </DataTableRow>
+                      ) : null}
+                    </Fragment>
                   );
                 })
               )}
