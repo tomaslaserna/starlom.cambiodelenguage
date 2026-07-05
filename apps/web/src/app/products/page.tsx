@@ -75,6 +75,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       <div className="grid gap-5">
         <PageHeader
           description="Catalogo operativo de productos con costos y disponibilidad de stock desde la vista vigente."
+          moduleIntro
           title="Productos"
         />
 

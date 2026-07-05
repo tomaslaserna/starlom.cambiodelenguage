@@ -5,6 +5,7 @@ import { listAccountMovements } from "@/lib/accounts";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { COLLECTIONS_READ_PERMISSION } from "@/lib/route-auth";
+import { Button } from "@/components/ui";
 
 type CurrentAccountsPageProps = {
   searchParams: Promise<{
@@ -52,9 +53,9 @@ export default async function CurrentAccountsPage({ searchParams }: CurrentAccou
             name="q"
             placeholder="Buscar entidad"
           />
-          <button className="min-h-11 rounded-md bg-[color:var(--accent)] px-4 text-sm font-semibold text-white hover:bg-[color:var(--accent-strong)]">
+          <Button type="submit">
             Filtrar
-          </button>
+          </Button>
         </form>
 
         <div className="grid gap-3 md:grid-cols-3">

@@ -3,6 +3,7 @@ import { formatDate } from "@/lib/format";
 import { listMessageCenter, listTasks } from "@/lib/messages";
 import { requireStaffSession } from "@/lib/auth";
 import { completeCalendarTaskAction, createCalendarTaskAction } from "@/app/calendar/actions";
+import { Button } from "@/components/ui";
 
 export default async function CalendarPage() {
   const session = await requireStaffSession();
@@ -85,9 +86,9 @@ export default async function CalendarPage() {
                 <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="recurrenceTime" type="time" />
               </label>
             </div>
-            <button className="min-h-11 rounded-md bg-[color:var(--accent)] px-4 text-sm font-semibold text-white hover:bg-[color:var(--accent-strong)]">
+            <Button type="submit">
               Guardar
-            </button>
+            </Button>
           </form>
         </section>
 
@@ -127,9 +128,9 @@ export default async function CalendarPage() {
                         <form action={completeCalendarTaskAction} className="flex gap-2">
                           <input name="id" type="hidden" value={task.id} />
                           <input className="min-h-10 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-2 text-xs" name="message" placeholder="Cierre" />
-                          <button className="min-h-10 rounded-md bg-[color:var(--accent)] px-3 text-xs font-semibold text-white hover:bg-[color:var(--accent-strong)]">
+                          <Button type="submit">
                             Completar
-                          </button>
+                          </Button>
                         </form>
                       </td>
                     </tr>

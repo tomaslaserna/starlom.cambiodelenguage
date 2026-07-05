@@ -84,9 +84,9 @@ export const navigationGroups: NavigationGroup[] = [
     permission: ADMIN_DIVIDENDS_READ_PERMISSION,
   },
   {
-    href: "/treasury",
+    href: "/cash",
     label: "Caja",
-    active: "treasury",
+    active: "cash",
     permission: ADMIN_TREASURY_READ_PERMISSION,
   },
   {
@@ -204,12 +204,6 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       { href: "/employees", label: "Empleados", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
       { href: "/employees/vendors", label: "Gestion de vendedores", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
-      {
-        href: "/treasury/movements",
-        label: "Registro de movimientos",
-        active: "employees",
-        permission: ADMIN_MOVEMENTS_READ_PERMISSION,
-      },
     ],
   },
   { href: "/metrics", label: "Metricas", active: "metrics", permission: ADMIN_METRICS_READ_PERMISSION },

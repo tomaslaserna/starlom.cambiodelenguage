@@ -69,6 +69,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
       <div className="grid gap-5">
         <PageHeader
           description="Base comercial de clientes con identificacion fiscal, contacto y segmentacion operativa."
+          moduleIntro
           title="Clientes"
         />
 

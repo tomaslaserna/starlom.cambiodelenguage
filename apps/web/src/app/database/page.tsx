@@ -54,6 +54,7 @@ export default async function DatabasePage() {
         <PageHeader
           title="Base de datos"
           description="Accesos a directorios operativos y datos maestros segun los permisos de lectura del usuario."
+          moduleIntro
         />
 
         {visibleModules.length === 0 ? (

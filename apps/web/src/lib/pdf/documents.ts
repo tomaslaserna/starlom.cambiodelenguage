@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api-response";
+import { accountBalanceExpressionSql, activeAccountMovementWhereSql } from "@/lib/accounts";
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { getPurchase } from "@/lib/purchases";
@@ -147,15 +148,11 @@ export async function buildQuotePdf(companyId: number, quoteId: string) {
       }),
     );
 
-    const totals: [string, string][] = [
-      ["Subtotal neto", pdfMoney(quote.netAmount)],
-      ["Descuento", quote.discountAmount > 0 ? `-${pdfMoney(quote.discountAmount)}` : pdfMoney(0)],
-      ["Base imponible", pdfMoney(quote.subtotal)],
-    ];
-    if (quote.includeVat) totals.push(["IVA 21%", pdfMoney(quote.vatAmount)]);
+    const totals: [string, string][] = [["Subtotal productos", pdfMoney(quote.netAmount)]];
+    if (quote.discountAmount > 0) totals.push(["Descuento", `-${pdfMoney(quote.discountAmount)}`]);
     pdf.totals(totals, "Total", pdfMoney(quote.total));
     pdf.note(
-      "Precios expresados en pesos argentinos. Presupuesto valido hasta la fecha indicada, sujeto a disponibilidad de stock y confirmacion comercial.",
+      "Documento no fiscal. Precios unitarios finales expresados en pesos argentinos. Presupuesto valido hasta la fecha indicada, sujeto a disponibilidad de stock y confirmacion comercial.",
     );
     pdf.signatures("Por Starlim S.A.S.", "Conformidad del cliente");
   });
@@ -308,20 +305,32 @@ export async function buildAccountStatementPdf(companyId: number, input: {
   const name = input.name.trim();
   if (!name) throw new ApiError(400, "Nombre requerido");
   const params: unknown[] = [companyId, name, type];
-  const filters = ["empresa_id = $1", "entity_name = $2", "entity_type = $3"];
+  const filters = ["m.empresa_id = $1", "m.entity_name = $2", "m.entity_type = $3", activeAccountMovementWhereSql("m", "s")];
   if (input.from) {
     params.push(input.from);
-    filters.push(`movement_date >= $${params.length}`);
+    filters.push(`m.movement_date >= $${params.length}`);
   }
   if (input.to) {
     params.push(input.to);
-    filters.push(`movement_date <= $${params.length}`);
+    filters.push(`m.movement_date <= $${params.length}`);
   }
+  const fromSql = `
+    FROM current_account_movements m
+    LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
+  `;
 
   const previous = input.from
     ? await queryWithCompanyContext<{ balance: string }>(
         companyId,
-        "SELECT COALESCE(SUM(credit - debit), 0)::text AS balance FROM current_account_movements WHERE empresa_id = $1 AND entity_name = $2 AND entity_type = $3 AND movement_date < $4",
+        `
+          SELECT COALESCE(SUM(${accountBalanceExpressionSql("m")}), 0)::text AS balance
+          ${fromSql}
+          WHERE m.empresa_id = $1
+            AND m.entity_name = $2
+            AND m.entity_type = $3
+            AND ${activeAccountMovementWhereSql("m", "s")}
+            AND m.movement_date < $4
+        `,
         [companyId, name, type, input.from],
       )
     : { rows: [{ balance: "0" }] };
@@ -334,10 +343,10 @@ export async function buildAccountStatementPdf(companyId: number, input: {
   }>(
     companyId,
     `
-      SELECT description, debit::text, credit::text, movement_date::text
-      FROM current_account_movements
+      SELECT m.description, m.debit::text, m.credit::text, m.movement_date::text
+      ${fromSql}
       WHERE ${filters.join(" AND ")}
-      ORDER BY movement_date ASC NULLS LAST, created_at ASC
+      ORDER BY m.movement_date ASC NULLS LAST, m.created_at ASC
     `,
     params,
   );
@@ -368,7 +377,7 @@ export async function buildAccountStatementPdf(companyId: number, input: {
     for (const movement of movements.rows) {
       const debit = Number(movement.debit);
       const credit = Number(movement.credit);
-      balance += credit - debit;
+      balance += type === "proveedor" ? credit - debit : debit - credit;
       rows.push([
         pdfDate(movement.movement_date),
         movement.description || "Movimiento de cuenta corriente",
@@ -393,7 +402,11 @@ export async function buildAccountStatementPdf(companyId: number, input: {
         ["Total debe", pdfMoney(totalDebit)],
         ["Total haber", pdfMoney(totalCredit)],
       ],
-      Math.abs(balance) <= 0.0001 ? "Cuenta saldada" : balance < 0 ? "Saldo pendiente" : "Saldo a favor",
+      Math.abs(balance) <= 0.0001
+        ? "Cuenta saldada"
+        : balance > 0
+          ? "Saldo pendiente"
+          : "Saldo a favor",
       pdfMoney(balance),
     );
     pdf.note("Este estado refleja los movimientos registrados en Starlim para la entidad y el periodo indicados.");
@@ -763,11 +776,11 @@ export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseI
 
 export async function buildPriceListPdf(companyId: number, list: number) {
   const cols = {
-    0: { expr: "precio_0", label: "Lista 0" },
-    1: { expr: "precio_1", label: "Lista 1" },
-    2: { expr: "precio_2", label: "Lista 2" },
-    3: { expr: "precio_3", label: "Lista 3" },
-    4: { expr: "ROUND(precio_3 * 1.10, 2)", label: "Lista 4 (+10%)" },
+    0: { expr: "precio_0", label: "L0 - agresivo" },
+    1: { expr: "precio_1", label: "L1 - suave" },
+    2: { expr: "precio_2", label: "L2 - ANCLA" },
+    3: { expr: "precio_3", label: "L3 - caro" },
+    4: { expr: "precio_minorista", label: "Minorista" },
     5: { expr: "precio_minorista", label: "Minorista" },
   } as const;
   const selected = cols[(list in cols ? list : 0) as keyof typeof cols];

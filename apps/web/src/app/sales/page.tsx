@@ -32,6 +32,7 @@ export default async function SalesPage() {
             </ButtonLink>
           }
           description="Resumen comercial y accesos operativos a ventas entregadas, carga de pedidos y presupuestos."
+          moduleIntro
           title="Ventas"
         />
 

@@ -3,12 +3,8 @@
 import { useMemo, useRef, useState } from "react";
 import { Button, ButtonLink, Field, Input, Select } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, money, priceForList, resolvePriceListName } from "@/lib/order-pricing";
-import {
-  normalizeOrderCreationDocument,
-  receiptAddsVat,
-  desiredDocumentLabel,
-} from "@/lib/receipt-types";
+import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, priceForList, resolvePriceListName } from "@/lib/order-pricing";
+import { normalizeOrderCreationDocument, desiredDocumentLabel } from "@/lib/receipt-types";
 import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
 
 type QuoteLineDraft = {
@@ -56,7 +52,6 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
   const suggestedDocument = selectedClient
     ? normalizeOrderCreationDocument(selectedClient.receiptType, selectedClient.fiscalCondition)
     : "remito";
-  const addVat = receiptAddsVat(suggestedDocument);
 
   const calculatedLines = lines
     .map((line) => {
@@ -76,9 +71,7 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
     })
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
 
-  const netAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0);
-  const vatAmount = addVat ? money(netAmount * 0.21) : 0;
-  const totalAmount = netAmount + vatAmount;
+  const totalAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0);
   const draftProduct = productMap.get(draftLine.productId) ?? null;
   const draftQuantity = Math.max(0, numericInput(draftLine.quantity, 0));
   const draftDiscount = Math.min(100, Math.max(0, numericInput(draftLine.discount, 0)));
@@ -101,9 +94,8 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
         ),
         "",
         `Lista: ${activePriceList}`,
-        `Neto: ${formatCurrency(netAmount)}`,
-        `IVA: ${formatCurrency(vatAmount)}`,
         `Total: ${formatCurrency(totalAmount)}`,
+        "Precios unitarios finales.",
         `Vigencia: ${validityDays || "15"} dias`,
       ].join("\n")
     : "";
@@ -144,7 +136,6 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
     <div className="grid gap-4">
       <input name="productsJson" type="hidden" value={JSON.stringify(payload)} />
       <input name="priceListOverride" type="hidden" value={activePriceList} />
-      <input name="includeVat" type="hidden" value={addVat ? "true" : "false"} />
       <input name="validityDays" type="hidden" value={validityDays} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_160px]">
@@ -225,10 +216,6 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
               </div>
             ) : null}
           </Field>
-          <div>
-            <div className="erp-text-caption font-semibold text-[color:var(--muted)]">IVA</div>
-            <div className="erp-text-body-sm font-bold">{addVat ? "Incluido" : "No incluido"}</div>
-          </div>
         </div>
       ) : null}
 
@@ -373,12 +360,8 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
         <div className="rounded-lg border border-[color:var(--border)] bg-white p-4">
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
-              <span className="erp-text-body-sm text-[color:var(--muted)]">Neto</span>
-              <span className="font-mono font-bold">{formatCurrency(netAmount)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="erp-text-body-sm text-[color:var(--muted)]">IVA</span>
-              <span className="font-mono font-bold">{formatCurrency(vatAmount)}</span>
+              <span className="erp-text-body-sm text-[color:var(--muted)]">Subtotal productos</span>
+              <span className="font-mono font-bold">{formatCurrency(totalAmount)}</span>
             </div>
             <div className="border-t border-[color:var(--border)] pt-3">
               <div className="flex items-center justify-between">

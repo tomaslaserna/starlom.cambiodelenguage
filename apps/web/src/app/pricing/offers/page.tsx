@@ -57,6 +57,7 @@ export default async function OffersPage({ searchParams }: OffersPageProps) {
         <PageHeader
           title="Ofertas"
           description="Alta y gestion de ofertas vigentes para el generador de WhatsApp."
+          moduleIntro
           actions={
             <ButtonLink href="/pricing" size="sm" variant="secondary">
               Volver a Precios

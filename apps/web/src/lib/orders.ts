@@ -22,7 +22,6 @@ import {
   invoiceDocumentForFiscalCondition,
   normalizeDesiredDocument,
   normalizeOrderCreationDocument,
-  receiptAddsVat,
   receiptTypeCode,
 } from "@/lib/receipt-types";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
@@ -223,19 +222,8 @@ export async function listOrders(input: ListInput = {}) {
              COALESCE(s.total_amount, 0)::text AS monto,
              COALESCE(collections.total_credit, 0)::text AS monto_cobrado,
              GREATEST(COALESCE(s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
-             CASE
-               WHEN COALESCE(s.desired_document, '') IN ('factura_a','factura_b') OR COALESCE(s.receipt_type, 0) IN (1,6)
-                 THEN ROUND(COALESCE(s.total_amount, 0) / 1.21, 2)
-               ELSE COALESCE(s.total_amount, 0)
-             END::text AS monto_neto,
-             GREATEST(
-               COALESCE(s.total_amount, 0) - CASE
-                 WHEN COALESCE(s.desired_document, '') IN ('factura_a','factura_b') OR COALESCE(s.receipt_type, 0) IN (1,6)
-                   THEN ROUND(COALESCE(s.total_amount, 0) / 1.21, 2)
-                 ELSE COALESCE(s.total_amount, 0)
-               END,
-               0
-             )::text AS monto_iva,
+             COALESCE(s.total_amount, 0)::text AS monto_neto,
+             0::text AS monto_iva,
              s.receipt_number,
              COALESCE(s.payment_condition, '') AS payment_condition,
              s.sale_date::text AS fecha,
@@ -288,19 +276,8 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
              COALESCE(s.total_amount, 0)::text AS monto,
              COALESCE(collections.total_credit, 0)::text AS monto_cobrado,
              GREATEST(COALESCE(s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
-             CASE
-               WHEN COALESCE(s.desired_document, '') IN ('factura_a','factura_b') OR COALESCE(s.receipt_type, 0) IN (1,6)
-                 THEN ROUND(COALESCE(s.total_amount, 0) / 1.21, 2)
-               ELSE COALESCE(s.total_amount, 0)
-             END::text AS monto_neto,
-             GREATEST(
-               COALESCE(s.total_amount, 0) - CASE
-                 WHEN COALESCE(s.desired_document, '') IN ('factura_a','factura_b') OR COALESCE(s.receipt_type, 0) IN (1,6)
-                   THEN ROUND(COALESCE(s.total_amount, 0) / 1.21, 2)
-                 ELSE COALESCE(s.total_amount, 0)
-               END,
-               0
-             )::text AS monto_iva,
+             COALESCE(s.total_amount, 0)::text AS monto_neto,
+             0::text AS monto_iva,
              s.receipt_number,
              COALESCE(s.payment_condition, '') AS payment_condition,
              s.sale_date::text AS fecha,
@@ -497,7 +474,6 @@ async function resolveBasicOrderDetail(
     customer.fiscal_condition ?? "",
   );
   const receiptType = receiptTypeCode(desiredDocument);
-  const includeVat = receiptAddsVat(desiredDocument);
   const priceListKey = normalizePriceListKey(priceListName);
   const productIds = input.lines.map((line) => line.productId);
   const quantities = input.lines.map((line) => line.quantity);
@@ -565,8 +541,7 @@ async function resolveBasicOrderDetail(
   });
 
   const netAmount = money(detail.reduce((total, line) => total + line.subtotal, 0));
-  const vatAmount = includeVat ? money(netAmount * 0.21) : 0;
-  const totalAmount = money(netAmount + vatAmount);
+  const totalAmount = netAmount;
   if (totalAmount <= 0) throw new ApiError(400, "El pedido no tiene importe calculable");
 
   return {
@@ -576,7 +551,6 @@ async function resolveBasicOrderDetail(
     desiredDocument,
     receiptType,
     netAmount,
-    vatAmount,
     totalAmount,
   };
 }
@@ -800,7 +774,6 @@ export async function createBasicOrder(
       desiredDocument,
       receiptType,
       netAmount,
-      vatAmount,
       totalAmount,
     } = await resolveBasicOrderDetail(client, session.companyId, input);
 
@@ -856,8 +829,7 @@ export async function createBasicOrder(
           cliente: customer.display_name,
           lista_precios: priceListName,
           comprobante: desiredDocument,
-          neto: netAmount,
-          iva: vatAmount,
+          subtotal: netAmount,
           total: totalAmount,
         }),
         session.companyId,
@@ -901,7 +873,6 @@ export async function updateBasicOrder(
       desiredDocument,
       receiptType,
       netAmount,
-      vatAmount,
       totalAmount,
     } = await resolveBasicOrderDetail(client, session.companyId, input);
 
@@ -955,8 +926,7 @@ export async function updateBasicOrder(
           cliente: customer.display_name,
           lista_precios: priceListName,
           comprobante: desiredDocument,
-          neto: netAmount,
-          iva: vatAmount,
+          subtotal: netAmount,
           total: totalAmount,
         }),
         session.companyId,
@@ -1058,8 +1028,7 @@ export async function updateOrderStatus(
         [id, session.companyId],
       );
       const netAmount = money(Number(totals.rows[0]?.net_amount ?? 0));
-      const vatAmount = receiptAddsVat(confirmationDocument) ? money(netAmount * 0.21) : 0;
-      confirmationTotalAmount = money(netAmount + vatAmount);
+      confirmationTotalAmount = netAmount;
       confirmationReceiptType = receiptTypeCode(confirmationDocument);
     }
 

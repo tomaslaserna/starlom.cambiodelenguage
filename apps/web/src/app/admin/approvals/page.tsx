@@ -64,6 +64,7 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
       <div className="grid gap-5">
         <PageHeader
           description="Gestion de solicitudes pendientes antes de aprobar cobros, compras, pagos o resoluciones internas."
+          moduleIntro
           title="Solicitudes y aprobaciones"
         />
 
@@ -148,7 +149,7 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
                               <input name="source" type="hidden" value={item.source} />
                               <Button
                                 aria-label={`Aprobar solicitud ${item.id}`}
-                                className="w-full text-xs"
+                                className="w-full"
                                 size="sm"
                                 type="submit"
                               >
@@ -173,7 +174,6 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
                               </span>
                               <Button
                                 aria-label={`Rechazar solicitud ${item.id}`}
-                                className="min-h-9 px-3 text-xs"
                                 size="sm"
                                 type="submit"
                                 variant="outline"

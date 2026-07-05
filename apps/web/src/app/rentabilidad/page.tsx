@@ -57,6 +57,7 @@ export default async function RentabilidadPage({ searchParams }: RentabilidadPag
         <PageHeader
           title="Rentabilidad"
           description={`Punto de equilibrio y costos del mes ${month}.`}
+          moduleIntro
           actions={
             <form action="/rentabilidad" className="flex items-end gap-2">
               <Field htmlFor="rent-month" label="Mes">

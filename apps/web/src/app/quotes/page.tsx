@@ -117,6 +117,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
       <div className="grid gap-5">
         <PageHeader
           description="Genera presupuestos formales para guardar o presupuestos rapidos para enviar por WhatsApp."
+          moduleIntro
           title="Presupuestos"
         />
 
@@ -179,8 +180,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                 <DataTableHead>Emision</DataTableHead>
                 <DataTableHead>Vencimiento</DataTableHead>
                 <DataTableHead>Estado</DataTableHead>
-                <DataTableHead align="right">Neto</DataTableHead>
-                <DataTableHead align="right">IVA</DataTableHead>
+                <DataTableHead align="right">Subtotal</DataTableHead>
                 <DataTableHead align="right">Total</DataTableHead>
                 <DataTableHead>Acciones</DataTableHead>
               </DataTableRow>
@@ -188,7 +188,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
             <DataTableBody>
               {quotes.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={9}>
+                  <DataTableCell colSpan={8}>
                     <EmptyState
                       description="Ajusta la busqueda o cambia el estado para encontrar presupuestos."
                       title="No hay presupuestos para los filtros actuales"
@@ -224,9 +224,6 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                     </DataTableCell>
                     <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
                       {formatCurrency(quote.subtotal)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
-                      {formatCurrency(quote.vatAmount)}
                     </DataTableCell>
                     <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
                       {formatCurrency(quote.total)}

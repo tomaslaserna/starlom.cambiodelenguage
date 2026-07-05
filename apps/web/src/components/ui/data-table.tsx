@@ -75,7 +75,7 @@ export function DataTableHead({
 }: ThHTMLAttributes<HTMLTableCellElement> & { align?: Align }) {
   return (
     <th
-      className={cn("px-4 py-3 font-black tracking-[0.04em]", alignClasses[align], className)}
+      className={cn("px-4 py-3 font-bold tracking-normal", alignClasses[align], className)}
       scope={scope}
       {...props}
     />
@@ -87,5 +87,5 @@ export function DataTableCell({
   className,
   ...props
 }: TdHTMLAttributes<HTMLTableCellElement> & { align?: Align }) {
-  return <td className={cn("px-4 py-3 align-middle font-semibold text-[#172033]", alignClasses[align], className)} {...props} />;
+  return <td className={cn("px-4 py-3 align-middle font-medium text-[#172033]", alignClasses[align], className)} {...props} />;
 }

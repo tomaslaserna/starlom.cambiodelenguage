@@ -21,6 +21,13 @@ type PriceListRow = {
 };
 
 const MARGIN_FIELDS = ["precio_0", "precio_1", "precio_2", "precio_3", "margen_minorista"] as const;
+const MARGIN_FIELD_LABELS: Record<(typeof MARGIN_FIELDS)[number], string> = {
+  precio_0: "L0 - agresivo",
+  precio_1: "L1 - suave",
+  precio_2: "L2 - ANCLA",
+  precio_3: "L3 - caro",
+  margen_minorista: "Minorista",
+};
 
 function normalizeMarginCode(code: string) {
   return code.trim().toUpperCase();
@@ -44,13 +51,11 @@ function assertRubricCode(code: string) {
 function marginNumber(body: RequestBody, key: string, fallback?: number) {
   if (body[key] === undefined || body[key] === null || body[key] === "") return fallback;
   const value = numberField(body, key);
-  if (value < 1 || value > 9.99) {
-    throw new ApiError(400, `${key} debe estar entre 1.00 y 9.99`);
-  }
+  if (value < 0.01 || value > 9.99) throw new ApiError(400, `${key} debe estar entre 0.01 y 9.99`);
   return value;
 }
 
-function mapMargin(row: MarginRow, multipliers: { listId: number; multiplier: number }[] = []) {
+function mapMargin(row: MarginRow, multipliers: { listId: number; listName: string; multiplier: number }[] = []) {
   return {
     code: row.codigo,
     name: row.nombre,
@@ -110,10 +115,14 @@ export function multiplierInputFromBody(body: RequestBody) {
   const listId = intField(body, "listId", intField(body, "lista_id", 0));
   if (listId <= 0) throw new ApiError(400, "lista_id invalido");
   const multiplier = numberField(body, "multiplier", numberField(body, "multiplicador", 0));
-  if (multiplier < 1 || multiplier > 9.99) {
-    throw new ApiError(400, "El multiplicador debe estar entre 1.00 y 9.99");
+  if (multiplier < 0.01 || multiplier > 9.99) {
+    throw new ApiError(400, "El multiplicador debe estar entre 0.01 y 9.99");
   }
   return { code, listId, multiplier };
+}
+
+export function marginFieldLabel(field: (typeof MARGIN_FIELDS)[number]) {
+  return MARGIN_FIELD_LABELS[field];
 }
 
 export function rubricInputFromBody(body: RequestBody) {
@@ -142,22 +151,24 @@ export async function listMargins(companyId: number) {
   const multiplierRows = await queryWithCompanyContext<{
     codigo: string;
     lista_id: number;
+    lista_nombre: string;
     multiplicador: string;
   }>(
     companyId,
     `
-      SELECT codigo, lista_id, multiplicador::text
-      FROM margenes_listas
-      WHERE empresa_id = $1
-      ORDER BY codigo ASC, lista_id ASC
+      SELECT ml.codigo, ml.lista_id, lp.nombre AS lista_nombre, ml.multiplicador::text
+      FROM margenes_listas ml
+      JOIN listas_precio lp ON lp.id = ml.lista_id AND lp.empresa_id = ml.empresa_id
+      WHERE ml.empresa_id = $1 AND lp.activa = 1
+      ORDER BY ml.codigo ASC, lp.orden ASC, lp.nombre ASC
     `,
     [companyId],
   );
 
-  const multiplierMap = new Map<string, { listId: number; multiplier: number }[]>();
+  const multiplierMap = new Map<string, { listId: number; listName: string; multiplier: number }[]>();
   for (const row of multiplierRows.rows) {
     const list = multiplierMap.get(row.codigo) ?? [];
-    list.push({ listId: row.lista_id, multiplier: Number(row.multiplicador) });
+    list.push({ listId: row.lista_id, listName: row.lista_nombre, multiplier: Number(row.multiplicador) });
     multiplierMap.set(row.codigo, list);
   }
 

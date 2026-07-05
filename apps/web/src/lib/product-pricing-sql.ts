@@ -9,7 +9,7 @@ export function priceSqlExpression(key: PriceListKey) {
     case "3":
       return "ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_3, 1), 2)";
     case "4":
-      return "ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_3, 1) * 1.10, 2)";
+      return "ROUND(COALESCE(p.cost, 0) * COALESCE(m.margen_minorista, 1), 2)";
     case "rev":
       return "ROUND(COALESCE(p.cost, 0) * COALESCE(m.margen_minorista, 1), 2)";
     case "1":
@@ -22,7 +22,7 @@ export function dynamicPriceSqlExpression(key: PriceListKey, selectedMarginAlias
   const legacyExpression = priceSqlExpression(key);
   return `
     COALESCE(
-      NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(${selectedMarginAlias}.multiplicador, 1), 2), 0),
+      NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(${selectedMarginAlias}.multiplicador, 0), 2), 0),
       NULLIF(${legacyExpression}, 0),
       p.sale_price,
       p.cost,

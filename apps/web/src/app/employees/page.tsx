@@ -124,6 +124,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
         <PageHeader
           title="Empleados"
           description="Gestiona el directorio interno, rangos, cargos y permisos disponibles del personal."
+          moduleIntro
         />
 
         {canCreateEmployees ? (

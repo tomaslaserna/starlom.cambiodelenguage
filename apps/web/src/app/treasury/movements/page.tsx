@@ -5,6 +5,7 @@ import { getMovementRegister } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { ADMIN_MOVEMENTS_READ_PERMISSION, ADMIN_TREASURY_READ_PERMISSION } from "@/lib/route-auth";
+import { Button } from "@/components/ui";
 
 type MovementsPageProps = {
   searchParams: Promise<{
@@ -46,9 +47,9 @@ export default async function MovementsPage({ searchParams }: MovementsPageProps
             <option value="cobro">Cobros</option>
             <option value="pago">Pagos proveedores</option>
           </select>
-          <button className="min-h-11 rounded-md bg-[color:var(--accent)] px-4 text-sm font-semibold text-white hover:bg-[color:var(--accent-strong)]">
+          <Button type="submit">
             Filtrar
-          </button>
+          </Button>
         </form>
 
         <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">

@@ -7,10 +7,29 @@ type PageHeaderProps = {
   eyebrow?: ReactNode;
   actions?: ReactNode;
   meta?: ReactNode;
+  moduleIntro?: boolean;
   className?: string;
 };
 
-export function PageHeader({ actions, className, description, eyebrow, meta, title }: PageHeaderProps) {
+export function PageHeader({
+  actions,
+  className,
+  description,
+  eyebrow,
+  meta,
+  moduleIntro = false,
+  title,
+}: PageHeaderProps) {
+  if (moduleIntro) {
+    if (!actions) return null;
+
+    return (
+      <div className={cn("flex flex-wrap items-center justify-end gap-2.5", className)}>
+        {actions}
+      </div>
+    );
+  }
+
   return (
     <header
       className={cn(
@@ -19,10 +38,10 @@ export function PageHeader({ actions, className, description, eyebrow, meta, tit
       )}
     >
       <div className="min-w-0">
-        {eyebrow ? <div className="erp-text-caption mb-1 font-black uppercase text-[#1d4ed8]">{eyebrow}</div> : null}
-        <h1 className="erp-text-page-title font-black tracking-normal text-[#0f172a]">{title}</h1>
-        {description ? <p className="erp-text-body-sm mt-1 max-w-3xl font-semibold text-[#64748b]">{description}</p> : null}
-        {meta ? <div className="erp-text-caption mt-3 font-semibold text-[#64748b]">{meta}</div> : null}
+        {eyebrow ? <div className="erp-text-caption mb-1 font-bold uppercase text-[#1d4ed8]">{eyebrow}</div> : null}
+        <h2 className="erp-text-title-lg font-extrabold tracking-normal text-[#0f172a]">{title}</h2>
+        {description ? <p className="erp-text-body-sm mt-1 max-w-3xl font-medium text-[#64748b]">{description}</p> : null}
+        {meta ? <div className="erp-text-caption mt-3 font-medium text-[#64748b]">{meta}</div> : null}
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2.5">{actions}</div> : null}
     </header>

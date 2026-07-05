@@ -117,8 +117,3 @@ export function receiptTypeCode(value: string) {
   const normalized = normalizeDesiredDocument(value);
   return ORDER_RECEIPT_OPTIONS.find((option) => option.value === normalized)?.receiptType ?? 0;
 }
-
-export function receiptAddsVat(value: string) {
-  const normalized = normalizeDesiredDocument(value);
-  return normalized.endsWith("_a") || normalized.endsWith("_b");
-}

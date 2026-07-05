@@ -56,6 +56,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
       <div className="grid gap-5">
         <PageHeader
           description="Directorio de proveedores para compras y abastecimiento con datos de contacto operativos."
+          moduleIntro
           title="Proveedores"
         />
 

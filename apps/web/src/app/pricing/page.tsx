@@ -27,7 +27,7 @@ import {
   updateMultiplierAction,
   upsertRubricAction,
 } from "@/app/pricing/actions";
-import { listMargins, listPriceLists, listRubrics } from "@/lib/pricing";
+import { listMargins, listPriceLists, listRubrics, marginFieldLabel } from "@/lib/pricing";
 import { requireStaffSession } from "@/lib/auth";
 import { sessionCanReadProducts } from "@/lib/route-auth";
 
@@ -53,12 +53,13 @@ export default async function PricingPage() {
         <PageHeader
           title="Precios y margenes"
           description="Gestion operativa de listas y categorias dentro de React."
+          moduleIntro
           actions={
             <div className="flex flex-wrap gap-2">
               <ButtonLink href="/pricing/offers" size="sm" variant="secondary">
                 Ofertas
               </ButtonLink>
-              <ButtonLink href="/api/pdfs/pricing/price-list?list=1" prefetch={false} size="sm" target="_blank">
+              <ButtonLink href="/api/pdfs/pricing/price-list?list=2" prefetch={false} size="sm" target="_blank">
                 Lista PDF
               </ButtonLink>
             </div>
@@ -85,8 +86,8 @@ export default async function PricingPage() {
                 <Field htmlFor="margin-name" label="Nombre">
                   <Input id="margin-name" name="name" placeholder="Categoria" />
                 </Field>
-                {["precio_0", "precio_1", "precio_2", "precio_3", "margen_minorista"].map((field) => (
-                  <Field htmlFor={`margin-${field}`} key={field} label={field}>
+                {(["precio_0", "precio_1", "precio_2", "precio_3", "margen_minorista"] as const).map((field) => (
+                  <Field htmlFor={`margin-${field}`} key={field} label={marginFieldLabel(field)}>
                     <Input id={`margin-${field}`} name={field} defaultValue="1" inputMode="decimal" />
                   </Field>
                 ))}
@@ -163,10 +164,10 @@ export default async function PricingPage() {
               <DataTableRow className="hover:bg-transparent">
                 <DataTableHead>Codigo</DataTableHead>
                 <DataTableHead>Nombre</DataTableHead>
-                <DataTableHead align="right">P0</DataTableHead>
-                <DataTableHead align="right">P1</DataTableHead>
-                <DataTableHead align="right">P2</DataTableHead>
-                <DataTableHead align="right">P3</DataTableHead>
+                <DataTableHead align="right">L0</DataTableHead>
+                <DataTableHead align="right">L1</DataTableHead>
+                <DataTableHead align="right">L2</DataTableHead>
+                <DataTableHead align="right">L3</DataTableHead>
                 <DataTableHead align="right">Minorista</DataTableHead>
                 <DataTableHead>Listas</DataTableHead>
               </DataTableRow>
@@ -200,7 +201,7 @@ export default async function PricingPage() {
                                 className="rounded-[var(--radius-sm)] border border-[color:var(--border)] px-2 py-1 font-mono text-xs"
                                 key={`${margin.code}-${item.listId}`}
                               >
-                                L{item.listId}: {item.multiplier.toFixed(2)}
+                                {item.listName}: {item.multiplier.toFixed(2)}
                               </span>
                             ))}
                       </div>

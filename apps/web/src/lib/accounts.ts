@@ -1,7 +1,9 @@
 import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext } from "@/lib/db";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { parsePagination } from "@/lib/pagination";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
+import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { localDateIso } from "@/lib/timezone";
 
 type ListInput = {
@@ -29,6 +31,28 @@ function normalizePaymentType(value: string) {
 
 function searchPattern(query: string) {
   return `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+}
+
+export function accountBalanceExpressionSql(alias: string) {
+  return `CASE WHEN ${alias}.entity_type = 'proveedor' THEN ${alias}.credit - ${alias}.debit ELSE ${alias}.debit - ${alias}.credit END`;
+}
+
+export function activeAccountMovementWhereSql(movementAlias: string, salesAlias: string) {
+  return `(
+    ${movementAlias}.entity_type <> 'cliente'
+    OR ${movementAlias}.sale_id IS NULL
+    OR (
+      ${normalizedOrderStatusSql(salesAlias)} = 'entregado'
+      AND ${canonicalSalesSourceSql(salesAlias)}
+    )
+  )`;
+}
+
+function accountMovementsFromSql() {
+  return `
+    FROM current_account_movements m
+    LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
+  `;
 }
 
 export function accountMovementFromBody(body: RequestBody) {
@@ -67,7 +91,7 @@ export function paymentRecordFromBody(body: RequestBody) {
 export async function listAccountMovements(input: ListInput) {
   const pagination = parsePagination(input);
   const params: unknown[] = [input.companyId];
-  const filters = ["empresa_id = $1"];
+  const filters = ["m.empresa_id = $1", activeAccountMovementWhereSql("m", "s")];
 
   const type = input.type?.trim() ?? "";
   const name = input.name?.trim() ?? "";
@@ -76,37 +100,40 @@ export async function listAccountMovements(input: ListInput) {
 
   if (type && ACCOUNT_TYPES.has(type)) {
     params.push(type);
-    filters.push(`entity_type = $${params.length}`);
+    filters.push(`m.entity_type = $${params.length}`);
   }
   if (name) {
     params.push(searchPattern(name));
-    filters.push(`entity_name ILIKE $${params.length} ESCAPE '\\'`);
+    filters.push(`m.entity_name ILIKE $${params.length} ESCAPE '\\'`);
   }
   if (from) {
     params.push(from);
-    filters.push(`movement_date >= $${params.length}`);
+    filters.push(`m.movement_date >= $${params.length}`);
   }
   if (to) {
     params.push(to);
-    filters.push(`movement_date <= $${params.length}`);
+    filters.push(`m.movement_date <= $${params.length}`);
   }
 
   const where = filters.join(" AND ");
+  const fromSql = accountMovementsFromSql();
   const countResult = await queryWithCompanyContext<{ total: string }>(
     input.companyId,
-    `SELECT COUNT(*)::text AS total FROM current_account_movements WHERE ${where}`,
+    `SELECT COUNT(*)::text AS total ${fromSql} WHERE ${where}`,
     params,
   );
 
   const summaryResult = await queryWithCompanyContext<{
     total_debit: string;
     total_credit: string;
+    total_balance: string;
   }>(
     input.companyId,
     `
-      SELECT COALESCE(SUM(debit), 0)::text AS total_debit,
-             COALESCE(SUM(credit), 0)::text AS total_credit
-      FROM current_account_movements
+      SELECT COALESCE(SUM(m.debit), 0)::text AS total_debit,
+             COALESCE(SUM(m.credit), 0)::text AS total_credit,
+             COALESCE(SUM(${accountBalanceExpressionSql("m")}), 0)::text AS total_balance
+      ${fromSql}
       WHERE ${where}
     `,
     params,
@@ -128,19 +155,19 @@ export async function listAccountMovements(input: ListInput) {
   }>(
     input.companyId,
     `
-      SELECT id::text AS id, entity_type, entity_name, description,
-             debit::text, credit::text, movement_date::text,
-             sale_id::text, purchase_id::text, payment_id::text, created_at::text
-      FROM current_account_movements
+      SELECT m.id::text AS id, m.entity_type, m.entity_name, m.description,
+             m.debit::text, m.credit::text, m.movement_date::text,
+             m.sale_id::text, m.purchase_id::text, m.payment_id::text, m.created_at::text
+      ${fromSql}
       WHERE ${where}
-      ORDER BY movement_date DESC NULLS LAST, created_at DESC
+      ORDER BY m.movement_date DESC NULLS LAST, m.created_at DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}
     `,
     params,
   );
 
   const total = Number(countResult.rows[0]?.total ?? 0);
-  const summary = summaryResult.rows[0] ?? { total_debit: "0", total_credit: "0" };
+  const summary = summaryResult.rows[0] ?? { total_debit: "0", total_credit: "0", total_balance: "0" };
 
   return {
     data: rows.rows.map((row) => ({
@@ -162,7 +189,7 @@ export async function listAccountMovements(input: ListInput) {
       totalPages: Math.max(1, Math.ceil(total / pagination.pageSize)),
       totalDebit: Number(summary.total_debit),
       totalCredit: Number(summary.total_credit),
-      balance: Number(summary.total_credit) - Number(summary.total_debit),
+      balance: Number(summary.total_balance),
     },
   };
 }

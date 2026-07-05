@@ -6,10 +6,10 @@ export type PriceListOption = {
 
 export type ProductPriceMap = Record<string, number>;
 
-export const DEFAULT_PRICE_LIST_NAME = "LISTA 1";
+export const DEFAULT_PRICE_LIST_NAME = "L2 - ANCLA";
 const FALLBACK_PRICE_LIST_NAME = "General";
 
-const PRICE_LIST_DEFAULT: PriceListKey = "1";
+const PRICE_LIST_DEFAULT: PriceListKey = "2";
 
 function priceListToken(value: string | null | undefined) {
   return String(value ?? "")
@@ -27,18 +27,28 @@ function optionNames(options: PriceListOption[] | string[]) {
 export function legacyPriceListAlias(value: string | null | undefined) {
   const compact = priceListToken(value);
   if (!compact) return "";
-  if (compact.includes("revendedor") || compact === "rev" || compact === "ver") return "MINORISTA";
-  if (compact.includes("minorista")) return "MINORISTA";
-  if (compact.includes("mayorista")) return "MAYORISTA";
-  if (compact.includes("excep") || compact.includes("especial")) return "LISTA EXCEP";
+  if (compact.includes("revendedor") || compact === "rev" || compact === "ver") return "Minorista";
+  if (compact.includes("minorista")) return "Minorista";
+  if (compact.includes("mayorista")) return "L1 - suave";
+  if (compact.includes("excep") || compact.includes("especial")) return "L0 - agresivo";
+  if (compact.startsWith("l0")) return "L0 - agresivo";
+  if (compact.startsWith("l1")) return "L1 - suave";
+  if (compact.startsWith("l2")) return "L2 - ANCLA";
+  if (compact.startsWith("l3")) return "L3 - caro";
   const explicit = compact.match(/(?:precio|lista)([0-4])/);
   if (explicit) {
-    if (explicit[1] === "4") return "MINORISTA";
-    return `LISTA ${explicit[1]}`;
+    if (explicit[1] === "0") return "L0 - agresivo";
+    if (explicit[1] === "1") return "L1 - suave";
+    if (explicit[1] === "2") return "L2 - ANCLA";
+    if (explicit[1] === "3") return "L3 - caro";
+    if (explicit[1] === "4") return "Minorista";
   }
   if (/^[0-4]$/.test(compact)) {
-    if (compact === "4") return "MINORISTA";
-    return `LISTA ${compact}`;
+    if (compact === "0") return "L0 - agresivo";
+    if (compact === "1") return "L1 - suave";
+    if (compact === "2") return "L2 - ANCLA";
+    if (compact === "3") return "L3 - caro";
+    if (compact === "4") return "Minorista";
   }
   return String(value ?? "").trim();
 }
@@ -70,10 +80,16 @@ export function normalizePriceListKey(value: string | null | undefined): PriceLi
   if (!compact) return PRICE_LIST_DEFAULT;
   if (compact.includes("revendedor") || compact === "rev" || compact === "ver") return "rev";
   if (compact.includes("minorista")) return "rev";
+  if (compact.includes("mayorista")) return "1";
+  if (compact.includes("excep") || compact.includes("especial")) return "0";
+  if (compact.startsWith("l0")) return "0";
+  if (compact.startsWith("l1")) return "1";
+  if (compact.startsWith("l2")) return "2";
+  if (compact.startsWith("l3")) return "3";
 
   const explicit = compact.match(/(?:precio|lista)([0-4])/);
-  if (explicit) return explicit[1] as PriceListKey;
-  if (/^[0-4]$/.test(compact)) return compact as PriceListKey;
+  if (explicit) return explicit[1] === "4" ? "rev" : (explicit[1] as PriceListKey);
+  if (/^[0-4]$/.test(compact)) return compact === "4" ? "rev" : (compact as PriceListKey);
 
   return PRICE_LIST_DEFAULT;
 }

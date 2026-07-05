@@ -86,7 +86,7 @@ export async function ModulePage({
             <div className="erp-text-caption truncate font-semibold text-white">{session.displayName}</div>
             <div className="erp-text-caption mt-0.5 truncate font-medium text-white/72">{session.role}</div>
           </div>
-          <ButtonLink className="border-white/18 bg-white/12 text-white shadow-[0_10px_22px_rgba(5,32,85,0.16)] hover:border-white/30 hover:bg-white/18" href="/" size="sm" variant="secondary">
+          <ButtonLink className="border-[#60a5fa]/45 bg-[#0b4fc7] text-white shadow-[0_10px_22px_rgba(5,32,85,0.16)] hover:border-[#93c5fd]/60 hover:bg-[#073f94]" href="/" size="sm" variant="secondary">
             Inicio
           </ButtonLink>
         </div>
@@ -96,14 +96,14 @@ export async function ModulePage({
         <header className="sticky top-0 z-30 border-b border-[#d9e2ef] bg-white/95 shadow-[0_8px_24px_rgba(15,23,42,0.045)] backdrop-blur">
           <div className="hidden min-h-[4.25rem] items-center justify-between gap-4 px-7 lg:flex">
             <div className="min-w-0">
-              <h1 className="erp-text-title-md truncate font-black tracking-normal text-[#0f172a]">{title}</h1>
-              <p className="erp-text-body-sm mt-0.5 truncate font-semibold text-[#64748b]">{description}</p>
+              <h1 className="erp-text-title-md truncate font-extrabold tracking-normal text-[#0f172a]">{title}</h1>
+              <p className="erp-text-body-sm mt-0.5 truncate font-medium text-[#64748b]">{description}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <PresenceIndicator />
               <div className="erp-text-caption max-w-[360px] truncate rounded-[9px] border border-[#d9e2ef] bg-[#f8fafc] px-3 py-2 shadow-[var(--shadow-xs)]">
-                <span className="font-black">{session.displayName}</span>
-                <span className="font-semibold text-[#64748b]"> - {session.role} - {session.companyName}</span>
+                <span className="font-bold">{session.displayName}</span>
+                <span className="font-medium text-[#64748b]"> - {session.role} - {session.companyName}</span>
               </div>
               <LogoutButton />
             </div>
@@ -121,7 +121,7 @@ export async function ModulePage({
                 <div className="fixed inset-x-0 top-16 z-40 max-h-[72vh] overflow-y-auto overscroll-contain border-b border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_55%,#073f94_100%)] p-4 text-white shadow-[var(--shadow-md)]">
                   <ShellNavigation active={active} indicators={indicators} sections={sections} />
                   <div className="mt-5 grid gap-2 border-t border-white/14 pt-4">
-                    <ButtonLink className="border-white/18 bg-white/12 text-white shadow-[0_10px_22px_rgba(5,32,85,0.16)] hover:bg-white/18" href="/" size="sm" variant="secondary">
+                    <ButtonLink className="border-[#60a5fa]/45 bg-[#0b4fc7] text-white shadow-[0_10px_22px_rgba(5,32,85,0.16)] hover:border-[#93c5fd]/60 hover:bg-[#073f94]" href="/" size="sm" variant="secondary">
                       Inicio
                     </ButtonLink>
                     <LogoutButton className="w-full" />

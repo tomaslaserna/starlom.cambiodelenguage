@@ -113,7 +113,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                     type="password"
                   />
                 </Field>
-                <Button className="mt-1 min-h-12 w-full rounded-[10px] bg-[#006dfe] hover:bg-[#005eea]" size="lg" type="submit">
+                <Button className="mt-1 w-full rounded-[10px] bg-[#006dfe] hover:bg-[#005eea]" size="lg" type="submit">
                   Entrar al panel
                 </Button>
               </form>

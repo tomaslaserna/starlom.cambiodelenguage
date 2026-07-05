@@ -43,6 +43,7 @@ import {
   updatePurchaseStatusAction,
   uploadPurchaseReceiptAction,
 } from "@/app/purchases/actions";
+import { PurchaseEntryFields } from "@/app/purchases/purchase-entry-fields";
 
 type PurchasesPageProps = {
   searchParams: Promise<{
@@ -180,6 +181,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
       <div className="grid gap-5">
         <PageHeader
           description={view.description}
+          moduleIntro
           title={view.title}
         />
 
@@ -201,26 +203,12 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                   <Input defaultValue={localDateIso()} id="purchase-date" name="date" type="date" />
                 </Field>
               </div>
-              <div className="grid gap-3 xl:grid-cols-[minmax(260px,1fr)_minmax(120px,150px)_minmax(140px,180px)]">
-                <Field htmlFor="purchase-product" label="Producto opcional">
-                  <Select id="purchase-product" name="productId">
-                    <option value="">Sin producto asociado</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name} {product.code ? `- ${product.code}` : ""}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field htmlFor="purchase-quantity" label="Cantidad">
-                  <Input id="purchase-quantity" min="1" name="quantity" step="1" type="number" />
-                </Field>
-                <Field htmlFor="purchase-total" label="Total">
+              <PurchaseEntryFields products={products} />
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_minmax(260px,1fr)_auto] lg:items-end">
+                <Field className="min-w-0" htmlFor="purchase-total" label="Total">
                   <Input id="purchase-total" min="0" name="total" required step="0.01" type="number" />
                 </Field>
-              </div>
-              <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_auto] lg:items-end">
-                <Field htmlFor="purchase-description" label="Descripcion">
+                <Field className="min-w-0" htmlFor="purchase-description" label="Descripcion">
                   <Input id="purchase-description" name="description" placeholder="Detalle o referencia interna" />
                 </Field>
                 <Button type="submit">Crear compra</Button>
@@ -392,7 +380,6 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                                   </Select>
                                   <Button
                                     aria-label={`Guardar estado de compra ${purchase.id}`}
-                                    className="min-h-9 px-3 text-xs"
                                     size="sm"
                                     type="submit"
                                   >
@@ -415,7 +402,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                               </Field>
                               <Button
                                 aria-label={`Subir recibo de compra ${purchase.id}`}
-                                className="w-full text-xs"
+                                className="w-full"
                                 size="sm"
                                 type="submit"
                                 variant="secondary"
@@ -433,7 +420,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                                 <input name="action" type="hidden" value="marcar_revisado" />
                                 <Button
                                   aria-label={`Marcar revisado el paquete de la compra ${purchase.id}`}
-                                  className="w-full text-xs"
+                                  className="w-full"
                                   size="sm"
                                   type="submit"
                                   variant="secondary"
@@ -481,7 +468,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                                   ))}
                                   <Button
                                     aria-label={`Reportar falla en la compra ${purchase.id}`}
-                                    className="w-full text-xs"
+                                    className="w-full"
                                     size="sm"
                                     type="submit"
                                     variant="secondary"

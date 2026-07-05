@@ -3,13 +3,9 @@
 import { useMemo, useRef, useState } from "react";
 import { Button, Card, CardContent, Field, Input, Select } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, money, priceForList, resolvePriceListName } from "@/lib/order-pricing";
+import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, priceForList, resolvePriceListName } from "@/lib/order-pricing";
 import { localDateIso } from "@/lib/timezone";
-import {
-  ORDER_CREATION_RECEIPT_OPTIONS,
-  normalizeOrderCreationDocument,
-  receiptAddsVat,
-} from "@/lib/receipt-types";
+import { ORDER_CREATION_RECEIPT_OPTIONS, normalizeOrderCreationDocument } from "@/lib/receipt-types";
 import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
 import { OrderConfirmationPreview } from "@/app/orders/new/order-confirmation-preview";
 
@@ -80,7 +76,6 @@ export function OrderEntryFields({
     : "remito";
   const desiredDocument = documentOverride || suggestedDocument;
   const activePriceList = resolvePriceListName(priceListOverride || selectedClient?.priceList, priceListOptions);
-  const addVat = receiptAddsVat(desiredDocument);
 
   const calculatedLines = lines
     .map((line) => {
@@ -100,9 +95,7 @@ export function OrderEntryFields({
     })
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
 
-  const netAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0);
-  const vatAmount = addVat ? money(netAmount * 0.21) : 0;
-  const totalAmount = netAmount + vatAmount;
+  const totalAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0);
   const draftProduct = productMap.get(draftLine.productId) ?? null;
   const draftQuantity = Math.max(0, numericInput(draftLine.quantity, 0));
   const draftDiscount = Math.min(100, Math.max(0, numericInput(draftLine.discount, 0)));
@@ -370,12 +363,8 @@ export function OrderEntryFields({
         <div className="rounded-lg border border-[color:var(--border)] bg-white p-4">
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
-              <span className="erp-text-body-sm text-[color:var(--muted)]">Neto</span>
-              <span className="font-mono font-bold">{formatCurrency(netAmount)}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="erp-text-body-sm text-[color:var(--muted)]">IVA</span>
-              <span className="font-mono font-bold">{formatCurrency(vatAmount)}</span>
+              <span className="erp-text-body-sm text-[color:var(--muted)]">Subtotal productos</span>
+              <span className="font-mono font-bold">{formatCurrency(totalAmount)}</span>
             </div>
             <div className="border-t border-[color:var(--border)] pt-3">
               <div className="flex items-center justify-between">

@@ -4,10 +4,6 @@ import {
   Button,
   ButtonLink,
   Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   DataTable,
   DataTableBody,
   DataTableCell,
@@ -19,15 +15,14 @@ import {
   Input,
   PageHeader,
   Select,
-  StatCard,
   StatusBadge,
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
-import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
-import { fiscalStatusLabel, getFiscalStatus } from "@/lib/fiscal";
+import { formatCurrency, formatDate } from "@/lib/format";
+import { fiscalStatusLabel } from "@/lib/fiscal";
 import { orderStatusLabel } from "@/lib/order-status";
-import { getSalesSummary, listSalesLedger } from "@/lib/sales-admin";
+import { listSalesLedger } from "@/lib/sales-admin";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { SALES_READ_PERMISSION } from "@/lib/route-auth";
@@ -69,11 +64,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   const params = await searchParams;
   const search = paramsToUrlSearchParams(params);
   search.set("estado_fiscal", "aprobado");
-  const [ledger, summary] = await Promise.all([
-    listSalesLedger(session.companyId, search),
-    getSalesSummary(session.companyId, "todos"),
-  ]);
-  const fiscal = getFiscalStatus();
+  const ledger = await listSalesLedger(session.companyId, search);
 
   return (
     <ModulePage
@@ -86,6 +77,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
         <PageHeader
           title="Registro de facturas"
           description="Solo ventas con factura aprobada fiscalmente. Las pendientes se aprueban desde Solicitudes y aprobaciones."
+          moduleIntro
           actions={
             <ButtonLink href="/admin/approvals" size="sm">
               Solicitudes y aprobaciones
@@ -140,29 +132,6 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
             </div>
           </form>
         </Toolbar>
-
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Comprobantes" value={formatNumber(summary.totalInvoices)} />
-          <StatCard label="Monto total" value={formatCurrency(summary.totalAmount)} />
-          <StatCard label="Facturado" value={formatCurrency(summary.invoiced)} tone="success" />
-          <StatCard label="Sin factura" value={formatCurrency(summary.notInvoiced)} tone="warning" />
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Estado fiscal</CardTitle>
-            <CardDescription>{fiscal.message}</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3">
-            <StatCard label="Proveedor" value={fiscal.provider.toUpperCase()} />
-            <StatCard label="Modo" value={fiscal.mode} />
-            <StatCard
-              label="Estado"
-              value={fiscal.ready ? "Listo" : fiscal.enabled ? "Pendiente" : "Deshabilitado"}
-              tone={fiscal.ready ? "success" : "warning"}
-            />
-          </CardContent>
-        </Card>
 
         <Card className="overflow-hidden">
           <DataTable

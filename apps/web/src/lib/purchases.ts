@@ -42,10 +42,24 @@ export function purchaseIdFromParam(value: string, label = "Compra") {
 }
 
 function bodyItems(body: RequestBody): PurchaseItem[] {
-  const raw = body.items ?? body.productos ?? body.products;
-  if (!Array.isArray(raw)) return [];
+  const raw = body.items ?? body.productos ?? body.products ?? body.productsJson ?? body.productos_json;
+  let rawItems: unknown[];
+  if (Array.isArray(raw)) {
+    rawItems = raw;
+  } else if (typeof raw === "string" && raw.trim()) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      throw new ApiError(400, "Detalle de compra invalido");
+    }
+    if (!Array.isArray(parsed)) throw new ApiError(400, "Detalle de compra invalido");
+    rawItems = parsed;
+  } else {
+    rawItems = [];
+  }
 
-  return raw
+  return rawItems
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
     .map((item) => ({
       productId: String(item.productId ?? item.id_producto ?? item.id ?? "").trim(),

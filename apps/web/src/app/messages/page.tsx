@@ -3,6 +3,7 @@ import { formatDate } from "@/lib/format";
 import { listMessageCenter } from "@/lib/messages";
 import { requireStaffSession } from "@/lib/auth";
 import { markInboxReadAction, saveDraftAction, sendMessageAction } from "@/app/messages/actions";
+import { Button } from "@/components/ui";
 
 type MessagesPageProps = {
   searchParams: Promise<{
@@ -29,9 +30,9 @@ export default async function MessagesPage({ searchParams }: MessagesPageProps) 
 
           {box === "inbox" ? (
             <form action={markInboxReadAction}>
-              <button className="min-h-10 rounded-md border border-[color:var(--border)] px-3 text-sm font-semibold hover:bg-[color:var(--panel-subtle)]">
+              <Button size="sm" type="submit">
                 Marcar recibidos como leidos
-              </button>
+              </Button>
             </form>
           ) : null}
 
@@ -102,15 +103,15 @@ export default async function MessagesPage({ searchParams }: MessagesPageProps) 
               <textarea className="min-h-36 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2" name="body" required />
             </label>
             <div className="flex flex-wrap gap-2">
-              <button className="min-h-11 rounded-md bg-[color:var(--accent)] px-4 text-sm font-semibold text-white hover:bg-[color:var(--accent-strong)]">
+              <Button type="submit">
                 Enviar
-              </button>
-              <button
-                className="min-h-11 rounded-md border border-[color:var(--border)] px-4 text-sm font-semibold hover:bg-[color:var(--panel-subtle)]"
+              </Button>
+              <Button
                 formAction={saveDraftAction}
+                type="submit"
               >
                 Guardar borrador
-              </button>
+              </Button>
             </div>
           </form>
         </section>

@@ -51,9 +51,9 @@ export function StatCard({ className, detail, footer, label, tone = "neutral", v
       )}
     >
       <span className={cn("absolute inset-x-0 top-0 h-1", toneClass.marker)} />
-      <div className="erp-text-caption font-black uppercase text-[#64748b]">{label}</div>
-      <div className="mt-2 text-[1.625rem] font-black leading-8 tracking-normal text-[#0f172a]">{value}</div>
-      {detail ? <div className="erp-text-caption mt-2 min-h-4 font-semibold text-[#64748b]">{detail}</div> : null}
+      <div className="erp-text-caption font-bold uppercase text-[#64748b]">{label}</div>
+      <div className="erp-text-page-title mt-2 font-extrabold tracking-normal text-[#0f172a]">{value}</div>
+      {detail ? <div className="erp-text-caption mt-2 min-h-4 font-medium text-[#64748b]">{detail}</div> : null}
       {footer ? <div className="erp-text-caption mt-3 border-t border-[color:var(--border)] pt-3">{footer}</div> : null}
     </section>
   );

@@ -239,15 +239,30 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(navigation, /href: "\/purchases",\s*label: "Registro de compras"/);
   assert.doesNotMatch(navigation, /label: "Urgentes"|label: "Anticipadas"|label: "Solicitudes de compra"/);
   assert.match(navigation, /label: "Ventas"[\s\S]*label: "Registro de ventas"/);
+  assert.doesNotMatch(navigation, /label: "RR\.HH"[\s\S]*label: "Registro de movimientos"/);
   assert.doesNotMatch(navigation, /href: "\/database", label: "Resumen"/);
   assert.doesNotMatch(navigation, /href: "\/employees", label: "Empleados", active: "database"/);
   assert.doesNotMatch(navigation, /ordersReceived|ordersInProcess|ordersPendingDelivery/);
 
   const purchasesPage = read("apps/web/src/app/purchases/page.tsx");
-  assert.match(purchasesPage, /label="Cantidad"/);
+  assert.match(purchasesPage, /PurchaseEntryFields products=\{products\}/);
   assert.match(purchasesPage, /purchaseViews[\s\S]*registro/);
   assert.match(purchasesPage, /redirect\("\/admin\/approvals"\)/);
-  assert.doesNotMatch(purchasesPage, /label="Tipo"|label="Estado inicial"|Cantidad opcional|title: "Solicitudes de compra"|purchase\.description \|\| purchase\.type/);
+  assert.doesNotMatch(purchasesPage, /label="Tipo"|label="Estado inicial"|Cantidad opcional|title: "Solicitudes de compra"|purchase\.description \|\| purchase\.type|xl:grid-cols-\[minmax\(260px,1fr\)_minmax\(120px,150px\)_minmax\(140px,180px\)\]/);
+
+  const purchaseEntryFields = read("apps/web/src/app/purchases/purchase-entry-fields.tsx");
+  assert.match(purchaseEntryFields, /name="productsJson"/);
+  assert.match(purchaseEntryFields, /Agregar producto/);
+  assert.match(purchaseEntryFields, /label="Cantidad"/);
+  assert.match(purchaseEntryFields, /Quitar/);
+
+  const purchaseActions = read("apps/web/src/app/purchases/actions.ts");
+  assert.match(purchaseActions, /productsJson: formData\.get\("productsJson"\)/);
+  assert.doesNotMatch(purchaseActions, /formData\.get\("productId"\)|formData\.get\("quantity"\)/);
+
+  const purchases = read("apps/web/src/lib/purchases.ts");
+  assert.match(purchases, /body\.productsJson/);
+  assert.match(purchases, /Detalle de compra invalido/);
 
   const approvals = read("apps/web/src/lib/approvals.ts");
   assert.match(approvals, /ApprovalSource = "collection" \| "request" \| "purchase" \| "fiscal"/);
@@ -305,6 +320,22 @@ test("collection approval enforces outstanding balance and refreshes related scr
     assert.match(source, /revalidatePath\("\/treasury\/current-accounts"\)/);
     assert.match(source, /revalidatePath\("\/metrics"\)/);
   }
+});
+
+test("current accounts use only active account movements and a business-correct balance sign", () => {
+  const accounts = read("apps/web/src/lib/accounts.ts");
+  assert.match(accounts, /activeAccountMovementWhereSql/);
+  assert.match(accounts, /normalizedOrderStatusSql\(salesAlias\)/);
+  assert.match(accounts, /= 'entregado'/);
+  assert.match(accounts, /canonicalSalesSourceSql\(salesAlias\)/);
+  assert.match(accounts, /accountBalanceExpressionSql/);
+  assert.match(accounts, /proveedor' THEN \$\{alias\}\.credit - \$\{alias\}\.debit ELSE \$\{alias\}\.debit - \$\{alias\}\.credit/);
+  assert.match(accounts, /balance: Number\(summary\.total_balance\)/);
+
+  const accountPdf = read("apps/web/src/lib/pdf/documents.ts");
+  assert.match(accountPdf, /accountBalanceExpressionSql/);
+  assert.match(accountPdf, /activeAccountMovementWhereSql/);
+  assert.match(accountPdf, /type === "proveedor" \? credit - debit : debit - credit/);
 });
 
 test("order creation exposes the full legacy receipt type set", () => {
@@ -389,6 +420,76 @@ test("order creation exposes the full legacy receipt type set", () => {
   assert.match(salesAdmin, /sid\.class_name = 'ND'/);
 });
 
+test("informal commercial documents keep final unit prices and do not split VAT", () => {
+  const orderEntryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
+  assert.doesNotMatch(orderEntryFields, /receiptAddsVat|name="includeVat"|>\s*IVA\s*<|>\s*Neto\s*</);
+  assert.match(orderEntryFields, /Subtotal productos/);
+
+  const quoteEntryFields = read("apps/web/src/app/quotes/quote-entry-fields.tsx");
+  assert.doesNotMatch(quoteEntryFields, /receiptAddsVat|name="includeVat"|IVA:|Neto:|>\s*IVA\s*</);
+  assert.match(quoteEntryFields, /Precios unitarios finales/);
+  assert.match(quoteEntryFields, /Subtotal productos/);
+
+  const quotesPage = read("apps/web/src/app/quotes/page.tsx");
+  assert.doesNotMatch(quotesPage, /DataTableHead align="right">IVA|quote\.vatAmount/);
+  assert.match(quotesPage, /DataTableHead align="right">Subtotal/);
+
+  const orders = read("apps/web/src/lib/orders.ts");
+  assert.doesNotMatch(orders, /receiptAddsVat|money\(netAmount \* 0\.21\)|money\(subtotal \* 0\.21\)/);
+  assert.match(orders, /0::text AS monto_iva/);
+  assert.match(orders, /confirmationTotalAmount = netAmount/);
+
+  const quotes = read("apps/web/src/lib/quotes.ts");
+  assert.doesNotMatch(quotes, /receiptAddsVat|optionalBooleanField|body\.includeVat|money\(subtotal \* 0\.21\)/);
+  assert.match(quotes, /const total = subtotal/);
+
+  const receiptTypes = read("apps/web/src/lib/receipt-types.ts");
+  assert.doesNotMatch(receiptTypes, /receiptAddsVat/);
+
+  const pdfDocuments = read("apps/web/src/lib/pdf/documents.ts");
+  assert.doesNotMatch(pdfDocuments, /Subtotal neto|Base imponible|quote\.includeVat|quote\.vatAmount/);
+  assert.match(pdfDocuments, /Documento no fiscal\. Precios unitarios finales/);
+  assert.match(pdfDocuments, /\["IVA 21%"/);
+});
+
+test("pricing lists use the L0-L3 normalized names and L2 as default anchor", () => {
+  const orderPricing = read("apps/web/src/lib/order-pricing.ts");
+  assert.match(orderPricing, /DEFAULT_PRICE_LIST_NAME = "L2 - ANCLA"/);
+  assert.match(orderPricing, /PRICE_LIST_DEFAULT: PriceListKey = "2"/);
+  assert.match(orderPricing, /compact\.startsWith\("l0"\)[\s\S]*"L0 - agresivo"/);
+  assert.match(orderPricing, /compact\.startsWith\("l1"\)[\s\S]*"L1 - suave"/);
+  assert.match(orderPricing, /compact\.startsWith\("l2"\)[\s\S]*"L2 - ANCLA"/);
+  assert.match(orderPricing, /compact\.startsWith\("l3"\)[\s\S]*"L3 - caro"/);
+  assert.match(orderPricing, /compact\.includes\("mayorista"\)[\s\S]*"L1 - suave"/);
+  assert.match(orderPricing, /explicit\[1\] === "4" \? "rev"/);
+
+  const pricing = read("apps/web/src/lib/pricing.ts");
+  assert.match(pricing, /precio_0: "L0 - agresivo"/);
+  assert.match(pricing, /precio_1: "L1 - suave"/);
+  assert.match(pricing, /precio_2: "L2 - ANCLA"/);
+  assert.match(pricing, /precio_3: "L3 - caro"/);
+  assert.match(pricing, /margen_minorista: "Minorista"/);
+  assert.match(pricing, /value < 0\.01 \|\| value > 9\.99/);
+
+  const pricingPage = read("apps/web/src/app/pricing/page.tsx");
+  assert.match(pricingPage, /price-list\?list=2/);
+
+  const productPricingSql = read("apps/web/src/lib/product-pricing-sql.ts");
+  assert.doesNotMatch(productPricingSql, /NULLIF\(\$\{selectedMarginAlias\}\.multiplicador, 1\)/);
+  assert.match(productPricingSql, /COALESCE\(\$\{selectedMarginAlias\}\.multiplicador, 0\)/);
+  assert.doesNotMatch(productPricingSql, /precio_3, 1\) \* 1\.10/);
+  assert.match(productPricingSql, /case "4":[\s\S]*m\.margen_minorista/);
+
+  const quotes = read("apps/web/src/lib/quotes.ts");
+  assert.match(quotes, /value === 2\) return "L2 - ANCLA"/);
+  assert.match(quotes, /value === 5\) return "Minorista"/);
+
+  const pdfDocuments = read("apps/web/src/lib/pdf/documents.ts");
+  assert.match(pdfDocuments, /label: "L0 - agresivo"/);
+  assert.match(pdfDocuments, /label: "L2 - ANCLA"/);
+  assert.doesNotMatch(pdfDocuments, /Lista 4 \(\+10%\)/);
+});
+
 test("admin sales edits cannot bypass the order lifecycle", () => {
   const salesAdmin = read("apps/web/src/lib/sales-admin.ts");
   assert.match(salesAdmin, /function assertSaleOrderTransition/);
@@ -440,6 +541,17 @@ test("Escritorio is listed first in the Inicio menu and links to the home page",
   );
 });
 
+test("Caja has its own route and does not open Tesoreria", () => {
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.match(navigation, /href: "\/cash",\s*label: "Caja",\s*active: "cash"/);
+  assert.doesNotMatch(navigation, /href: "\/treasury",\s*label: "Caja"/);
+
+  const cashPage = read("apps/web/src/app/cash/page.tsx");
+  assert.match(cashPage, /title="Caja"/);
+  assert.match(cashPage, /active="cash"/);
+  assert.match(cashPage, /getTreasuryBalances/);
+});
+
 test("Escritorio previews up to 5 unread messages alongside pending tasks", () => {
   const home = read("apps/web/src/app/page.tsx");
   assert.match(home, /listMessageCenter/);
@@ -448,6 +560,52 @@ test("Escritorio previews up to 5 unread messages alongside pending tasks", () =
   assert.match(home, /\.slice\(0, 5\)/);
   assert.match(home, /Mensajes sin leer/);
   assert.match(home, /href="\/messages"/);
+});
+
+test("shared button variants stay blue for a consistent action system", () => {
+  const button = read("apps/web/src/components/ui/button.tsx");
+  assert.match(button, /const primaryButtonClass =[\s\S]*bg-\[color:var\(--accent\)\]/);
+  assert.match(button, /const secondaryButtonClass =[\s\S]*bg-\[#1d4ed8\]/);
+  assert.match(button, /const outlineButtonClass =[\s\S]*bg-\[#dbeafe\]/);
+  assert.match(button, /const ghostButtonClass =[\s\S]*bg-\[#eff6ff\]/);
+  assert.match(button, /const dangerButtonClass =[\s\S]*bg-\[#073f94\]/);
+  assert.match(button, /const buttonSizeClass = "erp-text-body-sm min-h-\[var\(--control-height-md\)\] px-4"/);
+  assert.match(button, /primary: primaryButtonClass/);
+  assert.match(button, /secondary: secondaryButtonClass/);
+  assert.match(button, /ghost: ghostButtonClass/);
+  assert.match(button, /outline: outlineButtonClass/);
+  assert.match(button, /danger: dangerButtonClass/);
+  assert.match(button, /sm: buttonSizeClass/);
+  assert.match(button, /md: buttonSizeClass/);
+  assert.match(button, /lg: buttonSizeClass/);
+  assert.doesNotMatch(button, /bg-\[color:var\(--panel\)\]|bg-transparent|bg-\[color:var\(--danger\)\]/);
+  assert.doesNotMatch(button, /control-height-sm|control-height-lg|erp-text-caption|erp-text-body"/);
+
+  const sourcePaths = filesUnder("apps/web/src", (path) => path.endsWith(".tsx"));
+  const whiteButtonHits = [];
+  const whiteButtonPattern = /bg-white|bg-\[color:var\(--panel\)\]|bg-transparent|border border-\[color:var\(--border\)\]/;
+  const sizeOverrideHits = [];
+  const componentButtonPattern = /<Button(?:Link)?[\s\S]*?>/g;
+  const forbiddenSizeOverridePattern = /className=(?:"[^"]*(?:min-h-|px-[235]|text-xs|text-sm|text-\[)|\{`[^`]*(?:min-h-|px-[235]|text-xs|text-sm|text-\[))/;
+
+  for (const path of sourcePaths) {
+    const source = read(path);
+    const lines = source.split(/\r?\n/);
+    lines.forEach((line, index) => {
+      if (!/<button|<Button|<ButtonLink/.test(line)) return;
+      if (whiteButtonPattern.test(line)) whiteButtonHits.push(`${path}:${index + 1}`);
+    });
+    let match;
+    while ((match = componentButtonPattern.exec(source))) {
+      const tag = match[0].replace(/\s+/g, " ");
+      if (forbiddenSizeOverridePattern.test(tag)) {
+        const line = source.slice(0, match.index).split(/\r?\n/).length;
+        sizeOverrideHits.push(`${path}:${line}`);
+      }
+    }
+  }
+  assert.deepEqual(whiteButtonHits, [], "white, panel, or transparent button styling found");
+  assert.deepEqual(sizeOverrideHits, [], "button size override found");
 });
 
 test("billing uses real ARCA authorization state for invoices and fiscal notes", () => {
@@ -490,6 +648,10 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
 
   const billingPage = read("apps/web/src/app/billing/page.tsx");
   assert.match(billingPage, /Registro de facturas/);
+  assert.doesNotMatch(billingPage, /getSalesSummary/);
+  assert.doesNotMatch(billingPage, /getFiscalStatus/);
+  assert.doesNotMatch(billingPage, /label="Comprobantes"|label="Monto total"|label="Facturado"|label="Sin factura"/);
+  assert.doesNotMatch(billingPage, /Estado fiscal|Proveedor|Modo|Listo|ARCA configurado/);
   assert.match(billingPage, /\/billing\/credit-note\/\$\{item\.saleId\}/);
   assert.match(billingPage, /\/billing\/debit-note\/\$\{item\.saleId\}/);
   assert.match(billingPage, /\/api\/pdfs\/fiscal\/sales\/\$\{item\.saleId\}/);

@@ -84,6 +84,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
       <div className="grid gap-5">
         <PageHeader
           description="Carga, confirmacion para stock, entrega y apertura de cobro."
+          moduleIntro
           title="Gestion de pedidos"
         />
 

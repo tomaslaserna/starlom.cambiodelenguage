@@ -2,12 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { priceSqlExpression } from "../src/lib/product-pricing-sql.ts";
 
-test("priceSqlExpression: lista 4 es precio_3 + 10%, no un duplicado de precio_3", () => {
+test("priceSqlExpression: lista 4 heredada usa Minorista", () => {
   const expr3 = priceSqlExpression("3");
   const expr4 = priceSqlExpression("4");
   assert.match(expr3, /m\.precio_3/);
-  assert.match(expr4, /m\.precio_3/);
-  assert.match(expr4, /\* 1\.10/);
+  assert.match(expr4, /m\.margen_minorista/);
   assert.notEqual(expr4, expr3);
 });
 
