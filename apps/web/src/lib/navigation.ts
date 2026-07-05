@@ -120,11 +120,10 @@ export const navigationGroups: NavigationGroup[] = [
     ],
   },
   {
-    label: "Ventas",
+    href: "/sales",
+    label: "Registro de ventas",
     active: "sales",
-    items: [
-      { href: "/sales", label: "Registro de ventas", active: "sales", permission: SALES_READ_PERMISSION },
-    ],
+    permission: SALES_READ_PERMISSION,
   },
   {
     href: "/quotes",
@@ -248,7 +247,7 @@ export const navigationSections: NavigationSection[] = [
     label: "Comercial",
     groups: [
       groupByLabel("Pedidos"),
-      groupByLabel("Ventas"),
+      groupByLabel("Registro de ventas"),
       groupByLabel("Presupuestos"),
       groupByLabel("Facturacion"),
     ],
