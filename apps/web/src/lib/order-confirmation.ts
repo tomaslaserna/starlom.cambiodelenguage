@@ -3,12 +3,24 @@ export type ConfirmationLine = {
   name: string;
 };
 
+export type IvaRate = 0 | 21 | 10.5;
+
+export type ConfirmationPricedLine = {
+  quantity: number;
+  name: string;
+  unitPrice: number;
+  subtotal: number;
+};
+
 export type ConfirmationInput = {
   businessName: string;
   lines: ConfirmationLine[];
   deliveryLocation: string;
   deliveryDate: string; // YYYY-MM-DD
   offerText?: string;
+  showPrices?: boolean;
+  pricedLines?: ConfirmationPricedLine[];
+  ivaRate?: IvaRate;
 };
 
 const DAYS_ES = [
@@ -24,6 +36,15 @@ const DAYS_ES = [
 export function formatConfirmationQuantity(value: number): string {
   if (!Number.isFinite(value)) return "0";
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
+}
+
+export function ivaAmount(net: number, rate: IvaRate): number {
+  return Math.round((net * (rate / 100) + Number.EPSILON) * 100) / 100;
+}
+
+export function formatConfirmationMoney(value: number): string {
+  const safe = Number.isFinite(value) ? value : 0;
+  return `$${safe.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function formatDeliveryDate(iso: string): string {
@@ -44,9 +65,19 @@ export function normalizePhoneForWhatsapp(phone: string): string | null {
 }
 
 export function buildWhatsappConfirmation(input: ConfirmationInput): string {
-  const items = input.lines
-    .map((line) => `• ${formatConfirmationQuantity(line.quantity)} x ${line.name}`)
-    .join("\n");
+  const priced = input.pricedLines ?? [];
+  const showPrices = Boolean(input.showPrices && priced.length > 0);
+
+  const items = showPrices
+    ? priced
+        .map(
+          (line) =>
+            `• ${formatConfirmationQuantity(line.quantity)} x ${line.name} — ${formatConfirmationMoney(line.unitPrice)} (subtotal ${formatConfirmationMoney(line.subtotal)})`,
+        )
+        .join("\n")
+    : input.lines
+        .map((line) => `• ${formatConfirmationQuantity(line.quantity)} x ${line.name}`)
+        .join("\n");
 
   const parts = [
     "*CONFIRMACIÓN DE TU PEDIDO – STARLIM* ✅",
@@ -55,12 +86,26 @@ export function buildWhatsappConfirmation(input: ConfirmationInput): string {
     "",
     "*Pedido:*",
     items,
+  ];
+
+  if (showPrices) {
+    const net = priced.reduce((sum, line) => sum + line.subtotal, 0);
+    const rate = input.ivaRate ?? 0;
+    const iva = ivaAmount(net, rate);
+    parts.push("", `*Subtotal:* ${formatConfirmationMoney(net)}`);
+    if (rate > 0) {
+      parts.push(`*IVA (${rate}%):* ${formatConfirmationMoney(iva)}`);
+    }
+    parts.push(`*Total:* ${formatConfirmationMoney(net + iva)}`);
+  }
+
+  parts.push(
     "",
     `🚚 *Entrega:* ${input.deliveryLocation}`,
     `📅 *Entrega estimada:* ${formatDeliveryDate(input.deliveryDate)}`,
     "",
     "¿Está todo correcto? Respondé *SÍ* para confirmar, o decinos qué corregir.",
-  ];
+  );
 
   const offer = (input.offerText ?? "").trim();
   if (offer) {

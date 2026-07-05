@@ -690,3 +690,13 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.match(pdfRenderer, /drawFiscalHeader/);
   assert.doesNotMatch(pdfRenderer, /Starlim - documento operativo/);
 });
+
+test("order confirmation message supports optional prices and iva", () => {
+  const oc = read("apps/web/src/lib/order-confirmation.ts");
+  assert.match(oc, /export type IvaRate = 0 \| 21 \| 10\.5/);
+  assert.match(oc, /export function ivaAmount/);
+  assert.match(oc, /export type ConfirmationPricedLine/);
+  assert.match(oc, /showPrices/);
+  assert.match(oc, /pricedLines/);
+  assert.match(oc, /ivaRate/);
+});
