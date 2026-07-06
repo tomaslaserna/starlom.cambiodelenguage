@@ -7,6 +7,8 @@ import {
   buildWhatsappConfirmation,
   normalizePhoneForWhatsapp,
   type ConfirmationLine,
+  type ConfirmationPricedLine,
+  type IvaRate,
 } from "@/lib/order-confirmation";
 
 type OrderConfirmationPreviewProps = {
@@ -14,6 +16,7 @@ type OrderConfirmationPreviewProps = {
   phone: string;
   address: string;
   lines: ConfirmationLine[];
+  pricedLines: ConfirmationPricedLine[];
   deliveryDate: string;
   ready: boolean;
   offers: { id: string; title: string; description: string }[];
@@ -26,6 +29,7 @@ export function OrderConfirmationPreview({
   phone,
   address,
   lines,
+  pricedLines,
   deliveryDate,
   ready,
   offers,
@@ -33,6 +37,8 @@ export function OrderConfirmationPreview({
   offersRemaining,
 }: OrderConfirmationPreviewProps) {
   const [offerText, setOfferText] = useState("");
+  const [showPrices, setShowPrices] = useState(false);
+  const [ivaRate, setIvaRate] = useState<IvaRate>(0);
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
 
@@ -44,8 +50,11 @@ export function OrderConfirmationPreview({
         deliveryLocation: address,
         deliveryDate,
         offerText,
+        showPrices,
+        pricedLines,
+        ivaRate,
       }),
-    [businessName, lines, address, deliveryDate, offerText],
+    [businessName, lines, address, deliveryDate, offerText, showPrices, pricedLines, ivaRate],
   );
 
   const waPhone = useMemo(() => normalizePhoneForWhatsapp(phone), [phone]);
@@ -103,6 +112,29 @@ export function OrderConfirmationPreview({
           🔒 Las ofertas se habilitan al alcanzar el punto de equilibrio del mes (faltan {formatCurrency(offersRemaining)}).
         </p>
       )}
+
+      <label className="erp-text-body-sm flex items-center gap-2 font-medium">
+        <input
+          checked={showPrices}
+          onChange={(event) => setShowPrices(event.target.checked)}
+          type="checkbox"
+        />
+        Mostrar precios al cliente
+      </label>
+
+      {showPrices ? (
+        <Field htmlFor="confirmation-iva" label="IVA a mostrar (visual)">
+          <Select
+            id="confirmation-iva"
+            value={String(ivaRate)}
+            onChange={(event) => setIvaRate(Number(event.target.value) as IvaRate)}
+          >
+            <option value="0">Sin IVA</option>
+            <option value="21">21%</option>
+            <option value="10.5">10.5%</option>
+          </Select>
+        </Field>
+      ) : null}
 
       {ready ? (
         <pre className="erp-text-body-sm max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-3 font-sans">

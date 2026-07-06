@@ -96,6 +96,14 @@ export function OrderEntryFields({
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
 
   const totalAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0);
+  const pricedLines = calculatedLines
+    .filter((line) => line.quantity > 0)
+    .map((line) => ({
+      quantity: line.quantity,
+      name: line.product.name,
+      unitPrice: line.unitPrice,
+      subtotal: line.subtotal,
+    }));
   const draftProduct = productMap.get(draftLine.productId) ?? null;
   const draftQuantity = Math.max(0, numericInput(draftLine.quantity, 0));
   const draftDiscount = Math.min(100, Math.max(0, numericInput(draftLine.discount, 0)));
@@ -384,6 +392,7 @@ export function OrderEntryFields({
           .filter((line) => line.quantity > 0)
           .map((line) => ({ quantity: line.quantity, name: line.product.name }))}
         offers={offers}
+        pricedLines={pricedLines}
         offersEnabled={offersEnabled}
         offersRemaining={offersRemaining}
         phone={selectedClient?.phone ?? ""}

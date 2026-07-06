@@ -700,3 +700,15 @@ test("order confirmation message supports optional prices and iva", () => {
   assert.match(oc, /pricedLines/);
   assert.match(oc, /ivaRate/);
 });
+
+test("cargar pedido exposes price message toggle with iva in the confirmation panel", () => {
+  const fields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
+  assert.match(fields, /pricedLines/);
+
+  const preview = read("apps/web/src/app/orders/new/order-confirmation-preview.tsx");
+  assert.match(preview, /Mostrar precios/);
+  assert.match(preview, /showPrices/);
+  assert.match(preview, /ivaRate/);
+  assert.match(preview, /Sin IVA/);
+  assert.match(preview, /value="10.5"/);
+});
