@@ -23,9 +23,9 @@ export async function getVendorManagement(companyId: number) {
           AND ue.activo = TRUE
           AND ue.role::text = 'vendedor'
         UNION
-        SELECT seller_name AS vendor FROM clients WHERE empresa_id = $1 AND COALESCE(seller_name, '') <> ''
+        SELECT BTRIM(seller_name) AS vendor FROM clients WHERE empresa_id = $1 AND COALESCE(BTRIM(seller_name), '') <> ''
         UNION
-        SELECT seller_name AS vendor FROM sales WHERE empresa_id = $1 AND COALESCE(seller_name, '') <> ''
+        SELECT BTRIM(seller_name) AS vendor FROM sales WHERE empresa_id = $1 AND COALESCE(BTRIM(seller_name), '') <> ''
         UNION
         SELECT p.username AS vendor
         FROM quotes q
@@ -33,24 +33,23 @@ export async function getVendorManagement(companyId: number) {
         WHERE q.empresa_id = $1 AND COALESCE(p.username, '') <> ''
       ),
       clients AS (
-        SELECT seller_name AS vendor, COUNT(*) AS clients
+        SELECT BTRIM(seller_name) AS vendor, COUNT(*) AS clients
         FROM clients
-        WHERE empresa_id = $1 AND COALESCE(seller_name, '') <> ''
-        GROUP BY seller_name
+        WHERE empresa_id = $1 AND COALESCE(BTRIM(seller_name), '') <> ''
+        GROUP BY BTRIM(seller_name)
       ),
       sales AS (
-        SELECT COALESCE(NULLIF(s.seller_name, ''), NULLIF(c.seller_name, '')) AS vendor,
+        SELECT BTRIM(s.seller_name) AS vendor,
                COUNT(*) AS sales_count,
                COALESCE(SUM(s.total_amount), 0) AS sales_total
         FROM sales s
-        LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
         WHERE s.empresa_id = $1
           AND ${canonicalSalesSourceSql("s")}
-          AND COALESCE(NULLIF(s.seller_name, ''), NULLIF(c.seller_name, '')) IS NOT NULL
+          AND COALESCE(BTRIM(s.seller_name), '') <> ''
           AND s.sale_date >= date_trunc('month', CURRENT_DATE)::date
           AND s.sale_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
           AND ${normalizedOrderStatusSql("s")} = 'entregado'
-        GROUP BY COALESCE(NULLIF(s.seller_name, ''), NULLIF(c.seller_name, ''))
+        GROUP BY BTRIM(s.seller_name)
       ),
       quotes AS (
         SELECT p.username AS vendor,

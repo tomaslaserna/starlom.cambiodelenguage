@@ -233,6 +233,12 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(navigation, /href: "\/billing",\s*label: "Facturacion"/);
   assert.match(navigation, /href: "\/metrics", label: "Metricas"/);
   assert.match(navigation, /href: "\/rentabilidad", label: "Rentabilidad"/);
+  assert.match(navigation, /href: "\/balance",\s*label: "Balance",\s*active: "balance"/);
+  assert.match(navigation, /href: "\/balance\/salaries",\s*label: "Sueldos",\s*active: "balance-salaries"/);
+  assert.match(navigation, /href: "\/balance\/dividends",\s*label: "Dividendos",\s*active: "balance-dividends"/);
+  assert.match(read("apps/web/src/app/balance/page.tsx"), /active="balance"/);
+  assert.match(read("apps/web/src/app/balance/salaries/page.tsx"), /active="balance-salaries"/);
+  assert.match(read("apps/web/src/app/balance/dividends/page.tsx"), /active="balance-dividends"/);
   assert.doesNotMatch(navigation, /label: "Panel admin"/);
   assert.match(navigation, /label: "Compras"[\s\S]*groups: \[groupByLabel\("Compras"\)\]/);
   assert.match(navigation, /href: "\/purchases\?view=nueva", label: "Nueva compra"/);
@@ -248,6 +254,7 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(purchasesPage, /PurchaseEntryFields products=\{products\}/);
   assert.match(purchasesPage, /purchaseViews[\s\S]*registro/);
   assert.match(purchasesPage, /redirect\("\/admin\/approvals"\)/);
+  assert.match(purchasesPage, /<details className="rounded-\[8px\][\s\S]*Acciones[\s\S]*OC PDF[\s\S]*Devol\./);
   assert.doesNotMatch(purchasesPage, /label="Tipo"|label="Estado inicial"|Cantidad opcional|title: "Solicitudes de compra"|purchase\.description \|\| purchase\.type|xl:grid-cols-\[minmax\(260px,1fr\)_minmax\(120px,150px\)_minmax\(140px,180px\)\]/);
 
   const purchaseEntryFields = read("apps/web/src/app/purchases/purchase-entry-fields.tsx");
@@ -507,6 +514,7 @@ test("sales reporting uses the canonical imported sales source", () => {
   assert.match(salesSourceSql, /ENTREGAS MACRO/);
   assert.match(salesSourceSql, /VENTAS ANUAL/);
   assert.match(salesSourceSql, /2026-06-01/);
+  assert.match(salesSourceSql, /2026-06-29/);
   assert.match(salesSourceSql, /2026-07-01/);
 
   for (const path of [
@@ -530,6 +538,10 @@ test("sales reporting uses the canonical imported sales source", () => {
   ]) {
     assert.match(read(path), /canonicalSalesSourceSql/);
   }
+
+  const vendorsManagement = read("apps/web/src/lib/vendors-management.ts");
+  assert.doesNotMatch(vendorsManagement, /LEFT JOIN clients c ON c\.id = s\.client_id/);
+  assert.match(vendorsManagement, /BTRIM\(s\.seller_name\) AS vendor/);
 });
 
 test("Escritorio is listed first in the Inicio menu and links to the home page", () => {
@@ -654,6 +666,7 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.doesNotMatch(billingPage, /Estado fiscal|Proveedor|Modo|Listo|ARCA configurado/);
   assert.match(billingPage, /\/billing\/credit-note\/\$\{item\.saleId\}/);
   assert.match(billingPage, /\/billing\/debit-note\/\$\{item\.saleId\}/);
+  assert.match(billingPage, /<details className="rounded-\[8px\][\s\S]*Acciones[\s\S]*Factura PDF[\s\S]*Nota credito[\s\S]*Nota debito/);
   assert.match(billingPage, /\/api\/pdfs\/fiscal\/sales\/\$\{item\.saleId\}/);
   assert.match(billingPage, /\/api\/pdfs\/fiscal\/notes\/\$\{item\.creditNoteId\}/);
   assert.match(billingPage, /\/api\/pdfs\/fiscal\/notes\/\$\{item\.debitNoteId\}/);
@@ -683,11 +696,23 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.match(pdfDocuments, /export async function buildFiscalSalePdf/);
   assert.match(pdfDocuments, /export async function buildFiscalSalesNotePdf/);
   assert.match(pdfDocuments, /variant: "fiscal"/);
-  assert.match(pdfDocuments, /accentHeader: true/);
+  assert.match(pdfDocuments, /fiscalCode: receipt\.afipCode/);
+  assert.match(pdfDocuments, /pdf\.fiscalClientBox/);
+  assert.match(pdfDocuments, /pdf\.fiscalItemsTable/);
+  assert.match(pdfDocuments, /pdf\.fiscalSummary/);
+  assert.match(pdfDocuments, /pdf\.fiscalAuthorizationBox/);
+  assert.match(pdfDocuments, /QRCode\.toBuffer/);
+  assert.match(pdfDocuments, /https:\/\/www\.arca\.gob\.ar\/fe\/qr\/\?p=/);
+  assert.match(pdfDocuments, /tipoCodAut: "E"/);
 
   const pdfRenderer = read("apps/web/src/lib/pdf/renderer.ts");
   assert.match(pdfRenderer, /size: "LETTER"/);
   assert.match(pdfRenderer, /drawFiscalHeader/);
+  assert.match(pdfRenderer, /ORIGINAL/);
+  assert.match(pdfRenderer, /COD\. \$\{input\.fiscalCode/);
+  assert.match(pdfRenderer, /fiscalClientBox/);
+  assert.match(pdfRenderer, /fiscalItemsTable/);
+  assert.match(pdfRenderer, /qrImage/);
   assert.doesNotMatch(pdfRenderer, /Starlim - documento operativo/);
 });
 

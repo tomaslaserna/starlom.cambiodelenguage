@@ -333,7 +333,11 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                             {formatCurrency(purchase.balance)}
                           </DataTableCell>
                           <DataTableCell>
-                            <div className="grid min-w-0 gap-2">
+                            <details className="rounded-[8px] border border-[color:var(--border)] bg-[color:var(--panel)] p-2">
+                              <summary className="flex min-h-[var(--control-height-md)] cursor-pointer list-none select-none items-center justify-center rounded-[var(--radius-md)] bg-[color:var(--accent)] px-4 font-black text-white shadow-sm [&::-webkit-details-marker]:hidden">
+                                Acciones
+                              </summary>
+                              <div className="mt-2 grid min-w-0 gap-2">
                               <div className="grid gap-2">
                                 <ButtonLink
                                   aria-label={`Abrir orden de compra PDF ${purchase.id}`}
@@ -479,7 +483,8 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                               </details>
                             </div>
                           ) : null}
-                        </div>
+                              </div>
+                            </details>
                       </DataTableCell>
                     </DataTableRow>
                   );

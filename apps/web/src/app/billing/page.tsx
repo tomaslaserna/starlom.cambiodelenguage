@@ -213,74 +213,85 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                       </StatusBadge>
                     </DataTableCell>
                     <DataTableCell className="px-2 py-2">
-                      <div className="flex flex-wrap gap-2">
-                        {item.saleId && item.hasFiscalIdentity ? (
-                          <ButtonLink
-                            href={`/api/pdfs/fiscal/sales/${item.saleId}`}
-                            prefetch={false}
-                            rel="noreferrer"
-                            size="sm"
-                            target="_blank"
-                            variant="secondary"
-                          >
-                            Factura PDF
-                          </ButtonLink>
-                        ) : null}
-                        {item.saleId && item.hasFiscalIdentity && !item.creditNoteCae ? (
-                          <ButtonLink
-                            href={`/billing/credit-note/${item.saleId}`}
-                            size="sm"
-                            variant="danger"
-                          >
-                            Nota credito
-                          </ButtonLink>
-                        ) : null}
-                        {item.creditNoteId && item.creditNoteCae ? (
-                          <ButtonLink
-                            href={`/api/pdfs/fiscal/notes/${item.creditNoteId}`}
-                            prefetch={false}
-                            rel="noreferrer"
-                            size="sm"
-                            target="_blank"
-                            variant="secondary"
-                          >
-                            NC PDF
-                          </ButtonLink>
-                        ) : null}
-                        {item.saleId && item.hasFiscalIdentity && !item.debitNoteCae ? (
-                          <ButtonLink
-                            href={`/billing/debit-note/${item.saleId}`}
-                            size="sm"
-                            variant="outline"
-                          >
-                            Nota debito
-                          </ButtonLink>
-                        ) : null}
-                        {item.debitNoteId && item.debitNoteCae ? (
-                          <ButtonLink
-                            href={`/api/pdfs/fiscal/notes/${item.debitNoteId}`}
-                            prefetch={false}
-                            rel="noreferrer"
-                            size="sm"
-                            target="_blank"
-                            variant="secondary"
-                          >
-                            ND PDF
-                          </ButtonLink>
-                        ) : null}
-                        {item.deliveryId ? (
-                          <ButtonLink
-                            href={`/api/pdfs/deliveries/${item.deliveryId}?prices=1`}
-                            prefetch={false}
-                            rel="noreferrer"
-                            size="sm"
-                            target="_blank"
-                            variant="secondary"
-                          >
-                            Remito PDF
-                          </ButtonLink>
-                        ) : null}
-                      </div>
+                      <details className="rounded-[8px] border border-[color:var(--border)] bg-[color:var(--panel)] p-2">
+                        <summary className="flex min-h-[var(--control-height-md)] cursor-pointer list-none select-none items-center justify-center rounded-[var(--radius-md)] bg-[color:var(--accent)] px-4 font-black text-white shadow-sm [&::-webkit-details-marker]:hidden">
+                          Acciones
+                        </summary>
+                        <div className="mt-2 grid gap-2">
+                          {item.saleId && item.hasFiscalIdentity ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/api/pdfs/fiscal/sales/${item.saleId}`}
+                              prefetch={false}
+                              rel="noreferrer"
+                              size="sm"
+                              target="_blank"
+                              variant="secondary"
+                            >
+                              Factura PDF
+                            </ButtonLink>
+                          ) : null}
+                          {item.saleId && item.hasFiscalIdentity && !item.creditNoteCae ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/billing/credit-note/${item.saleId}`}
+                              size="sm"
+                              variant="secondary"
+                            >
+                              Nota credito
+                            </ButtonLink>
+                          ) : null}
+                          {item.creditNoteId && item.creditNoteCae ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/api/pdfs/fiscal/notes/${item.creditNoteId}`}
+                              prefetch={false}
+                              rel="noreferrer"
+                              size="sm"
+                              target="_blank"
+                              variant="secondary"
+                            >
+                              NC PDF
+                            </ButtonLink>
+                          ) : null}
+                          {item.saleId && item.hasFiscalIdentity && !item.debitNoteCae ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/billing/debit-note/${item.saleId}`}
+                              size="sm"
+                              variant="secondary"
+                            >
+                              Nota debito
+                            </ButtonLink>
+                          ) : null}
+                          {item.debitNoteId && item.debitNoteCae ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/api/pdfs/fiscal/notes/${item.debitNoteId}`}
+                              prefetch={false}
+                              rel="noreferrer"
+                              size="sm"
+                              target="_blank"
+                              variant="secondary"
+                            >
+                              ND PDF
+                            </ButtonLink>
+                          ) : null}
+                          {item.deliveryId ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/api/pdfs/deliveries/${item.deliveryId}?prices=1`}
+                              prefetch={false}
+                              rel="noreferrer"
+                              size="sm"
+                              target="_blank"
+                              variant="secondary"
+                            >
+                              Remito PDF
+                            </ButtonLink>
+                          ) : null}
+                        </div>
+                      </details>
                     </DataTableCell>
                   </DataTableRow>
                 ))

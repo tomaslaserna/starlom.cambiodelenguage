@@ -74,13 +74,13 @@ export const navigationGroups: NavigationGroup[] = [
   {
     href: "/balance/salaries",
     label: "Sueldos",
-    active: "balance",
+    active: "balance-salaries",
     permission: ADMIN_SALARIES_READ_PERMISSION,
   },
   {
     href: "/balance/dividends",
     label: "Dividendos",
-    active: "balance",
+    active: "balance-dividends",
     permission: ADMIN_DIVIDENDS_READ_PERMISSION,
   },
   {

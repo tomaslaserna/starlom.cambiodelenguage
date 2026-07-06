@@ -12,7 +12,7 @@ export default async function SalariesPage() {
 
   return (
     <ModulePage
-      active="balance"
+      active="balance-salaries"
       description="Sueldos vigentes computados como costo fijo, con provision de aguinaldo y cargas."
       session={session}
       title="Sueldos"

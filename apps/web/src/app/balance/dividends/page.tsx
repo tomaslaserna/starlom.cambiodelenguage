@@ -12,7 +12,7 @@ export default async function DividendsPage() {
 
   return (
     <ModulePage
-      active="balance"
+      active="balance-dividends"
       description="Planilla simple por socio: participacion, dividendos asignados, retiros y saldo."
       session={session}
       title="Dividendos"
