@@ -712,3 +712,16 @@ test("cargar pedido exposes price message toggle with iva in the confirmation pa
   assert.match(preview, /Sin IVA/);
   assert.match(preview, /value="10.5"/);
 });
+
+test("Registro de ventas shows only the delivered-sales listing, without duplicate navigation to other menu sections", () => {
+  const salesPage = read("apps/web/src/app/sales/page.tsx");
+
+  assert.doesNotMatch(salesPage, /href="\/orders\/new"/, "Cargar pedido link is redundant with the Pedidos menu group");
+  assert.doesNotMatch(salesPage, /href="\/quotes"/, "Presupuestos link is redundant with the Presupuestos menu group");
+  assert.doesNotMatch(salesPage, /href="\/orders"[^/]/, "generic /orders listing link is redundant with Registro de pedidos");
+  assert.doesNotMatch(salesPage, /Cargar pedido|Crear pedido/);
+  assert.doesNotMatch(salesPage, /Ver presupuestos/);
+
+  assert.match(salesPage, /listOrders\(/, "sales page must render its own delivered-sales listing");
+  assert.match(salesPage, /status:\s*"entregado"/, "listing must be filtered to delivered orders only");
+});
