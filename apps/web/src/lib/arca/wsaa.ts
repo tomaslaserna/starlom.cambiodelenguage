@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import forge from "node-forge";
 import { ApiError } from "@/lib/api-response";
-import type { ArcaConfig } from "@/lib/arca/config";
+import type { ArcaConfig, ArcaCredential } from "@/lib/arca/config";
 import { escapeXml, postSoapXml, soapEnvelope, tagContent } from "@/lib/arca/xml";
 
 type WsaaTicket = {
@@ -33,11 +33,13 @@ function loginTicketRequestXml(service = "wsfe") {
 </loginTicketRequest>`;
 }
 
-async function signLoginTicketRequest(xml: string, certPath: string, keyPath: string) {
-  const [certPem, keyPem] = await Promise.all([
-    readFile(certPath, "utf8"),
-    readFile(keyPath, "utf8"),
-  ]);
+async function credentialPem(credential: ArcaCredential) {
+  if (credential.type === "pem") return credential.value;
+  return readFile(credential.value, "utf8");
+}
+
+async function signLoginTicketRequest(xml: string, cert: ArcaCredential, key: ArcaCredential) {
+  const [certPem, keyPem] = await Promise.all([credentialPem(cert), credentialPem(key)]);
 
   try {
     const certificate = forge.pki.certificateFromPem(certPem);
@@ -77,12 +79,12 @@ function parseWsaaTicket(xml: string): WsaaTicket {
 }
 
 export async function getWsaaTicket(config: ArcaConfig): Promise<WsaaTicket> {
-  const cacheKey = `${config.mode}:${config.cuit}:${config.certPath}:${config.keyPath}`;
+  const cacheKey = `${config.mode}:${config.cuit}:${config.cert.source}:${config.key.source}`;
   if (cachedTicket?.cacheKey === cacheKey && cachedTicket.expiresAt > Date.now() + 5 * 60 * 1000) {
     return cachedTicket;
   }
 
-  const cms = await signLoginTicketRequest(loginTicketRequestXml("wsfe"), config.certPath, config.keyPath);
+  const cms = await signLoginTicketRequest(loginTicketRequestXml("wsfe"), config.cert, config.key);
   const response = await postSoapXml(
     config.wsaaEndpoint,
     "",

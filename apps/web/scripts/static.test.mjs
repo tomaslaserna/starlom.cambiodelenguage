@@ -644,6 +644,15 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   const arcaWsaa = read("apps/web/src/lib/arca/wsaa.ts");
   assert.match(arcaWsaa, /loginTicketRequest/);
   assert.match(arcaWsaa, /forge\.pkcs7\.createSignedData/);
+  assert.match(arcaWsaa, /credentialPem/);
+
+  const arcaConfig = read("apps/web/src/lib/arca/config.ts");
+  assert.match(arcaConfig, /STARLIM_ARCA_CERT_BASE64/);
+  assert.match(arcaConfig, /STARLIM_ARCA_KEY_BASE64/);
+  assert.match(arcaConfig, /STARLIM_ARCA_CERT_PEM/);
+  assert.match(arcaConfig, /STARLIM_ARCA_KEY_PEM/);
+  assert.match(arcaConfig, /STARLIM_ARCA_CERT_PATH/);
+  assert.match(arcaConfig, /STARLIM_ARCA_KEY_PATH/);
 
   const arcaXml = read("apps/web/src/lib/arca/xml.ts");
   assert.match(arcaXml, /ERR_SSL_DH_KEY_TOO_SMALL/);

@@ -42,6 +42,12 @@ STARLIM_PEPPER=
 STARLIM_STORAGE_BUCKET=uploads
 STARLIM_FISCAL_PROVIDER=disabled
 STARLIM_FISCAL_MODE=testing
+STARLIM_ARCA_CUIT=
+STARLIM_ARCA_POINT_OF_SALE=
+STARLIM_ARCA_CERT_PATH=
+STARLIM_ARCA_KEY_PATH=
+STARLIM_ARCA_CERT_BASE64=
+STARLIM_ARCA_KEY_BASE64=
 ```
 
 Usar `DATABASE_URL` o el bloque `SUPABASE_DB_*`, no ambos salvo que se entienda
@@ -58,9 +64,15 @@ Pedir al responsable del proyecto:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `STARLIM_SESSION_SECRET`
 - `STARLIM_PEPPER`, si aplica
+- credenciales ARCA: CUIT, punto de venta, certificado y clave privada
 - email y contrasena de un usuario valido de Supabase Auth
 
 No mandar estos datos por commits, issues, PRs, chats publicos ni capturas.
+
+Para desarrollo local, ARCA puede usar `STARLIM_ARCA_CERT_PATH` y
+`STARLIM_ARCA_KEY_PATH`. Para Vercel, usar `STARLIM_ARCA_CERT_BASE64` y
+`STARLIM_ARCA_KEY_BASE64`, o las variantes `*_PEM`, porque los paths locales no
+existen dentro de las funciones serverless.
 
 ## Setup rapido
 
