@@ -16,3 +16,4 @@ apps/web/.next/
 apps/web/.env*.local
 apps/web/.env.smoke
 apps/web/tsconfig.tsbuildinfo
+.env*.local
