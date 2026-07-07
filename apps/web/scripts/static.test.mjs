@@ -292,7 +292,7 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.doesNotMatch(navigation, /ordersReceived|ordersInProcess|ordersPendingDelivery/);
 
   const purchasesPage = read("apps/web/src/app/purchases/page.tsx");
-  assert.match(purchasesPage, /PurchaseEntryFields products=\{products\}/);
+  assert.match(purchasesPage, /PurchaseEntryFields defaultDate=\{localDateIso\(\)\} products=\{products\} suppliers=\{suppliers\}/);
   assert.match(purchasesPage, /purchaseViews[\s\S]*registro/);
   assert.match(purchasesPage, /redirect\("\/admin\/approvals"\)/);
   assert.match(purchasesPage, /<details className="rounded-\[8px\][\s\S]*Acciones[\s\S]*OC PDF[\s\S]*Devol\./);
@@ -300,6 +300,10 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
 
   const purchaseEntryFields = read("apps/web/src/app/purchases/purchase-entry-fields.tsx");
   assert.match(purchaseEntryFields, /name="productsJson"/);
+  assert.match(purchaseEntryFields, /name="supplierId"/);
+  assert.match(purchaseEntryFields, /supplierId \? products\.filter\(\(product\) => product\.supplierId === supplierId\) : \[\]/);
+  assert.match(purchaseEntryFields, /setLines\(\[\]\)/);
+  assert.match(purchaseEntryFields, /Este proveedor no tiene productos asociados/);
   assert.match(purchaseEntryFields, /Agregar producto/);
   assert.match(purchaseEntryFields, /label="Cantidad"/);
   assert.match(purchaseEntryFields, /Quitar/);
@@ -311,6 +315,11 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   const purchases = read("apps/web/src/lib/purchases.ts");
   assert.match(purchases, /body\.productsJson/);
   assert.match(purchases, /Detalle de compra invalido/);
+  assert.match(purchases, /SELECT id, sku, name, supplier_id::text/);
+  assert.match(purchases, /supplierId: row\.supplier_id/);
+  assert.match(purchases, /Proveedor invalido o inactivo/);
+  assert.match(purchases, /product\.supplier_id !== input\.supplierId/);
+  assert.match(purchases, /no corresponde al proveedor seleccionado/);
 
   const approvals = read("apps/web/src/lib/approvals.ts");
   assert.match(approvals, /ApprovalSource = "collection" \| "request" \| "purchase" \| "fiscal"/);

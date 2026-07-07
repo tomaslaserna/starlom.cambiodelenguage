@@ -4,10 +4,16 @@ import { useMemo, useRef, useState } from "react";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
 
+type PurchaseFormSupplier = {
+  id: string;
+  name: string;
+};
+
 type PurchaseFormProduct = {
   id: string;
   code: string;
   name: string;
+  supplierId: string | null;
 };
 
 type PurchaseLineDraft = {
@@ -21,6 +27,8 @@ type PurchaseLineState = PurchaseLineDraft & {
 
 type PurchaseEntryFieldsProps = {
   products: PurchaseFormProduct[];
+  suppliers: PurchaseFormSupplier[];
+  defaultDate: string;
 };
 
 const emptyLine = (): PurchaseLineDraft => ({ productId: "", quantity: "1" });
@@ -30,12 +38,17 @@ function numericInput(value: string, fallback = 0) {
   return Number.isFinite(numberValue) ? numberValue : fallback;
 }
 
-export function PurchaseEntryFields({ products }: PurchaseEntryFieldsProps) {
+export function PurchaseEntryFields({ defaultDate, products, suppliers }: PurchaseEntryFieldsProps) {
+  const [supplierId, setSupplierId] = useState("");
   const [draftLine, setDraftLine] = useState<PurchaseLineDraft>(emptyLine());
   const [lines, setLines] = useState<PurchaseLineState[]>([]);
   const lineIdRef = useRef(0);
 
-  const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const filteredProducts = useMemo(
+    () => (supplierId ? products.filter((product) => product.supplierId === supplierId) : []),
+    [products, supplierId],
+  );
+  const productMap = useMemo(() => new Map(filteredProducts.map((product) => [product.id, product])), [filteredProducts]);
   const draftProduct = productMap.get(draftLine.productId) ?? null;
   const draftQuantity = Math.max(0, Math.trunc(numericInput(draftLine.quantity, 0)));
   const canAddLine = Boolean(draftProduct && draftQuantity > 0);
@@ -48,6 +61,12 @@ export function PurchaseEntryFields({ products }: PurchaseEntryFieldsProps) {
 
   function updateDraftLine(next: Partial<PurchaseLineDraft>) {
     setDraftLine((current) => ({ ...current, ...next }));
+  }
+
+  function updateSupplier(nextSupplierId: string) {
+    setSupplierId(nextSupplierId);
+    setDraftLine(emptyLine());
+    setLines([]);
   }
 
   function addDraftLine() {
@@ -88,6 +107,28 @@ export function PurchaseEntryFields({ products }: PurchaseEntryFieldsProps) {
     <div className="grid gap-3 rounded-[var(--radius-md)] border border-[color:var(--border)] bg-white p-3">
       <input name="productsJson" type="hidden" value={JSON.stringify(payload)} />
 
+      <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px]">
+        <Field htmlFor="purchase-supplier" label="Proveedor">
+          <Select
+            id="purchase-supplier"
+            name="supplierId"
+            required
+            value={supplierId}
+            onChange={(event) => updateSupplier(event.target.value)}
+          >
+            <option value="">Seleccionar proveedor</option>
+            {suppliers.map((supplier) => (
+              <option key={supplier.id} value={supplier.id}>
+                {supplier.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field htmlFor="purchase-date" label="Fecha">
+          <Input defaultValue={defaultDate} id="purchase-date" name="date" type="date" />
+        </Field>
+      </div>
+
       <div className="grid gap-3 xl:grid-cols-[minmax(260px,1fr)_minmax(0,160px)_auto] xl:items-end">
         <Field className="min-w-0" htmlFor="purchase-product-draft" label="Producto">
           <Select
@@ -96,8 +137,8 @@ export function PurchaseEntryFields({ products }: PurchaseEntryFieldsProps) {
             value={draftLine.productId}
             onChange={(event) => updateDraftLine({ productId: event.target.value })}
           >
-            <option value="">Seleccionar producto</option>
-            {products.map((product) => (
+            <option value="">{supplierId ? "Seleccionar producto" : "Primero selecciona proveedor"}</option>
+            {filteredProducts.map((product) => (
               <option key={product.id} value={product.id}>
                 {product.name} {product.code ? `(${product.code})` : ""}
               </option>
@@ -171,7 +212,9 @@ export function PurchaseEntryFields({ products }: PurchaseEntryFieldsProps) {
         </div>
       ) : (
         <div className="rounded-[var(--radius-md)] border border-dashed border-[color:var(--border)] px-3 py-2 text-sm font-semibold text-[color:var(--muted)]">
-          Todavia no agregaste productos a esta compra.
+          {supplierId && filteredProducts.length === 0
+            ? "Este proveedor no tiene productos asociados."
+            : "Todavia no agregaste productos a esta compra."}
         </div>
       )}
     </div>

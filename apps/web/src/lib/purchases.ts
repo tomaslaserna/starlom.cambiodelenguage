@@ -145,10 +145,11 @@ export async function listPurchaseFormProducts(companyId: number) {
     id: string;
     sku: string | null;
     name: string;
+    supplier_id: string | null;
   }>(
     companyId,
     `
-      SELECT id, sku, name
+      SELECT id, sku, name, supplier_id::text
       FROM products
       WHERE empresa_id = $1 AND active = true
       ORDER BY name ASC, id ASC
@@ -157,7 +158,12 @@ export async function listPurchaseFormProducts(companyId: number) {
     [companyId],
   );
 
-  return result.rows.map((row) => ({ id: row.id, code: row.sku ?? "", name: row.name }));
+  return result.rows.map((row) => ({
+    id: row.id,
+    code: row.sku ?? "",
+    name: row.name,
+    supplierId: row.supplier_id,
+  }));
 }
 
 export async function listPurchases(companyId: number) {
@@ -301,6 +307,32 @@ export async function updatePurchaseReceiptPhoto(
 
 export async function createPurchase(session: AuthSession, input: PurchaseInput) {
   const purchaseId = await withCompanyContext(session.companyId, async (client) => {
+    const supplier = await client.query<{ id: string }>(
+      "SELECT id::text AS id FROM suppliers WHERE id = $1::uuid AND empresa_id = $2 AND active = true LIMIT 1",
+      [input.supplierId, session.companyId],
+    );
+    if (!supplier.rows[0]) throw new ApiError(400, "Proveedor invalido o inactivo");
+
+    const productIds = Array.from(new Set(input.items.map((item) => item.productId)));
+    if (productIds.length) {
+      const products = await client.query<{ id: string; supplier_id: string | null; name: string }>(
+        `
+          SELECT id::text AS id, supplier_id::text AS supplier_id, name
+          FROM products
+          WHERE empresa_id = $1 AND active = true AND id = ANY($2::uuid[])
+        `,
+        [session.companyId, productIds],
+      );
+      if (products.rows.length !== productIds.length) {
+        throw new ApiError(400, "Uno o mas productos de la compra no existen o estan inactivos");
+      }
+
+      const invalidProduct = products.rows.find((product) => product.supplier_id !== input.supplierId);
+      if (invalidProduct) {
+        throw new ApiError(400, `El producto ${invalidProduct.name || invalidProduct.id} no corresponde al proveedor seleccionado`);
+      }
+    }
+
     const result = await client.query<{ id: string }>(
       `
         INSERT INTO purchases (

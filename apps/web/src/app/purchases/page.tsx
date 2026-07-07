@@ -188,22 +188,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
         {showCreateForm ? (
           <Card className="p-4">
             <form action={createPurchaseAction} className="grid gap-4">
-              <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px]">
-                <Field htmlFor="purchase-supplier" label="Proveedor">
-                  <Select id="purchase-supplier" name="supplierId" required>
-                    <option value="">Seleccionar proveedor</option>
-                    {suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field htmlFor="purchase-date" label="Fecha">
-                  <Input defaultValue={localDateIso()} id="purchase-date" name="date" type="date" />
-                </Field>
-              </div>
-              <PurchaseEntryFields products={products} />
+              <PurchaseEntryFields defaultDate={localDateIso()} products={products} suppliers={suppliers} />
               <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_minmax(260px,1fr)_auto] lg:items-end">
                 <Field className="min-w-0" htmlFor="purchase-total" label="Total">
                   <Input id="purchase-total" min="0" name="total" required step="0.01" type="number" />
