@@ -21,7 +21,7 @@ export default async function NewOrderPage() {
 
   return (
     <ModulePage
-      active="sales"
+      active="orders"
       description="Carga inicial del pedido. Despues se confirma para stock."
       session={session}
       title="Cargar pedido"

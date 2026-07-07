@@ -252,6 +252,12 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
 
   const orderActions = read("apps/web/src/app/orders/new/actions.ts");
   assert.match(orderActions, /redirect\("\/orders\?status=cargado"\)/);
+  assert.match(orderActions, /ORDERS_CREATE_PERMISSION/);
+  assert.doesNotMatch(orderActions, /resource: "ventas", action: "crear"/);
+
+  const newOrderPage = read("apps/web/src/app/orders/new/page.tsx");
+  assert.match(newOrderPage, /active="orders"/);
+  assert.doesNotMatch(newOrderPage, /active="sales"/);
 
   const quotes = read("apps/web/src/lib/quotes.ts");
   assert.match(quotes, /collection_status, order_status, desired_document, notes,[\s\S]*stock_discounted, status, empresa_id/);
