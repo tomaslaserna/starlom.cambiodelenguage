@@ -178,6 +178,11 @@ export function clearPermissionCache() {
   databasePermissionCache.clear();
 }
 
+export function isFullAccessRole(role: string) {
+  const normalized = normalizeRole(role);
+  return normalized === "administrador" || normalized === "jefe";
+}
+
 function permissionKey(permission: Permission) {
   return `${permission.resource.trim()}.${permission.action.trim()}`;
 }
@@ -197,7 +202,7 @@ function permissionKeys(permissions: Permission[]) {
 
 function legacyRoleAllows(session: AuthSession, permissions: Permission[]) {
   const role = normalizeRole(session.role);
-  if (role === "administrador") return true;
+  if (isFullAccessRole(role)) return true;
   const allowed = new Set(LEGACY_ROLE_PERMISSIONS[role] ?? []);
   if (allowed.has("*")) return true;
   return permissions.some((permission) => permissionKeyAliases(permission).some((key) => allowed.has(key)));
@@ -205,7 +210,7 @@ function legacyRoleAllows(session: AuthSession, permissions: Permission[]) {
 
 async function databaseAllows(session: AuthSession, permissions: Permission[]) {
   const role = normalizeRole(session.role);
-  if (role === "administrador") return true;
+  if (isFullAccessRole(role)) return true;
   if (!permissions.length) return true;
 
   const keys = permissionKeys(permissions);
@@ -292,6 +297,6 @@ export async function requireApiSession(permissions: Permission[] = []) {
 
 export async function requireAdminApiSession() {
   const session = await requireApiSession();
-  if (normalizeRole(session.role) !== "administrador") throw new ApiError(403, "Solo Admin");
+  if (!isFullAccessRole(session.role)) throw new ApiError(403, "Solo Administrador o Jefe");
   return session;
 }

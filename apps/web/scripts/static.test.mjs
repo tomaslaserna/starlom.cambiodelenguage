@@ -74,12 +74,47 @@ test("product image upload residue is not present in active source", () => {
   );
 });
 
-test("legacy role permission shortcuts do not grant old sensitive access", () => {
+test("jefe is a full-access role while legacy employee shortcuts stay removed", () => {
   const routeAuth = read("apps/web/src/lib/route-auth.ts");
   assert.equal(/Jefe1|Empleado_1|Empleado_2/.test(routeAuth), false);
-  assert.equal(/reportes\.exportar|compras\.aprobar|cobranzas\.aprobar/.test(routeAuth), false);
+  assert.match(routeAuth, /export function isFullAccessRole\(role: string\)/);
+  assert.match(routeAuth, /normalized === "administrador" \|\| normalized === "jefe"/);
+  assert.match(routeAuth, /if \(isFullAccessRole\(role\)\) return true/);
+  assert.match(routeAuth, /if \(!isFullAccessRole\(session\.role\)\) throw new ApiError\(403, "Solo Administrador o Jefe"\)/);
   assert.match(routeAuth, /JOIN app_permissions ap ON ap\.key = pp\.permission_key AND ap\.sensitive = FALSE/);
   assert.match(routeAuth, /JOIN app_permissions ap ON ap\.key = rp\.permission_key AND ap\.sensitive = FALSE/);
+});
+
+test("jefe can edit employee profiles and see all profile permissions", () => {
+  const employeesLib = read("apps/web/src/lib/employees.ts");
+  assert.match(employeesLib, /if \(role === "jefe"\) return APP_ROLES\.filter\(\(assignableRole\) => assignableRole !== "administrador"\)/);
+  assert.match(employeesLib, /if \(role === "administrador" \|\| role === "jefe"\) return result\.rows\.map\(\(row\) => row\.key\)/);
+  assert.match(employeesLib, /function activeFromBody\(body: RequestBody\)/);
+  assert.match(employeesLib, /export async function deleteEmployeeAccess/);
+  assert.match(employeesLib, /DELETE FROM profile_permissions WHERE profile_id = \$1::uuid AND empresa_id = \$2/);
+  assert.match(employeesLib, /DELETE FROM usuario_empresa WHERE id_usuario = \$1::uuid AND empresa_id = \$2/);
+
+  const employeesActions = read("apps/web/src/app/employees/actions.ts");
+  assert.match(employeesActions, /export async function updateEmployeeAction/);
+  assert.match(employeesActions, /export async function toggleEmployeeStatusAction/);
+  assert.match(employeesActions, /export async function deleteEmployeeAction/);
+  assert.match(employeesActions, /formData\.get\("confirmDelete"\) !== "yes"/);
+  assert.match(employeesActions, /resource: "empleados", action: "editar"/);
+
+  const employeesPage = read("apps/web/src/app/employees/page.tsx");
+  assert.match(employeesPage, /function canEditEmployee\(actorRole: string, targetRole: string\)/);
+  assert.match(employeesPage, /currentRole === "administrador" \|\| currentRole === "jefe"/);
+  assert.match(employeesPage, /defaultChecked=\{employee\.permissionIds\.includes\(permission\.key\)\}/);
+  assert.match(employeesPage, /Modificar/);
+  assert.match(employeesPage, /Accesos y permisos/);
+  assert.match(employeesPage, /Borrar acceso/);
+  assert.match(employeesPage, /name="confirmDelete"/);
+  assert.doesNotMatch(employeesPage, /DataTableCell colSpan=\{9\}/);
+  assert.doesNotMatch(employeesPage, /Los permisos sensibles no se muestran para jefes/);
+
+  const employeeApi = read("apps/web/src/app/api/employees/[id]/route.ts");
+  assert.match(employeeApi, /export async function DELETE/);
+  assert.match(employeeApi, /deleteEmployeeAccess\(session, id\)/);
 });
 
 test("business data screens do not mask database loads with empty fallbacks", () => {

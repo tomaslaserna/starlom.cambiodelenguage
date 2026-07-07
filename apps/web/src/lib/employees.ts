@@ -41,7 +41,7 @@ function serviceHeaders() {
 function assignableRolesFor(sessionRole: string): AppRole[] {
   const role = normalizeRole(sessionRole);
   if (role === "administrador") return [...APP_ROLES];
-  if (role === "jefe") return ["deposito", "logistica", "operador", "vendedor"];
+  if (role === "jefe") return APP_ROLES.filter((assignableRole) => assignableRole !== "administrador");
   return [];
 }
 
@@ -49,6 +49,14 @@ function permissionKeysFromBody(body: RequestBody) {
   const raw = body.permissionKeys ?? body.permissionIds ?? body.permisos ?? [];
   const values = Array.isArray(raw) ? raw : [raw];
   return [...new Set(values.map((item) => String(item).trim()).filter(Boolean))];
+}
+
+function activeFromBody(body: RequestBody) {
+  const raw = body.active ?? body.activo;
+  if (raw === undefined) return true;
+  const value = Array.isArray(raw) ? raw.at(-1) : raw;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return ["1", "true", "on", "si", "sí", "activo", "active"].includes(normalized);
 }
 
 function clearEmployeeAccessCaches() {
@@ -79,10 +87,7 @@ export function employeeInputFromBody(body: RequestBody, isCreate: boolean) {
     email,
     username,
     role,
-    active:
-      body.active === undefined && body.activo === undefined
-        ? true
-        : Boolean(body.active ?? body.activo),
+    active: activeFromBody(body),
     title: textField(body, "title") || textField(body, "cargo"),
     password,
     permissionKeys: permissionKeysFromBody(body),
@@ -172,8 +177,7 @@ async function filterPermissionKeysForActor(session: AuthSession, keys: string[]
     [keys],
   );
 
-  if (role === "administrador") return result.rows.map((row) => row.key);
-  if (role === "jefe") return result.rows.filter((row) => !row.sensitive).map((row) => row.key);
+  if (role === "administrador" || role === "jefe") return result.rows.map((row) => row.key);
   return [];
 }
 
@@ -388,5 +392,35 @@ export async function toggleEmployeeStatus(session: AuthSession, id: string) {
   });
   clearEmployeeAccessCaches();
 
+  return result;
+}
+
+export async function deleteEmployeeAccess(session: AuthSession, id: string) {
+  await assertEmployeeEditable(session, id, session.userId);
+
+  const result = await withCompanyContext(session.companyId, async (client) => {
+    await client.query("DELETE FROM profile_permissions WHERE profile_id = $1::uuid AND empresa_id = $2", [
+      id,
+      session.companyId,
+    ]);
+    await client.query("DELETE FROM usuario_empresa WHERE id_usuario = $1::uuid AND empresa_id = $2", [
+      id,
+      session.companyId,
+    ]);
+    const profileResult = await client.query<{ id: string }>(
+      `
+        UPDATE profiles
+        SET active = FALSE, updated_at = now()
+        WHERE id = $1::uuid
+        RETURNING id::text
+      `,
+      [id],
+    );
+    const profile = profileResult.rows[0];
+    if (!profile) throw new ApiError(404, "Empleado no encontrado");
+    return { id: profile.id, deleted: true };
+  });
+
+  clearEmployeeAccessCaches();
   return result;
 }

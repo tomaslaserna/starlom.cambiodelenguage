@@ -22,7 +22,12 @@ import {
   StatusBadge,
   Toolbar,
 } from "@/components/ui";
-import { createEmployeeAction } from "@/app/employees/actions";
+import {
+  createEmployeeAction,
+  deleteEmployeeAction,
+  toggleEmployeeStatusAction,
+  updateEmployeeAction,
+} from "@/app/employees/actions";
 import { listEmployeePermissions, listEmployees } from "@/lib/employees";
 import { formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
@@ -72,12 +77,20 @@ const ROLE_LABELS: Record<string, string> = {
 function roleOptionsFor(currentRole: string) {
   const role = normalizedRole(currentRole);
   if (role === "administrador") {
-    return ["jefe", "deposito", "logistica", "operador", "vendedor"];
+    return ["jefe", "deposito", "logistica", "operador", "vendedor", "administrador"];
   }
   if (role === "jefe") {
-    return ["deposito", "logistica", "operador", "vendedor"];
+    return ["jefe", "deposito", "logistica", "operador", "vendedor"];
   }
   return [];
+}
+
+function canEditEmployee(actorRole: string, targetRole: string) {
+  const actor = normalizedRole(actorRole);
+  const target = normalizedRole(targetRole);
+  if (actor !== "administrador" && actor !== "jefe") return false;
+  if (target === "administrador" && actor !== "administrador") return false;
+  return true;
 }
 
 export default async function EmployeesPage({ searchParams }: EmployeesPageProps) {
@@ -99,8 +112,9 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
   const inactiveCount = employees.length - activeCount;
   const creatableRoles = roleOptionsFor(session.role);
   const canCreateEmployees = creatableRoles.length > 0;
+  const currentRole = normalizedRole(session.role);
   const visiblePermissions =
-    normalizedRole(session.role) === "administrador"
+    currentRole === "administrador" || currentRole === "jefe"
       ? permissions
       : permissions.filter((permission) => !permission.sensitive);
   const permissionGroups = visiblePermissions.reduce<Record<string, typeof visiblePermissions>>(
@@ -180,7 +194,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                       Ventanas habilitadas
                     </h3>
                     <p className="erp-text-body-sm mt-1 text-[color:var(--muted)]">
-                      Los permisos sensibles no se muestran para jefes y el servidor vuelve a validarlos al guardar.
+                      Administradores y jefes pueden ver y asignar todos los permisos disponibles.
                     </p>
                   </div>
 
@@ -248,29 +262,27 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
           <StatCard label="Permisos disponibles" value={permissions.length} />
         </div>
 
-        <Card className="overflow-hidden">
+        <Card className="overflow-visible">
           <DataTable
             caption="Listado administrativo de empleados"
-            minWidth="1040px"
+            minWidth="720px"
             tableLabel="Empleados"
-            className="rounded-none border-0 shadow-none"
+            className="erp-employees-table rounded-none border-0 shadow-none"
           >
             <DataTableHeader>
               <DataTableRow>
                 <DataTableHead>Empleado</DataTableHead>
                 <DataTableHead>Usuario</DataTableHead>
                 <DataTableHead>Contacto</DataTableHead>
-                <DataTableHead>Rango</DataTableHead>
-                <DataTableHead>Cargo</DataTableHead>
-                <DataTableHead>Ingreso</DataTableHead>
-                <DataTableHead className="text-right">Permisos</DataTableHead>
+                <DataTableHead>Perfil</DataTableHead>
                 <DataTableHead>Estado</DataTableHead>
+                <DataTableHead align="right">Acciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {employees.length === 0 ? (
                 <DataTableRow>
-                  <DataTableCell colSpan={8} className="py-10">
+                  <DataTableCell colSpan={6} className="py-10">
                     <EmptyState
                       title="No hay empleados para mostrar"
                       description={
@@ -282,45 +294,197 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                   </DataTableCell>
                 </DataTableRow>
               ) : (
-                employees.map((employee) => (
-                  <DataTableRow key={employee.id}>
-                    <DataTableCell className="min-w-[220px]">
-                      <div className="font-medium text-[color:var(--foreground)]">
-                        {employee.displayName || employee.name}
-                      </div>
-                      <div className="mt-1 text-[var(--text-caption)] text-[color:var(--muted)]">
-                        DNI {employee.document || "-"}
-                      </div>
-                    </DataTableCell>
-                    <DataTableCell className="whitespace-nowrap font-mono text-[var(--text-body-sm)]">
-                      {employee.username}
-                    </DataTableCell>
-                    <DataTableCell className="min-w-[220px]">
-                      <div className="break-all text-[color:var(--foreground)]">{employee.email || "-"}</div>
-                      <div className="mt-1 text-[var(--text-caption)] text-[color:var(--muted)]">
-                        {employee.phone || "-"}
-                      </div>
-                    </DataTableCell>
-                    <DataTableCell className="whitespace-nowrap">{employee.role}</DataTableCell>
-                    <DataTableCell className="min-w-[160px] text-[color:var(--muted)]">
-                      {employee.title || "-"}
-                    </DataTableCell>
-                    <DataTableCell className="whitespace-nowrap text-[color:var(--muted)]">
-                      {formatDate(employee.hireDate)}
-                    </DataTableCell>
-                    <DataTableCell className="whitespace-nowrap text-right tabular-nums">
-                      {employee.permissionIds.length}
-                    </DataTableCell>
-                    <DataTableCell className="whitespace-nowrap">
-                      <StatusBadge
-                        aria-label={`Estado laboral: ${employee.active ? "Activo" : "Inactivo"}`}
-                        tone={employee.active ? "success" : "neutral"}
-                      >
-                        {employee.active ? "Activo" : "Inactivo"}
-                      </StatusBadge>
-                    </DataTableCell>
-                  </DataTableRow>
-                ))
+                employees.map((employee) => {
+                  const editable = canEditEmployee(session.role, employee.role);
+                  const employeeRoleOptions = roleOptionsFor(session.role);
+
+                  return (
+                    <DataTableRow key={employee.id}>
+                      <DataTableCell className="w-[22%]">
+                        <div className="font-medium text-[color:var(--foreground)]">
+                          {employee.displayName || employee.name}
+                        </div>
+                        <div className="mt-1 text-[var(--text-caption)] text-[color:var(--muted)]">
+                          Alta {formatDate(employee.hireDate)}
+                        </div>
+                      </DataTableCell>
+                      <DataTableCell className="w-[16%] break-all font-mono text-[var(--text-body-sm)]">
+                        {employee.username}
+                      </DataTableCell>
+                      <DataTableCell className="w-[24%]">
+                        <div className="break-all text-[color:var(--foreground)]">{employee.email || "-"}</div>
+                        <div className="mt-1 text-[var(--text-caption)] text-[color:var(--muted)]">
+                          {employee.phone || "-"}
+                        </div>
+                      </DataTableCell>
+                      <DataTableCell className="w-[18%]">
+                        <div>{ROLE_LABELS[employee.role] ?? employee.role}</div>
+                        <div className="mt-1 text-[var(--text-caption)] text-[color:var(--muted)]">
+                          {employee.title || "Sin cargo"} · {employee.permissionIds.length} permisos
+                        </div>
+                      </DataTableCell>
+                      <DataTableCell className="w-[10%]">
+                        <StatusBadge
+                          aria-label={`Estado laboral: ${employee.active ? "Activo" : "Inactivo"}`}
+                          tone={employee.active ? "success" : "neutral"}
+                        >
+                          {employee.active ? "Activo" : "Inactivo"}
+                        </StatusBadge>
+                      </DataTableCell>
+                      <DataTableCell align="right" className="w-[10%]">
+                        {editable ? (
+                          <details className="relative inline-block text-left">
+                            <summary className="flex min-h-[var(--control-height-md)] min-w-[132px] cursor-pointer list-none select-none items-center justify-center rounded-[var(--radius-md)] bg-[color:var(--accent)] px-4 font-black text-white shadow-sm hover:bg-[color:var(--accent-strong)] [&::-webkit-details-marker]:hidden">
+                              Modificar
+                            </summary>
+                            <div className="absolute right-0 top-full z-50 mt-2 grid max-h-[min(76vh,720px)] w-[min(680px,calc(100vw-2rem))] gap-4 overflow-y-auto rounded-[12px] border border-[color:var(--border)] bg-white p-4 text-left shadow-[0_20px_45px_rgba(15,23,42,0.18)]">
+                              <form action={updateEmployeeAction} className="grid gap-4">
+                                <input name="id" type="hidden" value={employee.id} />
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  <Field htmlFor={`employee-${employee.id}-name`} label="Nombre" required>
+                                    <Input
+                                      id={`employee-${employee.id}-name`}
+                                      name="name"
+                                      required
+                                      defaultValue={employee.name || employee.displayName}
+                                      autoComplete="given-name"
+                                    />
+                                  </Field>
+                                  <Field htmlFor={`employee-${employee.id}-title`} label="Cargo">
+                                    <Input
+                                      id={`employee-${employee.id}-title`}
+                                      name="title"
+                                      defaultValue={employee.title}
+                                      autoComplete="organization-title"
+                                    />
+                                  </Field>
+                                  <Field htmlFor={`employee-${employee.id}-email`} label="Email" required>
+                                    <Input
+                                      id={`employee-${employee.id}-email`}
+                                      name="email"
+                                      type="email"
+                                      required
+                                      defaultValue={employee.email}
+                                      autoComplete="email"
+                                    />
+                                  </Field>
+                                  <Field htmlFor={`employee-${employee.id}-username`} label="Usuario" required>
+                                    <Input
+                                      id={`employee-${employee.id}-username`}
+                                      name="username"
+                                      required
+                                      defaultValue={employee.username}
+                                      autoComplete="username"
+                                    />
+                                  </Field>
+                                  <Field htmlFor={`employee-${employee.id}-password`} label="Nueva contrasena">
+                                    <Input
+                                      id={`employee-${employee.id}-password`}
+                                      name="password"
+                                      type="password"
+                                      minLength={6}
+                                      placeholder="Dejar vacio para no cambiar"
+                                      autoComplete="new-password"
+                                    />
+                                  </Field>
+                                  <Field htmlFor={`employee-${employee.id}-role`} label="Rango" required>
+                                    <Select
+                                      id={`employee-${employee.id}-role`}
+                                      name="role"
+                                      required
+                                      defaultValue={employee.role}
+                                    >
+                                      {employeeRoleOptions.map((role) => (
+                                        <option key={role} value={role}>
+                                          {ROLE_LABELS[role] ?? role}
+                                        </option>
+                                      ))}
+                                    </Select>
+                                  </Field>
+                                  <Field htmlFor={`employee-${employee.id}-active`} label="Estado" required>
+                                    <Select
+                                      id={`employee-${employee.id}-active`}
+                                      name="active"
+                                      required
+                                      defaultValue={employee.active ? "true" : "false"}
+                                    >
+                                      <option value="true">Activo</option>
+                                      <option value="false">Inactivo</option>
+                                    </Select>
+                                  </Field>
+                                </div>
+
+                                <details className="rounded-[9px] border border-[color:var(--border)] bg-[color:var(--panel-muted)] p-3">
+                                  <summary className="cursor-pointer list-none select-none font-black text-[color:var(--accent-strong)] [&::-webkit-details-marker]:hidden">
+                                    Accesos y permisos
+                                  </summary>
+                                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                    {Object.entries(permissionGroups).map(([module, modulePermissions]) => (
+                                      <fieldset
+                                        key={`${employee.id}-${module}`}
+                                        className="rounded-[9px] border border-[color:var(--border)] bg-white p-3"
+                                      >
+                                        <legend className="px-1 text-[var(--text-caption)] font-extrabold uppercase text-[color:var(--muted)]">
+                                          {module}
+                                        </legend>
+                                        <div className="mt-2 grid gap-2">
+                                          {modulePermissions.map((permission) => (
+                                            <label
+                                              key={`${employee.id}-${permission.key}`}
+                                              className="flex min-h-9 items-start gap-2 rounded-[7px] px-2 py-1.5 text-[var(--text-body-sm)] text-[color:var(--foreground)] hover:bg-[color:var(--panel-muted)]"
+                                            >
+                                              <input
+                                                className="mt-1 h-4 w-4 rounded border-[color:var(--border)] accent-[var(--accent)]"
+                                                name="permissionKeys"
+                                                type="checkbox"
+                                                value={permission.key}
+                                                defaultChecked={employee.permissionIds.includes(permission.key)}
+                                              />
+                                              <span className="min-w-0">{permission.name}</span>
+                                            </label>
+                                          ))}
+                                        </div>
+                                      </fieldset>
+                                    ))}
+                                  </div>
+                                </details>
+
+                                <Button type="submit">Guardar cambios</Button>
+                              </form>
+
+                              <div className="grid gap-3 rounded-[9px] border border-[color:var(--border)] bg-[color:var(--panel-muted)] p-3 md:grid-cols-2 md:items-end">
+                                <form action={toggleEmployeeStatusAction} className="grid gap-2">
+                                  <input name="id" type="hidden" value={employee.id} />
+                                  <Button type="submit" variant="outline">
+                                    {employee.active ? "Desactivar" : "Activar"}
+                                  </Button>
+                                </form>
+                                <form action={deleteEmployeeAction} className="grid gap-2">
+                                  <input name="id" type="hidden" value={employee.id} />
+                                  <label className="flex items-center gap-2 text-[var(--text-caption)] font-bold text-[color:var(--muted)]">
+                                    <input
+                                      className="h-4 w-4 rounded border-[color:var(--border)] accent-[var(--accent)]"
+                                      name="confirmDelete"
+                                      required
+                                      type="checkbox"
+                                      value="yes"
+                                    />
+                                    Confirmar borrado
+                                  </label>
+                                  <Button type="submit" variant="danger">
+                                    Borrar acceso
+                                  </Button>
+                                </form>
+                              </div>
+                            </div>
+                          </details>
+                        ) : (
+                          <span className="text-[var(--text-caption)] text-[color:var(--muted)]">Sin permiso</span>
+                        )}
+                      </DataTableCell>
+                    </DataTableRow>
+                  );
+                })
               )}
             </DataTableBody>
           </DataTable>

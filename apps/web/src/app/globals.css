@@ -197,6 +197,11 @@ body::before {
   overflow-y: visible;
 }
 
+.erp-employees-table,
+.erp-employees-table > div {
+  overflow: visible;
+}
+
 :where(a) {
   text-decoration: none;
 }
