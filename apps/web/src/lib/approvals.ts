@@ -222,6 +222,42 @@ export async function resolvePurchaseApproval(
 
     if (!result.rows[0]) throw new ApiError(404, "Solicitud de compra no encontrada o ya resuelta");
 
+    if (nextState === "aprobada") {
+      const purchaseInfo = await client.query<{ total_amount: string; supplier_name: string }>(
+        `
+          SELECT p.total_amount::text AS total_amount,
+                 COALESCE(s.display_name, 'Proveedor sin nombre') AS supplier_name
+          FROM purchases p
+          LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+          WHERE p.id = $1 AND p.empresa_id = $2
+          LIMIT 1
+        `,
+        [id, session.companyId],
+      );
+      const purchase = purchaseInfo.rows[0];
+      if (purchase && Number(purchase.total_amount) > 0) {
+        // Registro informativo en Caja: no afecta el saldo (el dinero recien sale al registrar
+        // el pago), solo deja visible el compromiso de pago pendiente por la compra aprobada.
+        await client.query(
+          `
+            INSERT INTO payments (
+              purchase_id, payment_date, amount, method, status,
+              entity_type, entity_name, concept, empresa_id
+            )
+            VALUES ($1::uuid, $2, $3, 'compra_aprobada', 'informativo', 'compra_aprobada', $4, $5, $6)
+          `,
+          [
+            id,
+            localDateIso(),
+            purchase.total_amount,
+            purchase.supplier_name,
+            `Compra aprobada - Compra ${id}`,
+            session.companyId,
+          ],
+        );
+      }
+    }
+
     await client.query(
       "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
       [

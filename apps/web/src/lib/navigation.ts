@@ -132,7 +132,8 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Base de datos",
     active: "database",
     items: [
-      { href: "/pricing", label: "Precios", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/prices", label: "Precios", active: "database", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/pricing", label: "Margenes y listas", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/customers/follow-up", label: "Seguimiento clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/suppliers", label: "Proveedores", active: "database", permission: SUPPLIERS_READ_PERMISSION },
@@ -210,6 +211,12 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "approvals",
     permission: COLLECTIONS_APPROVE_PERMISSION,
   },
+  {
+    href: "/admin/audit",
+    label: "Auditoria",
+    active: "audit",
+    permission: ADMIN_MOVEMENTS_READ_PERMISSION,
+  },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   {
     label: "Mensajes",
@@ -263,6 +270,7 @@ export const navigationSections: NavigationSection[] = [
       groupByLabel("Metricas"),
       groupByLabel("Rentabilidad"),
       groupByLabel("Solicitudes y aprobaciones"),
+      groupByLabel("Auditoria"),
     ],
   },
   {

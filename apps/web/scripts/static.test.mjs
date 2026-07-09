@@ -1086,3 +1086,74 @@ test("request parsing, sessions and CI keep security guardrails", () => {
   assert.match(workflow, /npm run security:scan/);
   assert.match(workflow, /npm audit signatures/);
 });
+
+test("Precios menu opens a real per-product sale-price screen, not the stock catalog", () => {
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.match(navigation, /href: "\/prices",\s*label: "Precios"/, "the Precios menu entry must open /prices");
+  assert.doesNotMatch(navigation, /href: "\/products", label: "Precios"/, "Precios must no longer point at the stock catalog");
+
+  const catalog = read("apps/web/src/lib/catalog.ts");
+  assert.match(catalog, /export async function listSalePrices/);
+  assert.match(catalog, /listas_precio/, "sale prices must be computed over the active price lists");
+  assert.match(catalog, /margenes_listas/, "sale prices must use the per-list margin multipliers");
+
+  const pricesPage = read("apps/web/src/app/prices/page.tsx");
+  assert.match(pricesPage, /listSalePrices/);
+  assert.match(pricesPage, /result\.lists\.map/, "the screen must render one column per active price list");
+});
+
+test("Sueldos y dividendos page allows adding employees and partners", () => {
+  const finance = read("apps/web/src/lib/finance.ts");
+  assert.match(finance, /export async function createSalaryPlan/);
+  assert.match(finance, /export async function createPartner/);
+  assert.match(finance, /INSERT INTO admin_sueldos_config/);
+  assert.match(finance, /INSERT INTO admin_socios/);
+
+  const actions = read("apps/web/src/app/balance/remunerations/actions.ts");
+  assert.match(actions, /createSalaryPlanAction/);
+  assert.match(actions, /createPartnerAction/);
+  assert.match(actions, /ADMIN_SALARIES_WRITE_PERMISSION/);
+  assert.match(actions, /ADMIN_DIVIDENDS_WRITE_PERMISSION/);
+
+  const page = read("apps/web/src/app/balance/remunerations/page.tsx");
+  assert.match(page, /createSalaryPlanAction/);
+  assert.match(page, /createPartnerAction/);
+  assert.match(page, /listEmployees/);
+  assert.match(page, /name="employeeId"/);
+  assert.match(page, /name="share"/);
+});
+
+test("Caja records manual movements and reflects payments and approved purchases", () => {
+  const finance = read("apps/web/src/lib/finance.ts");
+  assert.match(finance, /export async function createCashMovement/);
+  assert.match(finance, /export async function getCashMovements/);
+  assert.match(finance, /manual_cash_movements/, "manual cash movements must feed the treasury balance");
+  assert.match(finance, /caja_entrada/);
+
+  const cashActions = read("apps/web/src/app/cash/actions.ts");
+  assert.match(cashActions, /createCashMovementAction/);
+  assert.match(cashActions, /ADMIN_TREASURY_WRITE_PERMISSION/);
+
+  const cashPage = read("apps/web/src/app/cash/page.tsx");
+  assert.match(cashPage, /createCashMovementAction/);
+  assert.match(cashPage, /getCashMovements/);
+  assert.match(cashPage, /name="direction"/);
+
+  const approvals = read("apps/web/src/lib/approvals.ts");
+  assert.match(approvals, /compra_aprobada/, "approving a purchase must leave an informational cash entry");
+});
+
+test("Auditoria screen surfaces the operational audit log", () => {
+  const audit = read("apps/web/src/lib/audit.ts");
+  assert.match(audit, /export async function listAuditLog/);
+  assert.match(audit, /FROM audit_log/);
+  assert.match(audit, /LEFT JOIN profiles/, "the audit reader must resolve the actor name");
+
+  const page = read("apps/web/src/app/admin/audit/page.tsx");
+  assert.match(page, /listAuditLog/);
+  assert.match(page, /ADMIN_MOVEMENTS_READ_PERMISSION/);
+
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.match(navigation, /href: "\/admin\/audit",\s*label: "Auditoria"/);
+  assert.match(navigation, /groupByLabel\("Auditoria"\)/);
+});

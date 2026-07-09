@@ -1,6 +1,19 @@
 import { getAccountsPayable, getAdminMetrics, getCashflow } from "@/lib/admin-metrics";
-import { queryWithCompanyContext } from "@/lib/db";
+import { ApiError } from "@/lib/api-response";
+import type { AuthSession } from "@/lib/auth";
+import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import {
+  cashMovementInputFromBody as parseCashMovementInput,
+  partnerInputFromBody as parsePartnerInput,
+  salaryPlanInputFromBody as parseSalaryPlanInput,
+  type CashMovementInput,
+  type PartnerInput,
+  type RequestBody,
+  type SalaryPlanInput,
+} from "@/lib/finance-inputs";
 import { parsePagination } from "@/lib/pagination";
+
+export type { CashMovementInput, PartnerInput, SalaryPlanInput };
 
 export async function getBalanceDashboard(companyId: number) {
   const [metrics, payables, cashflow] = await Promise.all([
@@ -14,6 +27,61 @@ export async function getBalanceDashboard(companyId: number) {
     payables,
     cashflow,
   };
+}
+
+export function salaryPlanInputFromBody(body: RequestBody): SalaryPlanInput {
+  try {
+    return parseSalaryPlanInput(body);
+  } catch (error) {
+    throw new ApiError(400, error instanceof Error ? error.message : "Datos invalidos");
+  }
+}
+
+export async function createSalaryPlan(companyId: number, input: SalaryPlanInput) {
+  return withCompanyContext(companyId, async (client) => {
+    const duplicate = await client.query<{ id: number }>(
+      `SELECT id FROM admin_sueldos_config WHERE empresa_id = $1 AND profile_id = $2::uuid LIMIT 1`,
+      [companyId, input.employeeId],
+    );
+    if (duplicate.rows[0]) {
+      throw new ApiError(409, "Ese empleado ya tiene un sueldo configurado");
+    }
+
+    const result = await client.query<{ id: number }>(
+      `
+        INSERT INTO admin_sueldos_config (
+          empresa_id, profile_id, sueldo_mensual, modalidad, activo, aguinaldo_aplica, cargas_pct, notas
+        )
+        VALUES ($1, $2::uuid, $3, $4, TRUE, $5, $6, $7)
+        RETURNING id
+      `,
+      [companyId, input.employeeId, input.monthly, input.modality, input.bonusEnabled, input.chargesPercent, input.notes],
+    );
+
+    return { id: result.rows[0].id };
+  });
+}
+
+export function partnerInputFromBody(body: RequestBody): PartnerInput {
+  try {
+    return parsePartnerInput(body);
+  } catch (error) {
+    throw new ApiError(400, error instanceof Error ? error.message : "Datos invalidos");
+  }
+}
+
+export async function createPartner(companyId: number, input: PartnerInput) {
+  const result = await queryWithCompanyContext<{ id: number }>(
+    companyId,
+    `
+      INSERT INTO admin_socios (empresa_id, nombre, participacion, activo, notas)
+      VALUES ($1, $2, $3, TRUE, $4)
+      RETURNING id
+    `,
+    [companyId, input.name, input.share, input.notes],
+  );
+
+  return { id: result.rows[0].id };
 }
 
 export async function getSalaryPlan(companyId: number) {
@@ -177,6 +245,13 @@ export async function getTreasuryBalances(companyId: number) {
         FROM admin_bank_statement_lines l
         JOIN admin_bank_accounts a ON a.id = l.bank_account_id AND a.empresa_id = l.empresa_id
         WHERE l.empresa_id = $1 AND l.status <> 'ignored'
+      ),
+      manual_cash_movements AS (
+        SELECT 'Movimientos manuales de caja' AS account,
+               'efectivo' AS account_type,
+               CASE WHEN entity_type = 'caja_entrada' THEN amount ELSE -amount END AS amount
+        FROM payments
+        WHERE empresa_id = $1 AND entity_type IN ('caja_entrada', 'caja_salida')
       )
       SELECT account,
              account_type,
@@ -188,6 +263,8 @@ export async function getTreasuryBalances(companyId: number) {
         SELECT * FROM provider_payments
         UNION ALL
         SELECT * FROM bank_lines
+        UNION ALL
+        SELECT * FROM manual_cash_movements
       ) data
       GROUP BY account, account_type
       ORDER BY account_type ASC, account ASC
@@ -209,6 +286,105 @@ export async function getTreasuryBalances(companyId: number) {
       cash: accounts.filter((item) => item.accountType === "efectivo").reduce((sum, item) => sum + item.balance, 0),
       bank: accounts.filter((item) => item.accountType === "bancaria").reduce((sum, item) => sum + item.balance, 0),
       other: accounts.filter((item) => item.accountType === "otra").reduce((sum, item) => sum + item.balance, 0),
+    },
+  };
+}
+
+export function cashMovementInputFromBody(body: RequestBody): CashMovementInput {
+  try {
+    return parseCashMovementInput(body);
+  } catch (error) {
+    throw new ApiError(400, error instanceof Error ? error.message : "Datos invalidos");
+  }
+}
+
+export async function createCashMovement(session: AuthSession, input: CashMovementInput) {
+  const entityType = input.direction === "entrada" ? "caja_entrada" : "caja_salida";
+
+  const result = await queryWithCompanyContext<{ id: string }>(
+    session.companyId,
+    `
+      INSERT INTO payments (
+        payment_date, amount, method, status, registered_by,
+        entity_type, concept, notes, empresa_id
+      )
+      VALUES ($1, $2, 'ajuste_caja', 'registrado', $3::uuid, $4, $5, $6, $7)
+      RETURNING id::text AS id
+    `,
+    [input.date, input.amount, session.userId, entityType, input.concept, input.notes, session.companyId],
+  );
+
+  return { id: result.rows[0].id };
+}
+
+const CASH_MOVEMENT_ENTITY_TYPES = ["caja_entrada", "caja_salida", "pago", "compra_aprobada"];
+
+const CASH_MOVEMENT_LABELS: Record<string, string> = {
+  caja_entrada: "Entrada manual",
+  caja_salida: "Salida manual",
+  pago: "Pago a proveedor",
+  compra_aprobada: "Compra aprobada (pendiente de pago)",
+};
+
+export async function getCashMovements(input: {
+  companyId: number;
+  page?: string | null;
+  pageSize?: string | null;
+}) {
+  const pagination = parsePagination(input);
+
+  const count = await queryWithCompanyContext<{ total: string }>(
+    input.companyId,
+    `SELECT COUNT(*)::text AS total FROM payments WHERE empresa_id = $1 AND entity_type = ANY($2)`,
+    [input.companyId, CASH_MOVEMENT_ENTITY_TYPES],
+  );
+
+  const rows = await queryWithCompanyContext<{
+    id: string;
+    entity_type: string;
+    entidad_nombre: string;
+    concepto: string;
+    monto: string;
+    fecha: string | null;
+    notas: string;
+  }>(
+    input.companyId,
+    `
+      SELECT id::text AS id, entity_type, entity_name AS entidad_nombre,
+             COALESCE(concept, reference, '') AS concepto,
+             amount::text AS monto, payment_date::text AS fecha, notes AS notas
+      FROM payments
+      WHERE empresa_id = $1 AND entity_type = ANY($2)
+      ORDER BY payment_date DESC NULLS LAST, created_at DESC
+      LIMIT $3 OFFSET $4
+    `,
+    [input.companyId, CASH_MOVEMENT_ENTITY_TYPES, pagination.pageSize, pagination.offset],
+  );
+
+  const total = Number(count.rows[0]?.total ?? 0);
+  return {
+    data: rows.rows.map((row) => {
+      const affectsBalance = row.entity_type !== "compra_aprobada";
+      const signedAmount =
+        row.entity_type === "caja_entrada" ? Number(row.monto) : affectsBalance ? -Number(row.monto) : Number(row.monto);
+      return {
+        id: row.id,
+        type: row.entity_type,
+        typeLabel: CASH_MOVEMENT_LABELS[row.entity_type] ?? row.entity_type,
+        entityName: row.entidad_nombre,
+        concept: row.concepto,
+        amount: Number(row.monto),
+        signedAmount,
+        affectsBalance,
+        date: row.fecha,
+        notes: row.notas,
+      };
+    }),
+    meta: {
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pagination.pageSize)),
     },
   };
 }

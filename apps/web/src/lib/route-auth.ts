@@ -122,9 +122,24 @@ export const ADMIN_SALARIES_READ_PERMISSION = {
   action: "ver",
 } satisfies Permission;
 
+export const ADMIN_SALARIES_WRITE_PERMISSION = {
+  resource: "admin.sueldos",
+  action: "editar",
+} satisfies Permission;
+
 export const ADMIN_DIVIDENDS_READ_PERMISSION = {
   resource: "admin.dividendos",
   action: "ver",
+} satisfies Permission;
+
+export const ADMIN_DIVIDENDS_WRITE_PERMISSION = {
+  resource: "admin.dividendos",
+  action: "editar",
+} satisfies Permission;
+
+export const ADMIN_TREASURY_WRITE_PERMISSION = {
+  resource: "admin.tesoreria",
+  action: "editar",
 } satisfies Permission;
 
 export const ADMIN_MOVEMENTS_READ_PERMISSION = {
