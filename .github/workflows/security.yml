@@ -1,0 +1,60 @@
+name: security
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - tomas
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  web-security:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Install
+        run: npm ci
+
+      - name: Security scan
+        run: npm run security:scan
+
+      - name: Verify npm signatures
+        run: npm audit signatures
+        continue-on-error: true
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Build
+        run: npm run build
+
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@v3

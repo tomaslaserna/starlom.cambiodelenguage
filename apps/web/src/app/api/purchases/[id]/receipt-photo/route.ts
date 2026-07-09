@@ -7,8 +7,10 @@ import {
 } from "@/lib/purchases";
 import { imageFileFromFormData, uploadImageFile } from "@/lib/storage";
 import { requireApiSession } from "@/lib/route-auth";
+import { assertRequestSize } from "@/lib/request-body";
 
 export const runtime = "nodejs";
+const RECEIPT_UPLOAD_BODY_LIMIT_BYTES = 9 * 1024 * 1024;
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -21,6 +23,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const purchaseId = purchaseIdFromParam(id, "Compra");
     await assertPurchaseReceiptUploadAllowed(session.companyId, purchaseId);
 
+    assertRequestSize(request, RECEIPT_UPLOAD_BODY_LIMIT_BYTES, "La imagen");
     const formData = await request.formData();
     const image = imageFileFromFormData(formData, ["foto", "file", "receipt"]);
     if (!image) throw new ApiError(400, "No se recibio ninguna imagen");

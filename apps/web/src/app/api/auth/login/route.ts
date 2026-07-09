@@ -12,8 +12,10 @@ import {
   loginRateLimitStatus,
   recordFailedLogin,
 } from "@/lib/login-rate-limit";
+import { assertRequestSize } from "@/lib/request-body";
 
 export const runtime = "nodejs";
+const LOGIN_BODY_LIMIT_BYTES = 16 * 1024;
 
 function wantsJson(request: NextRequest) {
   return request.headers.get("accept")?.includes("application/json");
@@ -41,18 +43,30 @@ function rateLimitedResponse(request: NextRequest, retryAfterSeconds: number) {
 }
 
 export async function POST(request: NextRequest) {
+  assertRequestSize(request, LOGIN_BODY_LIMIT_BYTES, "El login");
   const contentType = request.headers.get("content-type") ?? "";
   let identifier = "";
   let password = "";
 
   if (contentType.includes("application/json")) {
-    const body = await request.json().catch(() => ({}));
+    const raw = await request.text().catch(() => "");
+    if (Buffer.byteLength(raw, "utf8") > LOGIN_BODY_LIMIT_BYTES) {
+      return NextResponse.json({ ok: false, error: "Solicitud demasiado grande." }, { status: 413 });
+    }
+    const body = safeJson(raw);
     identifier = String(body.identifier ?? body.correo ?? "");
     password = String(body.password ?? body.contrasena ?? "");
-  } else {
+  } else if (
+    contentType.includes("application/x-www-form-urlencoded") ||
+    contentType.includes("multipart/form-data")
+  ) {
     const form = await request.formData();
     identifier = String(form.get("identifier") ?? form.get("correo") ?? "");
     password = String(form.get("password") ?? form.get("contrasena") ?? "");
+  } else {
+    return wantsJson(request)
+      ? NextResponse.json({ ok: false, error: "Content-Type no soportado." }, { status: 415 })
+      : NextResponse.redirect(new URL("/login?error=invalid", request.url), { status: 303 });
   }
 
   const rateLimitKey = loginRateLimitKey(requestIp(request), identifier);
@@ -76,4 +90,15 @@ export async function POST(request: NextRequest) {
 
   response.cookies.set(SESSION_COOKIE, encodeSession(session), sessionCookieOptions());
   return response;
+}
+
+function safeJson(raw: string) {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
 }

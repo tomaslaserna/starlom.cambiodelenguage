@@ -63,6 +63,32 @@ function encodedObjectPath(path: string) {
     .join("/");
 }
 
+export function storageObjectReference(bucket: string, path: string) {
+  return `starlim-storage://${bucket}/${path}`;
+}
+
+export function parseStorageObjectReference(value: string) {
+  const match = value.match(/^starlim-storage:\/\/([^/]+)\/(.+)$/);
+  if (!match) return null;
+  return {
+    bucket: match[1],
+    path: match[2],
+  };
+}
+
+export function storageDownloadUrl(value: string) {
+  const reference = parseStorageObjectReference(value);
+  if (!reference) return value;
+  return `/api/storage/${encodeURIComponent(reference.bucket)}/${encodedObjectPath(reference.path)}`;
+}
+
+export function assertCompanyStoragePath(path: string, companyId: number) {
+  const prefix = `recibos/recibo_${companyId}_`;
+  if (!path.startsWith(prefix)) {
+    throw new ApiError(403, "Archivo fuera del ambito de la empresa");
+  }
+}
+
 function assertImageSignature(buffer: Buffer, mime: string) {
   if (mime === "image/jpeg" && buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return;
   if (mime === "image/png" && buffer.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))) return;
@@ -132,6 +158,31 @@ export async function uploadImageFile({
   return {
     bucket: config.bucket,
     path: objectPath,
-    url: `${config.url}/storage/v1/object/public/${encodeURIComponent(config.bucket)}/${encodedObjectPath(objectPath)}`,
+    url: storageObjectReference(config.bucket, objectPath),
   };
+}
+
+export async function createSignedStorageUrl(bucket: string, path: string, expiresInSeconds = 300) {
+  const config = storageConfig();
+  if (bucket !== config.bucket) throw new ApiError(403, "Bucket no permitido");
+
+  const response = await fetch(
+    `${config.url}/storage/v1/object/sign/${encodeURIComponent(bucket)}/${encodedObjectPath(path)}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.key}`,
+        apikey: config.key,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ expiresIn: expiresInSeconds }),
+    },
+  );
+
+  const body = (await response.json().catch(() => ({}))) as { signedURL?: string; error?: string; message?: string };
+  if (!response.ok || !body.signedURL) {
+    throw new ApiError(response.status || 500, body.error || body.message || "No se pudo firmar el archivo");
+  }
+
+  return `${config.url}${body.signedURL}`;
 }

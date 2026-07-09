@@ -15,6 +15,9 @@ export type AuthSession = {
   expiresAt: number;
 };
 
+const SAFE_ROLE_PATTERN = /^[a-zA-Z0-9_.-]{1,64}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function sessionSecret() {
   const configured = envValue("STARLIM_SESSION_SECRET");
   if (configured) return configured;
@@ -57,10 +60,34 @@ export function decodeSession(token: string | undefined): AuthSession | null {
   try {
     const session = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as AuthSession;
     if (!session.expiresAt || session.expiresAt <= Math.floor(Date.now() / 1000)) return null;
+    if (!isValidSessionShape(session)) return null;
     return session;
   } catch {
     return null;
   }
+}
+
+function isValidSessionShape(session: AuthSession) {
+  return (
+    UUID_PATTERN.test(String(session.userId ?? "")) &&
+    typeof session.username === "string" &&
+    session.username.length > 0 &&
+    session.username.length <= 160 &&
+    typeof session.email === "string" &&
+    session.email.length > 0 &&
+    session.email.length <= 320 &&
+    typeof session.displayName === "string" &&
+    session.displayName.length > 0 &&
+    session.displayName.length <= 160 &&
+    typeof session.role === "string" &&
+    SAFE_ROLE_PATTERN.test(session.role) &&
+    Number.isInteger(session.companyId) &&
+    session.companyId > 0 &&
+    typeof session.companyName === "string" &&
+    session.companyName.length > 0 &&
+    session.companyName.length <= 160 &&
+    Number.isInteger(session.expiresAt)
+  );
 }
 
 export function sessionCookieOptions() {
@@ -70,5 +97,6 @@ export function sessionCookieOptions() {
     secure: process.env.NODE_ENV === "production",
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
+    priority: "high" as const,
   };
 }

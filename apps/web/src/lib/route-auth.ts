@@ -1,5 +1,5 @@
 import { currentSession, isStaffRole, normalizeRole, type AuthSession } from "@/lib/auth";
-import { getDbPool } from "@/lib/db";
+import { queryWithCompanyContext } from "@/lib/db";
 import { ApiError } from "@/lib/api-response";
 
 export type Permission = {
@@ -218,7 +218,8 @@ async function databaseAllows(session: AuthSession, permissions: Permission[]) {
   const cached = databasePermissionCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.allowed;
 
-  const result = await getDbPool().query<{ allowed: number }>(
+  const result = await queryWithCompanyContext<{ allowed: number }>(
+    session.companyId,
     `
       SELECT 1 AS allowed
       FROM profile_permissions pp

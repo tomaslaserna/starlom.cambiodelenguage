@@ -143,7 +143,7 @@ export async function authenticateUser(identifier: string, password: string): Pr
   );
 
   const user = userResult.rows[0];
-  if (!user || !user.active || !user.email) return null;
+  if (!user || !user.active || !user.email || !user.company_id || !user.company_name) return null;
 
   const authUser = await signInWithPassword(user.email, password);
   if (!authUser || authUser.id !== user.id) return null;
@@ -156,8 +156,8 @@ export async function authenticateUser(identifier: string, password: string): Pr
     email: user.email,
     displayName: user.full_name || user.username || user.email,
     role,
-    companyId: Number(user.company_id ?? 1),
-    companyName: user.company_name || "Starlim",
+    companyId: Number(user.company_id),
+    companyName: user.company_name,
     expiresAt: newSessionExpiry(),
   };
 }

@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { resolvePriceListName } from "@/lib/order-pricing";
-import { numberField, textField, uuidParam, type RequestBody } from "@/lib/request-body";
+import { assertRequestSize, numberField, textField, uuidParam, type RequestBody } from "@/lib/request-body";
 
 type CsvImportResult = {
   inserted?: number;
@@ -53,6 +53,7 @@ function detectDelimiter(text: string) {
 }
 
 async function csvFileFromRequest(request: Request) {
+  assertRequestSize(request, MAX_CSV_BYTES + 256 * 1024, "El CSV");
   const form = await request.formData();
   const file = form.get("csv_file") ?? form.get("file");
   if (!(file instanceof File)) throw new ApiError(400, "No se recibio ningun archivo CSV");

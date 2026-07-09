@@ -26,6 +26,29 @@ if (value("STARLIM_SESSION_SECRET") && value("STARLIM_SESSION_SECRET").length < 
   warnings.push("STARLIM_SESSION_SECRET should be at least 32 characters.");
 }
 
+if (value("SUPABASE_DB_SSL_REJECT_UNAUTHORIZED") === "false" && process.env.NODE_ENV === "production") {
+  dangerous.push("SUPABASE_DB_SSL_REJECT_UNAUTHORIZED=false is not allowed in production.");
+}
+
+const dbUser = value("SUPABASE_DB_USER").toLowerCase();
+if (process.env.NODE_ENV === "production" && ["postgres", "anon", "authenticated", "service_role"].includes(dbUser)) {
+  dangerous.push("SUPABASE_DB_USER must use the least-privilege starlim_app role in production.");
+}
+
+for (const origin of value("STARLIM_ALLOWED_ORIGINS").split(",").map((item) => item.trim()).filter(Boolean)) {
+  try {
+    const url = new URL(origin);
+    if (url.origin !== origin || !["https:", "http:"].includes(url.protocol)) {
+      dangerous.push(`STARLIM_ALLOWED_ORIGINS contains an invalid origin: ${origin}`);
+    }
+    if (process.env.NODE_ENV === "production" && url.protocol !== "https:") {
+      dangerous.push(`STARLIM_ALLOWED_ORIGINS contains an invalid origin: ${origin}`);
+    }
+  } catch {
+    dangerous.push(`STARLIM_ALLOWED_ORIGINS contains an invalid origin: ${origin}`);
+  }
+}
+
 for (const key of ["STARLIM_API_KEY", "STARLIM_WEBHOOK_URL", "SUPABASE_SERVICE_KEY"]) {
   if (value(key)) warnings.push(`${key} is obsolete and can be removed.`);
 }

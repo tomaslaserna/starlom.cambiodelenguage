@@ -3,6 +3,7 @@ import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { localDateIso } from "@/lib/timezone";
+import { storageDownloadUrl } from "@/lib/storage";
 
 type PurchaseItem = {
   productId: string;
@@ -142,7 +143,7 @@ function mapPurchase(row: {
     stockUpdated: row.package_status === "revisado",
     packageStatus: row.package_status,
     failureDescription: row.failure_description,
-    receiptPhoto: row.receipt_photo,
+    receiptPhoto: storageDownloadUrl(row.receipt_photo),
     paid: paidAmount >= total && total > 0,
     paidAmount,
     balance: Math.max(0, total - paidAmount),

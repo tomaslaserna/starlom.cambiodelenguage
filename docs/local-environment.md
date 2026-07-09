@@ -24,8 +24,9 @@ Para apuntar a la base Supabase nueva, cargar en `apps/web/.env.local`:
 SUPABASE_DB_HOST=
 SUPABASE_DB_PORT=6543
 SUPABASE_DB_NAME=postgres
-SUPABASE_DB_USER=
+SUPABASE_DB_USER=starlim_app
 SUPABASE_DB_PASS=
+SUPABASE_DB_SSL_REJECT_UNAUTHORIZED=true
 
 # Alternativa: si DATABASE_URL esta definido, tiene prioridad sobre SUPABASE_DB_*.
 DATABASE_URL=
@@ -40,6 +41,7 @@ STARLIM_SESSION_SECRET=
 STARLIM_PEPPER=
 
 STARLIM_STORAGE_BUCKET=uploads
+STARLIM_ALLOWED_ORIGINS=
 STARLIM_FISCAL_PROVIDER=disabled
 STARLIM_FISCAL_MODE=testing
 STARLIM_ARCA_CUIT=
@@ -52,6 +54,32 @@ STARLIM_ARCA_KEY_BASE64=
 
 Usar `DATABASE_URL` o el bloque `SUPABASE_DB_*`, no ambos salvo que se entienda
 que `DATABASE_URL` tiene prioridad.
+
+## Rol runtime de Postgres
+
+La app no debe conectarse como `postgres`, `anon`, `authenticated` ni
+`service_role`. Despues de aplicar las migraciones, crear la contrasena del rol
+fuera de Git:
+
+```sql
+ALTER ROLE starlim_app WITH PASSWORD '<password-entregado-por-canal-seguro>';
+```
+
+Luego usar `SUPABASE_DB_USER=starlim_app` y esa contrasena en local/Vercel. Si
+el pooler de Supabase exige usuario calificado, usar
+`starlim_app.<project-ref>` como usuario del pooler. El rol queda con
+`NOBYPASSRLS`, limites de timeout y permisos acotados al runtime.
+
+## Seguridad local vs produccion
+
+- Mantener `SUPABASE_DB_SSL_REJECT_UNAUTHORIZED=true` o vacio en produccion.
+  Usar `false` solo como diagnostico local si una CA corporativa rompe TLS.
+- `STARLIM_ALLOWED_ORIGINS` solo debe listar dominios propios adicionales,
+  separados por coma y sin comodines. En produccion deben ser `https://`.
+- El bucket `STARLIM_STORAGE_BUCKET` debe ser privado. La app guarda referencias
+  internas y sirve archivos por URL firmada desde rutas autenticadas.
+- La app rechaza cuerpos JSON/form grandes por defecto. Los CSV y comprobantes
+  tienen limites especificos para evitar abuso de memoria.
 
 ## Datos que hay que pedir por canal seguro
 

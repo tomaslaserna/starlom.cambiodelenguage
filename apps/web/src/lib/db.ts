@@ -1,5 +1,5 @@
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
-import { getDatabaseEnv } from "@/lib/env";
+import { envValue, getDatabaseEnv } from "@/lib/env";
 import { BUSINESS_TIME_ZONE } from "@/lib/timezone";
 
 let pool: Pool | null = null;
@@ -71,6 +71,10 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function rejectUnauthorizedSsl() {
+  return envValue("SUPABASE_DB_SSL_REJECT_UNAUTHORIZED") !== "false";
+}
+
 export function clearReadQueryCache() {
   readQueryCache.clear();
 }
@@ -101,7 +105,7 @@ export function getDbPool(): Pool {
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
       ssl: {
-        rejectUnauthorized: false,
+        rejectUnauthorized: rejectUnauthorizedSsl(),
       },
     });
 

@@ -943,3 +943,146 @@ test("Registro de ventas shows only the delivered-sales listing, without duplica
   assert.match(salesPage, /listOrders\(/, "sales page must render its own delivered-sales listing");
   assert.match(salesPage, /status:\s*"entregado"/, "listing must be filtered to delivered orders only");
 });
+
+test("security hardening stays enabled at the HTTP edge", () => {
+  const nextConfig = read("apps/web/next.config.ts");
+  assert.match(nextConfig, /Content-Security-Policy/);
+  assert.match(nextConfig, /frame-ancestors 'none'/);
+  assert.match(nextConfig, /object-src 'none'/);
+  assert.match(nextConfig, /Strict-Transport-Security/);
+  assert.match(nextConfig, /X-Content-Type-Options/);
+  assert.match(nextConfig, /Permissions-Policy/);
+
+  const proxy = read("apps/web/src/proxy.ts");
+  assert.match(proxy, /MUTATING_METHODS/);
+  assert.match(proxy, /isSameOrigin/);
+  assert.match(proxy, /sec-fetch-site/);
+  assert.match(proxy, /STARLIM_ALLOWED_ORIGINS/);
+  assert.match(proxy, /API_RATE_LIMIT/);
+  assert.match(proxy, /MUTATION_RATE_LIMIT/);
+  assert.match(proxy, /status: 429/);
+  assert.match(proxy, /Origen no permitido/);
+});
+
+test("private storage references replace public receipt URLs", () => {
+  const storage = read("apps/web/src/lib/storage.ts");
+  assert.match(storage, /starlim-storage:\/\//);
+  assert.match(storage, /storageDownloadUrl/);
+  assert.match(storage, /assertCompanyStoragePath/);
+  assert.match(storage, /createSignedStorageUrl/);
+  assert.doesNotMatch(storage, /\/storage\/v1\/object\/public/);
+
+  const purchases = read("apps/web/src/lib/purchases.ts");
+  assert.match(purchases, /storageDownloadUrl\(row\.receipt_photo\)/);
+
+  const storageRoute = read("apps/web/src/app/api/storage/[bucket]/[...path]/route.ts");
+  assert.match(storageRoute, /requireApiSession/);
+  assert.match(storageRoute, /assertCompanyStoragePath/);
+  assert.match(storageRoute, /createSignedStorageUrl/);
+});
+
+test("supabase migrations close Data API defaults and exposed helpers", () => {
+  const hardening = read("migrations/041_lock_down_supabase_advisor_warnings.sql");
+  assert.match(hardening, /ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public/);
+  assert.match(hardening, /REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM anon, authenticated, service_role/);
+  assert.match(hardening, /REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated, service_role, PUBLIC/);
+  assert.match(hardening, /security_invoker = true/);
+  assert.match(hardening, /NULLIF\(current_setting\(''app\.current_empresa_id'', true\), ''''\)::BIGINT/);
+  assert.doesNotMatch(hardening, /COALESCE\(.*current_empresa_id.*,\s*1\)/);
+
+  const helpers = read("migrations/042_move_role_helpers_out_of_public_api.sql");
+  assert.match(helpers, /CREATE SCHEMA IF NOT EXISTS app_private/);
+  assert.match(helpers, /REVOKE ALL ON SCHEMA app_private FROM anon, PUBLIC/);
+  assert.match(helpers, /DROP FUNCTION IF EXISTS public\.is_admin/);
+  assert.match(helpers, /DROP FUNCTION IF EXISTS public\.current_user_role/);
+
+  const storageMigration = read("migrations/20260709133100_harden_storage_private.sql");
+  assert.match(storageMigration, /storage\.buckets/);
+  assert.match(storageMigration, /public,\s*file_size_limit,\s*allowed_mime_types/);
+  assert.match(storageMigration, /REVOKE ALL ON TABLE storage\.objects FROM anon, authenticated/);
+  assert.match(storageMigration, /TO service_role/);
+});
+
+test("postgres runtime role stays least-privilege and RLS-bound", () => {
+  const runtimeRole = read("migrations/20260709135632_create_app_runtime_role.sql");
+  const runtimeRoleSql = runtimeRole.replace(/^--.*$/gm, "");
+  assert.match(runtimeRole, /CREATE ROLE starlim_app/);
+  assert.match(runtimeRole, /NOBYPASSRLS/);
+  assert.match(runtimeRole, /ALTER ROLE starlim_app SET row_security TO on/);
+  assert.match(runtimeRole, /GRANT CONNECT ON DATABASE/);
+  assert.match(runtimeRole, /GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO starlim_app/);
+  assert.match(runtimeRole, /GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO starlim_app/);
+  assert.match(runtimeRole, /GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app_private TO starlim_app/);
+  assert.match(runtimeRole, /ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public/);
+  assert.match(runtimeRole, /profiles_starlim_app_identity_read/);
+  assert.match(runtimeRole, /usuario_empresa_starlim_app_identity_read/);
+  assert.match(runtimeRole, /empresas_starlim_app_identity_read/);
+  assert.match(runtimeRole, /app_permissions_starlim_app_read/);
+  assert.match(runtimeRole, /role_permissions_starlim_app_read/);
+  assert.doesNotMatch(runtimeRoleSql, /WITH PASSWORD|PASSWORD '/);
+
+  const routeAuth = read("apps/web/src/lib/route-auth.ts");
+  assert.match(routeAuth, /queryWithCompanyContext<\{ allowed: number \}>/);
+  assert.doesNotMatch(routeAuth, /getDbPool\(\)\.query/);
+
+  const auth = read("apps/web/src/lib/auth.ts");
+  assert.match(auth, /!user\.company_id \|\| !user\.company_name/);
+  assert.doesNotMatch(auth, /company_id \?\? 1|companyName: user\.company_name \|\| "Starlim"/);
+
+  const appPrivateAccess = read("migrations/20260709140925_restrict_app_private_runtime_access.sql");
+  assert.match(appPrivateAccess, /REVOKE ALL ON SCHEMA app_private FROM anon, authenticated, PUBLIC/);
+  assert.match(appPrivateAccess, /GRANT USAGE ON SCHEMA app_private TO starlim_app/);
+  assert.match(appPrivateAccess, /REVOKE ALL ON FUNCTION %s FROM anon, authenticated, PUBLIC/);
+  assert.match(appPrivateAccess, /GRANT EXECUTE ON FUNCTION %s TO starlim_app/);
+  assert.match(appPrivateAccess, /ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA app_private/);
+});
+
+test("request parsing, sessions and CI keep security guardrails", () => {
+  const requestBody = read("apps/web/src/lib/request-body.ts");
+  assert.match(requestBody, /DEFAULT_BODY_LIMIT_BYTES = 256 \* 1024/);
+  assert.match(requestBody, /export function assertRequestSize/);
+  assert.match(requestBody, /throw new ApiError\(413/);
+  assert.match(requestBody, /Buffer\.byteLength\(raw, "utf8"\) > maxBytes/);
+
+  const loginRoute = read("apps/web/src/app/api/auth/login/route.ts");
+  assert.match(loginRoute, /LOGIN_BODY_LIMIT_BYTES = 16 \* 1024/);
+  assert.match(loginRoute, /assertRequestSize\(request, LOGIN_BODY_LIMIT_BYTES/);
+  assert.match(loginRoute, /Content-Type no soportado/);
+
+  const imports = read("apps/web/src/lib/imports.ts");
+  assert.match(imports, /assertRequestSize\(request, MAX_CSV_BYTES \+ 256 \* 1024, "El CSV"\)/);
+
+  const receiptUpload = read("apps/web/src/app/api/purchases/[id]/receipt-photo/route.ts");
+  assert.match(receiptUpload, /RECEIPT_UPLOAD_BODY_LIMIT_BYTES = 9 \* 1024 \* 1024/);
+  assert.match(receiptUpload, /assertRequestSize\(request, RECEIPT_UPLOAD_BODY_LIMIT_BYTES, "La imagen"\)/);
+
+  const sessionToken = read("apps/web/src/lib/session-token.ts");
+  assert.match(sessionToken, /function isValidSessionShape/);
+  assert.match(sessionToken, /UUID_PATTERN\.test/);
+  assert.match(sessionToken, /companyId > 0/);
+  assert.match(sessionToken, /priority: "high"/);
+
+  const proxy = read("apps/web/src/proxy.ts");
+  assert.match(proxy, /X-Request-Id/);
+  assert.doesNotMatch(proxy, /api\/auth\/logout/);
+
+  const nextConfig = read("apps/web/next.config.ts");
+  assert.match(nextConfig, /proxyClientMaxBodySize: "10mb"/);
+
+  const checkEnv = read("apps/web/scripts/check-env.mjs");
+  assert.match(checkEnv, /SUPABASE_DB_USER must use the least-privilege starlim_app role/);
+  assert.match(checkEnv, /url\.protocol !== "https:"/);
+
+  const packageJson = read("apps/web/package.json");
+  assert.match(packageJson, /"security:scan": "node scripts\/security-scan\.mjs"/);
+  const securityScan = read("apps/web/scripts/security-scan.mjs");
+  assert.match(securityScan, /git", \["ls-files", "--cached", "--others", "--exclude-standard"\]/);
+  assert.match(securityScan, /sb_secret_/);
+  assert.match(securityScan, /PRIVATE KEY/);
+
+  const workflow = read(".github/workflows/security.yml");
+  assert.match(workflow, /security-events: write/);
+  assert.match(workflow, /github\/codeql-action\/init@v3/);
+  assert.match(workflow, /npm run security:scan/);
+  assert.match(workflow, /npm audit signatures/);
+});
