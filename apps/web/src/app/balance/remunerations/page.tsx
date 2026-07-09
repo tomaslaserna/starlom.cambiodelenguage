@@ -1,18 +1,31 @@
 import { ModulePage } from "@/components/module-page";
-import { Card, DataTable, DataTableBody, DataTableCell, DataTableHead, DataTableHeader, DataTableRow, EmptyState, PageHeader, StatCard } from "@/components/ui";
+import { Button, Card, DataTable, DataTableBody, DataTableCell, DataTableHead, DataTableHeader, DataTableRow, EmptyState, Field, Input, PageHeader, Select, StatCard } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
 import { getDividendSheet, getSalaryPlan } from "@/lib/finance";
+import { listEmployees } from "@/lib/employees";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
-import { ADMIN_DIVIDENDS_READ_PERMISSION, ADMIN_SALARIES_READ_PERMISSION } from "@/lib/route-auth";
+import {
+  ADMIN_DIVIDENDS_READ_PERMISSION,
+  ADMIN_DIVIDENDS_WRITE_PERMISSION,
+  ADMIN_SALARIES_READ_PERMISSION,
+  ADMIN_SALARIES_WRITE_PERMISSION,
+  sessionAllows,
+} from "@/lib/route-auth";
+import { createPartnerAction, createSalaryPlanAction } from "./actions";
 
 export default async function RemunerationsPage() {
   const session = await requireStaffSession();
   await requirePagePermission(session, [ADMIN_SALARIES_READ_PERMISSION, ADMIN_DIVIDENDS_READ_PERMISSION]);
-  const [salaries, dividends] = await Promise.all([
+  const [salaries, dividends, canWriteSalaries, canWriteDividends] = await Promise.all([
     getSalaryPlan(session.companyId),
     getDividendSheet(session.companyId),
+    sessionAllows(session, [ADMIN_SALARIES_WRITE_PERMISSION]),
+    sessionAllows(session, [ADMIN_DIVIDENDS_WRITE_PERMISSION]),
   ]);
+  const configuredIds = new Set(salaries.employees.map((item) => item.employeeId).filter(Boolean));
+  const employees = canWriteSalaries ? await listEmployees(session.companyId) : [];
+  const availableEmployees = employees.filter((item) => item.active && !configuredIds.has(item.id));
 
   return (
     <ModulePage
@@ -34,6 +47,50 @@ export default async function RemunerationsPage() {
           <StatCard label="Dividendos asignados" value={formatCurrency(dividends.meta.owed)} />
           <StatCard label="Saldo socios" value={formatCurrency(dividends.meta.balance)} />
         </div>
+
+        {canWriteSalaries ? (
+          <Card className="p-4">
+            <h2 className="erp-text-title-sm font-black">Agregar empleado a sueldos</h2>
+            {availableEmployees.length === 0 ? (
+              <p className="mt-2 text-sm text-[color:var(--muted)]">
+                Todos los empleados activos ya tienen un sueldo configurado.
+              </p>
+            ) : (
+              <form action={createSalaryPlanAction} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Field htmlFor="salary-employee" label="Empleado">
+                  <Select id="salary-employee" name="employeeId" required>
+                    {availableEmployees.map((employee) => (
+                      <option key={employee.id} value={employee.id}>
+                        {employee.displayName}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field htmlFor="salary-monthly" label="Sueldo mensual">
+                  <Input id="salary-monthly" min="0.01" name="monthly" required step="0.01" type="number" />
+                </Field>
+                <Field htmlFor="salary-modality" label="Modalidad">
+                  <Input defaultValue="mensual" id="salary-modality" name="modality" />
+                </Field>
+                <Field htmlFor="salary-bonus" label="Aguinaldo">
+                  <Select defaultValue="true" id="salary-bonus" name="bonusEnabled">
+                    <option value="true">Aplica</option>
+                    <option value="false">No aplica</option>
+                  </Select>
+                </Field>
+                <Field htmlFor="salary-charges" label="Cargas (%)">
+                  <Input defaultValue="0" id="salary-charges" max="100" min="0" name="chargesPercent" step="0.01" type="number" />
+                </Field>
+                <Field htmlFor="salary-notes" label="Notas">
+                  <Input id="salary-notes" name="notes" placeholder="Opcional" />
+                </Field>
+                <div className="flex items-end sm:col-span-2 lg:col-span-3">
+                  <Button type="submit">Agregar</Button>
+                </div>
+              </form>
+            )}
+          </Card>
+        ) : null}
 
         <Card className="overflow-hidden">
           <DataTable
@@ -81,6 +138,26 @@ export default async function RemunerationsPage() {
             </DataTableBody>
           </DataTable>
         </Card>
+
+        {canWriteDividends ? (
+          <Card className="p-4">
+            <h2 className="erp-text-title-sm font-black">Agregar socio</h2>
+            <form action={createPartnerAction} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field htmlFor="partner-name" label="Socio">
+                <Input id="partner-name" name="name" required />
+              </Field>
+              <Field htmlFor="partner-share" label="Participacion (%)">
+                <Input id="partner-share" max="100" min="0.01" name="share" required step="0.01" type="number" />
+              </Field>
+              <Field htmlFor="partner-notes" label="Notas">
+                <Input id="partner-notes" name="notes" placeholder="Opcional" />
+              </Field>
+              <div className="flex items-end">
+                <Button type="submit">Agregar</Button>
+              </div>
+            </form>
+          </Card>
+        ) : null}
 
         <Card className="overflow-hidden">
           <DataTable

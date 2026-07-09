@@ -1101,3 +1101,24 @@ test("Precios menu opens a real per-product sale-price screen, not the stock cat
   assert.match(pricesPage, /listSalePrices/);
   assert.match(pricesPage, /result\.lists\.map/, "the screen must render one column per active price list");
 });
+
+test("Sueldos y dividendos page allows adding employees and partners", () => {
+  const finance = read("apps/web/src/lib/finance.ts");
+  assert.match(finance, /export async function createSalaryPlan/);
+  assert.match(finance, /export async function createPartner/);
+  assert.match(finance, /INSERT INTO admin_sueldos_config/);
+  assert.match(finance, /INSERT INTO admin_socios/);
+
+  const actions = read("apps/web/src/app/balance/remunerations/actions.ts");
+  assert.match(actions, /createSalaryPlanAction/);
+  assert.match(actions, /createPartnerAction/);
+  assert.match(actions, /ADMIN_SALARIES_WRITE_PERMISSION/);
+  assert.match(actions, /ADMIN_DIVIDENDS_WRITE_PERMISSION/);
+
+  const page = read("apps/web/src/app/balance/remunerations/page.tsx");
+  assert.match(page, /createSalaryPlanAction/);
+  assert.match(page, /createPartnerAction/);
+  assert.match(page, /listEmployees/);
+  assert.match(page, /name="employeeId"/);
+  assert.match(page, /name="share"/);
+});

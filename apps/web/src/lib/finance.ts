@@ -1,6 +1,16 @@
 import { getAccountsPayable, getAdminMetrics, getCashflow } from "@/lib/admin-metrics";
-import { queryWithCompanyContext } from "@/lib/db";
+import { ApiError } from "@/lib/api-response";
+import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import {
+  partnerInputFromBody as parsePartnerInput,
+  salaryPlanInputFromBody as parseSalaryPlanInput,
+  type PartnerInput,
+  type RequestBody,
+  type SalaryPlanInput,
+} from "@/lib/finance-inputs";
 import { parsePagination } from "@/lib/pagination";
+
+export type { PartnerInput, SalaryPlanInput };
 
 export async function getBalanceDashboard(companyId: number) {
   const [metrics, payables, cashflow] = await Promise.all([
@@ -14,6 +24,61 @@ export async function getBalanceDashboard(companyId: number) {
     payables,
     cashflow,
   };
+}
+
+export function salaryPlanInputFromBody(body: RequestBody): SalaryPlanInput {
+  try {
+    return parseSalaryPlanInput(body);
+  } catch (error) {
+    throw new ApiError(400, error instanceof Error ? error.message : "Datos invalidos");
+  }
+}
+
+export async function createSalaryPlan(companyId: number, input: SalaryPlanInput) {
+  return withCompanyContext(companyId, async (client) => {
+    const duplicate = await client.query<{ id: number }>(
+      `SELECT id FROM admin_sueldos_config WHERE empresa_id = $1 AND profile_id = $2::uuid LIMIT 1`,
+      [companyId, input.employeeId],
+    );
+    if (duplicate.rows[0]) {
+      throw new ApiError(409, "Ese empleado ya tiene un sueldo configurado");
+    }
+
+    const result = await client.query<{ id: number }>(
+      `
+        INSERT INTO admin_sueldos_config (
+          empresa_id, profile_id, sueldo_mensual, modalidad, activo, aguinaldo_aplica, cargas_pct, notas
+        )
+        VALUES ($1, $2::uuid, $3, $4, TRUE, $5, $6, $7)
+        RETURNING id
+      `,
+      [companyId, input.employeeId, input.monthly, input.modality, input.bonusEnabled, input.chargesPercent, input.notes],
+    );
+
+    return { id: result.rows[0].id };
+  });
+}
+
+export function partnerInputFromBody(body: RequestBody): PartnerInput {
+  try {
+    return parsePartnerInput(body);
+  } catch (error) {
+    throw new ApiError(400, error instanceof Error ? error.message : "Datos invalidos");
+  }
+}
+
+export async function createPartner(companyId: number, input: PartnerInput) {
+  const result = await queryWithCompanyContext<{ id: number }>(
+    companyId,
+    `
+      INSERT INTO admin_socios (empresa_id, nombre, participacion, activo, notas)
+      VALUES ($1, $2, $3, TRUE, $4)
+      RETURNING id
+    `,
+    [companyId, input.name, input.share, input.notes],
+  );
+
+  return { id: result.rows[0].id };
 }
 
 export async function getSalaryPlan(companyId: number) {
