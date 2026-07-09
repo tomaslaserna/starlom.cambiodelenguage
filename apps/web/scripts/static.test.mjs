@@ -1142,3 +1142,18 @@ test("Caja records manual movements and reflects payments and approved purchases
   const approvals = read("apps/web/src/lib/approvals.ts");
   assert.match(approvals, /compra_aprobada/, "approving a purchase must leave an informational cash entry");
 });
+
+test("Auditoria screen surfaces the operational audit log", () => {
+  const audit = read("apps/web/src/lib/audit.ts");
+  assert.match(audit, /export async function listAuditLog/);
+  assert.match(audit, /FROM audit_log/);
+  assert.match(audit, /LEFT JOIN profiles/, "the audit reader must resolve the actor name");
+
+  const page = read("apps/web/src/app/admin/audit/page.tsx");
+  assert.match(page, /listAuditLog/);
+  assert.match(page, /ADMIN_MOVEMENTS_READ_PERMISSION/);
+
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.match(navigation, /href: "\/admin\/audit",\s*label: "Auditoria"/);
+  assert.match(navigation, /groupByLabel\("Auditoria"\)/);
+});

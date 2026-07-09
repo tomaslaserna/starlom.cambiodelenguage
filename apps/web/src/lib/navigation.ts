@@ -211,6 +211,12 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "approvals",
     permission: COLLECTIONS_APPROVE_PERMISSION,
   },
+  {
+    href: "/admin/audit",
+    label: "Auditoria",
+    active: "audit",
+    permission: ADMIN_MOVEMENTS_READ_PERMISSION,
+  },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   {
     label: "Mensajes",
@@ -264,6 +270,7 @@ export const navigationSections: NavigationSection[] = [
       groupByLabel("Metricas"),
       groupByLabel("Rentabilidad"),
       groupByLabel("Solicitudes y aprobaciones"),
+      groupByLabel("Auditoria"),
     ],
   },
   {
