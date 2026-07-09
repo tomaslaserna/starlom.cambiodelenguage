@@ -1122,3 +1122,23 @@ test("Sueldos y dividendos page allows adding employees and partners", () => {
   assert.match(page, /name="employeeId"/);
   assert.match(page, /name="share"/);
 });
+
+test("Caja records manual movements and reflects payments and approved purchases", () => {
+  const finance = read("apps/web/src/lib/finance.ts");
+  assert.match(finance, /export async function createCashMovement/);
+  assert.match(finance, /export async function getCashMovements/);
+  assert.match(finance, /manual_cash_movements/, "manual cash movements must feed the treasury balance");
+  assert.match(finance, /caja_entrada/);
+
+  const cashActions = read("apps/web/src/app/cash/actions.ts");
+  assert.match(cashActions, /createCashMovementAction/);
+  assert.match(cashActions, /ADMIN_TREASURY_WRITE_PERMISSION/);
+
+  const cashPage = read("apps/web/src/app/cash/page.tsx");
+  assert.match(cashPage, /createCashMovementAction/);
+  assert.match(cashPage, /getCashMovements/);
+  assert.match(cashPage, /name="direction"/);
+
+  const approvals = read("apps/web/src/lib/approvals.ts");
+  assert.match(approvals, /compra_aprobada/, "approving a purchase must leave an informational cash entry");
+});
