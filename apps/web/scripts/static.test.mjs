@@ -1086,3 +1086,18 @@ test("request parsing, sessions and CI keep security guardrails", () => {
   assert.match(workflow, /npm run security:scan/);
   assert.match(workflow, /npm audit signatures/);
 });
+
+test("Precios menu opens a real per-product sale-price screen, not the stock catalog", () => {
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.match(navigation, /href: "\/prices",\s*label: "Precios"/, "the Precios menu entry must open /prices");
+  assert.doesNotMatch(navigation, /href: "\/products", label: "Precios"/, "Precios must no longer point at the stock catalog");
+
+  const catalog = read("apps/web/src/lib/catalog.ts");
+  assert.match(catalog, /export async function listSalePrices/);
+  assert.match(catalog, /listas_precio/, "sale prices must be computed over the active price lists");
+  assert.match(catalog, /margenes_listas/, "sale prices must use the per-list margin multipliers");
+
+  const pricesPage = read("apps/web/src/app/prices/page.tsx");
+  assert.match(pricesPage, /listSalePrices/);
+  assert.match(pricesPage, /result\.lists\.map/, "the screen must render one column per active price list");
+});

@@ -132,7 +132,8 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Base de datos",
     active: "database",
     items: [
-      { href: "/pricing", label: "Precios", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/prices", label: "Precios", active: "database", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/pricing", label: "Margenes y listas", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/customers/follow-up", label: "Seguimiento clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/suppliers", label: "Proveedores", active: "database", permission: SUPPLIERS_READ_PERMISSION },
