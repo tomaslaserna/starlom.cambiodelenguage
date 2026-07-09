@@ -39,6 +39,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       supplierInputFromBody(body, {
         name: current.name,
         contact: current.contact,
+        rubric: current.rubric,
         phone: current.phone,
         email: current.email,
         address: current.address,

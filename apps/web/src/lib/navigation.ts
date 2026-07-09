@@ -5,10 +5,8 @@ import {
   ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION,
   ADMIN_BALANCE_READ_PERMISSION,
   ADMIN_CASHFLOW_READ_PERMISSION,
-  ADMIN_DIVIDENDS_READ_PERMISSION,
   ADMIN_METRICS_READ_PERMISSION,
   ADMIN_MOVEMENTS_READ_PERMISSION,
-  ADMIN_SALARIES_READ_PERMISSION,
   ADMIN_TREASURY_READ_PERMISSION,
   COLLECTIONS_APPROVE_PERMISSION,
   COLLECTIONS_READ_PERMISSION,
@@ -72,16 +70,10 @@ export const navigationGroups: NavigationGroup[] = [
     permission: ADMIN_BALANCE_READ_PERMISSION,
   },
   {
-    href: "/balance/salaries",
-    label: "Sueldos",
-    active: "balance-salaries",
-    permission: ADMIN_SALARIES_READ_PERMISSION,
-  },
-  {
-    href: "/balance/dividends",
-    label: "Dividendos",
-    active: "balance-dividends",
-    permission: ADMIN_DIVIDENDS_READ_PERMISSION,
+    href: "/balance/remunerations",
+    label: "Sueldos y dividendos",
+    active: "balance-remunerations",
+    permission: ADMIN_BALANCE_READ_PERMISSION,
   },
   {
     href: "/cash",
@@ -90,19 +82,17 @@ export const navigationGroups: NavigationGroup[] = [
     permission: ADMIN_TREASURY_READ_PERMISSION,
   },
   {
-    label: "Tesoreria",
-    active: "treasury",
+    href: "/treasury/cash-flow",
+    label: "Cash Flow",
+    active: "cash-flow",
+    permission: ADMIN_CASHFLOW_READ_PERMISSION,
+  },
+  {
+    href: "/treasury/accounts-payable",
+    label: "Cuentas por pagar",
+    active: "accounts-payable",
     badge: "payables",
-    items: [
-      { href: "/treasury/cash-flow", label: "Cash Flow", active: "treasury", permission: ADMIN_CASHFLOW_READ_PERMISSION },
-      {
-        href: "/treasury/accounts-payable",
-        label: "Cuentas por pagar",
-        active: "treasury",
-        badge: "payables",
-        permission: ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION,
-      },
-    ],
+    permission: ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION,
   },
   {
     label: "Pedidos",
@@ -134,7 +124,7 @@ export const navigationGroups: NavigationGroup[] = [
   },
   {
     href: "/billing",
-    label: "Facturacion",
+    label: "Fiscal",
     active: "billing",
     permission: SALES_READ_PERMISSION,
   },
@@ -142,9 +132,9 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Base de datos",
     active: "database",
     items: [
-      { href: "/products", label: "Precios", active: "database", permission: PRODUCTS_READ_PERMISSION },
-      { href: "/pricing", label: "Margenes y listas", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/pricing", label: "Precios", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
+      { href: "/customers/follow-up", label: "Seguimiento clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/suppliers", label: "Proveedores", active: "database", permission: SUPPLIERS_READ_PERMISSION },
     ],
   },
@@ -163,6 +153,12 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "purchases",
     items: [
       { href: "/purchases?view=nueva", label: "Nueva compra", active: "purchases", permission: PURCHASES_READ_PERMISSION },
+      {
+        href: "/purchases/replenishment",
+        label: "Recompra MRP",
+        active: "purchases",
+        permission: PURCHASES_READ_PERMISSION,
+      },
       {
         href: "/purchases",
         label: "Registro de compras",
@@ -244,12 +240,12 @@ export const navigationSections: NavigationSection[] = [
     groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes")],
   },
   {
-    label: "Comercial",
+    label: "Operaciones",
     groups: [
       groupByLabel("Pedidos"),
       groupByLabel("Registro de ventas"),
       groupByLabel("Presupuestos"),
-      groupByLabel("Facturacion"),
+      groupByLabel("Fiscal"),
     ],
   },
   {
@@ -273,10 +269,10 @@ export const navigationSections: NavigationSection[] = [
     label: "Finanzas",
     groups: [
       groupByLabel("Balance"),
-      groupByLabel("Sueldos"),
-      groupByLabel("Dividendos"),
+      groupByLabel("Sueldos y dividendos"),
       groupByLabel("Caja"),
-      groupByLabel("Tesoreria"),
+      groupByLabel("Cash Flow"),
+      groupByLabel("Cuentas por pagar"),
     ],
   },
   {
@@ -441,7 +437,6 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     purchases: string;
     internal_requests: string;
     purchase_requests: string;
-    fiscal_approvals: string;
   }>(
     session.companyId,
     `
@@ -481,14 +476,7 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
          WHERE empresa_id = $1
            AND status = 'pendiente'
            AND LOWER(REPLACE(purchase_type, '-', '_')) = ANY(ARRAY['solicitud','solicitud_compra','solicitud de compra']::text[]))::text AS purchase_requests,
-        (SELECT COUNT(*) FROM sales
-         WHERE empresa_id = $1
-           AND ${normalizedOrderStatusSql("sales")} = 'entregado'
-           AND (
-             COALESCE(desired_document, '') IN ('factura_a', 'factura_b', 'factura_c')
-             OR COALESCE(receipt_type, 0) IN (1, 6, 11)
-           )
-           AND COALESCE(fiscal_status, 'no_enviado') IN ('no_enviado', 'error'))::text AS fiscal_approvals
+        '0'::text AS fiscal_approvals
     `,
     [session.companyId, session.username],
   );
@@ -497,7 +485,7 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
   if (!row) return emptyNavigationIndicators();
   const collectionApprovals = Number(row.collection_approvals);
   const requestApprovals = canResolveRequests
-    ? Number(row.internal_requests) + Number(row.purchase_requests) + Number(row.fiscal_approvals)
+    ? Number(row.internal_requests) + Number(row.purchase_requests)
     : 0;
   const indicators = {
     approvals: (canApproveCollections ? collectionApprovals : 0) + requestApprovals,

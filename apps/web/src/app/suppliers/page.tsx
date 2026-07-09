@@ -14,18 +14,21 @@ import {
   Input,
   PageHeader,
   StatCard,
+  Textarea,
   Toolbar,
 } from "@/components/ui";
+import { createSupplierAction } from "@/app/suppliers/actions";
 import { listSuppliers } from "@/lib/catalog-management";
 import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
-import { sessionCanReadSuppliers } from "@/lib/route-auth";
+import { sessionAllows, sessionCanReadSuppliers } from "@/lib/route-auth";
 import { redirect } from "next/navigation";
 
 type SuppliersPageProps = {
   searchParams: Promise<{
     q?: string;
     page?: string;
+    created?: string;
   }>;
 };
 
@@ -42,6 +45,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
     page: params.page,
     pageSize: "25",
   });
+  const canCreateSuppliers = await sessionAllows(session, [{ resource: "proveedores", action: "crear" }]);
   const suppliersMetricDetail = result.meta.query
     ? `Coinciden con la busqueda actual - Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`
     : `Total de proveedores cargados - Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`;
@@ -59,6 +63,45 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
           moduleIntro
           title="Proveedores"
         />
+
+        {params.created ? (
+          <div className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]">
+            Proveedor cargado correctamente.
+          </div>
+        ) : null}
+
+        {canCreateSuppliers ? (
+          <Card className="p-4">
+            <form action={createSupplierAction} className="grid gap-3">
+              <div className="grid gap-3 lg:grid-cols-4">
+                <Field htmlFor="supplier-name" label="Proveedor" required>
+                  <Input id="supplier-name" name="name" required />
+                </Field>
+                <Field htmlFor="supplier-contact" label="Contacto">
+                  <Input id="supplier-contact" name="contact" />
+                </Field>
+                <Field htmlFor="supplier-rubric" label="Rubro">
+                  <Input id="supplier-rubric" name="rubric" placeholder="Descartables, quimicos, papel..." />
+                </Field>
+                <Field htmlFor="supplier-phone" label="Telefono">
+                  <Input id="supplier-phone" name="phone" />
+                </Field>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[minmax(180px,240px)_minmax(220px,1fr)_minmax(260px,1fr)_auto] lg:items-end">
+                <Field htmlFor="supplier-email" label="Email">
+                  <Input id="supplier-email" name="email" type="email" />
+                </Field>
+                <Field htmlFor="supplier-address" label="Direccion">
+                  <Input id="supplier-address" name="address" />
+                </Field>
+                <Field htmlFor="supplier-notes" label="Notas">
+                  <Textarea id="supplier-notes" name="notes" rows={2} />
+                </Field>
+                <Button type="submit">Crear proveedor</Button>
+              </div>
+            </form>
+          </Card>
+        ) : null}
 
         <Toolbar ariaLabel="Busqueda de proveedores">
           <form
@@ -98,6 +141,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
                 <DataTableHead>Proveedor</DataTableHead>
+                <DataTableHead>Rubro</DataTableHead>
                 <DataTableHead>Contacto</DataTableHead>
                 <DataTableHead>Telefono</DataTableHead>
                 <DataTableHead>Email</DataTableHead>
@@ -106,7 +150,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={4}>
+                  <DataTableCell colSpan={5}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -127,6 +171,11 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                     <DataTableCell>
                       <div className="max-w-[280px] break-words font-medium">
                         {supplier.name || "Sin nombre"}
+                      </div>
+                    </DataTableCell>
+                    <DataTableCell className="text-[color:var(--muted)]">
+                      <div className="max-w-[180px] break-words">
+                        {supplier.rubric || "-"}
                       </div>
                     </DataTableCell>
                     <DataTableCell className="text-[color:var(--muted)]">

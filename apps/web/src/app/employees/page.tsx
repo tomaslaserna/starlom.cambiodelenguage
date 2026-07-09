@@ -216,6 +216,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                               <input
                                 className="mt-1 h-4 w-4 rounded border-[color:var(--border)] accent-[var(--accent)]"
                                 name="permissionKeys"
+                                suppressHydrationWarning
                                 type="checkbox"
                                 value={permission.key}
                               />
@@ -436,6 +437,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                                               <input
                                                 className="mt-1 h-4 w-4 rounded border-[color:var(--border)] accent-[var(--accent)]"
                                                 name="permissionKeys"
+                                                suppressHydrationWarning
                                                 type="checkbox"
                                                 value={permission.key}
                                                 defaultChecked={employee.permissionIds.includes(permission.key)}
@@ -466,6 +468,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                                       className="h-4 w-4 rounded border-[color:var(--border)] accent-[var(--accent)]"
                                       name="confirmDelete"
                                       required
+                                      suppressHydrationWarning
                                       type="checkbox"
                                       value="yes"
                                     />

@@ -137,7 +137,7 @@ class DisabledFiscalProvider implements FiscalProvider {
       ready: false,
       mode: "disabled",
       message:
-        "Facturacion fiscal deshabilitada. Las ventas y notas internas pueden operar sin emitir CAE.",
+        "Modulo fiscal deshabilitado. Las ventas y notas internas pueden operar sin emitir CAE.",
       missingEnv: [],
     };
   }
@@ -507,6 +507,17 @@ async function markSaleFiscalFailure(
         session.companyId,
       ],
     );
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      [
+        session.userId,
+        status === "rechazado" ? "fiscal.invoice_rejected" : "fiscal.invoice_error",
+        "sales",
+        saleId,
+        JSON.stringify({ status, message }),
+        session.companyId,
+      ],
+    );
   });
   clearReadQueryCache();
 }
@@ -574,6 +585,23 @@ async function markSaleFiscalApproved(
           caeExpiresAt: result.caeExpiresAt,
           observations: result.observations ?? [],
           usuario: session.username,
+        }),
+        session.companyId,
+      ],
+    );
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      [
+        session.userId,
+        "fiscal.invoice_approved",
+        "sales",
+        saleId,
+        JSON.stringify({
+          pointOfSale: result.pointOfSale,
+          receiptType: result.receiptType,
+          receiptNumber: result.receiptNumber,
+          cae: result.cae,
+          caeExpiresAt: result.caeExpiresAt,
         }),
         session.companyId,
       ],
@@ -774,6 +802,17 @@ async function markSaleFiscalNoteFailure(
         session.companyId,
       ],
     );
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      [
+        session.userId,
+        kind === "credit_note" ? "fiscal.credit_note_error" : "fiscal.debit_note_error",
+        "sales_internal_documents",
+        documentId,
+        JSON.stringify({ kind, message }),
+        session.companyId,
+      ],
+    );
   });
   clearReadQueryCache();
 }
@@ -854,6 +893,25 @@ async function markSaleFiscalNoteApproved(
           amount: noteAmount,
           observations: result.observations ?? [],
           usuario: session.username,
+        }),
+        session.companyId,
+      ],
+    );
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      [
+        session.userId,
+        isCreditNote ? "fiscal.credit_note_approved" : "fiscal.debit_note_approved",
+        "sales_internal_documents",
+        documentId,
+        JSON.stringify({
+          saleId: sale.id,
+          kind,
+          amount: noteAmount,
+          pointOfSale: result.pointOfSale,
+          receiptType: result.receiptType,
+          receiptNumber: result.receiptNumber,
+          cae: result.cae,
         }),
         session.companyId,
       ],

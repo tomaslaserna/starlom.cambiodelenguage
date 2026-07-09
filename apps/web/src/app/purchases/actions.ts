@@ -7,7 +7,9 @@ import {
   packageReviewFromBody,
   purchaseInputFromBody,
   purchaseIdFromParam,
+  requestSupplierPaymentApproval,
   reviewPurchasePackage,
+  supplierPaymentFromBody,
   updatePurchaseReceiptPhoto,
   updatePurchaseStatus,
 } from "@/lib/purchases";
@@ -24,6 +26,8 @@ export async function createPurchaseAction(formData: FormData) {
       description: formData.get("description"),
       total: formData.get("total"),
       date: formData.get("date"),
+      taxMode: formData.get("taxMode"),
+      vatRate: formData.get("vatRate"),
       productsJson: formData.get("productsJson"),
     }),
   );
@@ -73,4 +77,21 @@ export async function uploadPurchaseReceiptAction(formData: FormData) {
   });
   await updatePurchaseReceiptPhoto(session, id, uploaded.url);
   revalidatePath("/purchases");
+}
+
+export async function requestSupplierPaymentAction(formData: FormData) {
+  const session = await requireApiSession([{ resource: "compras", action: "editar" }]);
+  const id = purchaseIdFromParam(String(formData.get("id") ?? ""), "Compra");
+  await requestSupplierPaymentApproval(
+    session,
+    id,
+    supplierPaymentFromBody({
+      amount: formData.get("amount"),
+      date: formData.get("date"),
+      notes: formData.get("notes"),
+    }),
+  );
+  revalidatePath("/purchases");
+  revalidatePath("/admin/approvals");
+  revalidatePath("/treasury/accounts-payable");
 }

@@ -16,11 +16,17 @@ type PurchaseInput = {
   date: string;
   status: string;
   type: string;
+  taxMode: PurchaseTaxMode;
+  vatRate: number;
   items: PurchaseItem[];
 };
 
+type PurchaseTaxMode = "con_iva" | "sin_iva";
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PURCHASE_STATUSES = new Set(["pendiente", "recibida", "cancelada"]);
+const PURCHASE_TAX_MODES = new Set<PurchaseTaxMode>(["con_iva", "sin_iva"]);
+const PURCHASE_VAT_RATES = new Set([0, 10.5, 21]);
 
 const todayIso = localDateIso;
 
@@ -34,6 +40,19 @@ function normalizePurchaseStatus(status: string) {
   const normalized = status.trim().toLowerCase();
   if (!PURCHASE_STATUSES.has(normalized)) throw new ApiError(400, "Estado de compra invalido");
   return normalized;
+}
+
+function normalizePurchaseTaxMode(value: string): PurchaseTaxMode {
+  const normalized = value.trim().toLowerCase().replaceAll("-", "_");
+  if (PURCHASE_TAX_MODES.has(normalized as PurchaseTaxMode)) return normalized as PurchaseTaxMode;
+  throw new ApiError(400, "Modo de IVA de compra invalido");
+}
+
+function normalizePurchaseVatRate(value: number, taxMode: PurchaseTaxMode) {
+  if (taxMode === "sin_iva") return 0;
+  const rounded = Math.round(value * 100) / 100;
+  if (PURCHASE_VAT_RATES.has(rounded)) return rounded;
+  throw new ApiError(400, "Alicuota de IVA de compra invalida");
 }
 
 export function purchaseIdFromParam(value: string, label = "Compra") {
@@ -72,6 +91,7 @@ function bodyItems(body: RequestBody): PurchaseItem[] {
 export function purchaseInputFromBody(body: RequestBody): PurchaseInput {
   const total = numberField(body, "total", 0);
   if (total < 0) throw new ApiError(400, "El total no puede ser negativo");
+  const taxMode = normalizePurchaseTaxMode(textField(body, "taxMode") || textField(body, "tax_mode") || "con_iva");
 
   return {
     supplierId: uuidField(body, "supplierId", "Proveedor"),
@@ -80,6 +100,11 @@ export function purchaseInputFromBody(body: RequestBody): PurchaseInput {
     date: textField(body, "date") || textField(body, "fecha") || todayIso(),
     status: normalizePurchaseStatus(textField(body, "status") || textField(body, "estado") || "pendiente"),
     type: textField(body, "type") || textField(body, "tipo") || "compra",
+    taxMode,
+    vatRate: normalizePurchaseVatRate(
+      numberField(body, "vatRate", numberField(body, "vat_rate", 21)),
+      taxMode,
+    ),
     items: bodyItems(body),
   };
 }
@@ -93,6 +118,8 @@ function mapPurchase(row: {
   purchase_date: string | null;
   status: string;
   purchase_type: string;
+  tax_mode: PurchaseTaxMode;
+  vat_rate: string;
   package_status: string;
   failure_description: string;
   receipt_photo: string;
@@ -110,6 +137,8 @@ function mapPurchase(row: {
     date: row.purchase_date,
     status: row.status,
     type: row.purchase_type,
+    taxMode: row.tax_mode,
+    vatRate: Number(row.vat_rate),
     stockUpdated: row.package_status === "revisado",
     packageStatus: row.package_status,
     failureDescription: row.failure_description,
@@ -173,7 +202,8 @@ export async function listPurchases(companyId: number) {
       SELECT p.id, p.supplier_id, COALESCE(s.display_name, '') AS supplier_name,
              COALESCE(p.description, '') AS description,
              p.total_amount::text, p.purchase_date::text, p.status,
-             p.purchase_type, p.package_status, p.failure_description,
+             p.purchase_type, p.tax_mode, p.vat_rate::text,
+             p.package_status, p.failure_description,
              p.receipt_photo, p.paid_amount::text, p.created_at::text
       FROM purchases p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
@@ -222,7 +252,8 @@ export async function getPurchase(companyId: number, id: string) {
       SELECT p.id, p.supplier_id, COALESCE(s.display_name, '') AS supplier_name,
              COALESCE(p.description, '') AS description,
              p.total_amount::text, p.purchase_date::text, p.status,
-             p.purchase_type, p.package_status, p.failure_description,
+             p.purchase_type, p.tax_mode, p.vat_rate::text,
+             p.package_status, p.failure_description,
              p.receipt_photo, p.paid_amount::text, p.created_at::text
       FROM purchases p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
@@ -337,9 +368,9 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
       `
         INSERT INTO purchases (
           supplier_id, description, total_amount, purchase_date, status,
-          purchase_type, empresa_id
+          purchase_type, tax_mode, vat_rate, empresa_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
       `,
       [
@@ -349,6 +380,8 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
         input.date,
         input.status,
         input.type,
+        input.taxMode,
+        input.vatRate,
         session.companyId,
       ],
     );
@@ -374,7 +407,13 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
         "purchase.created",
         "purchases",
         purchaseId,
-        JSON.stringify({ supplierId: input.supplierId, total: input.total, type: input.type }),
+        JSON.stringify({
+          supplierId: input.supplierId,
+          total: input.total,
+          type: input.type,
+          taxMode: input.taxMode,
+          vatRate: input.vatRate,
+        }),
         session.companyId,
       ],
     );
@@ -525,6 +564,100 @@ export async function paySupplierPurchase(
   }
 
   return executeSupplierPayment(session, id, input);
+}
+
+export async function requestSupplierPaymentApproval(
+  session: AuthSession,
+  id: string,
+  input: ReturnType<typeof supplierPaymentFromBody>,
+) {
+  return withCompanyContext(session.companyId, async (client) => {
+    const purchaseResult = await client.query<{
+      total_amount: string;
+      paid_amount: string;
+      supplier_name: string;
+      purchase_date: string | null;
+    }>(
+      `
+        SELECT p.total_amount::text,
+               p.paid_amount::text,
+               p.purchase_date::text,
+               COALESCE(s.display_name, 'Proveedor sin nombre') AS supplier_name
+        FROM purchases p
+        LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+        WHERE p.id = $1::uuid AND p.empresa_id = $2
+        LIMIT 1
+      `,
+      [id, session.companyId],
+    );
+    const purchase = purchaseResult.rows[0];
+    if (!purchase) throw new ApiError(404, "Compra no encontrada");
+
+    const total = Number(purchase.total_amount);
+    const paid = Number(purchase.paid_amount);
+    const remaining = Math.max(0, total - paid);
+    const amount = Math.min(input.amount, remaining);
+    if (amount <= 0) throw new ApiError(400, "La compra ya esta saldada");
+
+    const metadata = {
+      action: "supplier_payment",
+      purchaseId: id,
+      amount,
+      date: input.date,
+      notes: input.notes,
+    };
+    const detail = [
+      `Proveedor: ${purchase.supplier_name}`,
+      `Compra: ${id}`,
+      `Saldo abierto: ${remaining.toFixed(2)}`,
+      input.notes ? `Notas: ${input.notes}` : "",
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    const request = await client.query<{ id: string }>(
+      `
+        INSERT INTO app_solicitudes (
+          tipo, titulo, detalle, monto, solicitante, estado, metadata, empresa_id
+        )
+        SELECT 'pago_proveedor', $3, $4, $5, $6, 'pendiente', $7::jsonb, $2
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM app_solicitudes
+          WHERE empresa_id = $2
+            AND estado = 'pendiente'
+            AND metadata->>'action' = 'supplier_payment'
+            AND metadata->>'purchaseId' = $1
+        )
+        RETURNING id::text AS id
+      `,
+      [
+        id,
+        session.companyId,
+        `Pago a ${purchase.supplier_name}`,
+        detail,
+        amount,
+        session.username,
+        JSON.stringify(metadata),
+      ],
+    );
+
+    if (!request.rows[0]) throw new ApiError(409, "Ya existe una solicitud de pago pendiente para esta compra");
+
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      [
+        session.userId,
+        "purchase.payment_requested",
+        "purchases",
+        id,
+        JSON.stringify({ requestId: request.rows[0].id, ...metadata }),
+        session.companyId,
+      ],
+    );
+
+    return { id: request.rows[0].id, purchaseId: id, amount };
+  });
 }
 
 export async function executeSupplierPayment(

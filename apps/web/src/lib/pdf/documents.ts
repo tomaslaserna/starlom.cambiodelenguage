@@ -818,13 +818,14 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
 export async function buildPurchaseOrderPdf(companyId: number, purchaseId: string) {
   const purchase = await getPurchase(companyId, purchaseId);
   const purchaseNumber = `OC-${String(purchase.id).slice(0, 8).toUpperCase()}`;
+  const taxLabel = purchase.taxMode === "sin_iva" ? "Sin IVA" : `IVA ${purchase.vatRate}% incluido`;
   return createPdfFile(`orden_compra_${purchaseId}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Orden de compra",
       code: "OC",
       number: purchaseNumber,
       date: pdfDate(purchase.date),
-      extra: [`Estado: ${purchase.status}`],
+      extra: [`Estado: ${purchase.status}`, taxLabel],
       footerLeft: `Proveedor: ${purchase.supplierName || "-"}`,
       footerRight: `Total ${pdfMoney(purchase.total)}`,
     });
@@ -850,13 +851,14 @@ export async function buildPurchaseOrderPdf(companyId: number, purchaseId: strin
 export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseId: string, reason: string) {
   const purchase = await getPurchase(companyId, purchaseId);
   const returnNumber = `SD-${String(purchase.id).slice(0, 8).toUpperCase()}`;
+  const taxLabel = purchase.taxMode === "sin_iva" ? "Sin IVA" : `IVA ${purchase.vatRate}% incluido`;
   return createPdfFile(`solicitud_devolucion_${purchaseId}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Solicitud de devolucion",
       code: "SD",
       number: returnNumber,
       date: pdfDate(localDateIso()),
-      extra: [`Compra: ${String(purchase.id).slice(0, 8).toUpperCase()}`, `Estado: ${purchase.status}`],
+      extra: [`Compra: ${String(purchase.id).slice(0, 8).toUpperCase()}`, `Estado: ${purchase.status}`, taxLabel],
       footerLeft: "Devolucion a proveedor",
       footerRight: `Ref. compra ${purchase.id}`,
     });
@@ -983,11 +985,11 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
     [orderId, companyId],
   );
 
-  return createPdfFile(`solicitud_pedido_${orderId}.pdf`, ({ pdf }) => {
+  return createPdfFile(`pedido_operativo_${orderId}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
-      title: "Solicitud de pedido",
-      code: "SP",
-      number: `SP-${orderId.slice(0, 8).toUpperCase()}`,
+      title: "Pedido operativo",
+      code: "PO",
+      number: `PO-${orderId.slice(0, 8).toUpperCase()}`,
       date: pdfDate(current.fecha),
       extra: [`Estado: ${current.estado_pedido}`],
       variant: "internal",
@@ -1012,7 +1014,7 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
         return [row.product_code, row.nombre, pdfNumber(requested), pdfNumber(available), pdfNumber(Math.max(0, requested - available))];
       }),
     );
-    pdf.note("Solicitud para control interno de stock y despacho. Marcar faltantes antes de avanzar el pedido.");
+    pdf.note("Documento operativo para control interno de stock y despacho. Marcar faltantes antes de avanzar el pedido.");
     pdf.signatures("Preparo deposito", "Controlo administracion");
   });
 }

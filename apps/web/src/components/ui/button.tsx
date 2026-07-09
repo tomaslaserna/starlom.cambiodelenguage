@@ -76,6 +76,7 @@ export function Button({
       aria-busy={isLoading ? true : props["aria-busy"]}
       className={buttonClassName({ className, size, variant })}
       disabled={disabled || isLoading}
+      suppressHydrationWarning
       type={type}
     >
       {leadingIcon ? (

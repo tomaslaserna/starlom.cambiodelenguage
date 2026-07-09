@@ -15,17 +15,20 @@ import {
   Input,
   PageHeader,
   Select,
+  StatCard,
   StatusBadge,
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { getFiscalVatSummary } from "@/lib/fiscal-ledger";
 import { fiscalStatusLabel } from "@/lib/fiscal";
 import { orderStatusLabel } from "@/lib/order-status";
 import { listSalesLedger } from "@/lib/sales-admin";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { SALES_READ_PERMISSION } from "@/lib/route-auth";
+import { authorizeFiscalInvoiceAction, rejectFiscalInvoiceAction } from "@/app/billing/actions";
 
 type BillingPageProps = {
   searchParams: Promise<{
@@ -35,6 +38,7 @@ type BillingPageProps = {
     tipo_factura?: string;
     cobro?: string;
     seguimiento?: string;
+    estado_fiscal?: string;
     mes?: string;
     anio?: string;
     created?: string;
@@ -63,27 +67,51 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   await requirePagePermission(session, [SALES_READ_PERMISSION]);
   const params = await searchParams;
   const search = paramsToUrlSearchParams(params);
-  search.set("estado_fiscal", "aprobado");
-  const ledger = await listSalesLedger(session.companyId, search);
+  const [ledger, vatSummary] = await Promise.all([
+    listSalesLedger(session.companyId, search),
+    getFiscalVatSummary(session.companyId),
+  ]);
 
   return (
     <ModulePage
       active="billing"
-      description="Registro de ventas facturadas y aprobadas fiscalmente."
+      description="Registro fiscal, autorizaciones ARCA, rechazos, notas y consultas historicas."
       session={session}
-      title="Registro de facturas"
+      title="Fiscal"
     >
       <div className="grid gap-5">
         <PageHeader
-          title="Registro de facturas"
-          description="Solo ventas con factura aprobada fiscalmente. Las pendientes se aprueban desde Solicitudes y aprobaciones."
+          title="Fiscal"
+          description="Documentos fiscales aprobados, pendientes y rechazados. Las autorizaciones se resuelven desde esta pantalla."
           moduleIntro
-          actions={
-            <ButtonLink href="/admin/approvals" size="sm">
-              Solicitudes y aprobaciones
-            </ButtonLink>
-          }
         />
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            className="p-3"
+            detail={`Periodo ${vatSummary.period} - ventas ARCA`}
+            label="IVA ventas"
+            value={formatCurrency(vatSummary.salesVatDebit + vatSummary.debitNotesVat - vatSummary.creditNotesVat)}
+          />
+          <StatCard
+            className="p-3"
+            detail="Compras cargadas con IVA en el periodo"
+            label="IVA compras"
+            value={formatCurrency(vatSummary.purchaseVatCredit)}
+          />
+          <StatCard
+            className="p-3"
+            detail={vatSummary.netVatBalance >= 0 ? "Saldo tecnico a pagar" : "Credito fiscal neto"}
+            label="Saldo IVA"
+            value={formatCurrency(vatSummary.netVatBalance)}
+          />
+          <StatCard
+            className="p-3"
+            detail={`Compras con IVA ${formatCurrency(vatSummary.purchaseWithVatTotal)}`}
+            label="Facturacion fiscal"
+            value={formatCurrency(vatSummary.fiscalSalesTotal)}
+          />
+        </div>
 
         {params.arca === "approved" ? (
           <div className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 font-semibold text-[color:var(--success)]">
@@ -95,11 +123,16 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
             {params.message ?? "No se pudo autorizar la factura fiscal."}
           </div>
         ) : null}
+        {params.arca === "rejected" ? (
+          <div className="rounded-lg border border-[color:var(--warning)] bg-[color:var(--warning-subtle)] px-4 py-3 font-semibold text-[color:var(--warning)]">
+            Documento fiscal rechazado y registrado.
+          </div>
+        ) : null}
 
         <Toolbar ariaLabel="Filtros de facturacion">
           <form
             action="/billing"
-            className="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_160px_160px_auto]"
+            className="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_150px_170px_170px_auto]"
           >
             <Field htmlFor="billing-tax-id" label="CUIT/DNI">
               <Input id="billing-tax-id" name="nro_id" defaultValue={params.nro_id ?? ""} />
@@ -122,6 +155,15 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 <option value="">Todos</option>
                 <option value="facturada">Facturada</option>
                 <option value="no_facturada">No facturada</option>
+              </Select>
+            </Field>
+            <Field htmlFor="billing-fiscal-status" label="Estado">
+              <Select id="billing-fiscal-status" name="estado_fiscal" defaultValue={params.estado_fiscal ?? ""}>
+                <option value="">Todos</option>
+                <option value="no_enviado">No enviado</option>
+                <option value="error">Error</option>
+                <option value="rechazado">Rechazado</option>
+                <option value="aprobado">Aprobado</option>
               </Select>
             </Field>
             <div className="flex items-end gap-2">
@@ -231,6 +273,23 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                               Factura PDF
                             </ButtonLink>
                           ) : null}
+                          {item.saleId && ["no_enviado", "error", "rechazado"].includes(item.fiscalStatus) ? (
+                            <form action={authorizeFiscalInvoiceAction}>
+                              <input name="saleId" type="hidden" value={item.saleId} />
+                              <Button className="w-full" size="sm" type="submit">
+                                Autorizar ARCA
+                              </Button>
+                            </form>
+                          ) : null}
+                          {item.saleId && ["no_enviado", "error"].includes(item.fiscalStatus) ? (
+                            <form action={rejectFiscalInvoiceAction}>
+                              <input name="saleId" type="hidden" value={item.saleId} />
+                              <input name="reason" type="hidden" value="Rechazado desde Fiscal" />
+                              <Button className="w-full" size="sm" type="submit" variant="outline">
+                                Rechazar
+                              </Button>
+                            </form>
+                          ) : null}
                           {item.saleId && item.hasFiscalIdentity && !item.creditNoteCae ? (
                             <ButtonLink
                               className="w-full"
@@ -309,6 +368,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
               tipo_factura: params.tipo_factura,
               cobro: params.cobro,
               seguimiento: params.seguimiento,
+              estado_fiscal: params.estado_fiscal,
               mes: params.mes,
               anio: params.anio,
             }}

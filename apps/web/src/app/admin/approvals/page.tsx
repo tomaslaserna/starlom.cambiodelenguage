@@ -36,28 +36,26 @@ type ApprovalsPageProps = {
 function sourceLabel(source: ApprovalSource) {
   if (source === "collection") return "Cobro";
   if (source === "purchase") return "Compra";
-  if (source === "fiscal") return "Factura";
   return "Solicitud interna";
 }
 
 function sourceTone(source: ApprovalSource): StatusBadgeTone {
   if (source === "collection") return "accent";
   if (source === "purchase") return "info";
-  if (source === "fiscal") return "warning";
   return "info";
 }
 
 export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps) {
   const session = await requireStaffSession();
   const approvalAccess = await approvalCenterAccessForSession(session);
-  if (!approvalAccess.collections && !approvalAccess.requests && !approvalAccess.fiscal) redirect("/");
+  if (!approvalAccess.collections && !approvalAccess.requests) redirect("/");
   const params = await searchParams;
   const approvals = await listApprovalCenter(session.companyId, approvalAccess);
 
   return (
     <ModulePage
       active="admin"
-      description="Bandeja unica para solicitudes de compra, pago, factura y aprobacion de cobros."
+      description="Bandeja unica para solicitudes de compra, pago y aprobacion de cobros."
       session={session}
       title="Solicitudes y aprobaciones"
     >
@@ -77,12 +75,11 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
           </div>
         ) : null}
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <StatCard className="p-3" label="Pendientes" value={approvals.meta.total} />
           <StatCard className="p-3" label="Cobros" value={approvals.meta.collections} />
           <StatCard className="p-3" label="Compras" value={approvals.meta.purchaseRequests} />
           <StatCard className="p-3" label="Solicitudes internas" value={approvals.meta.requests} />
-          <StatCard className="p-3" label="Facturas" value={approvals.meta.fiscal} />
           <StatCard className="p-3" label="Monto en revision" value={formatCurrency(approvals.meta.amount)} />
         </div>
 

@@ -89,6 +89,7 @@ export default async function OffersPage({ searchParams }: OffersPageProps) {
                   defaultValue={editing?.description ?? ""}
                   placeholder="Llevando 2 bobinas, la 2da unidad 50% OFF"
                   required
+                  suppressHydrationWarning
                 />
               </Field>
               <div className="grid gap-3 md:grid-cols-2">

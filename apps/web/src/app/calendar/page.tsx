@@ -23,16 +23,16 @@ export default async function CalendarPage() {
           <form action={createCalendarTaskAction} className="mt-4 grid gap-3">
             <label className="grid gap-2 text-sm font-medium">
               Titulo
-              <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="title" required />
+              <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="title" required suppressHydrationWarning />
             </label>
             <label className="grid gap-2 text-sm font-medium">
               Descripcion
-              <textarea className="min-h-24 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2" name="description" />
+              <textarea className="min-h-24 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2" name="description" suppressHydrationWarning />
             </label>
             <div className="grid gap-3 md:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium">
                 Prioridad
-                <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="priority" defaultValue="normal">
+                <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="priority" defaultValue="normal" suppressHydrationWarning>
                   <option value="normal">Normal</option>
                   <option value="alta">Alta</option>
                   <option value="urgente">Urgente</option>
@@ -40,7 +40,7 @@ export default async function CalendarPage() {
               </label>
               <label className="grid gap-2 text-sm font-medium">
                 Asignar a
-                <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="assignedTo">
+                <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="assignedTo" suppressHydrationWarning>
                   <option value="">Recordatorio propio</option>
                   {center.employees.map((employee) => (
                     <option key={employee} value={employee}>{employee}</option>
@@ -51,11 +51,11 @@ export default async function CalendarPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <label className="grid gap-2 text-sm font-medium">
                 Fecha limite
-                <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="deadline" type="datetime-local" />
+                <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="deadline" type="datetime-local" suppressHydrationWarning />
               </label>
               <label className="grid gap-2 text-sm font-medium">
                 Recurrencia
-                <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="recurrenceType" defaultValue="unica">
+                <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="recurrenceType" defaultValue="unica" suppressHydrationWarning>
                   <option value="unica">Unica</option>
                   <option value="diaria">Diaria</option>
                   <option value="semanal">Semanal</option>
@@ -66,11 +66,11 @@ export default async function CalendarPage() {
             <div className="grid gap-3 md:grid-cols-3">
               <label className="grid gap-2 text-sm font-medium">
                 Dia del mes
-                <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" max="31" min="1" name="recurrenceDayMonth" type="number" />
+                <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" max="31" min="1" name="recurrenceDayMonth" type="number" suppressHydrationWarning />
               </label>
               <label className="grid gap-2 text-sm font-medium">
                 Dia semana
-                <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="recurrenceDayWeek" defaultValue="">
+                <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="recurrenceDayWeek" defaultValue="" suppressHydrationWarning>
                   <option value="">Sin dia</option>
                   <option value="1">Lunes</option>
                   <option value="2">Martes</option>
@@ -83,7 +83,7 @@ export default async function CalendarPage() {
               </label>
               <label className="grid gap-2 text-sm font-medium">
                 Hora
-                <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="recurrenceTime" type="time" />
+                <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="recurrenceTime" type="time" suppressHydrationWarning />
               </label>
             </div>
             <Button type="submit">
@@ -127,7 +127,7 @@ export default async function CalendarPage() {
                       <td className="px-4 py-4">
                         <form action={completeCalendarTaskAction} className="flex gap-2">
                           <input name="id" type="hidden" value={task.id} />
-                          <input className="min-h-10 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-2 text-xs" name="message" placeholder="Cierre" />
+                          <input className="min-h-10 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-2 text-xs" name="message" placeholder="Cierre" suppressHydrationWarning />
                           <Button type="submit">
                             Completar
                           </Button>

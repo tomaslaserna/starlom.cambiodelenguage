@@ -28,7 +28,7 @@ export default async function MovementsPage({ searchParams }: MovementsPageProps
   return (
     <ModulePage
       active="treasury"
-      description="Registro de movimientos financieros aprobados."
+      description="Registro de movimientos financieros y auditoria operativa de empleados."
       session={session}
       title="Registro de movimientos"
     >
@@ -42,10 +42,12 @@ export default async function MovementsPage({ searchParams }: MovementsPageProps
             className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 text-sm outline-none focus:border-[color:var(--accent)]"
             defaultValue={params.type ?? ""}
             name="type"
+            suppressHydrationWarning
           >
             <option value="">Todos</option>
             <option value="cobro">Cobros</option>
             <option value="pago">Pagos proveedores</option>
+            <option value="auditoria">Auditoria</option>
           </select>
           <Button type="submit">
             Filtrar
@@ -88,7 +90,9 @@ export default async function MovementsPage({ searchParams }: MovementsPageProps
                           "-"
                         )}
                       </td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">{formatCurrency(item.amount)}</td>
+                      <td className="px-4 py-4 text-right font-mono text-xs">
+                        {item.type === "auditoria" ? "-" : formatCurrency(item.amount)}
+                      </td>
                     </tr>
                   ))
                 )}

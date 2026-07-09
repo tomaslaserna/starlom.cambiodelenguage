@@ -1,11 +1,11 @@
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { listAccountMovements } from "@/lib/accounts";
+import { listAccountEntities, listAccountMovements } from "@/lib/accounts";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { COLLECTIONS_READ_PERMISSION } from "@/lib/route-auth";
-import { Button } from "@/components/ui";
+import { Button, ButtonLink, Field, Select } from "@/components/ui";
 
 type CurrentAccountsPageProps = {
   searchParams: Promise<{
@@ -19,13 +19,20 @@ export default async function CurrentAccountsPage({ searchParams }: CurrentAccou
   const session = await requireStaffSession();
   await requirePagePermission(session, [COLLECTIONS_READ_PERMISSION]);
   const params = await searchParams;
-  const result = await listAccountMovements({
-    companyId: session.companyId,
-    type: params.type || "cliente",
-    name: params.q,
-    page: params.page,
-    pageSize: "25",
-  });
+  const accountType = params.type || "cliente";
+  const [result, entities] = await Promise.all([
+    listAccountMovements({
+      companyId: session.companyId,
+      type: accountType,
+      name: params.q,
+      page: params.page,
+      pageSize: "25",
+    }),
+    listAccountEntities(session.companyId, accountType),
+  ]);
+  const pdfParams = new URLSearchParams();
+  pdfParams.set("type", accountType);
+  if (params.q) pdfParams.set("name", params.q);
 
   return (
     <ModulePage
@@ -37,25 +44,30 @@ export default async function CurrentAccountsPage({ searchParams }: CurrentAccou
       <div className="grid gap-5">
         <form
           action="/treasury/current-accounts"
-          className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 md:grid-cols-[220px_1fr_auto] md:items-center"
+          className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 md:grid-cols-[180px_minmax(260px,1fr)_auto_auto] md:items-end"
         >
-          <select
-            className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 text-sm"
-            defaultValue={params.type || "cliente"}
-            name="type"
-          >
-            <option value="cliente">Clientes</option>
-            <option value="proveedor">Proveedores</option>
-          </select>
-          <input
-            className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 text-sm"
-            defaultValue={params.q ?? ""}
-            name="q"
-            placeholder="Buscar entidad"
-          />
+          <Field htmlFor="account-type" label="Tipo">
+            <Select defaultValue={accountType} id="account-type" name="type">
+              <option value="cliente">Clientes</option>
+              <option value="proveedor">Proveedores</option>
+            </Select>
+          </Field>
+          <Field htmlFor="account-entity" label="Entidad">
+            <Select defaultValue={params.q ?? ""} id="account-entity" name="q">
+              <option value="">Todas</option>
+              {entities.map((entity) => (
+                <option key={entity} value={entity}>
+                  {entity}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Button type="submit">
             Filtrar
           </Button>
+          <ButtonLink href={`/api/pdfs/accounts/current?${pdfParams.toString()}`} prefetch={false} target="_blank" variant="secondary">
+            PDF
+          </ButtonLink>
         </form>
 
         <div className="grid gap-3 md:grid-cols-3">

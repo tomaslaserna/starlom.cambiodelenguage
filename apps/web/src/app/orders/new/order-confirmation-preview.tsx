@@ -117,6 +117,7 @@ export function OrderConfirmationPreview({
         <input
           checked={showPrices}
           onChange={(event) => setShowPrices(event.target.checked)}
+          suppressHydrationWarning
           type="checkbox"
         />
         Mostrar precios al cliente

@@ -221,15 +221,7 @@ export async function getMovementRegister(input: {
 }) {
   const pagination = parsePagination(input);
   const type = input.type?.trim() ?? "";
-  const params: unknown[] = [input.companyId];
-  const paymentFilter = type && ["cobro", "pago"].includes(type) ? `AND entity_type = $2` : "";
-  if (paymentFilter) params.push(type);
-
-  const count = await queryWithCompanyContext<{ total: string }>(
-    input.companyId,
-    `SELECT COUNT(*)::text AS total FROM payments WHERE empresa_id = $1 ${paymentFilter}`,
-    params,
-  );
+  const normalizedType = ["cobro", "pago", "auditoria"].includes(type) ? type : "";
 
   const rows = await queryWithCompanyContext<{
     id: string;
@@ -240,22 +232,63 @@ export async function getMovementRegister(input: {
     fecha: string | null;
     comprobante_nombre: string;
     notas: string;
+    total_count: string;
   }>(
     input.companyId,
     `
-      SELECT id::text AS id, entity_type AS tipo, entity_name AS entidad_nombre,
-             COALESCE(concept, reference, '') AS concepto,
-             amount::text AS monto, payment_date::text AS fecha,
-             receipt_url AS comprobante_nombre, notes AS notas
-      FROM payments
-      WHERE empresa_id = $1 ${paymentFilter}
-      ORDER BY payment_date DESC NULLS LAST, created_at DESC
-      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+      WITH movement_rows AS (
+        SELECT id::text AS id,
+               entity_type AS tipo,
+               entity_name AS entidad_nombre,
+               COALESCE(concept, reference, '') AS concepto,
+               amount::text AS monto,
+               payment_date::text AS fecha,
+               receipt_url AS comprobante_nombre,
+               notes AS notas,
+               created_at AS sort_at
+        FROM payments
+        WHERE empresa_id = $1
+
+        UNION ALL
+
+        SELECT a.id::text AS id,
+               'auditoria' AS tipo,
+               COALESCE(p.full_name, p.username, a.actor_id::text, 'Sistema') AS entidad_nombre,
+               CONCAT_WS(' - ', NULLIF(a.action, ''), NULLIF(a.entity_table, ''), NULLIF(a.entity_id, '')) AS concepto,
+               '0' AS monto,
+               a.created_at::text AS fecha,
+               '' AS comprobante_nombre,
+               COALESCE(a.new_data::text, '') AS notas,
+               a.created_at AS sort_at
+        FROM audit_log a
+        LEFT JOIN profiles p ON p.id = a.actor_id
+        WHERE a.empresa_id = $1
+
+        UNION ALL
+
+        SELECT s.id::text AS id,
+               'auditoria' AS tipo,
+               COALESCE(NULLIF(s.employee, ''), 'Sistema') AS entidad_nombre,
+               CONCAT_WS(' - ', NULLIF(s.action, ''), NULLIF(s.sale_label, '')) AS concepto,
+               '0' AS monto,
+               s.created_at::text AS fecha,
+               '' AS comprobante_nombre,
+               COALESCE(s.changes::text, '') AS notas,
+               s.created_at AS sort_at
+        FROM sales_admin_audit s
+        WHERE s.empresa_id = $1
+      )
+      SELECT id, tipo, entidad_nombre, concepto, monto, fecha, comprobante_nombre, notas,
+             COUNT(*) OVER()::text AS total_count
+      FROM movement_rows
+      WHERE ($2 = '' OR tipo = $2)
+      ORDER BY sort_at DESC
+      LIMIT $3 OFFSET $4
     `,
-    [...params, pagination.pageSize, pagination.offset],
+    [input.companyId, normalizedType, pagination.pageSize, pagination.offset],
   );
 
-  const total = Number(count.rows[0]?.total ?? 0);
+  const total = Number(rows.rows[0]?.total_count ?? 0);
   return {
     data: rows.rows.map((row) => ({
       id: row.id,

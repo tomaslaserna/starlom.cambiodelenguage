@@ -327,7 +327,7 @@ async function pointOfSaleDiagnostic(configuredPointOfSale: number) {
       return [
         "FEParamGetPtosVenta devolvio 602 Sin Resultados: ARCA no informa ningun punto de venta habilitado para WSFE para este CUIT.",
         `El punto configurado es ${configuredPointOfSale}.`,
-        "Habilita en ARCA un punto de venta Web Service/RECE para Facturacion Electronica o cambia STARLIM_ARCA_POINT_OF_SALE al punto correcto.",
+        "Habilita en ARCA un punto de venta Web Service/RECE fiscal o cambia STARLIM_ARCA_POINT_OF_SALE al punto correcto.",
       ].join(" ");
     }
 

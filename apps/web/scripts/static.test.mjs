@@ -269,20 +269,24 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(navigation, /href: "\/quotes",\s*label: "Presupuestos"/);
   assert.match(
     navigation,
-    /label: "Comercial"[\s\S]*groupByLabel\("Pedidos"\)[\s\S]*groupByLabel\("Registro de ventas"\)[\s\S]*groupByLabel\("Presupuestos"\)[\s\S]*groupByLabel\("Facturacion"\)/,
+    /label: "Operaciones"[\s\S]*groupByLabel\("Pedidos"\)[\s\S]*groupByLabel\("Registro de ventas"\)[\s\S]*groupByLabel\("Presupuestos"\)[\s\S]*groupByLabel\("Fiscal"\)/,
   );
-  assert.match(navigation, /href: "\/billing",\s*label: "Facturacion"/);
+  assert.match(navigation, /href: "\/billing",\s*label: "Fiscal"/);
   assert.match(navigation, /href: "\/metrics", label: "Metricas"/);
   assert.match(navigation, /href: "\/rentabilidad", label: "Rentabilidad"/);
   assert.match(navigation, /href: "\/balance",\s*label: "Balance",\s*active: "balance"/);
-  assert.match(navigation, /href: "\/balance\/salaries",\s*label: "Sueldos",\s*active: "balance-salaries"/);
-  assert.match(navigation, /href: "\/balance\/dividends",\s*label: "Dividendos",\s*active: "balance-dividends"/);
+  assert.match(
+    navigation,
+    /href: "\/balance\/remunerations",\s*label: "Sueldos y dividendos",\s*active: "balance-remunerations"/,
+  );
   assert.match(read("apps/web/src/app/balance/page.tsx"), /active="balance"/);
-  assert.match(read("apps/web/src/app/balance/salaries/page.tsx"), /active="balance-salaries"/);
-  assert.match(read("apps/web/src/app/balance/dividends/page.tsx"), /active="balance-dividends"/);
+  assert.match(read("apps/web/src/app/balance/remunerations/page.tsx"), /active="balance-remunerations"/);
+  assert.match(read("apps/web/src/app/balance/salaries/page.tsx"), /redirect\("\/balance\/remunerations"\)/);
+  assert.match(read("apps/web/src/app/balance/dividends/page.tsx"), /redirect\("\/balance\/remunerations"\)/);
   assert.doesNotMatch(navigation, /label: "Panel admin"/);
   assert.match(navigation, /label: "Compras"[\s\S]*groups: \[groupByLabel\("Compras"\)\]/);
   assert.match(navigation, /href: "\/purchases\?view=nueva", label: "Nueva compra"/);
+  assert.match(navigation, /href: "\/purchases\/replenishment",\s*label: "Recompra MRP"/);
   assert.match(navigation, /href: "\/purchases",\s*label: "Registro de compras"/);
   assert.doesNotMatch(navigation, /label: "Urgentes"|label: "Anticipadas"|label: "Solicitudes de compra"/);
   assert.match(navigation, /href: "\/sales",\s*label: "Registro de ventas",\s*active: "sales"/);
@@ -292,7 +296,8 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.doesNotMatch(navigation, /ordersReceived|ordersInProcess|ordersPendingDelivery/);
 
   const purchasesPage = read("apps/web/src/app/purchases/page.tsx");
-  assert.match(purchasesPage, /PurchaseEntryFields defaultDate=\{localDateIso\(\)\} products=\{products\} suppliers=\{suppliers\}/);
+  assert.match(purchasesPage, /const today = localDateIso\(\)/);
+  assert.match(purchasesPage, /PurchaseEntryFields defaultDate=\{today\} products=\{products\} suppliers=\{suppliers\}/);
   assert.match(purchasesPage, /purchaseViews[\s\S]*registro/);
   assert.match(purchasesPage, /redirect\("\/admin\/approvals"\)/);
   assert.match(purchasesPage, /<details className="rounded-\[8px\][\s\S]*Acciones[\s\S]*OC PDF[\s\S]*Devol\./);
@@ -321,16 +326,48 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(purchases, /product\.supplier_id !== input\.supplierId/);
   assert.match(purchases, /no corresponde al proveedor seleccionado/);
 
+  const replenishment = read("apps/web/src/lib/replenishment.ts");
+  assert.match(replenishment, /export async function getReplenishmentSuggestions/);
+  assert.match(replenishment, /INTERVAL '90 days'/);
+  assert.match(replenishment, /suggestedQuantity/);
+  assert.match(replenishment, /supplierId/);
+  assert.match(replenishment, /unitCost/);
+  assert.match(replenishment, /TARGET_COVER_DAYS = 30/);
+
+  const replenishmentPage = read("apps/web/src/app/purchases/replenishment/page.tsx");
+  assert.match(replenishmentPage, /title="Recompra MRP"/);
+  assert.match(replenishmentPage, /getReplenishmentSuggestions/);
+  assert.match(replenishmentPage, /cubrir \$\{replenishment\.meta\.targetDays\} dias/);
+  assert.match(replenishmentPage, /createReplenishmentPurchaseRequestAction/);
+  assert.match(replenishmentPage, /Solicitar/);
+  assert.match(replenishmentPage, /Solicitud de compra MRP enviada/);
+
+  const replenishmentActions = read("apps/web/src/app/purchases/replenishment/actions.ts");
+  assert.match(replenishmentActions, /createReplenishmentPurchaseRequestAction/);
+  assert.match(replenishmentActions, /type: "solicitud_compra"/);
+  assert.match(replenishmentActions, /revalidatePath\("\/admin\/approvals"\)/);
+  assert.match(replenishmentActions, /redirect\("\/purchases\/replenishment\?created=1"\)/);
+
   const approvals = read("apps/web/src/lib/approvals.ts");
-  assert.match(approvals, /ApprovalSource = "collection" \| "request" \| "purchase" \| "fiscal"/);
+  assert.match(approvals, /ApprovalSource = "collection" \| "request" \| "purchase"/);
+  assert.doesNotMatch(approvals, /listPendingFiscalApprovals|Factura fiscal pendiente|source: "fiscal"/);
   assert.match(approvals, /listPendingPurchaseApprovals/);
   assert.match(approvals, /resolvePurchaseApproval/);
+  assert.match(approvals, /metadata\.action === "supplier_payment"/);
+  assert.match(approvals, /"request\.approved"/);
+  assert.match(approvals, /"request\.rejected"/);
+
+  assert.match(purchaseActions, /requestSupplierPaymentAction/);
+  assert.match(purchaseActions, /requestSupplierPaymentApproval/);
+  assert.match(purchasesPage, /Solicitar pago/);
+  assert.match(purchasesPage, /Enviar a aprobacion/);
 
   const databasePage = read("apps/web/src/app/database/page.tsx");
   assert.doesNotMatch(databasePage, /EMPLOYEES_READ_PERMISSION|label: "Empleados"|href: "\/employees"|Empleados/);
 
   const ordersPage = read("apps/web/src/app/orders/page.tsx");
-  assert.match(ordersPage, /Ver PDF solicitud/);
+  assert.match(ordersPage, /Ver documento/);
+  assert.match(ordersPage, /\/api\/pdfs\/orders\/\$\{order\.id\}\/document/);
   assert.match(ordersPage, /Modificar/);
   assert.match(ordersPage, /value="entregado"/);
   assert.match(ordersPage, /value="cancelado"/);
@@ -356,6 +393,8 @@ test("collection approval enforces outstanding balance and refreshes related scr
   assert.match(collections, /saldo_pendiente/);
   assert.match(collections, /Cobro parcial aprobado/);
   assert.match(collections, /outstandingAfterApproval/);
+  assert.match(collections, /"collection\.approved"/);
+  assert.match(collections, /"collection\.rejected"/);
 
   const orders = read("apps/web/src/lib/orders.ts");
   assert.match(orders, /collectedAmount/);
@@ -614,6 +653,83 @@ test("Caja has its own route and does not open Tesoreria", () => {
   assert.match(cashPage, /getTreasuryBalances/);
 });
 
+test("Cash flow exposes 7/15/30 horizons and a calendar view", () => {
+  const adminMetrics = read("apps/web/src/lib/admin-metrics.ts");
+  assert.match(adminMetrics, /const horizons = \[7, 15, 30\]/);
+  assert.match(adminMetrics, /calendar = Array\.from/);
+  assert.match(adminMetrics, /daysUntil/);
+  assert.match(adminMetrics, /scheduledSupplierPayments/);
+  assert.match(adminMetrics, /metadata->>'action' = 'supplier_payment'/);
+  assert.match(adminMetrics, /COALESCE\(scheduled\.scheduled_amount, 0\)/);
+
+  const cashFlowPage = read("apps/web/src/app/treasury/cash-flow/page.tsx");
+  assert.match(cashFlowPage, /cashflow\.meta\.horizons\.map/);
+  assert.match(cashFlowPage, /Calendario de caja/);
+  assert.match(cashFlowPage, /cashflow\.calendar\.map/);
+
+  const accountsPayableActions = read("apps/web/src/app/treasury/accounts-payable/actions.ts");
+  assert.match(accountsPayableActions, /programSupplierPaymentAction/);
+  assert.match(accountsPayableActions, /requestSupplierPaymentApproval/);
+  assert.match(accountsPayableActions, /revalidatePath\("\/treasury\/cash-flow"\)/);
+
+  const accountsPayablePage = read("apps/web/src/app/treasury/accounts-payable/page.tsx");
+  assert.match(accountsPayablePage, /createManualPayableAction/);
+  assert.match(accountsPayablePage, /programSupplierPaymentAction/);
+  assert.match(accountsPayablePage, /Pago programado y enviado a solicitudes/);
+  assert.match(accountsPayablePage, /item\.scheduledAmount/);
+  assert.match(accountsPayablePage, /Programar/);
+});
+
+test("customer follow-up can create reminders from recommerce risk rows", () => {
+  const messages = read("apps/web/src/lib/messages.ts");
+  assert.match(messages, /export async function getCustomerFollowUp/);
+  assert.match(messages, /customerId: customer\.id/);
+  assert.match(messages, /expectedNextPurchase/);
+  assert.match(messages, /groups\.riesgo/);
+  assert.match(messages, /groups\.perdido/);
+
+  const followUpActions = read("apps/web/src/app/customers/follow-up/actions.ts");
+  assert.match(followUpActions, /createCustomerFollowUpTaskAction/);
+  assert.match(followUpActions, /createTask\(session, formBody\(formData\)\)/);
+  assert.match(followUpActions, /revalidatePath\("\/"\)/);
+  assert.match(followUpActions, /redirect\("\/customers\/follow-up\?task=1"\)/);
+
+  const followUpPage = read("apps/web/src/app/customers/follow-up/page.tsx");
+  assert.match(followUpPage, /createCustomerFollowUpTaskAction/);
+  assert.match(followUpPage, /Recordatorio creado en Inicio y Calendario/);
+  assert.match(followUpPage, /reminderPriority/);
+  assert.match(followUpPage, /reminderDeadline/);
+  assert.match(followUpPage, /Recordar/);
+  assert.match(followUpPage, /tableProps=\{\{ className: "table-fixed" \}\}/);
+});
+
+test("form controls tolerate browser extension attributes during hydration", () => {
+  for (const path of [
+    "apps/web/src/components/ui/button.tsx",
+    "apps/web/src/components/ui/input.tsx",
+    "apps/web/src/components/ui/select.tsx",
+    "apps/web/src/components/ui/textarea.tsx",
+  ]) {
+    assert.match(read(path), /suppressHydrationWarning/, `${path} must suppress extension-injected attributes`);
+  }
+
+  for (const path of [
+    "apps/web/src/app/calendar/page.tsx",
+    "apps/web/src/app/collections/register-collection-dialog.tsx",
+    "apps/web/src/app/employees/page.tsx",
+    "apps/web/src/app/messages/page.tsx",
+    "apps/web/src/app/orders/page.tsx",
+    "apps/web/src/app/orders/new/order-confirmation-preview.tsx",
+    "apps/web/src/app/orders/new/order-entry-fields.tsx",
+    "apps/web/src/app/page.tsx",
+    "apps/web/src/app/pricing/offers/page.tsx",
+    "apps/web/src/app/purchases/page.tsx",
+    "apps/web/src/app/treasury/movements/page.tsx",
+  ]) {
+    assert.match(read(path), /suppressHydrationWarning/, `${path} has visible raw form controls`);
+  }
+});
+
 test("Escritorio previews up to 5 unread messages alongside pending tasks", () => {
   const home = read("apps/web/src/app/page.tsx");
   assert.match(home, /listMessageCenter/);
@@ -674,6 +790,7 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.equal(existsSync(join(repoRoot, "migrations/035_sales_fiscal_authorization_state.sql")), true);
   assert.equal(existsSync(join(repoRoot, "migrations/036_sales_fiscal_receipt_identity.sql")), true);
   assert.equal(existsSync(join(repoRoot, "migrations/037_sales_internal_documents_fiscal_identity.sql")), true);
+  assert.equal(existsSync(join(repoRoot, "migrations/040_structured_supplier_purchase_tax_fields.sql")), true);
 
   const fiscal = read("apps/web/src/lib/fiscal.ts");
   assert.match(fiscal, /export async function authorizeSaleFiscalDocument/);
@@ -687,6 +804,10 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.match(fiscal, /findLastArcaAuthorizedReceipt/);
   assert.match(fiscal, /recoverSaleFiscalNoteApproval/);
   assert.match(fiscal, /No reemito para evitar duplicados/);
+  assert.match(fiscal, /"fiscal\.invoice_approved"/);
+  assert.match(fiscal, /"fiscal\.invoice_rejected"/);
+  assert.match(fiscal, /"fiscal\.credit_note_approved"/);
+  assert.match(fiscal, /"fiscal\.debit_note_approved"/);
   assert.ok((fiscal.match(/fiscal_receipt_number = \$3::integer/g) ?? []).length >= 2);
   assert.ok((fiscal.match(/receipt_number = \$9::bigint/g) ?? []).length >= 2);
   assert.doesNotMatch(fiscal, /fiscal_receipt_number = \$3,\s*receipt_type = \$2,\s*receipt_number = \$3/);
@@ -719,6 +840,10 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
 
   const billingPage = read("apps/web/src/app/billing/page.tsx");
   assert.match(billingPage, /Registro de facturas/);
+  assert.match(billingPage, /getFiscalVatSummary/);
+  assert.match(billingPage, /IVA ventas/);
+  assert.match(billingPage, /IVA compras/);
+  assert.match(billingPage, /Saldo IVA/);
   assert.doesNotMatch(billingPage, /getSalesSummary/);
   assert.doesNotMatch(billingPage, /getFiscalStatus/);
   assert.doesNotMatch(billingPage, /label="Comprobantes"|label="Monto total"|label="Facturado"|label="Sin factura"/);
@@ -735,7 +860,7 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.doesNotMatch(billingPage, /CAE \{item\.debitNoteCae\}/);
 
   const navigation = read("apps/web/src/lib/navigation.ts");
-  assert.match(navigation, /href: "\/billing",\s*label: "Facturacion"/);
+  assert.match(navigation, /href: "\/billing",\s*label: "Fiscal"/);
 
   const billingActions = read("apps/web/src/app/billing/actions.ts");
   assert.match(billingActions, /issueCreditNoteAction/);
@@ -751,6 +876,15 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.match(fiscalPdfSalesRoute, /buildFiscalSalePdf/);
   const fiscalPdfNotesRoute = read("apps/web/src/app/api/pdfs/fiscal/notes/[id]/route.ts");
   assert.match(fiscalPdfNotesRoute, /buildFiscalSalesNotePdf/);
+  const fiscalLedger = read("apps/web/src/lib/fiscal-ledger.ts");
+  assert.match(fiscalLedger, /export async function getFiscalVatSummary/);
+  assert.match(fiscalLedger, /COALESCE\(s\.fiscal_status, 'no_enviado'\) = 'aprobado'/);
+  assert.match(fiscalLedger, /COALESCE\(s\.cae, ''\) NOT IN \('', 'manual'\)/);
+  assert.match(fiscalLedger, /p\.tax_mode/);
+  assert.match(fiscalLedger, /p\.vat_rate/);
+  assert.match(fiscalLedger, /p\.total_amount - \(p\.total_amount \/ \(1 \+ \(p\.vat_rate \/ 100\)\)\)/);
+  assert.doesNotMatch(fiscalLedger, /IVA compra:%Con IVA/);
+  assert.match(fiscalLedger, /netVatBalance/);
   const pdfDocuments = read("apps/web/src/lib/pdf/documents.ts");
   assert.match(pdfDocuments, /export async function buildFiscalSalePdf/);
   assert.match(pdfDocuments, /export async function buildFiscalSalesNotePdf/);

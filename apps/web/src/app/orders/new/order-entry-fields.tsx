@@ -364,6 +364,7 @@ export function OrderEntryFields({
           <textarea
             className="erp-text-body-sm min-h-24 rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--field)] px-3 py-2 text-[color:var(--foreground)] shadow-[var(--shadow-control)] outline-none focus:border-[color:var(--accent)]"
             id="order-observation"
+            suppressHydrationWarning
             value={observation}
             onChange={(event) => setObservation(event.target.value)}
           />

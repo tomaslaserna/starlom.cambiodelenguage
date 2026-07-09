@@ -76,7 +76,7 @@ export default async function MessagesPage({ searchParams }: MessagesPageProps) 
           <form className="mt-4 grid gap-3" action={sendMessageAction}>
             <label className="grid gap-2 text-sm font-medium">
               Para
-              <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="to" required>
+              <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="to" required suppressHydrationWarning>
                 <option value="">Seleccionar usuario</option>
                 {center.employees.map((employee) => (
                   <option key={employee} value={employee}>
@@ -87,7 +87,7 @@ export default async function MessagesPage({ searchParams }: MessagesPageProps) 
             </label>
             <label className="grid gap-2 text-sm font-medium">
               Importancia
-              <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="importance" defaultValue="normal">
+              <select className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="importance" defaultValue="normal" suppressHydrationWarning>
                 <option value="normal">Normal</option>
                 <option value="alta">Alta</option>
                 <option value="urgente">Urgente</option>
@@ -96,11 +96,11 @@ export default async function MessagesPage({ searchParams }: MessagesPageProps) 
             </label>
             <label className="grid gap-2 text-sm font-medium">
               Asunto
-              <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="subject" required />
+              <input className="min-h-11 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3" name="subject" required suppressHydrationWarning />
             </label>
             <label className="grid gap-2 text-sm font-medium">
               Mensaje
-              <textarea className="min-h-36 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2" name="body" required />
+              <textarea className="min-h-36 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2" name="body" required suppressHydrationWarning />
             </label>
             <div className="flex flex-wrap gap-2">
               <Button type="submit">

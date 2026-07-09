@@ -194,6 +194,27 @@ export async function listAccountMovements(input: ListInput) {
   };
 }
 
+export async function listAccountEntities(companyId: number, type = "cliente") {
+  const accountType = normalizeAccountType(type);
+  const result = await queryWithCompanyContext<{ entity_name: string }>(
+    companyId,
+    `
+      SELECT DISTINCT m.entity_name
+      FROM current_account_movements m
+      LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
+      WHERE m.empresa_id = $1
+        AND m.entity_type = $2
+        AND COALESCE(m.entity_name, '') <> ''
+        AND ${activeAccountMovementWhereSql("m", "s")}
+      ORDER BY m.entity_name ASC
+      LIMIT 500
+    `,
+    [companyId, accountType],
+  );
+
+  return result.rows.map((row) => row.entity_name);
+}
+
 export async function createAccountMovement(companyId: number, input: ReturnType<typeof accountMovementFromBody>) {
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,

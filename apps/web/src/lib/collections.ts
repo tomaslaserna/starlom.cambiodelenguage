@@ -472,6 +472,17 @@ export async function approveCollection(session: AuthSession, saleId: string) {
         session.companyId,
       ],
     );
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      [
+        session.userId,
+        "collection.approved",
+        "sales",
+        saleId,
+        JSON.stringify({ status: nextStatus, amount, outstanding: nextOutstanding }),
+        session.companyId,
+      ],
+    );
 
     clearReadQueryCache();
     return { id: saleId, status: nextStatus, amount };
@@ -516,6 +527,17 @@ export async function rejectCollection(session: AuthSession, saleId: string, rea
       [
         "cobro.rechazado",
         JSON.stringify({ id: saleId, motivo: reason, usuario: session.username }),
+        session.companyId,
+      ],
+    );
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      [
+        session.userId,
+        "collection.rejected",
+        "sales",
+        saleId,
+        JSON.stringify({ reason: reason.trim() }),
         session.companyId,
       ],
     );

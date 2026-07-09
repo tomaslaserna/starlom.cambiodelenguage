@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { approveCollection, rejectCollection, rejectionReasonFromBody } from "@/lib/collections";
-import { authorizeSaleFiscalDocument, rejectSaleFiscalDocument } from "@/lib/fiscal";
 import {
   COLLECTION_APPROVAL_PERMISSION,
   parseApprovalSource,
@@ -23,12 +22,6 @@ function revalidateCollectionFlow() {
   revalidatePath("/orders");
   revalidatePath("/treasury/current-accounts");
   revalidatePath("/metrics");
-}
-
-function revalidateFiscalFlow() {
-  revalidatePath("/admin/approvals");
-  revalidatePath("/billing");
-  revalidatePath("/sales");
 }
 
 function revalidatePurchaseApprovalFlow() {
@@ -70,10 +63,6 @@ export async function approveApprovalAction(formData: FormData) {
         await resolvePurchaseApproval(session, uuidParam(rawId, "Solicitud de compra"), "aprobada");
         revalidatePurchaseApprovalFlow();
         return;
-      case "fiscal":
-        await authorizeSaleFiscalDocument(session, uuidParam(rawId, "Venta"));
-        revalidateFiscalFlow();
-        return;
       default:
         assertNeverApprovalSource(source);
     }
@@ -105,10 +94,6 @@ export async function rejectApprovalAction(formData: FormData) {
       case "purchase":
         await resolvePurchaseApproval(session, uuidParam(rawId, "Solicitud de compra"), "rechazada", reason);
         revalidatePurchaseApprovalFlow();
-        return;
-      case "fiscal":
-        await rejectSaleFiscalDocument(session, uuidParam(rawId, "Venta"), reason);
-        revalidateFiscalFlow();
         return;
       default:
         assertNeverApprovalSource(source);

@@ -47,6 +47,7 @@ function TaskCompletionForm({ id }: { id: number }) {
         className="min-h-10 min-w-0 rounded-[8px] border border-[#d9e2ef] bg-white px-3 text-sm font-medium text-[#0f172a] shadow-[var(--shadow-xs)] outline-none transition-colors placeholder:text-[#94a3b8] focus:border-[#2563eb]"
         name="message"
         placeholder="Nota de cierre"
+        suppressHydrationWarning
       />
       <Button size="sm" type="submit">
         Completar

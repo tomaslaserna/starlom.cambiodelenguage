@@ -62,6 +62,7 @@ export type Supplier = {
   id: string;
   name: string;
   contact: string;
+  rubric: string;
   phone: string;
   email: string;
   address: string;
@@ -181,21 +182,33 @@ function mapSupplier(row: {
   id: string;
   display_name: string;
   legal_name: string | null;
+  rubric: string | null;
   phone: string | null;
   email: string | null;
   address: string | null;
   notes: string | null;
   created_at: string;
 }): Supplier {
+  const legacy = splitSupplierNotes(row.notes ?? "");
   return {
     id: row.id,
     name: row.display_name,
     contact: row.legal_name ?? "",
+    rubric: row.rubric || legacy.rubric,
     phone: row.phone ?? "",
     email: row.email ?? "",
     address: row.address ?? "",
-    notes: row.notes ?? "",
+    notes: row.rubric ? row.notes ?? "" : legacy.notes,
     createdAt: row.created_at,
+  };
+}
+
+function splitSupplierNotes(rawNotes: string) {
+  const match = rawNotes.match(/^\[Rubro:\s*([^\]]+)\]\s*/i);
+  if (!match) return { rubric: "", notes: rawNotes };
+  return {
+    rubric: match[1]?.trim() ?? "",
+    notes: rawNotes.slice(match[0].length).trimStart(),
   };
 }
 
@@ -254,6 +267,7 @@ export function supplierInputFromBody(
   const input = {
     name: firstText(body, ["name", "nombre"], defaults.name),
     contact: firstText(body, ["contact", "contacto"], defaults.contact),
+    rubric: firstText(body, ["rubric", "rubro"], defaults.rubric),
     phone: firstText(body, ["phone", "telefono"], defaults.phone),
     email: firstText(body, ["email"], defaults.email),
     address: firstText(body, ["address", "direccion"], defaults.address),
@@ -411,7 +425,7 @@ export async function listSuppliers(input: ListInput = {}): Promise<ListResult<S
   if (query) {
     params.push(searchPattern(query));
     filters.push(
-      `(display_name ILIKE $${params.length} ESCAPE '\\' OR legal_name ILIKE $${params.length} ESCAPE '\\' OR phone ILIKE $${params.length} ESCAPE '\\' OR email ILIKE $${params.length} ESCAPE '\\' OR address ILIKE $${params.length} ESCAPE '\\' OR notes ILIKE $${params.length} ESCAPE '\\')`,
+      `(display_name ILIKE $${params.length} ESCAPE '\\' OR legal_name ILIKE $${params.length} ESCAPE '\\' OR rubric ILIKE $${params.length} ESCAPE '\\' OR phone ILIKE $${params.length} ESCAPE '\\' OR email ILIKE $${params.length} ESCAPE '\\' OR address ILIKE $${params.length} ESCAPE '\\' OR notes ILIKE $${params.length} ESCAPE '\\')`,
     );
   }
 
@@ -426,7 +440,7 @@ export async function listSuppliers(input: ListInput = {}): Promise<ListResult<S
   const rows = await queryWithCompanyContext<Parameters<typeof mapSupplier>[0]>(
     companyId,
     `
-      SELECT id, display_name, legal_name, phone, email, address, notes, created_at::text
+      SELECT id, display_name, legal_name, rubric, phone, email, address, notes, created_at::text
       FROM suppliers
       WHERE ${where}
       ORDER BY display_name ASC, id ASC
@@ -454,7 +468,7 @@ export async function getSupplier(companyId: number, id: string) {
   const result = await queryWithCompanyContext<Parameters<typeof mapSupplier>[0]>(
     companyId,
     `
-      SELECT id, display_name, legal_name, phone, email, address, notes, created_at::text
+      SELECT id, display_name, legal_name, rubric, phone, email, address, notes, created_at::text
       FROM suppliers
       WHERE id = $1::uuid AND empresa_id = $2 AND active = true
       LIMIT 1
@@ -471,11 +485,20 @@ export async function createSupplier(companyId: number, input: SupplierInput) {
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,
     `
-      INSERT INTO suppliers (display_name, legal_name, phone, email, address, notes, empresa_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO suppliers (display_name, legal_name, rubric, phone, email, address, notes, empresa_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING id::text AS id
     `,
-    [input.name, input.contact, input.phone, input.email, input.address, input.notes, companyId],
+    [
+      input.name,
+      input.contact,
+      input.rubric,
+      input.phone,
+      input.email,
+      input.address,
+      input.notes,
+      companyId,
+    ],
   );
 
   return getSupplier(companyId, result.rows[0].id);
@@ -488,15 +511,26 @@ export async function updateSupplier(companyId: number, id: string, input: Suppl
       UPDATE suppliers
       SET display_name = $1,
           legal_name = $2,
-          phone = $3,
-          email = $4,
-          address = $5,
-          notes = $6,
+          rubric = $3,
+          phone = $4,
+          email = $5,
+          address = $6,
+          notes = $7,
           updated_at = now()
-      WHERE id = $7::uuid AND empresa_id = $8 AND active = true
+      WHERE id = $8::uuid AND empresa_id = $9 AND active = true
       RETURNING id::text AS id
     `,
-    [input.name, input.contact, input.phone, input.email, input.address, input.notes, id, companyId],
+    [
+      input.name,
+      input.contact,
+      input.rubric,
+      input.phone,
+      input.email,
+      input.address,
+      input.notes,
+      id,
+      companyId,
+    ],
   );
 
   if (!result.rows[0]) throw new ApiError(404, "Proveedor no encontrado");

@@ -558,11 +558,12 @@ export async function getCustomerFollowUp(companyId: number) {
 
   const customers = new Map<
     string,
-    { name: string; phone: string; seller: string; timestamps: number[] }
+    { id: string; name: string; phone: string; seller: string; timestamps: number[] }
   >();
   for (const row of result.rows) {
     const current =
       customers.get(row.id) ?? {
+        id: row.id,
         name: row.nombre_cliente,
         phone: row.telefono,
         seller: row.vendedor,
@@ -587,6 +588,7 @@ export async function getCustomerFollowUp(companyId: number) {
     const purchases = timestamps.length;
     if (customer.seller) sellers.add(customer.seller);
     const base = {
+      customerId: customer.id,
       customerName: customer.name,
       phone: customer.phone,
       seller: customer.seller,

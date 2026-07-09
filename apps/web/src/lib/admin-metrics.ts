@@ -19,6 +19,19 @@ function percentDelta(current: number, previous: number) {
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
+function dateKey(value: string | null) {
+  return value?.slice(0, 10) || "";
+}
+
+function daysUntil(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) return Number.POSITIVE_INFINITY;
+  const today = new Date();
+  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const targetUtc = Date.UTC(year, month - 1, day);
+  return Math.floor((targetUtc - todayUtc) / 86_400_000);
+}
+
 type AdminMetrics = {
   period: ReturnType<typeof monthBounds>;
   sales: { current: number; previous: number; deltaPercent: number | null };
@@ -221,6 +234,8 @@ export async function getAccountsPayable(companyId: number) {
     balance: string;
     date: string | null;
     status: string;
+    scheduled_amount: string;
+    scheduled_date: string | null;
   }>(
     companyId,
     `
@@ -231,9 +246,21 @@ export async function getAccountsPayable(companyId: number) {
              COALESCE(p.paid_amount, 0)::text AS paid,
              GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0)::text AS balance,
              p.purchase_date::text AS date,
-             p.status AS status
+             p.status AS status,
+             COALESCE(scheduled.scheduled_amount, 0)::text AS scheduled_amount,
+             scheduled.scheduled_date
       FROM purchases p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      LEFT JOIN LATERAL (
+        SELECT
+          COALESCE(SUM(COALESCE(NULLIF(req.metadata->>'amount', '')::numeric, req.monto, 0)), 0) AS scheduled_amount,
+          MIN(NULLIF(req.metadata->>'date', '')) AS scheduled_date
+        FROM app_solicitudes req
+        WHERE req.empresa_id = p.empresa_id
+          AND req.estado = 'pendiente'
+          AND req.metadata->>'action' = 'supplier_payment'
+          AND req.metadata->>'purchaseId' = p.id::text
+      ) scheduled ON true
       WHERE p.empresa_id = $1
         AND p.status = 'recibida'
         AND GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0) > 0
@@ -323,6 +350,7 @@ export async function getAccountsPayable(companyId: number) {
         AND monto > 0
         AND (
           categoria ILIKE '%servicio%'
+          OR categoria ILIKE '%cuenta_por_pagar%'
           OR concepto ILIKE '%servicio%'
           OR concepto ILIKE '%alquiler%'
           OR concepto ILIKE '%luz%'
@@ -336,16 +364,18 @@ export async function getAccountsPayable(companyId: number) {
 
   const data = [
     ...purchases.rows.map((row) => ({
-    id: row.id,
-    provider: row.provider,
-    concept: row.concept,
-    total: Number(row.total),
-    paid: Number(row.paid),
-    balance: Number(row.balance),
-    date: row.date,
-    status: row.status,
-    source: "compra",
-  })),
+      id: row.id,
+      provider: row.provider,
+      concept: row.concept,
+      total: Number(row.total),
+      paid: Number(row.paid),
+      balance: Number(row.balance),
+      date: row.date,
+      status: row.status,
+      scheduledAmount: Number(row.scheduled_amount),
+      scheduledDate: row.scheduled_date,
+      source: "compra",
+    })),
     ...salaries.rows
       .map((row) => {
         const total = Number(row.monthly) + Number(row.bonus) + Number(row.charges);
@@ -359,6 +389,8 @@ export async function getAccountsPayable(companyId: number) {
           balance: Math.max(0, total - paid),
           date: nextStart,
           status: "sueldo",
+          scheduledAmount: 0,
+          scheduledDate: null,
           source: "sueldo",
         };
       })
@@ -372,6 +404,8 @@ export async function getAccountsPayable(companyId: number) {
       balance: Number(row.balance),
       date: row.date,
       status: row.status,
+      scheduledAmount: 0,
+      scheduledDate: null,
       source: "impuesto",
     })),
     ...projectedServices.rows.map((row) => ({
@@ -383,6 +417,8 @@ export async function getAccountsPayable(companyId: number) {
       balance: Number(row.balance),
       date: row.date,
       status: row.status,
+      scheduledAmount: 0,
+      scheduledDate: null,
       source: "servicio",
     })),
   ].sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
@@ -421,7 +457,7 @@ export async function getCashflow(companyId: number) {
   );
 
   const payables = await queryWithCompanyContext<{
-    id: number;
+    id: string;
     label: string;
     amount: string;
     date: string | null;
@@ -431,14 +467,51 @@ export async function getCashflow(companyId: number) {
     `
       SELECT p.id,
              COALESCE(s.display_name, 'Compra #' || p.id::text) AS label,
-             GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0)::text AS amount,
+             GREATEST(
+               p.total_amount - COALESCE(p.paid_amount, 0) - COALESCE(scheduled.scheduled_amount, 0),
+               0
+             )::text AS amount,
              p.purchase_date::text AS date,
              'outflow' AS kind
       FROM purchases p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(COALESCE(NULLIF(req.metadata->>'amount', '')::numeric, req.monto, 0)), 0) AS scheduled_amount
+        FROM app_solicitudes req
+        WHERE req.empresa_id = p.empresa_id
+          AND req.estado = 'pendiente'
+          AND req.metadata->>'action' = 'supplier_payment'
+          AND req.metadata->>'purchaseId' = p.id::text
+      ) scheduled ON true
       WHERE p.empresa_id = $1
         AND p.status <> 'cancelada'
-        AND GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0) > 0
+        AND GREATEST(
+          p.total_amount - COALESCE(p.paid_amount, 0) - COALESCE(scheduled.scheduled_amount, 0),
+          0
+        ) > 0
+    `,
+    [companyId],
+  );
+
+  const scheduledSupplierPayments = await queryWithCompanyContext<{
+    id: string;
+    label: string;
+    amount: string;
+    date: string | null;
+    kind: string;
+  }>(
+    companyId,
+    `
+      SELECT req.id::text AS id,
+             COALESCE(req.titulo, 'Pago proveedor programado') AS label,
+             COALESCE(NULLIF(req.metadata->>'amount', '')::numeric, req.monto, 0)::text AS amount,
+             COALESCE(NULLIF(req.metadata->>'date', ''), CURRENT_DATE::text) AS date,
+             'outflow' AS kind
+      FROM app_solicitudes req
+      WHERE req.empresa_id = $1
+        AND req.estado = 'pendiente'
+        AND req.metadata->>'action' = 'supplier_payment'
+        AND COALESCE(NULLIF(req.metadata->>'amount', '')::numeric, req.monto, 0) > 0
     `,
     [companyId],
   );
@@ -515,6 +588,7 @@ export async function getCashflow(companyId: number) {
   const items = [
     ...receivables.rows,
     ...payables.rows,
+    ...scheduledSupplierPayments.rows,
     ...salaryOutflows.rows,
     ...taxOutflows.rows,
     ...projectedOutflows.rows,
@@ -530,6 +604,49 @@ export async function getCashflow(companyId: number) {
 
   const inflow = items.filter((item) => item.kind === "inflow").reduce((sum, item) => sum + item.amount, 0);
   const outflow = items.filter((item) => item.kind === "outflow").reduce((sum, item) => sum + item.amount, 0);
+  const horizons = [7, 15, 30].map((days) => {
+    const horizonItems = items.filter((item) => {
+      const dueInDays = daysUntil(dateKey(item.date));
+      return dueInDays <= days;
+    });
+    const horizonInflow = horizonItems
+      .filter((item) => item.kind === "inflow")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const horizonOutflow = horizonItems
+      .filter((item) => item.kind === "outflow")
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    return {
+      days,
+      inflow: horizonInflow,
+      outflow: horizonOutflow,
+      net: horizonInflow - horizonOutflow,
+    };
+  });
+  const calendar = Array.from(
+    items.reduce(
+      (map, item) => {
+        const key = dateKey(item.date) || "sin_fecha";
+        const current = map.get(key) ?? { date: item.date, inflow: 0, outflow: 0, net: 0, items: [] };
+        if (item.kind === "inflow") current.inflow += item.amount;
+        if (item.kind === "outflow") current.outflow += item.amount;
+        current.net = current.inflow - current.outflow;
+        current.items.push(item);
+        map.set(key, current);
+        return map;
+      },
+      new Map<
+        string,
+        {
+          date: string | null;
+          inflow: number;
+          outflow: number;
+          net: number;
+          items: typeof items;
+        }
+      >(),
+    ).values(),
+  ).sort((a, b) => String(a.date ?? "").localeCompare(String(b.date ?? "")));
 
   return {
     data: items,
@@ -537,6 +654,8 @@ export async function getCashflow(companyId: number) {
       inflow,
       outflow,
       net: inflow - outflow,
+      horizons,
     },
+    calendar,
   };
 }

@@ -32,7 +32,7 @@ export function RegisterCollectionDialog({
 
   return (
     <>
-      <button className={triggerClassName} onClick={() => setOpen(true)} type="button">
+      <button className={triggerClassName} suppressHydrationWarning onClick={() => setOpen(true)} type="button">
         Registrar pago
       </button>
       {open ? (
@@ -45,6 +45,7 @@ export function RegisterCollectionDialog({
           <button
             aria-label="Cerrar panel de registro"
             className="absolute inset-0 cursor-default bg-black/40"
+            suppressHydrationWarning
             onClick={() => setOpen(false)}
             type="button"
           />
@@ -61,6 +62,7 @@ export function RegisterCollectionDialog({
               <button
                 aria-label="Cerrar"
                 className="shrink-0 rounded-md border border-[color:var(--border)] px-2 py-1 text-xs font-black text-[#64748b] hover:bg-[color:var(--panel-subtle)]"
+                suppressHydrationWarning
                 onClick={() => setOpen(false)}
                 type="button"
               >

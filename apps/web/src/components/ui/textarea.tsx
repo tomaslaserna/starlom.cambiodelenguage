@@ -15,6 +15,7 @@ export function Textarea({ className, invalid, ...props }: TextareaProps) {
         invalid ? "border-[color:var(--danger)]" : "border-[color:var(--border)] hover:border-[color:var(--border-strong)] focus:border-[color:var(--accent)]",
         className,
       )}
+      suppressHydrationWarning
     />
   );
 }

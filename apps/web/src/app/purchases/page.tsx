@@ -39,6 +39,7 @@ import {
 } from "@/components/ui";
 import {
   createPurchaseAction,
+  requestSupplierPaymentAction,
   reviewPurchasePackageAction,
   updatePurchaseStatusAction,
   uploadPurchaseReceiptAction,
@@ -143,6 +144,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   const type = params.type?.trim() ?? "";
   const viewParam = params.view?.trim() ?? "";
   const view = viewForParams(type, viewParam);
+  const today = localDateIso();
   const [canCreatePurchases, canEditPurchases] = await Promise.all([
     sessionAllows(session, [PURCHASES_CREATE_PERMISSION]),
     sessionAllows(session, [PURCHASES_EDIT_PERMISSION]),
@@ -188,10 +190,23 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
         {showCreateForm ? (
           <Card className="p-4">
             <form action={createPurchaseAction} className="grid gap-4">
-              <PurchaseEntryFields defaultDate={localDateIso()} products={products} suppliers={suppliers} />
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_minmax(260px,1fr)_auto] lg:items-end">
+              <PurchaseEntryFields defaultDate={today} products={products} suppliers={suppliers} />
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,180px)_minmax(0,160px)_minmax(0,180px)_minmax(260px,1fr)_auto] lg:items-end">
                 <Field className="min-w-0" htmlFor="purchase-total" label="Total">
                   <Input id="purchase-total" min="0" name="total" required step="0.01" type="number" />
+                </Field>
+                <Field className="min-w-0" htmlFor="purchase-tax-mode" label="IVA">
+                  <Select id="purchase-tax-mode" name="taxMode" defaultValue="con_iva">
+                    <option value="con_iva">Con IVA</option>
+                    <option value="sin_iva">Sin IVA</option>
+                  </Select>
+                </Field>
+                <Field className="min-w-0" htmlFor="purchase-vat-rate" label="Alicuota">
+                  <Select id="purchase-vat-rate" name="vatRate" defaultValue="21">
+                    <option value="21">21%</option>
+                    <option value="10.5">10,5%</option>
+                    <option value="0">0%</option>
+                  </Select>
                 </Field>
                 <Field className="min-w-0" htmlFor="purchase-description" label="Descripcion">
                   <Input id="purchase-description" name="description" placeholder="Detalle o referencia interna" />
@@ -285,6 +300,9 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                     purchases.map((purchase) => {
                       const statusSelectId = `purchase-${purchase.id}-status`;
                       const receiptInputId = `purchase-${purchase.id}-receipt`;
+                      const paymentDateInputId = `purchase-${purchase.id}-payment-date`;
+                      const paymentAmountInputId = `purchase-${purchase.id}-payment-amount`;
+                      const paymentNotesInputId = `purchase-${purchase.id}-payment-notes`;
 
                       return (
                         <DataTableRow key={purchase.id}>
@@ -292,6 +310,9 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                             <div className="break-all font-mono text-xs">#{purchase.id}</div>
                             <div className="mt-1 text-xs text-[color:var(--muted)]">
                               {purchase.description || "-"}
+                            </div>
+                            <div className="mt-1 text-xs font-semibold text-[color:var(--muted)]">
+                              {purchase.taxMode === "sin_iva" ? "Sin IVA" : `IVA ${purchase.vatRate}% incluido`}
                             </div>
                           </DataTableCell>
                           <DataTableCell>
@@ -376,6 +397,52 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                                   </Button>
                                 </form>
                               ) : null}
+                          {purchase.balance > 0 && purchase.status !== "cancelada" && canEditPurchases ? (
+                            <details className="rounded-[var(--radius-md)] border border-[color:var(--border)] p-2 text-xs">
+                              <summary className="cursor-pointer select-none font-semibold text-[color:var(--accent-strong)]">
+                                Solicitar pago
+                              </summary>
+                              <form action={requestSupplierPaymentAction} className="mt-2 grid gap-2">
+                                <input name="id" type="hidden" value={purchase.id} />
+                                <Field className="gap-1" htmlFor={paymentAmountInputId} label="Monto">
+                                  <Input
+                                    defaultValue={purchase.balance.toFixed(2)}
+                                    id={paymentAmountInputId}
+                                    min="0"
+                                    name="amount"
+                                    required
+                                    step="0.01"
+                                    type="number"
+                                  />
+                                </Field>
+                                <Field className="gap-1" htmlFor={paymentDateInputId} label="Fecha de pago">
+                                  <Input
+                                    defaultValue={today}
+                                    id={paymentDateInputId}
+                                    name="date"
+                                    required
+                                    type="date"
+                                  />
+                                </Field>
+                                <Field className="gap-1" htmlFor={paymentNotesInputId} label="Notas">
+                                  <Input
+                                    id={paymentNotesInputId}
+                                    name="notes"
+                                    placeholder="Cuenta, referencia o condicion"
+                                  />
+                                </Field>
+                                <Button
+                                  aria-label={`Solicitar pago de compra ${purchase.id}`}
+                                  className="w-full"
+                                  size="sm"
+                                  type="submit"
+                                  variant="secondary"
+                                >
+                                  Enviar a aprobacion
+                                </Button>
+                              </form>
+                            </details>
+                          ) : null}
                           {purchase.status === "recibida" && canEditPurchases ? (
                             <form action={uploadPurchaseReceiptAction} className="grid gap-2">
                               <input name="id" type="hidden" value={purchase.id} />
@@ -386,6 +453,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                                   className="block w-full text-xs text-[color:var(--muted)] file:mr-2 file:min-h-9 file:rounded-[var(--radius-md)] file:border-0 file:bg-[color:var(--panel-subtle)] file:px-3 file:text-xs file:font-semibold file:text-[color:var(--foreground)]"
                                   id={receiptInputId}
                                   name="foto"
+                                  suppressHydrationWarning
                                   type="file"
                                 />
                               </Field>

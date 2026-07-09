@@ -2,19 +2,17 @@ import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { ApiError } from "@/lib/api-response";
 import { listPendingCollections } from "@/lib/collections";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
-import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { executeSupplierPayment, purchaseIdFromParam } from "@/lib/purchases";
 import { COLLECTIONS_APPROVE_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
 
 export const COLLECTION_APPROVAL_PERMISSION = COLLECTIONS_APPROVE_PERMISSION;
 
-export type ApprovalSource = "collection" | "request" | "purchase" | "fiscal";
+export type ApprovalSource = "collection" | "request" | "purchase";
 
 export type ApprovalCenterAccess = {
   collections: boolean;
   requests: boolean;
-  fiscal: boolean;
 };
 
 type ApprovalRequestRow = {
@@ -25,19 +23,6 @@ type ApprovalRequestRow = {
   monto: string;
   solicitante: string;
   created_at: string;
-};
-
-type FiscalApprovalRow = {
-  id: string;
-  client_name: string;
-  client_document: string;
-  receipt_number: number | null;
-  receipt_type: number | null;
-  total_amount: string;
-  seller_name: string | null;
-  sale_date: string | null;
-  fiscal_status: string;
-  fiscal_error_message: string;
 };
 
 type PurchaseApprovalRow = {
@@ -74,8 +59,6 @@ export function parseApprovalSource(value: FormDataEntryValue | null): ApprovalS
       return "request";
     case "purchase":
       return "purchase";
-    case "fiscal":
-      return "fiscal";
     default:
       throw new ApiError(400, "Tipo de solicitud invalido");
   }
@@ -90,7 +73,6 @@ export async function approvalCenterAccessForSession(session: AuthSession): Prom
   return {
     collections: await sessionAllows(session, [COLLECTION_APPROVAL_PERMISSION]),
     requests: canResolveGenericApproval(session),
-    fiscal: canResolveGenericApproval(session),
   };
 }
 
@@ -102,8 +84,6 @@ export function canOperateApprovalSource(access: ApprovalCenterAccess, source: A
       return access.requests;
     case "purchase":
       return access.requests;
-    case "fiscal":
-      return access.fiscal;
   }
 }
 
@@ -144,43 +124,11 @@ async function listPendingPurchaseApprovals(companyId: number) {
   return result.rows;
 }
 
-async function listPendingFiscalApprovals(companyId: number) {
-  const result = await queryWithCompanyContext<FiscalApprovalRow>(
-    companyId,
-    `
-      SELECT s.id::text AS id,
-             COALESCE(s.client_name, c.display_name, '') AS client_name,
-             COALESCE(s.client_document, c.tax_id, '') AS client_document,
-             s.receipt_number,
-             s.receipt_type,
-             COALESCE(s.total_amount, 0)::text AS total_amount,
-             COALESCE(s.seller_name, '') AS seller_name,
-             s.sale_date::text,
-             COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
-             COALESCE(s.fiscal_error_message, '') AS fiscal_error_message
-      FROM sales s
-      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
-      WHERE s.empresa_id = $1
-        AND ${normalizedOrderStatusSql("s")} = 'entregado'
-        AND (
-          COALESCE(s.desired_document, '') IN ('factura_a', 'factura_b', 'factura_c')
-          OR COALESCE(s.receipt_type, 0) IN (1, 6, 11)
-        )
-        AND COALESCE(s.fiscal_status, 'no_enviado') IN ('no_enviado', 'error')
-      ORDER BY s.sale_date DESC NULLS LAST, s.updated_at DESC NULLS LAST, s.id DESC
-      LIMIT 200
-    `,
-    [companyId],
-  );
-  return result.rows;
-}
-
 export async function listApprovalCenter(companyId: number, access: ApprovalCenterAccess) {
-  const [collections, requests, purchaseRequests, fiscal] = await Promise.all([
+  const [collections, requests, purchaseRequests] = await Promise.all([
     access.collections ? listPendingCollections(companyId) : Promise.resolve([]),
     access.requests ? listPendingApprovalRequests(companyId) : Promise.resolve([]),
     access.requests ? listPendingPurchaseApprovals(companyId) : Promise.resolve([]),
-    access.fiscal ? listPendingFiscalApprovals(companyId) : Promise.resolve([]),
   ]);
 
   const collectionItems: ApprovalItem[] = collections.map((item) => ({
@@ -218,24 +166,7 @@ export async function listApprovalCenter(companyId: number, access: ApprovalCent
     source: "purchase",
   }));
 
-  const fiscalItems: ApprovalItem[] = fiscal.map((row) => ({
-    id: row.id,
-    type: row.fiscal_status === "error" ? "Factura con error ARCA" : "Factura fiscal pendiente",
-    title: `Factura ${row.client_name || "sin cliente"}`,
-    detail: [
-      row.client_document ? `CUIT/DNI ${row.client_document}` : "",
-      row.receipt_number ? `Comp. ${String(row.receipt_number).padStart(8, "0")}` : "Sin numero fiscal",
-      row.fiscal_error_message ? `Error: ${row.fiscal_error_message}` : "",
-    ]
-      .filter(Boolean)
-      .join(" - "),
-    amount: Number(row.total_amount),
-    requester: row.seller_name || "Sistema",
-    createdAt: row.sale_date,
-    source: "fiscal",
-  }));
-
-  const items = [...collectionItems, ...requestItems, ...purchaseRequestItems, ...fiscalItems].sort((a, b) =>
+  const items = [...collectionItems, ...requestItems, ...purchaseRequestItems].sort((a, b) =>
     String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")),
   );
 
@@ -246,7 +177,6 @@ export async function listApprovalCenter(companyId: number, access: ApprovalCent
       collections: collectionItems.length,
       requests: requestItems.length,
       purchaseRequests: purchaseRequestItems.length,
-      fiscal: fiscalItems.length,
       amount: items.reduce((sum, item) => sum + item.amount, 0),
     },
   };
@@ -349,21 +279,36 @@ export async function resolveGenericApproval(
     });
   }
 
-  const result = await queryWithCompanyContext<{ id: number }>(
-    session.companyId,
-    `
-      UPDATE app_solicitudes
-      SET estado = $1,
-          detalle = CASE WHEN $2 = '' THEN detalle ELSE detalle || E'\n\nResolucion: ' || $2 END,
-          resuelto_por = $3,
-          resuelto_at = NOW(),
-          updated_at = NOW()
-      WHERE id = $4 AND empresa_id = $5 AND estado = 'pendiente'
-      RETURNING id
-    `,
-    [nextState, reason.trim(), session.username, id, session.companyId],
-  );
+  await withCompanyContext(session.companyId, async (client) => {
+    const result = await client.query<{ id: number }>(
+      `
+        UPDATE app_solicitudes
+        SET estado = $1,
+            detalle = CASE WHEN $2 = '' THEN detalle ELSE detalle || E'\n\nResolucion: ' || $2 END,
+            resuelto_por = $3,
+            resuelto_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $4 AND empresa_id = $5 AND estado = 'pendiente'
+        RETURNING id
+      `,
+      [nextState, reason.trim(), session.username, id, session.companyId],
+    );
 
-  if (!result.rows[0]) throw new ApiError(404, "Solicitud no encontrada o ya resuelta");
+    if (!result.rows[0]) throw new ApiError(404, "Solicitud no encontrada o ya resuelta");
+
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      [
+        session.userId,
+        nextState === "aprobada" ? "request.approved" : "request.rejected",
+        "app_solicitudes",
+        String(id),
+        JSON.stringify({ type: row.tipo, state: nextState, reason: reason.trim(), metadata }),
+        session.companyId,
+      ],
+    );
+  });
+
+  clearReadQueryCache();
   return { id, state: nextState };
 }

@@ -31,7 +31,6 @@ type OrdersPageProps = {
   searchParams: Promise<{
     q?: string;
     status?: string;
-    collectionStatus?: string;
     page?: string;
   }>;
 };
@@ -39,16 +38,6 @@ type OrdersPageProps = {
 const orderStates = [
   { value: "", label: "Todos los estados" },
   ...ORDER_STATUS_OPTIONS,
-];
-
-const collectionStates = [
-  { value: "", label: "Todos los cobros" },
-  { value: "no_aplica", label: "No habilitado" },
-  { value: "pendiente", label: "Pendiente" },
-  { value: "pendiente_aprobacion", label: "Pendiente aprobacion" },
-  { value: "recibido", label: "Cobrado" },
-  { value: "vencido", label: "Vencido" },
-  { value: "cancelado", label: "Cancelado" },
 ];
 
 function orderStatusTone(value: string): StatusBadgeTone {
@@ -69,7 +58,6 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
     companyId: session.companyId,
     query: params.q,
     status: params.status,
-    collectionStatus: params.collectionStatus,
     page: params.page,
     pageSize: "25",
   });
@@ -91,7 +79,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         <Toolbar ariaLabel="Filtros de pedidos">
           <form
             action="/orders"
-            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_210px_210px_auto_auto] lg:items-end"
+            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_210px_auto_auto] lg:items-end"
           >
             <Field htmlFor="orders-query" label="Buscar">
               <Input
@@ -105,19 +93,6 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             <Field htmlFor="orders-status" label="Estado">
               <Select defaultValue={result.meta.status} id="orders-status" name="status">
                 {orderStates.map((state) => (
-                  <option key={state.value} value={state.value}>
-                    {state.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field htmlFor="orders-collection-status" label="Cobro">
-              <Select
-                defaultValue={result.meta.collectionStatus}
-                id="orders-collection-status"
-                name="collectionStatus"
-              >
-                {collectionStates.map((state) => (
                   <option key={state.value} value={state.value}>
                     {state.label}
                   </option>
@@ -192,13 +167,13 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                           </summary>
                           <div className="grid gap-0.5 border-t border-[color:var(--border)] p-1">
                             <a
-                              aria-label={`Ver PDF de solicitud del pedido ${order.id}`}
+                              aria-label={`Ver documento del pedido ${order.id}`}
                               className={actionItemClass}
-                              href={`/api/pdfs/orders/${order.id}/request`}
+                              href={`/api/pdfs/orders/${order.id}/document`}
                               rel="noreferrer"
                               target="_blank"
                             >
-                              Ver PDF solicitud
+                              Ver documento
                             </a>
                             {isOpenOrder ? (
                               <>
@@ -215,6 +190,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                                   <button
                                     aria-label={`Marcar entregado el pedido ${order.id}`}
                                     className={actionItemClass}
+                                    suppressHydrationWarning
                                     type="submit"
                                   >
                                     Entregado
@@ -226,6 +202,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                                   <button
                                     aria-label={`Cancelar pedido ${order.id}`}
                                     className={`${actionItemClass} text-[color:var(--danger)] hover:text-[color:var(--danger)]`}
+                                    suppressHydrationWarning
                                     type="submit"
                                   >
                                     Cancelar
@@ -246,7 +223,6 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             basePath="/orders"
             extraParams={{
               status: result.meta.status,
-              collectionStatus: result.meta.collectionStatus,
             }}
             page={result.meta.page}
             query={result.meta.query}
