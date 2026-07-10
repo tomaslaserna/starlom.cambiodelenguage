@@ -25,10 +25,17 @@ type PurchaseLineState = PurchaseLineDraft & {
   id: string;
 };
 
+type PurchaseInitialLine = {
+  productId: string;
+  quantity: number;
+};
+
 type PurchaseEntryFieldsProps = {
   products: PurchaseFormProduct[];
   suppliers: PurchaseFormSupplier[];
   defaultDate: string;
+  initialSupplierId?: string;
+  initialLines?: PurchaseInitialLine[];
 };
 
 const emptyLine = (): PurchaseLineDraft => ({ productId: "", quantity: "1" });
@@ -38,11 +45,23 @@ function numericInput(value: string, fallback = 0) {
   return Number.isFinite(numberValue) ? numberValue : fallback;
 }
 
-export function PurchaseEntryFields({ defaultDate, products, suppliers }: PurchaseEntryFieldsProps) {
-  const [supplierId, setSupplierId] = useState("");
+export function PurchaseEntryFields({
+  defaultDate,
+  products,
+  suppliers,
+  initialSupplierId = "",
+  initialLines = [],
+}: PurchaseEntryFieldsProps) {
+  const [supplierId, setSupplierId] = useState(initialSupplierId);
   const [draftLine, setDraftLine] = useState<PurchaseLineDraft>(emptyLine());
-  const [lines, setLines] = useState<PurchaseLineState[]>([]);
-  const lineIdRef = useRef(0);
+  const [lines, setLines] = useState<PurchaseLineState[]>(() =>
+    initialLines.map((line, index) => ({
+      id: `purchase-line-init-${index}`,
+      productId: line.productId,
+      quantity: String(Math.max(0, Math.trunc(line.quantity))),
+    })),
+  );
+  const lineIdRef = useRef(initialLines.length);
 
   const filteredProducts = useMemo(
     () => (supplierId ? products.filter((product) => product.supplierId === supplierId) : []),

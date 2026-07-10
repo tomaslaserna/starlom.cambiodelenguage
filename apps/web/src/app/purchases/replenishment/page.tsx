@@ -1,24 +1,9 @@
 import { ModulePage } from "@/components/module-page";
-import {
-  Button,
-  Card,
-  DataTable,
-  DataTableBody,
-  DataTableCell,
-  DataTableHead,
-  DataTableHeader,
-  DataTableRow,
-  EmptyState,
-  PageHeader,
-  StatCard,
-  StatusBadge,
-  type StatusBadgeTone,
-} from "@/components/ui";
-import { createReplenishmentPurchaseRequestAction } from "@/app/purchases/replenishment/actions";
+import { ButtonLink, Card, EmptyState, PageHeader, StatCard, StatusBadge, type StatusBadgeTone } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
-import { getReplenishmentSuggestions, type ReplenishmentPriority } from "@/lib/replenishment";
+import { getReplenishmentSuggestions, type ReplenishmentItem, type ReplenishmentPriority } from "@/lib/replenishment";
 import { PRODUCTS_READ_PERMISSION, PURCHASES_READ_PERMISSION } from "@/lib/route-auth";
 
 function priorityLabel(priority: ReplenishmentPriority) {
@@ -31,9 +16,15 @@ function priorityLabel(priority: ReplenishmentPriority) {
 function priorityTone(priority: ReplenishmentPriority): StatusBadgeTone {
   if (priority === "critico") return "danger";
   if (priority === "alto") return "warning";
-  if (priority === "medio") return "neutral";
   return "neutral";
 }
+
+const PRIORITY_RANK: Record<ReplenishmentPriority, number> = {
+  critico: 0,
+  alto: 1,
+  medio: 2,
+  sin_movimiento: 3,
+};
 
 function coverText(value: number | null) {
   if (value === null) return "-";
@@ -41,17 +32,42 @@ function coverText(value: number | null) {
   return `${formatNumber(value)} dias`;
 }
 
-type ReplenishmentPageProps = {
-  searchParams: Promise<{
-    created?: string;
-  }>;
+type SupplierGroup = {
+  supplierId: string | null;
+  supplier: string;
+  items: ReplenishmentItem[];
+  units: number;
+  topPriority: ReplenishmentPriority;
 };
 
-export default async function ReplenishmentPage({ searchParams }: ReplenishmentPageProps) {
+function groupBySupplier(items: ReplenishmentItem[]): SupplierGroup[] {
+  const map = new Map<string, SupplierGroup>();
+  for (const item of items) {
+    const key = item.supplierId ?? "__none__";
+    let group = map.get(key);
+    if (!group) {
+      group = { supplierId: item.supplierId, supplier: item.supplier, items: [], units: 0, topPriority: "sin_movimiento" };
+      map.set(key, group);
+    }
+    group.items.push(item);
+    group.units += item.suggestedQuantity;
+    if (PRIORITY_RANK[item.priority] < PRIORITY_RANK[group.topPriority]) group.topPriority = item.priority;
+  }
+  return Array.from(map.values()).sort((a, b) => {
+    // proveedores con proveedor primero, luego por prioridad, luego por unidades
+    if ((a.supplierId === null) !== (b.supplierId === null)) return a.supplierId === null ? 1 : -1;
+    if (PRIORITY_RANK[a.topPriority] !== PRIORITY_RANK[b.topPriority]) {
+      return PRIORITY_RANK[a.topPriority] - PRIORITY_RANK[b.topPriority];
+    }
+    return b.units - a.units;
+  });
+}
+
+export default async function ReplenishmentPage() {
   const session = await requireStaffSession();
   await requirePagePermission(session, [PURCHASES_READ_PERMISSION, PRODUCTS_READ_PERMISSION]);
-  const params = await searchParams;
   const replenishment = await getReplenishmentSuggestions(session.companyId);
+  const groups = groupBySupplier(replenishment.items);
 
   return (
     <ModulePage
@@ -66,12 +82,6 @@ export default async function ReplenishmentPage({ searchParams }: ReplenishmentP
           moduleIntro
           title="Recompra MRP"
         />
-
-        {params.created ? (
-          <div className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]">
-            Solicitud de compra MRP enviada a Solicitudes y aprobaciones.
-          </div>
-        ) : null}
 
         <div className="grid gap-3 md:grid-cols-3">
           <StatCard
@@ -94,89 +104,86 @@ export default async function ReplenishmentPage({ searchParams }: ReplenishmentP
           />
         </div>
 
-        <Card className="overflow-hidden">
-          <DataTable
-            caption="Recompra sugerida por producto"
-            className="rounded-none border-0 shadow-none"
-            minWidth="100%"
-            tableLabel="Recompra MRP"
-            tableProps={{ className: "table-fixed" }}
-          >
-            <DataTableHeader>
-              <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[22%]">Producto</DataTableHead>
-                <DataTableHead className="w-[16%]">Proveedor</DataTableHead>
-                <DataTableHead align="right" className="w-[9%]">Stock</DataTableHead>
-                <DataTableHead align="right" className="w-[9%]">Pendiente</DataTableHead>
-                <DataTableHead align="right" className="w-[9%]">Venta 90d</DataTableHead>
-                <DataTableHead align="right" className="w-[9%]">Cobertura</DataTableHead>
-                <DataTableHead align="right" className="w-[9%]">Sugerido</DataTableHead>
-                <DataTableHead className="w-[10%]">Prioridad</DataTableHead>
-                <DataTableHead className="w-[7%]">Accion</DataTableHead>
-              </DataTableRow>
-            </DataTableHeader>
-            <DataTableBody>
-              {replenishment.items.length === 0 ? (
-                <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={9}>
-                    <EmptyState
-                      description="No hay productos con faltante segun el consumo reciente y el stock disponible."
-                      title="Sin recompra sugerida"
-                    />
-                  </DataTableCell>
-                </DataTableRow>
-              ) : (
-                replenishment.items.map((item) => (
-                  <DataTableRow key={item.productId}>
-                    <DataTableCell>
-                      <div className="break-words font-semibold">{item.name}</div>
-                      <div className="mt-1 font-mono text-xs text-[color:var(--muted)]">{item.sku || item.productId}</div>
-                    </DataTableCell>
-                    <DataTableCell>
-                      <div className="break-words text-[color:var(--muted)]">{item.supplier}</div>
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono text-xs">
-                      {formatNumber(item.currentStock)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono text-xs">
-                      {formatNumber(item.pendingPurchase)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono text-xs">
-                      {formatNumber(item.sold90)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono text-xs">
-                      {coverText(item.coverDays)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono text-xs font-bold">
-                      {formatNumber(item.suggestedQuantity)}
-                    </DataTableCell>
-                    <DataTableCell>
-                      <StatusBadge tone={priorityTone(item.priority)}>{priorityLabel(item.priority)}</StatusBadge>
-                    </DataTableCell>
-                    <DataTableCell>
-                      {item.supplierId && item.suggestedQuantity > 0 ? (
-                        <form action={createReplenishmentPurchaseRequestAction}>
-                          <input name="productId" type="hidden" value={item.productId} />
-                          <input name="quantity" type="hidden" value={item.suggestedQuantity} />
-                          <Button
-                            aria-label={`Solicitar recompra de ${item.name}`}
-                            className="w-full"
-                            size="sm"
-                            type="submit"
-                          >
-                            Solicitar
-                          </Button>
-                        </form>
-                      ) : (
-                        <span className="text-xs text-[color:var(--muted)]">Sin proveedor</span>
-                      )}
-                    </DataTableCell>
-                  </DataTableRow>
-                ))
-              )}
-            </DataTableBody>
-          </DataTable>
-        </Card>
+        {groups.length === 0 ? (
+          <Card className="p-4">
+            <EmptyState
+              description="No hay productos con faltante segun el consumo reciente y el stock disponible."
+              title="Sin recompra sugerida"
+            />
+          </Card>
+        ) : (
+          <div className="grid gap-3">
+            {groups.map((group) => (
+              <Card className="overflow-hidden p-0" key={group.supplierId ?? "sin-proveedor"}>
+                <details className="group">
+                  <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-3">
+                    <span
+                      aria-hidden="true"
+                      className="erp-text-caption w-3 shrink-0 text-center transition-transform group-open:rotate-90"
+                    >
+                      &gt;
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="font-black">{group.supplier}</span>
+                      <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-[color:var(--accent)] px-2 py-0.5 text-xs font-bold text-white">
+                        🔔 {group.items.length} {group.items.length === 1 ? "articulo" : "articulos"}
+                      </span>
+                      <span className="ml-2 text-xs text-[color:var(--muted)]">
+                        {formatNumber(group.units)} unidades sugeridas
+                      </span>
+                    </span>
+                    <StatusBadge tone={priorityTone(group.topPriority)}>{priorityLabel(group.topPriority)}</StatusBadge>
+                    {group.supplierId ? (
+                      <ButtonLink href={`/purchases?view=nueva&mrpSupplier=${group.supplierId}`} size="sm">
+                        Mandar a nueva compra
+                      </ButtonLink>
+                    ) : (
+                      <span className="text-xs text-[color:var(--muted)]">Sin proveedor asignado</span>
+                    )}
+                  </summary>
+
+                  <div className="overflow-x-auto border-t border-[color:var(--border)]">
+                    <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                      <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
+                        <tr>
+                          <th className="px-4 py-2 font-semibold">Producto</th>
+                          <th className="px-4 py-2 text-right font-semibold">Stock</th>
+                          <th className="px-4 py-2 text-right font-semibold">Pendiente</th>
+                          <th className="px-4 py-2 text-right font-semibold">Venta 90d</th>
+                          <th className="px-4 py-2 text-right font-semibold">Cobertura</th>
+                          <th className="px-4 py-2 text-right font-semibold">Sugerido</th>
+                          <th className="px-4 py-2 font-semibold">Prioridad</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.items.map((item) => (
+                          <tr className="border-t border-[color:var(--border)]" key={item.productId}>
+                            <td className="px-4 py-2">
+                              <div className="break-words font-semibold">{item.name}</div>
+                              <div className="mt-0.5 font-mono text-xs text-[color:var(--muted)]">
+                                {item.sku || item.productId}
+                              </div>
+                            </td>
+                            <td className="px-4 py-2 text-right font-mono text-xs">{formatNumber(item.currentStock)}</td>
+                            <td className="px-4 py-2 text-right font-mono text-xs">{formatNumber(item.pendingPurchase)}</td>
+                            <td className="px-4 py-2 text-right font-mono text-xs">{formatNumber(item.sold90)}</td>
+                            <td className="px-4 py-2 text-right font-mono text-xs">{coverText(item.coverDays)}</td>
+                            <td className="px-4 py-2 text-right font-mono text-xs font-bold">
+                              {formatNumber(item.suggestedQuantity)}
+                            </td>
+                            <td className="px-4 py-2">
+                              <StatusBadge tone={priorityTone(item.priority)}>{priorityLabel(item.priority)}</StatusBadge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </ModulePage>
   );

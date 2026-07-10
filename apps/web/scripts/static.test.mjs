@@ -297,7 +297,7 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
 
   const purchasesPage = read("apps/web/src/app/purchases/page.tsx");
   assert.match(purchasesPage, /const today = localDateIso\(\)/);
-  assert.match(purchasesPage, /PurchaseEntryFields defaultDate=\{today\} products=\{products\} suppliers=\{suppliers\}/);
+  assert.match(purchasesPage, /PurchaseEntryFields[\s\S]*?products=\{products\}[\s\S]*?suppliers=\{suppliers\}/);
   assert.match(purchasesPage, /purchaseViews[\s\S]*registro/);
   assert.match(purchasesPage, /redirect\("\/admin\/approvals"\)/);
   assert.match(purchasesPage, /<details className="rounded-\[8px\][\s\S]*Acciones[\s\S]*OC PDF[\s\S]*Devol\./);
@@ -338,15 +338,9 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(replenishmentPage, /title="Recompra MRP"/);
   assert.match(replenishmentPage, /getReplenishmentSuggestions/);
   assert.match(replenishmentPage, /cubrir \$\{replenishment\.meta\.targetDays\} dias/);
-  assert.match(replenishmentPage, /createReplenishmentPurchaseRequestAction/);
-  assert.match(replenishmentPage, /Solicitar/);
-  assert.match(replenishmentPage, /Solicitud de compra MRP enviada/);
-
-  const replenishmentActions = read("apps/web/src/app/purchases/replenishment/actions.ts");
-  assert.match(replenishmentActions, /createReplenishmentPurchaseRequestAction/);
-  assert.match(replenishmentActions, /type: "solicitud_compra"/);
-  assert.match(replenishmentActions, /revalidatePath\("\/admin\/approvals"\)/);
-  assert.match(replenishmentActions, /redirect\("\/purchases\/replenishment\?created=1"\)/);
+  assert.match(replenishmentPage, /Mandar a nueva compra/);
+  assert.match(replenishmentPage, /\/purchases\?view=nueva&mrpSupplier=/);
+  assert.doesNotMatch(replenishmentPage, /createReplenishmentPurchaseRequestAction/);
 
   const approvals = read("apps/web/src/lib/approvals.ts");
   assert.match(approvals, /ApprovalSource = "collection" \| "request" \| "purchase"/);
@@ -1156,4 +1150,33 @@ test("Auditoria screen surfaces the operational audit log", () => {
   const navigation = read("apps/web/src/lib/navigation.ts");
   assert.match(navigation, /href: "\/admin\/audit",\s*label: "Auditoria"/);
   assert.match(navigation, /groupByLabel\("Auditoria"\)/);
+});
+
+test("Recompra MRP groups by supplier and hands the detail to a prefilled nueva compra", () => {
+  const page = read("apps/web/src/app/purchases/replenishment/page.tsx");
+  // agrupa por proveedor y despliega el detalle
+  assert.match(page, /<details/, "supplier boxes must be expandable");
+  assert.match(page, /group\.items\.length/, "each supplier box shows how many articles to re-buy");
+  assert.match(page, /group\.supplierId/);
+  // boton que manda a nueva compra precargada
+  assert.match(page, /Mandar a nueva compra/);
+  assert.match(page, /\/purchases\?view=nueva&mrpSupplier=\$\{group\.supplierId\}/);
+
+  // la pantalla de nueva compra lee mrpSupplier y precarga el form
+  const purchasesPage = read("apps/web/src/app/purchases/page.tsx");
+  assert.match(purchasesPage, /mrpSupplier/);
+  assert.match(purchasesPage, /initialSupplierId/);
+  assert.match(purchasesPage, /initialLines/);
+
+  // el form acepta valores iniciales
+  const entry = read("apps/web/src/app/purchases/purchase-entry-fields.tsx");
+  assert.match(entry, /initialSupplierId/);
+  assert.match(entry, /initialLines/);
+
+  // el action por item ya no existe
+  assert.equal(
+    existsSync(join(webRoot, "src/app/purchases/replenishment/actions.ts")),
+    false,
+    "the per-item request action must be removed",
+  );
 });

@@ -45,6 +45,7 @@ import {
   uploadPurchaseReceiptAction,
 } from "@/app/purchases/actions";
 import { PurchaseEntryFields } from "@/app/purchases/purchase-entry-fields";
+import { getReplenishmentSuggestions } from "@/lib/replenishment";
 
 type PurchasesPageProps = {
   searchParams: Promise<{
@@ -52,6 +53,7 @@ type PurchasesPageProps = {
     status?: string;
     type?: string;
     view?: string;
+    mrpSupplier?: string;
   }>;
 };
 
@@ -156,6 +158,21 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
     showCreateForm ? listPurchaseFormSuppliers(session.companyId) : Promise.resolve([]),
     showCreateForm ? listPurchaseFormProducts(session.companyId) : Promise.resolve([]),
   ]);
+
+  // Precarga desde Recompra MRP: el detalle sugerido del proveedor entra al form editable.
+  const mrpSupplierId = params.mrpSupplier?.trim() ?? "";
+  let initialSupplierId = "";
+  let initialLines: { productId: string; quantity: number }[] = [];
+  if (showCreateForm && mrpSupplierId) {
+    const suggestions = await getReplenishmentSuggestions(session.companyId);
+    const supplierItems = suggestions.items.filter(
+      (item) => item.supplierId === mrpSupplierId && item.suggestedQuantity > 0,
+    );
+    if (supplierItems.length) {
+      initialSupplierId = mrpSupplierId;
+      initialLines = supplierItems.map((item) => ({ productId: item.productId, quantity: item.suggestedQuantity }));
+    }
+  }
   const purchases = showRegistry
     ? allPurchases.filter(
         (item) =>
@@ -190,7 +207,13 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
         {showCreateForm ? (
           <Card className="p-4">
             <form action={createPurchaseAction} className="grid gap-4">
-              <PurchaseEntryFields defaultDate={today} products={products} suppliers={suppliers} />
+              <PurchaseEntryFields
+                defaultDate={today}
+                initialLines={initialLines}
+                initialSupplierId={initialSupplierId}
+                products={products}
+                suppliers={suppliers}
+              />
               <div className="grid gap-3 lg:grid-cols-[minmax(0,180px)_minmax(0,160px)_minmax(0,180px)_minmax(260px,1fr)_auto] lg:items-end">
                 <Field className="min-w-0" htmlFor="purchase-total" label="Total">
                   <Input id="purchase-total" min="0" name="total" required step="0.01" type="number" />
