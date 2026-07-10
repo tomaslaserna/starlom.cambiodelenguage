@@ -22,7 +22,11 @@ import { listOrders } from "@/lib/orders";
 import { getSalesSummary } from "@/lib/sales-admin";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
-import { SALES_READ_PERMISSION } from "@/lib/route-auth";
+import { SALES_READ_PERMISSION, sessionAllows } from "@/lib/route-auth";
+import { SaleRowActions } from "@/app/sales/sale-row-actions";
+import { cancelSaleAction, editSaleAction } from "@/app/sales/actions";
+
+const SALES_EDIT_PERMISSION = { resource: "ventas", action: "editar" } as const;
 
 type SalesPageProps = {
   searchParams: Promise<{ q?: string; page?: string }>;
@@ -32,7 +36,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [SALES_READ_PERMISSION]);
   const params = await searchParams;
-  const [summary, sales] = await Promise.all([
+  const [summary, sales, canEdit] = await Promise.all([
     getSalesSummary(session.companyId, "mes"),
     listOrders({
       companyId: session.companyId,
@@ -41,6 +45,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
       page: params.page,
       pageSize: "25",
     }),
+    sessionAllows(session, [SALES_EDIT_PERMISSION]),
   ]);
 
   return (
@@ -99,7 +104,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                 <DataTableHead className="w-[16%] px-2">Vendedor</DataTableHead>
                 <DataTableHead className="w-[13%] px-2">Fecha</DataTableHead>
                 <DataTableHead className="w-[13%] px-2">Monto</DataTableHead>
-                <DataTableHead className="w-[15%] px-2">Comprobante</DataTableHead>
+                <DataTableHead className="w-[15%] px-2">Acciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
@@ -134,15 +139,33 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                         {formatCurrency(sale.amount)}
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
-                        <a
-                          aria-label={`Ver PDF de solicitud de la venta ${sale.id}`}
-                          className="text-xs font-black text-[color:var(--accent-strong)] hover:underline"
-                          href={`/api/pdfs/orders/${sale.id}/request`}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          Ver PDF
-                        </a>
+                        {canEdit ? (
+                          <SaleRowActions
+                            cancelAction={cancelSaleAction}
+                            editAction={editSaleAction}
+                            sale={{
+                              id: sale.id,
+                              receiptLabel: `#${saleNumberLabel}`,
+                              customerName: sale.customerName,
+                              customerDocument: sale.customerDocument,
+                              date: sale.date ?? "",
+                              amount: sale.amount,
+                              seller: sale.seller,
+                              paymentCondition: sale.paymentCondition,
+                              receiptNumber: sale.receiptNumber,
+                            }}
+                          />
+                        ) : (
+                          <a
+                            aria-label={`Ver PDF de solicitud de la venta ${sale.id}`}
+                            className="text-xs font-black text-[color:var(--accent-strong)] hover:underline"
+                            href={`/api/pdfs/orders/${sale.id}/request`}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Ver PDF
+                          </a>
+                        )}
                       </DataTableCell>
                     </DataTableRow>
                   );

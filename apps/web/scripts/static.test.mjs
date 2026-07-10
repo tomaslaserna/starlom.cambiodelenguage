@@ -1180,3 +1180,26 @@ test("Recompra MRP groups by supplier and hands the detail to a prefilled nueva 
     "the per-item request action must be removed",
   );
 });
+
+test("Registro de ventas can edit and cancel a delivered sale", () => {
+  const salesAdmin = read("apps/web/src/lib/sales-admin.ts");
+  assert.match(salesAdmin, /nextStatus === "cancelado"/, "cancelling a delivered sale must be allowed");
+  assert.match(salesAdmin, /restoreSaleStock/, "cancelling a delivered sale must return its stock");
+  assert.match(salesAdmin, /No se puede volver un pedido a cargado/, "other lifecycle locks stay");
+  assert.match(salesAdmin, /Solo los pedidos confirmados pueden marcarse como entregados/);
+
+  const stock = read("apps/web/src/lib/stock.ts");
+  assert.match(stock, /export async function restoreSaleStock/);
+  assert.match(stock, /ajuste_positivo/);
+
+  const actions = read("apps/web/src/app/sales/actions.ts");
+  assert.match(actions, /editSaleAction/);
+  assert.match(actions, /cancelSaleAction/);
+  assert.match(actions, /resource: "ventas", action: "editar"/);
+  assert.match(actions, /estado_pedido: "cancelado"/);
+
+  const page = read("apps/web/src/app/sales/page.tsx");
+  assert.match(page, /editSaleAction/);
+  assert.match(page, /cancelSaleAction/);
+  assert.match(page, /SaleRowActions/);
+});

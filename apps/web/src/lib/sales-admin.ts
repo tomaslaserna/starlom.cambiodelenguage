@@ -11,7 +11,7 @@ import {
 import { parsePagination } from "@/lib/pagination";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
-import { discountSaleStockIfAvailable } from "@/lib/stock";
+import { discountSaleStockIfAvailable, restoreSaleStock } from "@/lib/stock";
 import type { PoolClient } from "pg";
 
 const ORDER_STATES = new Set<string>(ORDER_STATUSES);
@@ -106,8 +106,11 @@ function assertSaleOrderTransition(currentStatus: OrderStatus, nextStatus: Order
   if (currentStatus === nextStatus) {
     throw new ApiError(400, `El pedido ya esta en '${currentStatus}'.`);
   }
-  if (currentStatus === "entregado" || currentStatus === "cancelado") {
-    throw new ApiError(400, `El pedido ya esta ${currentStatus} y no puede modificarse.`);
+  if (currentStatus === "cancelado") {
+    throw new ApiError(400, `El pedido ya esta cancelado y no puede modificarse.`);
+  }
+  if (currentStatus === "entregado" && nextStatus !== "cancelado") {
+    throw new ApiError(400, `El pedido ya esta entregado y no puede modificarse.`);
   }
   if (nextStatus === "cargado") {
     throw new ApiError(400, "No se puede volver un pedido a cargado.");
@@ -157,6 +160,9 @@ async function applySaleOrderStatusTransition(
   let stockDiscounted = false;
   if (nextStatus === "entregado") {
     stockDiscounted = await discountSaleStock(client, session.companyId, saleId);
+  }
+  if (nextStatus === "cancelado") {
+    await restoreSaleStock(client, session.companyId, saleId, `Reposicion por anulacion de venta ${saleId}`);
   }
 
   await client.query(
