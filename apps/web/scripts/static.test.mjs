@@ -1213,3 +1213,22 @@ test("Registro de ventas can edit and cancel a delivered sale", () => {
   assert.match(page, /cancelSaleAction/);
   assert.match(page, /SaleRowActions/);
 });
+
+test("Balance shows gross vs net sales, and profit metrics run on net-of-VAT revenue", () => {
+  const salesVat = read("apps/web/src/lib/sales-vat.ts");
+  assert.match(salesVat, /export function netSalesAmountSql/);
+  assert.match(salesVat, /IN \(1, 2, 3, 6, 7, 8\)/, "only VAT-discriminating receipt types (factura A/B) get netted");
+  assert.match(salesVat, /\/ 1\.21/);
+  assert.match(salesVat, /fiscal_status.*=.*'aprobado'/, "only sales actually invoiced with an approved CAE are netted");
+
+  const adminMetrics = read("apps/web/src/lib/admin-metrics.ts");
+  assert.match(adminMetrics, /netSalesAmountSql/, "admin metrics must compute sales net of VAT for margin/profit figures");
+  assert.match(adminMetrics, /grossCurrent/, "admin metrics must also expose the gross sales figure for display");
+
+  const profitability = read("apps/web/src/lib/profitability.ts");
+  assert.match(profitability, /netSalesAmountSql/, "break-even revenue must run on net-of-VAT sales too");
+
+  const balancePage = read("apps/web/src/app/balance/page.tsx");
+  assert.match(balancePage, /Ventas brutas/);
+  assert.match(balancePage, /Ventas netas/);
+});

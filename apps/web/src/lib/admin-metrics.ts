@@ -2,6 +2,7 @@ import { queryWithCompanyContext } from "@/lib/db";
 import { currentMonth, monthRange, shiftMonthKey } from "@/lib/month-range";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
+import { netSalesAmountSql } from "@/lib/sales-vat";
 
 function monthBounds(date = new Date()) {
   const month = currentMonth(date);
@@ -34,7 +35,13 @@ function daysUntil(date: string) {
 
 type AdminMetrics = {
   period: ReturnType<typeof monthBounds>;
-  sales: { current: number; previous: number; deltaPercent: number | null };
+  sales: {
+    current: number;
+    previous: number;
+    deltaPercent: number | null;
+    grossCurrent: number;
+    grossPrevious: number;
+  };
   collections: { current: number; previous: number; deltaPercent: number | null };
   margin: { grossCost: number; grossProfit: number; operatingCosts: number; operatingResult: number };
   stock: { value: number; units: number; products: number };
@@ -65,6 +72,8 @@ async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
   const result = await queryWithCompanyContext<{
     sales_current: string;
     sales_previous: string;
+    sales_current_gross: string;
+    sales_previous_gross: string;
     collections_current: string;
     collections_previous: string;
     gross_cost_current: string;
@@ -81,14 +90,22 @@ async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
     `
       WITH sales_summary AS (
         SELECT
-          COALESCE(SUM(total_amount) FILTER (
+          COALESCE(SUM(${netSalesAmountSql("total_amount", "s")}) FILTER (
             WHERE sale_date >= $2 AND sale_date < $3
               AND ${normalizedOrderStatusSql("s")} = 'entregado'
           ), 0) AS sales_current,
-          COALESCE(SUM(total_amount) FILTER (
+          COALESCE(SUM(${netSalesAmountSql("total_amount", "s")}) FILTER (
             WHERE sale_date >= $1 AND sale_date < $2
               AND ${normalizedOrderStatusSql("s")} = 'entregado'
           ), 0) AS sales_previous,
+          COALESCE(SUM(total_amount) FILTER (
+            WHERE sale_date >= $2 AND sale_date < $3
+              AND ${normalizedOrderStatusSql("s")} = 'entregado'
+          ), 0) AS sales_current_gross,
+          COALESCE(SUM(total_amount) FILTER (
+            WHERE sale_date >= $1 AND sale_date < $2
+              AND ${normalizedOrderStatusSql("s")} = 'entregado'
+          ), 0) AS sales_previous_gross,
           COALESCE(SUM(total_amount) FILTER (
             WHERE COALESCE(collection_status,'pendiente') IN ('pendiente','vencido','pendiente_aprobacion','en_proceso')
               AND ${normalizedOrderStatusSql("s")} = 'entregado'
@@ -174,6 +191,7 @@ async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
         WHERE empresa_id = $4
       )
       SELECT sales_current::text, sales_previous::text,
+             sales_current_gross::text, sales_previous_gross::text,
              collections_current::text, collections_previous::text,
              gross_cost_current::text, gross_cost_previous::text,
              stock_value::text, stock_units::text, stock_products::text,
@@ -197,6 +215,8 @@ async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
       current: salesCurrent,
       previous: salesPrevious,
       deltaPercent: percentDelta(salesCurrent, salesPrevious),
+      grossCurrent: Number(row.sales_current_gross),
+      grossPrevious: Number(row.sales_previous_gross),
     },
     collections: {
       current: Number(row.collections_current),

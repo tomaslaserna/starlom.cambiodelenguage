@@ -10,7 +10,7 @@ export default async function BalancePage() {
   await requirePagePermission(session, [ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION]);
   const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId);
   const incomeRows = [
-    { label: "Ventas entregadas", amount: metrics.sales.current },
+    { label: "Ventas entregadas (neto, sin IVA facturado)", amount: metrics.sales.current },
     { label: "Costo de mercaderia vendida", amount: -metrics.margin.grossCost },
     { label: "Ganancia bruta", amount: metrics.margin.grossProfit, strong: true },
     { label: "Costos fijos operativos y sueldos vigentes", amount: -metrics.margin.operatingCosts },
@@ -26,10 +26,16 @@ export default async function BalancePage() {
     >
       <div className="grid gap-5">
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Ventas del mes</div>
+            <div className="text-sm text-[color:var(--muted)]">Ventas brutas</div>
+            <div className="mt-2 text-2xl font-semibold">{formatCurrency(metrics.sales.grossCurrent)}</div>
+            <div className="mt-2 text-xs text-[color:var(--muted)]">Monto total cobrado, IVA incluido</div>
+          </div>
+          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
+            <div className="text-sm text-[color:var(--muted)]">Ventas netas</div>
             <div className="mt-2 text-2xl font-semibold">{formatCurrency(metrics.sales.current)}</div>
+            <div className="mt-2 text-xs text-[color:var(--muted)]">Sin el IVA de lo ya facturado</div>
           </div>
           <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
             <div className="text-sm text-[color:var(--muted)]">Resultado operativo</div>

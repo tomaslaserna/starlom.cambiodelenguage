@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api-response";
 import { queryWithCompanyContext } from "@/lib/db";
 import { monthRange } from "@/lib/month-range";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { netSalesAmountSql } from "@/lib/sales-vat";
 
 export type OperatingCost = {
   id: string;
@@ -100,7 +101,7 @@ export async function getBreakEvenStatus(companyId: number, month: string): Prom
   const marginResult = await queryWithCompanyContext<{ revenue: string; cogs: string }>(
     companyId,
     `SELECT
-       COALESCE(SUM(si.total_amount), 0)::text AS revenue,
+       COALESCE(SUM(${netSalesAmountSql("si.total_amount", "s")}), 0)::text AS revenue,
        COALESCE(SUM(COALESCE(p.cost, 0) * si.quantity), 0)::text AS cogs
      FROM sale_items si
      JOIN sales s ON s.id = si.sale_id AND s.empresa_id = si.empresa_id
