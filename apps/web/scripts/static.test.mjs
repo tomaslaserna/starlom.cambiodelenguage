@@ -283,6 +283,16 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(read("apps/web/src/app/balance/remunerations/page.tsx"), /active="balance-remunerations"/);
   assert.match(read("apps/web/src/app/balance/salaries/page.tsx"), /redirect\("\/balance\/remunerations"\)/);
   assert.match(read("apps/web/src/app/balance/dividends/page.tsx"), /redirect\("\/balance\/remunerations"\)/);
+  assert.match(
+    navigation,
+    /label: "Administracion"[\s\S]*groupByLabel\("Balance"\)[\s\S]*groupByLabel\("RR\.HH"\)/,
+    "Balance must live under the Administracion menu section",
+  );
+  assert.doesNotMatch(
+    navigation,
+    /label: "Finanzas"[\s\S]*groupByLabel\("Balance"\)/,
+    "Balance must no longer be listed under Finanzas",
+  );
   assert.doesNotMatch(navigation, /label: "Panel admin"/);
   assert.match(navigation, /label: "Compras"[\s\S]*groups: \[groupByLabel\("Compras"\)\]/);
   assert.match(navigation, /href: "\/purchases\?view=nueva", label: "Nueva compra"/);

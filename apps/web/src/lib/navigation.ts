@@ -266,6 +266,7 @@ export const navigationSections: NavigationSection[] = [
   {
     label: "Administracion",
     groups: [
+      groupByLabel("Balance"),
       groupByLabel("RR.HH"),
       groupByLabel("Metricas"),
       groupByLabel("Rentabilidad"),
@@ -276,7 +277,6 @@ export const navigationSections: NavigationSection[] = [
   {
     label: "Finanzas",
     groups: [
-      groupByLabel("Balance"),
       groupByLabel("Sueldos y dividendos"),
       groupByLabel("Caja"),
       groupByLabel("Cash Flow"),
