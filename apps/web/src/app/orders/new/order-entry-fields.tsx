@@ -8,6 +8,7 @@ import { localDateIso } from "@/lib/timezone";
 import { ORDER_CREATION_RECEIPT_OPTIONS, normalizeOrderCreationDocument } from "@/lib/receipt-types";
 import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
 import { OrderConfirmationPreview } from "@/app/orders/new/order-confirmation-preview";
+import type { IvaRate } from "@/lib/order-confirmation";
 
 type OrderLineDraft = {
   productId: string;
@@ -66,6 +67,7 @@ export function OrderEntryFields({
   const [observation, setObservation] = useState(initialValue?.observation ?? "");
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
   const [documentOverride, setDocumentOverride] = useState(initialValue?.desiredDocumentOverride ?? "");
+  const [vatRate, setVatRate] = useState<IvaRate>(0);
   const lineIdRef = useRef(initialValue?.lines.length ?? 0);
 
   const selectedClient = clients.find((client) => client.id === customerId) ?? null;
@@ -150,6 +152,7 @@ export function OrderEntryFields({
       <input name="observation" type="hidden" value={observation} />
       <input name="priceListOverride" type="hidden" value={activePriceList} />
       <input name="desiredDocumentOverride" type="hidden" value={desiredDocument} />
+      <input name="vatRate" type="hidden" value={String(vatRate)} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_180px]">
         <Field htmlFor="order-customer" label="Cliente" required>
@@ -398,6 +401,8 @@ export function OrderEntryFields({
         offersRemaining={offersRemaining}
         phone={selectedClient?.phone ?? ""}
         ready={Boolean(selectedClient) && calculatedLines.some((line) => line.quantity > 0)}
+        ivaRate={vatRate}
+        onIvaRateChange={setVatRate}
       />
     </div>
   );

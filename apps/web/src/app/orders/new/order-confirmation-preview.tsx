@@ -22,6 +22,8 @@ type OrderConfirmationPreviewProps = {
   offers: { id: string; title: string; description: string }[];
   offersEnabled: boolean;
   offersRemaining: number;
+  ivaRate: IvaRate;
+  onIvaRateChange: (rate: IvaRate) => void;
 };
 
 export function OrderConfirmationPreview({
@@ -35,10 +37,11 @@ export function OrderConfirmationPreview({
   offers,
   offersEnabled,
   offersRemaining,
+  ivaRate,
+  onIvaRateChange,
 }: OrderConfirmationPreviewProps) {
   const [offerText, setOfferText] = useState("");
   const [showPrices, setShowPrices] = useState(false);
-  const [ivaRate, setIvaRate] = useState<IvaRate>(0);
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
 
@@ -128,7 +131,7 @@ export function OrderConfirmationPreview({
           <Select
             id="confirmation-iva"
             value={String(ivaRate)}
-            onChange={(event) => setIvaRate(Number(event.target.value) as IvaRate)}
+            onChange={(event) => onIvaRateChange(Number(event.target.value) as IvaRate)}
           >
             <option value="0">Sin IVA</option>
             <option value="21">21%</option>

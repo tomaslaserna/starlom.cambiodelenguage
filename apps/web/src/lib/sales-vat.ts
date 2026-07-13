@@ -14,16 +14,18 @@ export function isInvoicedWithApprovedCaeSql(alias: string) {
 
 /**
  * Net of VAT for sales already invoiced with an approved CAE on a VAT-discriminating
- * receipt type (factura A/B). Sales not yet invoiced (remitos) or invoiced as factura C
- * never discriminate VAT, so they pass through at their gross amount.
+ * receipt type (factura A/B), using that sale's own vat_rate (0 / 10.5 / 21). Sales not
+ * yet invoiced (remitos), invoiced as factura C, or without a captured rate never
+ * discriminate VAT, so they pass through at their gross amount.
  */
 export function netSalesAmountSql(amountExpression: string, alias: string) {
   assertSqlIdentifier(alias);
   const receiptType = `COALESCE(${alias}.fiscal_receipt_type, ${alias}.receipt_type, 0)`;
+  const vatRate = `COALESCE(${alias}.vat_rate, 0)`;
 
   return `CASE
-    WHEN ${isInvoicedWithApprovedCaeSql(alias)} AND ${receiptType} IN (1, 2, 3, 6, 7, 8)
-      THEN ${amountExpression} / 1.21
+    WHEN ${isInvoicedWithApprovedCaeSql(alias)} AND ${receiptType} IN (1, 2, 3, 6, 7, 8) AND ${vatRate} > 0
+      THEN ${amountExpression} / (1 + (${vatRate} / 100))
     ELSE ${amountExpression}
   END`;
 }

@@ -1218,7 +1218,6 @@ test("Balance shows gross vs net sales, and profit metrics run on net-of-VAT rev
   const salesVat = read("apps/web/src/lib/sales-vat.ts");
   assert.match(salesVat, /export function netSalesAmountSql/);
   assert.match(salesVat, /IN \(1, 2, 3, 6, 7, 8\)/, "only VAT-discriminating receipt types (factura A/B) get netted");
-  assert.match(salesVat, /\/ 1\.21/);
   assert.match(salesVat, /fiscal_status.*=.*'aprobado'/, "only sales actually invoiced with an approved CAE are netted");
 
   const adminMetrics = read("apps/web/src/lib/admin-metrics.ts");
@@ -1231,4 +1230,28 @@ test("Balance shows gross vs net sales, and profit metrics run on net-of-VAT rev
   const balancePage = read("apps/web/src/app/balance/page.tsx");
   assert.match(balancePage, /Ventas brutas/);
   assert.match(balancePage, /Ventas netas/);
+});
+
+test("Sales persist their own VAT rate so Balance nets out IVA using the real rate, not a fixed 21%", () => {
+  const migrationFiles = readdirSync(join(repoRoot, "migrations"));
+  const vatRateMigration = migrationFiles.find((name) => /sales.*vat.?rate/i.test(name));
+  assert.ok(vatRateMigration, "expected a migration adding vat_rate to the sales table");
+  const migrationSql = read(`migrations/${vatRateMigration}`);
+  assert.match(migrationSql, /ALTER TABLE public\.sales/);
+  assert.match(migrationSql, /ADD COLUMN IF NOT EXISTS vat_rate/);
+  assert.match(migrationSql, /DEFAULT 0/, "historical sales without a captured rate must default to 0 (net = gross)");
+
+  const salesVat = read("apps/web/src/lib/sales-vat.ts");
+  assert.match(salesVat, /vat_rate/, "the net calculation must read the sale's own vat_rate column");
+  assert.doesNotMatch(salesVat, /\/ 1\.21/, "the divisor must use the sale's own stored rate, not a hardcoded 21%");
+
+  const orders = read("apps/web/src/lib/orders.ts");
+  assert.match(orders, /vatRate/, "order creation must accept a vatRate field");
+  assert.match(orders, /vat_rate/, "order creation must persist vat_rate on the sales row");
+
+  const entryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
+  assert.match(entryFields, /name="vatRate"/, "the order form must submit the chosen VAT rate");
+
+  const preview = read("apps/web/src/app/orders/new/order-confirmation-preview.tsx");
+  assert.match(preview, /onIvaRateChange/, "the rate picker must be lifted up so the form can submit it");
 });
