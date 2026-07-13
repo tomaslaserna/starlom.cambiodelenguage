@@ -116,6 +116,18 @@ export function OrderConfirmationPreview({
         </p>
       )}
 
+      <Field htmlFor="confirmation-iva" label="IVA de la venta">
+        <Select
+          id="confirmation-iva"
+          value={String(ivaRate)}
+          onChange={(event) => onIvaRateChange(Number(event.target.value) as IvaRate)}
+        >
+          <option value="0">Sin IVA</option>
+          <option value="21">21%</option>
+          <option value="10.5">10.5%</option>
+        </Select>
+      </Field>
+
       <label className="erp-text-body-sm flex items-center gap-2 font-medium">
         <input
           checked={showPrices}
@@ -125,20 +137,6 @@ export function OrderConfirmationPreview({
         />
         Mostrar precios al cliente
       </label>
-
-      {showPrices ? (
-        <Field htmlFor="confirmation-iva" label="IVA a mostrar (visual)">
-          <Select
-            id="confirmation-iva"
-            value={String(ivaRate)}
-            onChange={(event) => onIvaRateChange(Number(event.target.value) as IvaRate)}
-          >
-            <option value="0">Sin IVA</option>
-            <option value="21">21%</option>
-            <option value="10.5">10.5%</option>
-          </Select>
-        </Field>
-      ) : null}
 
       {ready ? (
         <pre className="erp-text-body-sm max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-3 font-sans">

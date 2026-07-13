@@ -935,6 +935,16 @@ test("cargar pedido exposes price message toggle with iva in the confirmation pa
   assert.match(preview, /value="10.5"/);
 });
 
+test("the sale's VAT rate can be picked regardless of whether prices are shown to the client", () => {
+  const preview = read("apps/web/src/app/orders/new/order-confirmation-preview.tsx");
+  assert.match(preview, /<Field htmlFor="confirmation-iva"/, "the VAT rate picker must still exist");
+  assert.doesNotMatch(
+    preview,
+    /showPrices \? \(\s*<Field htmlFor="confirmation-iva"/,
+    "the VAT rate picker must not be gated behind the 'mostrar precios' checkbox",
+  );
+});
+
 test("Registro de ventas shows only the delivered-sales listing, without duplicate navigation to other menu sections", () => {
   const salesPage = read("apps/web/src/app/sales/page.tsx");
 
