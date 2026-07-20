@@ -42,9 +42,10 @@ test("formatDeliveryDate: DD.MM.YY con dia en espanol", () => {
   assert.equal(formatDeliveryDate(""), "");
 });
 
-test("normalizePhoneForWhatsapp normaliza y valida", () => {
-  assert.equal(normalizePhoneForWhatsapp("3855 123-456"), "543855123456");
-  assert.equal(normalizePhoneForWhatsapp("+54 385 5123456"), "543855123456");
+test("normalizePhoneForWhatsapp normaliza, agrega el 9 de celular y valida", () => {
+  assert.equal(normalizePhoneForWhatsapp("3855 123-456"), "5493855123456");
+  assert.equal(normalizePhoneForWhatsapp("+54 385 5123456"), "5493855123456");
+  assert.equal(normalizePhoneForWhatsapp("+54 9 385 5123456"), "5493855123456");
   assert.equal(normalizePhoneForWhatsapp("123"), null);
   assert.equal(normalizePhoneForWhatsapp(""), null);
 });

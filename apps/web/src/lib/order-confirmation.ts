@@ -56,12 +56,13 @@ export function formatDeliveryDate(iso: string): string {
   return `${day}.${month}.${year.slice(2)} (${dayName})`;
 }
 
-// Asume Argentina: antepone el codigo de pais 54 cuando falta.
+// Asume Argentina: antepone el codigo de pais 54 y el 9 de celular cuando faltan.
 export function normalizePhoneForWhatsapp(phone: string): string | null {
   const digits = (phone ?? "").replace(/\D/g, "").replace(/^0+/, "");
   const national = digits.startsWith("54") ? digits.slice(2) : digits;
   if (national.length < 10) return null;
-  return `54${national}`;
+  const mobileNational = national.startsWith("9") ? national : `9${national}`;
+  return `54${mobileNational}`;
 }
 
 export function buildWhatsappConfirmation(input: ConfirmationInput): string {
