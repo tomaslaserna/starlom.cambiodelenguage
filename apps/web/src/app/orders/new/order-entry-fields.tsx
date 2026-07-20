@@ -250,8 +250,8 @@ export function OrderEntryFields({
                 <Input
                   className="w-full"
                   id="order-quantity-draft"
-                  min="0.001"
-                  step="0.001"
+                  min="1"
+                  step="1"
                   type="number"
                   value={draftLine.quantity}
                   onChange={(event) => updateDraftLine({ quantity: event.target.value })}
@@ -323,8 +323,8 @@ export function OrderEntryFields({
                         <Input
                           aria-label={`Cantidad ${line.product.name}`}
                           className="ml-auto w-24 text-right"
-                          min="0.001"
-                          step="0.001"
+                          min="1"
+                          step="1"
                           type="number"
                           value={line.quantity}
                           onChange={(event) => updateLine(index, { quantity: event.target.value })}

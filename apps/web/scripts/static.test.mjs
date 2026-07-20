@@ -1265,3 +1265,17 @@ test("Sales persist their own VAT rate so Balance nets out IVA using the real ra
   const preview = read("apps/web/src/app/orders/new/order-confirmation-preview.tsx");
   assert.match(preview, /onIvaRateChange/, "the rate picker must be lifted up so the form can submit it");
 });
+
+test("cargar pedido and presupuestos quantity steppers move by whole units, not thousandths", () => {
+  const entryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
+  assert.doesNotMatch(entryFields, /step="0\.001"/, "quantity inputs must not step by 0.001");
+  assert.doesNotMatch(entryFields, /min="0\.001"/, "quantity inputs must not allow fractional minimums");
+  const orderQuantityStepCount = (entryFields.match(/step="1"/g) ?? []).length;
+  assert.ok(orderQuantityStepCount >= 2, "both the draft line and existing line quantity inputs must step by 1");
+
+  const quoteEntryFields = read("apps/web/src/app/quotes/quote-entry-fields.tsx");
+  assert.doesNotMatch(quoteEntryFields, /step="0\.001"/);
+  assert.doesNotMatch(quoteEntryFields, /min="0\.001"/);
+  const quoteQuantityStepCount = (quoteEntryFields.match(/step="1"/g) ?? []).length;
+  assert.ok(quoteQuantityStepCount >= 2);
+});
