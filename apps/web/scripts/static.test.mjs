@@ -1279,3 +1279,38 @@ test("cargar pedido and presupuestos quantity steppers move by whole units, not 
   const quoteQuantityStepCount = (quoteEntryFields.match(/step="1"/g) ?? []).length;
   assert.ok(quoteQuantityStepCount >= 2);
 });
+
+test("Productos uses the approved compact format without losing real catalog operations", () => {
+  const page = read("apps/web/src/app/products/page.tsx");
+  assert.match(page, /ProductsToolbar/);
+  assert.match(page, /ProductPriceDetails/);
+  assert.match(page, /Stock negativo/);
+  assert.match(page, /Valor de inventario/);
+  assert.match(page, /Precios y margen/);
+  assert.doesNotMatch(page, /ID interno/);
+  assert.match(page, /createProductAction/, "product creation must remain available");
+  assert.match(page, /importProductsCsvAction/, "bulk CSV import must remain available");
+  assert.match(page, /bulkUpdateProductsAction/, "bulk JSON update must remain available");
+
+  const toolbar = read("apps/web/src/app/products/products-toolbar.tsx");
+  assert.match(toolbar, /name="stock"/);
+  assert.match(toolbar, /value="negative"/);
+  assert.match(toolbar, /Buscar producto, código, categoría o proveedor/);
+
+  const priceDetails = read("apps/web/src/app/products/product-price-details.tsx");
+  assert.match(priceDetails, /showModal/);
+  assert.match(priceDetails, /<dialog/);
+  assert.match(priceDetails, /Ganancia/);
+
+  const catalog = read("apps/web/src/lib/catalog.ts");
+  assert.match(catalog, /export async function listSalePrices/, "the dedicated Prices screen must stay supported");
+  assert.match(catalog, /normalizeProductStockFilter/);
+  assert.match(catalog, /summaryStockPredicate/);
+  assert.match(catalog, /list_prices/);
+  assert.match(catalog, /mapProductPrices/);
+  assert.match(
+    catalog,
+    /COALESCE\(ml\.multiplicador, 0\)/,
+    "a valid 1.00 list multiplier must not fall back to the general price",
+  );
+});
