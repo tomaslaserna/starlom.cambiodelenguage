@@ -1,6 +1,15 @@
-import { currentSession, isStaffRole, normalizeRole, type AuthSession } from "@/lib/auth";
+import {
+  currentSession,
+  isStaffRole,
+  normalizeRole,
+  persistSession,
+  sessionNeedsIdentityValidation,
+  validateSessionIdentity,
+  type AuthSession,
+} from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import { ApiError } from "@/lib/api-response";
+import { refreshSession } from "@/lib/session-token";
 
 export type Permission = {
   resource: string;
@@ -20,6 +29,16 @@ export const SUPPLIERS_READ_PERMISSION = {
 export const PRODUCTS_READ_PERMISSION = {
   resource: "productos",
   action: "ver",
+} satisfies Permission;
+
+export const PRODUCTS_CREATE_PERMISSION = {
+  resource: "productos",
+  action: "crear",
+} satisfies Permission;
+
+export const STOCK_EDIT_PERMISSION = {
+  resource: "stock",
+  action: "editar",
 } satisfies Permission;
 
 export const EMPLOYEES_READ_PERMISSION = {
@@ -85,6 +104,11 @@ export const PURCHASES_CREATE_PERMISSION = {
 export const PURCHASES_EDIT_PERMISSION = {
   resource: "compras",
   action: "editar",
+} satisfies Permission;
+
+export const OPERATIONAL_RECORDS_DELETE_PERMISSION = {
+  resource: "registros",
+  action: "borrar",
 } satisfies Permission;
 
 export const REPORTS_READ_PERMISSION = {
@@ -271,6 +295,38 @@ export async function sessionAllows(session: AuthSession, permissions: Permissio
   return legacyRoleAllows(session, permissions) || (await databaseAllows(session, permissions));
 }
 
+export async function sessionCanDeleteOperationalRecords(session: AuthSession) {
+  if (!isStaffRole(session.role)) return false;
+  const key = permissionKey(OPERATIONAL_RECORDS_DELETE_PERMISSION);
+  const result = await queryWithCompanyContext<{ allowed: number }>(
+    session.companyId,
+    `
+      SELECT 1 AS allowed
+      FROM profile_permissions pp
+      JOIN app_permissions ap
+        ON ap.key = pp.permission_key
+       AND ap.sensitive = TRUE
+      JOIN usuario_empresa ue
+        ON ue.id_usuario = pp.profile_id
+       AND ue.empresa_id = pp.empresa_id
+       AND ue.activo = TRUE
+      WHERE pp.profile_id = $1::uuid
+        AND pp.empresa_id = $2
+        AND pp.permission_key = $3
+      LIMIT 1
+    `,
+    [session.userId, session.companyId, key],
+  );
+  return Boolean(result.rows[0]);
+}
+
+export async function requireOperationalRecordDeletePermission(session: AuthSession) {
+  if (!(await sessionCanDeleteOperationalRecords(session))) {
+    throw new ApiError(403, "Solo Tomi Laserna o Augusto Finocchietti pueden borrar registros");
+  }
+  return session;
+}
+
 export async function sessionCanReadCustomers(session: AuthSession) {
   return sessionAllows(session, [CUSTOMERS_READ_PERMISSION]);
 }
@@ -302,8 +358,16 @@ export async function requireSessionPermission(session: AuthSession, permissions
 }
 
 export async function requireApiSession(permissions: Permission[] = []) {
-  const session = await currentSession();
+  let session = await currentSession();
   if (!session) throw new ApiError(401, "No autenticado");
+
+  if (sessionNeedsIdentityValidation(session)) {
+    const validatedSession = await validateSessionIdentity(session);
+    if (!validatedSession) throw new ApiError(401, "La sesion ya no es valida");
+    session = refreshSession(validatedSession);
+    await persistSession(session);
+  }
+
   if (!isStaffRole(session.role)) throw new ApiError(403, "Sin permiso");
 
   await requireSessionPermission(session, permissions);

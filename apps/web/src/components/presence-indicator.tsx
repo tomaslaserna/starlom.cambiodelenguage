@@ -7,7 +7,7 @@ export function PresenceIndicator({ compact = false }: { compact?: boolean }) {
     <div
       aria-label="Indicador de presencia desactivado"
       className={cn(
-        "erp-text-caption rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 py-2 shadow-[var(--shadow-sm)]",
+        "erp-text-caption flex h-10 items-center rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 shadow-[var(--shadow-sm)]",
         compact && "px-2",
       )}
       role="status"

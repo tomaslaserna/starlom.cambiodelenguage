@@ -2,46 +2,23 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { ApiError } from "@/lib/api-response";
 import {
-  bulkUpdateProducts,
-  createStockProduct,
+  createCatalogProduct,
   importProductCodesFromCsv,
   importProductsFromCsv,
-  productBulkUpdateInputFromBody,
   productCreateInputFromBody,
 } from "@/lib/imports";
-import { requireAdminApiSession, requireApiSession } from "@/lib/route-auth";
+import { PRODUCTS_CREATE_PERMISSION, requireAdminApiSession, requireApiSession } from "@/lib/route-auth";
 import { stringFieldsFromFormData } from "@/lib/storage";
 
 export async function createProductAction(formData: FormData) {
-  const session = await requireApiSession([
-    { resource: "productos", action: "crear" },
-    { resource: "stock", action: "editar" },
-  ]);
+  const session = await requireApiSession([PRODUCTS_CREATE_PERMISSION]);
   const body = stringFieldsFromFormData(formData);
 
-  await createStockProduct(session, productCreateInputFromBody(body));
+  await createCatalogProduct(session, productCreateInputFromBody(body));
+  revalidatePath("/pricing");
   revalidatePath("/products");
-  redirect("/products?mode=new&created=1");
-}
-
-export async function bulkUpdateProductsAction(formData: FormData) {
-  const session = await requireApiSession([{ resource: "stock", action: "editar" }]);
-  const raw = String(formData.get("itemsJson") ?? "").trim();
-  if (!raw) throw new ApiError(400, "Pegá un JSON con productos para actualizar");
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new ApiError(400, "JSON invalido");
-  }
-
-  if (!Array.isArray(parsed)) throw new ApiError(400, "El JSON debe ser un array");
-  const result = await bulkUpdateProducts(session, productBulkUpdateInputFromBody({ items: parsed }));
-  revalidatePath("/products");
-  redirect(`/products?mode=bulk&updated=${result.updated}`);
+  redirect("/pricing?mode=new-product&created=1");
 }
 
 export async function importProductsCsvAction(formData: FormData) {
@@ -52,8 +29,9 @@ export async function importProductsCsvAction(formData: FormData) {
   });
   const result = await importProductsFromCsv(request, session.companyId);
   revalidatePath("/products");
+  revalidatePath("/pricing");
   redirect(
-    `/products?mode=bulk&processed=${result.processed}&inserted=${result.inserted ?? 0}&skipped=${result.skipped}`,
+    `/pricing?mode=bulk&processed=${result.processed}&inserted=${result.inserted ?? 0}&skipped=${result.skipped}`,
   );
 }
 
@@ -65,7 +43,8 @@ export async function importProductCodesCsvAction(formData: FormData) {
   });
   const result = await importProductCodesFromCsv(request, session.companyId);
   revalidatePath("/products");
+  revalidatePath("/pricing");
   redirect(
-    `/products?mode=bulk&processed=${result.processed}&updated=${result.updated ?? 0}&skipped=${result.skipped}`,
+    `/pricing?mode=bulk&processed=${result.processed}&updated=${result.updated ?? 0}&skipped=${result.skipped}`,
   );
 }

@@ -1,12 +1,16 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 import { getDbPool } from "@/lib/db";
 import { envValue } from "@/lib/env";
 import { ApiError } from "@/lib/api-response";
 import {
   SESSION_COOKIE,
+  SESSION_REVALIDATE_SECONDS,
   decodeSession,
-  newSessionExpiry,
+  encodeSession,
+  newSessionTiming,
+  sessionCookieOptions,
   type AuthSession,
 } from "@/lib/session-token";
 
@@ -116,6 +120,32 @@ async function signInWithPassword(email: string, password: string) {
   return body.user?.id ? body.user : null;
 }
 
+export type PasswordRecoveryRequestResult = "sent" | "rate_limited" | "unavailable";
+
+export async function requestPasswordRecoveryEmail(
+  email: string,
+  redirectTo: string,
+): Promise<PasswordRecoveryRequestResult> {
+  const supabase = createClient(supabaseUrl(), supabaseAnonKey(), {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      flowType: "implicit",
+      persistSession: false,
+    },
+  });
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+
+  if (!error) return "sent";
+  if (error.status === 429) return "rate_limited";
+
+  console.error("[Starlim Auth] Password recovery request failed", {
+    code: error.code,
+    status: error.status,
+  });
+  return error.status && error.status >= 500 ? "unavailable" : "sent";
+}
+
 export async function authenticateUser(identifier: string, password: string): Promise<AuthSession | null> {
   const normalizedIdentifier = identifier.trim();
   if (!normalizedIdentifier || !password) return null;
@@ -158,7 +188,7 @@ export async function authenticateUser(identifier: string, password: string): Pr
     role,
     companyId: Number(user.company_id),
     companyName: user.company_name,
-    expiresAt: newSessionExpiry(),
+    ...newSessionTiming(),
   };
 }
 
@@ -177,9 +207,63 @@ export async function currentSession() {
   return decodeSession(cookieStore.get(SESSION_COOKIE)?.value);
 }
 
+export function sessionNeedsIdentityValidation(session: AuthSession, now = Math.floor(Date.now() / 1000)) {
+  return !session.validatedAt || now - session.validatedAt >= SESSION_REVALIDATE_SECONDS;
+}
+
+export async function validateSessionIdentity(session: AuthSession): Promise<AuthSession | null> {
+  const result = await getDbPool().query<DbUser>(
+    `
+      SELECT p.id::text,
+             p.full_name,
+             p.email,
+             p.username,
+             p.role::text AS role,
+             p.active,
+             e.id::text AS company_id,
+             e.nombre AS company_name,
+             ue.role::text AS company_role
+      FROM profiles p
+      JOIN usuario_empresa ue
+        ON ue.id_usuario = p.id
+       AND ue.empresa_id = $2
+       AND ue.activo = TRUE
+      JOIN empresas e
+        ON e.id = ue.empresa_id
+       AND e.activa = TRUE
+      WHERE p.id = $1::uuid
+      LIMIT 1
+    `,
+    [session.userId, session.companyId],
+  );
+  const user = result.rows[0];
+  if (!user || !user.active || !user.email || !user.company_id || !user.company_name) return null;
+
+  return {
+    ...session,
+    username: user.username || user.email,
+    email: user.email,
+    displayName: user.full_name || user.username || user.email,
+    role: normalizeRole(user.company_role || user.role),
+    companyId: Number(user.company_id),
+    companyName: user.company_name,
+    validatedAt: Math.floor(Date.now() / 1000),
+  };
+}
+
+export async function persistSession(session: AuthSession) {
+  const cookieStore = await cookies();
+  cookieStore.set(SESSION_COOKIE, encodeSession(session), sessionCookieOptions());
+}
+
 export async function requireSession() {
-  const session = await currentSession();
+  let session = await currentSession();
   if (!session) redirect("/login");
+  if (sessionNeedsIdentityValidation(session)) {
+    const validated = await validateSessionIdentity(session);
+    if (!validated) redirect("/login?expired=1");
+    session = validated;
+  }
   return session;
 }
 

@@ -142,7 +142,7 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
           <DataTable
             caption="Ventas entregadas con saldo pendiente"
             className="rounded-none border-0 shadow-none"
-            minWidth="0"
+            minWidth="1120px"
             tableLabel="Ventas a cobrar"
             tableProps={{ className: "table-fixed" }}
           >

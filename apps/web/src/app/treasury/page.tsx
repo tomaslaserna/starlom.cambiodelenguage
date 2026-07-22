@@ -4,6 +4,16 @@ import { getTreasuryBalances } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { ADMIN_TREASURY_READ_PERMISSION } from "@/lib/route-auth";
+import {
+  Card,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  StatCard,
+} from "@/components/ui";
 
 export default async function TreasuryPage() {
   const session = await requireStaffSession();
@@ -20,54 +30,48 @@ export default async function TreasuryPage() {
       <div className="grid gap-5">
 
         <div className="grid gap-3 md:grid-cols-4">
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Total actual</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(treasury.meta.total)}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Efectivo</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(treasury.meta.cash)}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Ctas bancarias</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(treasury.meta.bank)}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Otra</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(treasury.meta.other)}</div>
-          </div>
+          <StatCard label="Total actual" tone="accent" value={formatCurrency(treasury.meta.total)} />
+          <StatCard label="Efectivo" tone="success" value={formatCurrency(treasury.meta.cash)} />
+          <StatCard label="Cuentas bancarias" value={formatCurrency(treasury.meta.bank)} />
+          <StatCard label="Otras cuentas" value={formatCurrency(treasury.meta.other)} />
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-          <table className="w-full border-collapse text-left text-sm">
-            <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-              <tr>
-                <th className="px-4 py-3 font-semibold">Cuenta</th>
-                <th className="px-4 py-3 font-semibold">Tipo</th>
-                <th className="px-4 py-3 text-right font-semibold">Movimientos</th>
-                <th className="px-4 py-3 text-right font-semibold">Saldo</th>
-              </tr>
-            </thead>
-            <tbody>
+        <Card className="overflow-hidden">
+          <DataTable
+            caption="Saldos actuales de tesoreria por cuenta"
+            className="rounded-none border-0 shadow-none"
+            tableLabel="Saldos de tesoreria"
+          >
+            <DataTableHeader>
+              <DataTableRow className="hover:bg-transparent">
+                <DataTableHead>Cuenta</DataTableHead>
+                <DataTableHead>Tipo</DataTableHead>
+                <DataTableHead align="right">Movimientos</DataTableHead>
+                <DataTableHead align="right">Saldo</DataTableHead>
+              </DataTableRow>
+            </DataTableHeader>
+            <DataTableBody>
               {treasury.accounts.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-8 text-center text-[color:var(--muted)]" colSpan={4}>
+                <DataTableRow className="hover:bg-transparent">
+                  <DataTableCell className="py-8 text-center text-[color:var(--muted)]" colSpan={4}>
                     No hay saldos actuales registrados.
-                  </td>
-                </tr>
+                  </DataTableCell>
+                </DataTableRow>
               ) : (
                 treasury.accounts.map((account) => (
-                  <tr className="border-t border-[color:var(--border)]" key={`${account.accountType}-${account.account}`}>
-                    <td className="px-4 py-4 font-medium">{account.account}</td>
-                    <td className="px-4 py-4">{account.accountType}</td>
-                    <td className="px-4 py-4 text-right">{account.movements}</td>
-                    <td className="px-4 py-4 text-right font-mono text-xs">{formatCurrency(account.balance)}</td>
-                  </tr>
+                  <DataTableRow key={`${account.accountType}-${account.account}`}>
+                    <DataTableCell>{account.account}</DataTableCell>
+                    <DataTableCell>{account.accountType}</DataTableCell>
+                    <DataTableCell align="right">{account.movements}</DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                      {formatCurrency(account.balance)}
+                    </DataTableCell>
+                  </DataTableRow>
                 ))
               )}
-            </tbody>
-          </table>
-        </div>
+            </DataTableBody>
+          </DataTable>
+        </Card>
       </div>
     </ModulePage>
   );

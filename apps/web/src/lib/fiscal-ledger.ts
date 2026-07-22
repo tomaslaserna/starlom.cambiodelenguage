@@ -43,8 +43,16 @@ export async function getFiscalVatSummary(companyId: number): Promise<FiscalVatS
         WHERE s.empresa_id = $1
           AND COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
           AND COALESCE(s.cae, '') NOT IN ('', 'manual')
-          AND COALESCE(s.fiscal_authorized_at::date, s.sale_date) >= $2::date
-          AND COALESCE(s.fiscal_authorized_at::date, s.sale_date) < $3::date
+          AND COALESCE(
+            s.fiscal_issue_date,
+            (s.fiscal_authorized_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,
+            s.sale_date
+          ) >= $2::date
+          AND COALESCE(
+            s.fiscal_issue_date,
+            (s.fiscal_authorized_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,
+            s.sale_date
+          ) < $3::date
       ),
       fiscal_notes AS (
         SELECT
@@ -55,8 +63,16 @@ export async function getFiscalVatSummary(companyId: number): Promise<FiscalVatS
           AND sid.fiscal = true
           AND COALESCE(sid.fiscal_status, 'no_enviado') = 'aprobado'
           AND COALESCE(sid.cae, '') NOT IN ('', 'manual')
-          AND COALESCE(sid.fiscal_authorized_at::date, sid.created_at::date) >= $2::date
-          AND COALESCE(sid.fiscal_authorized_at::date, sid.created_at::date) < $3::date
+          AND COALESCE(
+            sid.fiscal_issue_date,
+            (sid.fiscal_authorized_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,
+            sid.created_at::date
+          ) >= $2::date
+          AND COALESCE(
+            sid.fiscal_issue_date,
+            (sid.fiscal_authorized_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,
+            sid.created_at::date
+          ) < $3::date
       ),
       purchase_vat AS (
         SELECT

@@ -49,7 +49,7 @@ const quoteStates = [
 
 function matchesQuery(item: Awaited<ReturnType<typeof listQuotes>>[number], query: string) {
   if (!query) return true;
-  return [item.customer.name, item.customer.businessName, item.customer.taxId, item.createdBy]
+  return [item.quoteNumber, item.customer.name, item.customer.businessName, item.customer.taxId, item.createdBy]
     .join(" ")
     .toLowerCase()
     .includes(query);
@@ -78,11 +78,12 @@ function whatsappPhone(phone: string) {
 function quoteWhatsappHref(quote: Awaited<ReturnType<typeof listQuotes>>[number]) {
   const customer = quote.customer.name || quote.customer.businessName || "cliente";
   const pdfBase = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
-  const pdfPath = `/api/pdfs/quotes/${quote.id}`;
+  const pdfPath = `/api/pdfs/quotes/${encodeURIComponent(quote.quoteNumber)}`;
   const pdfUrl = pdfBase ? `${pdfBase}${pdfPath}` : pdfPath;
   const text = encodeURIComponent(
     [
       `Hola ${customer}, te enviamos el presupuesto de Starlim.`,
+      `Presupuesto: ${quote.quoteNumber}.`,
       `Total: ${formatCurrency(quote.total)}.`,
       `PDF: ${pdfUrl}`,
     ].join("\n"),
@@ -181,6 +182,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                 <DataTableHead>Vencimiento</DataTableHead>
                 <DataTableHead>Estado</DataTableHead>
                 <DataTableHead align="right">Subtotal</DataTableHead>
+                <DataTableHead align="right">IVA</DataTableHead>
                 <DataTableHead align="right">Total</DataTableHead>
                 <DataTableHead>Acciones</DataTableHead>
               </DataTableRow>
@@ -188,7 +190,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
             <DataTableBody>
               {quotes.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={8}>
+                  <DataTableCell colSpan={9}>
                     <EmptyState
                       description="Ajusta la busqueda o cambia el estado para encontrar presupuestos."
                       title="No hay presupuestos para los filtros actuales"
@@ -199,7 +201,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                 quotes.map((quote) => (
                   <DataTableRow key={quote.id}>
                     <DataTableCell>
-                      <div className="font-mono text-xs">#{quote.id}</div>
+                      <div className="font-mono text-xs font-black">{quote.quoteNumber}</div>
                       <div className="mt-1 text-xs text-[color:var(--muted)]">{quote.createdBy || "-"}</div>
                     </DataTableCell>
                     <DataTableCell>
@@ -226,13 +228,25 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                       {formatCurrency(quote.subtotal)}
                     </DataTableCell>
                     <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                      {quote.includeVat ? (
+                        <>
+                          <div>{formatCurrency(quote.vatAmount)}</div>
+                          <div className="mt-1 text-[11px] text-[color:var(--muted)]">
+                            {String(quote.vatRate).replace(".", ",")}%
+                          </div>
+                        </>
+                      ) : (
+                        "-"
+                      )}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
                       {formatCurrency(quote.total)}
                     </DataTableCell>
                     <DataTableCell>
                       <div className="grid min-w-[168px] gap-2">
                         <ButtonLink
-                          aria-label={`Abrir PDF del presupuesto ${quote.id}`}
-                          href={`/api/pdfs/quotes/${quote.id}`}
+                          aria-label={`Abrir PDF del presupuesto ${quote.quoteNumber}`}
+                          href={`/api/pdfs/quotes/${encodeURIComponent(quote.quoteNumber)}`}
                           prefetch={false}
                           rel="noreferrer"
                           size="sm"
@@ -242,7 +256,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                           PDF
                         </ButtonLink>
                         <ButtonLink
-                          aria-label={`Enviar presupuesto ${quote.id} por WhatsApp`}
+                          aria-label={`Enviar presupuesto ${quote.quoteNumber} por WhatsApp`}
                           href={quoteWhatsappHref(quote)}
                           prefetch={false}
                           rel="noreferrer"
@@ -257,7 +271,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                             <form action={acceptQuoteAction}>
                               <input name="id" type="hidden" value={quote.id} />
                               <Button
-                                aria-label={`Aceptar presupuesto ${quote.id}`}
+                                aria-label={`Aceptar presupuesto ${quote.quoteNumber}`}
                                 className="w-full"
                                 size="sm"
                                 type="submit"
@@ -268,7 +282,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                             <form action={acceptQuoteAndRemitAction}>
                               <input name="id" type="hidden" value={quote.id} />
                               <Button
-                                aria-label={`Aprobar y remitar presupuesto ${quote.id}`}
+                                aria-label={`Aprobar y remitar presupuesto ${quote.quoteNumber}`}
                                 className="w-full"
                                 size="sm"
                                 type="submit"

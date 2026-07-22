@@ -4,6 +4,16 @@ import { getBalanceDashboard } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION } from "@/lib/route-auth";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableRow,
+  StatCard,
+} from "@/components/ui";
 
 export default async function BalancePage() {
   const session = await requireStaffSession();
@@ -27,29 +37,25 @@ export default async function BalancePage() {
       <div className="grid gap-5">
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Ventas brutas</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(metrics.sales.grossCurrent)}</div>
-            <div className="mt-2 text-xs text-[color:var(--muted)]">Monto total cobrado, IVA incluido</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Ventas netas</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(metrics.sales.current)}</div>
-            <div className="mt-2 text-xs text-[color:var(--muted)]">Sin el IVA de lo ya facturado</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Resultado operativo</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(metrics.margin.operatingResult)}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Costos operativos</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(metrics.margin.operatingCosts)}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Stock valorizado</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(metrics.stock.value)}</div>
-            <div className="mt-2 text-xs text-[color:var(--muted)]">{formatNumber(metrics.stock.units)} unidades</div>
-          </div>
+          <StatCard
+            detail="Monto total cobrado, IVA incluido"
+            label="Ventas brutas"
+            tone="accent"
+            value={formatCurrency(metrics.sales.grossCurrent)}
+          />
+          <StatCard
+            detail="Sin el IVA de lo ya facturado"
+            label="Ventas netas"
+            tone="info"
+            value={formatCurrency(metrics.sales.current)}
+          />
+          <StatCard label="Resultado operativo" tone="success" value={formatCurrency(metrics.margin.operatingResult)} />
+          <StatCard label="Costos operativos" tone="warning" value={formatCurrency(metrics.margin.operatingCosts)} />
+          <StatCard
+            detail={`${formatNumber(metrics.stock.units)} unidades`}
+            label="Stock valorizado"
+            value={formatCurrency(metrics.stock.value)}
+          />
         </div>
 
         <div className="grid gap-5 xl:grid-cols-2">
@@ -77,23 +83,31 @@ export default async function BalancePage() {
             </div>
           </section>
 
-          <section className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-            <div className="border-b border-[color:var(--border)] px-4 py-3">
-              <h2 className="font-semibold">Resumen</h2>
-            </div>
-            <table className="w-full border-collapse text-left text-sm">
-              <tbody>
+          <Card>
+            <CardHeader>
+              <CardTitle>Resumen</CardTitle>
+            </CardHeader>
+            <DataTable
+              caption="Resumen del resultado operativo"
+              className="rounded-none border-0 shadow-none"
+              minWidth="100%"
+              tableLabel="Resumen de balance"
+            >
+              <DataTableBody>
                 {incomeRows.map((row) => (
-                  <tr className="border-t border-[color:var(--border)] first:border-t-0" key={row.label}>
-                    <td className={`px-4 py-3 ${row.strong ? "font-semibold" : ""}`}>{row.label}</td>
-                    <td className={`px-4 py-3 text-right font-mono text-xs ${row.strong ? "font-semibold" : ""}`}>
+                  <DataTableRow key={row.label}>
+                    <DataTableCell className={row.strong ? "font-bold" : ""}>{row.label}</DataTableCell>
+                    <DataTableCell
+                      align="right"
+                      className={`whitespace-nowrap font-mono text-xs ${row.strong ? "font-bold" : ""}`}
+                    >
                       {formatCurrency(row.amount)}
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 ))}
-              </tbody>
-            </table>
-          </section>
+              </DataTableBody>
+            </DataTable>
+          </Card>
 
           <section className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
             <div className="border-b border-[color:var(--border)] px-4 py-3">

@@ -2,16 +2,15 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "./utils";
 
 const primaryButtonClass =
-  "border border-transparent bg-[color:var(--accent)] text-[color:var(--accent-contrast)] shadow-[0_8px_18px_rgba(37,99,235,0.18)] hover:bg-[color:var(--accent-strong)] hover:shadow-[0_10px_22px_rgba(37,99,235,0.22)]";
+  "border border-transparent bg-[color:var(--accent)] text-[color:var(--accent-contrast)] shadow-[0_1px_2px_rgba(30,64,175,0.16),0_4px_10px_rgba(37,99,235,0.12)] hover:bg-[color:var(--accent-strong)] hover:shadow-[0_2px_4px_rgba(30,64,175,0.15),0_6px_14px_rgba(37,99,235,0.14)]";
 const secondaryButtonClass =
-  "border border-[#1d4ed8] bg-[#1d4ed8] text-white shadow-[0_7px_16px_rgba(29,78,216,0.14)] hover:bg-[#1e40af] hover:shadow-[0_9px_20px_rgba(29,78,216,0.18)]";
+  "border border-[#1d4ed8] bg-[#1d4ed8] text-white shadow-[0_1px_2px_rgba(30,64,175,0.14),0_4px_10px_rgba(29,78,216,0.11)] hover:border-[#1e40af] hover:bg-[#1e40af] hover:shadow-[0_2px_4px_rgba(30,64,175,0.15),0_6px_14px_rgba(29,78,216,0.14)]";
 const outlineButtonClass =
-  "border border-[#93c5fd] bg-[#dbeafe] text-[#0b4fc7] shadow-[0_4px_12px_rgba(37,99,235,0.08)] hover:border-[#60a5fa] hover:bg-[#bfdbfe]";
+  "border border-[#b8cdf1] bg-white text-[#1755b8] shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-[#8fb1e8] hover:bg-[#f5f8ff]";
 const ghostButtonClass =
-  "border border-[#bfdbfe] bg-[#eff6ff] text-[#075ac7] shadow-none hover:border-[#93c5fd] hover:bg-[#dbeafe]";
+  "border border-transparent bg-transparent text-[#334155] shadow-none hover:border-[#dbe3ec] hover:bg-[#f5f7fa] hover:text-[#0f172a]";
 const dangerButtonClass =
-  "border border-[#073f94] bg-[#073f94] text-white shadow-[0_7px_16px_rgba(7,63,148,0.16)] hover:bg-[#052f70]";
-const buttonSizeClass = "erp-text-body-sm min-h-[var(--control-height-md)] px-4";
+  "border border-[#b91c1c] bg-[#b91c1c] text-white shadow-[0_1px_2px_rgba(127,29,29,0.14),0_4px_10px_rgba(185,28,28,0.11)] hover:border-[#991b1b] hover:bg-[#991b1b]";
 
 export const buttonVariantClasses = {
   default: primaryButtonClass,
@@ -23,9 +22,9 @@ export const buttonVariantClasses = {
 } as const;
 
 export const buttonSizeClasses = {
-  sm: buttonSizeClass,
-  md: buttonSizeClass,
-  lg: buttonSizeClass,
+  sm: "erp-text-body-sm min-h-[var(--control-height-sm)] px-3.5",
+  md: "erp-text-body-sm min-h-[var(--control-height-md)] px-4",
+  lg: "erp-text-body min-h-[var(--control-height-lg)] px-5",
 } as const;
 
 export type ButtonVariant = keyof typeof buttonVariantClasses;
@@ -41,7 +40,7 @@ export function buttonClassName({
   variant?: ButtonVariant;
 }) {
   return cn(
-    "inline-flex max-w-full items-center justify-center gap-2 rounded-[9px] font-bold transition-[background-color,border-color,box-shadow,color,transform] hover:-translate-y-px active:translate-y-0 disabled:translate-y-0 disabled:opacity-55",
+    "inline-flex max-w-full items-center justify-center gap-2 rounded-[8px] font-semibold leading-none transition-[background-color,border-color,box-shadow,color] active:shadow-none disabled:opacity-55",
     buttonVariantClasses[variant],
     buttonSizeClasses[size],
     className,

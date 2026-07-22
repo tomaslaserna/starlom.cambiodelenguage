@@ -1,6 +1,11 @@
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import {
+  attachPreparedMessageUploads,
+  listMessageAttachments,
+  messageAttachmentIdsFromValue,
+} from "@/lib/message-attachments";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { textField, type RequestBody } from "@/lib/request-body";
 import { localDateIso } from "@/lib/timezone";
@@ -64,8 +69,46 @@ async function assertActiveEmployee(client: { query: (sql: string, params?: unkn
   if (!result.rows[0]) throw new ApiError(404, "El destinatario no existe");
 }
 
+export async function getMessageCenterRevision(session: AuthSession) {
+  const result = await queryWithCompanyContext<{
+    latest_id: string;
+    message_count: string;
+    read_checksum: string;
+  }>(
+    session.companyId,
+    `
+      WITH visible_messages AS (
+        SELECT id, leido
+        FROM mensajes
+        WHERE empresa_id = $1
+          AND para = $2
+          AND COALESCE(estado, 'enviado') = 'enviado'
+
+        UNION ALL
+
+        SELECT id, leido
+        FROM mensajes
+        WHERE empresa_id = $1
+          AND de = $2
+          AND para <> $2
+          AND COALESCE(estado, 'enviado') = 'enviado'
+      )
+      SELECT
+        COALESCE(MAX(id), 0)::text AS latest_id,
+        COUNT(*)::text AS message_count,
+        COALESCE(SUM(CASE WHEN leido = 1 THEN id ELSE 0 END), 0)::text AS read_checksum
+      FROM visible_messages
+    `,
+    [session.companyId, session.username],
+    { cache: false },
+  );
+  const revision = result.rows[0];
+  return `${revision?.latest_id ?? "0"}:${revision?.message_count ?? "0"}:${revision?.read_checksum ?? "0"}`;
+}
+
 export async function listMessageCenter(session: AuthSession) {
-  const inbox = await queryWithCompanyContext<{
+  const revisionPromise = getMessageCenterRevision(session);
+  const inboxPromise = queryWithCompanyContext<{
     id: number;
     de: string;
     para: string;
@@ -85,12 +128,13 @@ export async function listMessageCenter(session: AuthSession) {
         AND para = $2
         AND COALESCE(estado, 'enviado') = 'enviado'
       ORDER BY fecha DESC
-      LIMIT 100
+      LIMIT 200
     `,
     [session.companyId, session.username],
+    { cache: false },
   );
 
-  const sent = await queryWithCompanyContext<{
+  const sentPromise = queryWithCompanyContext<{
     id: number;
     de: string;
     para: string;
@@ -110,12 +154,13 @@ export async function listMessageCenter(session: AuthSession) {
         AND de = $2
         AND COALESCE(estado, 'enviado') = 'enviado'
       ORDER BY fecha DESC
-      LIMIT 100
+      LIMIT 200
     `,
     [session.companyId, session.username],
+    { cache: false },
   );
 
-  const drafts = await queryWithCompanyContext<{
+  const draftsPromise = queryWithCompanyContext<{
     id: number;
     de: string;
     para: string;
@@ -135,12 +180,13 @@ export async function listMessageCenter(session: AuthSession) {
         AND de = $2
         AND COALESCE(estado, 'enviado') = 'borrador'
       ORDER BY fecha DESC
-      LIMIT 100
+      LIMIT 200
     `,
     [session.companyId, session.username],
+    { cache: false },
   );
 
-  const employees = await queryWithCompanyContext<{ usuario: string }>(
+  const employeesPromise = queryWithCompanyContext<{ usuario: string }>(
     session.companyId,
     `
       SELECT u.usuario
@@ -154,6 +200,17 @@ export async function listMessageCenter(session: AuthSession) {
     [session.companyId],
   );
 
+  const [inbox, sent, drafts, employees, revision] = await Promise.all([
+    inboxPromise,
+    sentPromise,
+    draftsPromise,
+    employeesPromise,
+    revisionPromise,
+  ]);
+
+  const messageIds = [...inbox.rows, ...sent.rows, ...drafts.rows].map((row) => Number(row.id));
+  const attachments = await listMessageAttachments(session, messageIds);
+
   const mapMessage = (row: (typeof inbox.rows)[number]) => ({
       id: row.id,
       from: row.de,
@@ -165,6 +222,7 @@ export async function listMessageCenter(session: AuthSession) {
       read: Number(row.leido) === 1,
       type: row.tipo,
       importance: row.importancia,
+      attachments: attachments.get(Number(row.id)) ?? [],
     });
 
   const inboxRows = inbox.rows.map(mapMessage);
@@ -180,6 +238,7 @@ export async function listMessageCenter(session: AuthSession) {
       unread: inboxRows.filter((message) => !message.read).length,
       sent: sent.rowCount,
       drafts: drafts.rowCount,
+      revision,
     },
   };
 }
@@ -198,6 +257,7 @@ export function messageInputFromBody(body: RequestBody) {
     body: bodyText,
     importance: MESSAGE_IMPORTANCE.has(importance) ? importance : "normal",
     state: MESSAGE_STATES.has(state) ? state : "enviado",
+    attachmentIds: messageAttachmentIdsFromValue(body.attachments ?? body.adjuntos),
   };
 }
 
@@ -212,6 +272,7 @@ export async function sendMessage(session: AuthSession, input: ReturnType<typeof
       `,
       [session.username, input.to, input.subject, input.body, input.importance, session.companyId],
     );
+    await attachPreparedMessageUploads(client, session, result.rows[0].id, input.attachmentIds);
     return { id: result.rows[0].id };
   });
 }
@@ -223,27 +284,62 @@ export function draftMessageInputFromBody(body: RequestBody) {
     subject: textField(body, "subject") || textField(body, "asunto") || "(sin asunto)",
     body: textField(body, "body") || textField(body, "cuerpo"),
     importance: MESSAGE_IMPORTANCE.has(importance) ? importance : "normal",
+    attachmentIds: messageAttachmentIdsFromValue(body.attachments ?? body.adjuntos),
   };
 }
 
 export async function saveMessageDraft(session: AuthSession, input: ReturnType<typeof draftMessageInputFromBody>) {
-  const result = await queryWithCompanyContext<{ id: number }>(
-    session.companyId,
-    `
-      INSERT INTO mensajes (de, para, asunto, cuerpo, tipo, importancia, estado, empresa_id)
-      VALUES ($1, $2, $3, $4, 'directo', $5, 'borrador', $6)
-      RETURNING id
-    `,
-    [session.username, input.to, input.subject, input.body, input.importance, session.companyId],
-  );
-  return { id: result.rows[0].id };
+  return withCompanyContext(session.companyId, async (client) => {
+    const result = await client.query<{ id: number }>(
+      `
+        INSERT INTO mensajes (de, para, asunto, cuerpo, tipo, importancia, estado, empresa_id)
+        VALUES ($1, $2, $3, $4, 'directo', $5, 'borrador', $6)
+        RETURNING id
+      `,
+      [session.username, input.to, input.subject, input.body, input.importance, session.companyId],
+    );
+    await attachPreparedMessageUploads(client, session, result.rows[0].id, input.attachmentIds);
+    return { id: result.rows[0].id };
+  });
 }
 
-export async function markMessagesRead(session: AuthSession) {
+export async function markMessagesRead(session: AuthSession, messageId?: number) {
+  if (messageId !== undefined && (!Number.isInteger(messageId) || messageId <= 0)) {
+    throw new ApiError(400, "Mensaje invalido");
+  }
   const result = await queryWithCompanyContext(
     session.companyId,
-    "UPDATE mensajes SET leido = 1 WHERE empresa_id = $1 AND para = $2 AND leido = 0",
-    [session.companyId, session.username],
+    `
+      UPDATE mensajes
+      SET leido = 1
+      WHERE empresa_id = $1
+        AND para = $2
+        AND leido = 0
+        AND ($3::bigint IS NULL OR id = $3)
+    `,
+    [session.companyId, session.username, messageId ?? null],
+  );
+  return { updated: result.rowCount };
+}
+
+export async function markConversationRead(session: AuthSession, contact: string) {
+  const normalizedContact = contact.trim();
+  if (!normalizedContact || normalizedContact.length > 255) {
+    throw new ApiError(400, "Contacto invalido");
+  }
+
+  const result = await queryWithCompanyContext(
+    session.companyId,
+    `
+      UPDATE mensajes
+      SET leido = 1
+      WHERE empresa_id = $1
+        AND para = $2
+        AND de = $3
+        AND leido = 0
+        AND COALESCE(estado, 'enviado') = 'enviado'
+    `,
+    [session.companyId, session.username, normalizedContact],
   );
   return { updated: result.rowCount };
 }

@@ -7,6 +7,8 @@ export { Field } from "./field";
 export { Input } from "./input";
 export { PageHeader } from "./page-header";
 export { Select } from "./select";
+export { SearchableSelect, type SearchableSelectOption } from "./searchable-select";
+export { SearchableSelectInput } from "./searchable-select-input";
 export { StatCard, type StatCardTone } from "./stat-card";
 export { StatusBadge, type StatusBadgeTone } from "./status-badge";
 export { Textarea } from "./textarea";

@@ -104,15 +104,10 @@ export function getDbPool(): Pool {
       max: 8,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
+      options: `-c timezone=${BUSINESS_TIME_ZONE}`,
       ssl: {
         rejectUnauthorized: rejectUnauthorizedSsl(),
       },
-    });
-
-    // CURRENT_DATE, NOW() y NOW()::date deben reflejar la hora del negocio (Argentina),
-    // no la del servidor de Postgres (Supabase usa UTC por defecto).
-    pool.on("connect", (client) => {
-      client.query(`SET TIME ZONE '${BUSINESS_TIME_ZONE}'`).catch(() => {});
     });
   }
 
@@ -136,8 +131,10 @@ export async function queryWithCompanyContext<T extends QueryResultRow>(
   companyId: number,
   sql: string,
   params: unknown[] = [],
+  options: { cache?: boolean } = {},
 ) {
-  const cacheable = isCacheableRead(sql);
+  const readOnly = isCacheableRead(sql);
+  const cacheable = options.cache !== false && readOnly;
   const key = cacheable ? readCacheKey(companyId, sql, params) : "";
 
   if (cacheable) {
@@ -150,7 +147,7 @@ export async function queryWithCompanyContext<T extends QueryResultRow>(
     if (inFlight) {
       return cloneQueryResult<T>(await inFlight);
     }
-  } else {
+  } else if (!readOnly) {
     clearReadQueryCacheForTables(extractSqlTables(sql));
   }
 

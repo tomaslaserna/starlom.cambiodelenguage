@@ -1,5 +1,7 @@
 # Editar pedidos confirmados — Diseño
 
+> Nota del 2026-07-20: la decisión original de permitir sobre-reservas quedó reemplazada por la validación de stock al confirmar. El flujo vigente está documentado en `docs/orders-flow-test-2026-07-20.md`.
+
 Fecha: 2026-07-01
 Módulo: Comercial › Pedidos › Registro de pedidos (`/orders`) y editor (`/orders/[id]/edit`)
 
@@ -17,9 +19,9 @@ modificamos la solicitud".
   pedidos en estado `confirmado` no descontados (`disponible = real − reservado`).
   No hay ledger de reservas: revertir un pedido a `cargado` libera su reserva
   automáticamente.
-- Confirmar **no** valida disponibilidad (la reserva puede sobre-comprometerse);
-  el stock real recién se descuenta y valida al **entregar**. Por lo tanto editar
-  un confirmado no agrega riesgo nuevo de stock.
+- Históricamente, confirmar no validaba disponibilidad y la reserva podía
+  sobre-comprometerse. Desde el 2026-07-20 se valida el disponible al confirmar;
+  el stock físico se sigue descontando recién al entregar.
 - `updateBasicOrder` (`src/lib/orders.ts`) ya, en su `UPDATE`, setea
   `order_status='cargado'`, `status='cargado'`, `stock_discounted=false` y
   `collection_status='no_aplica'`. La lógica de "volver a cargado" ya está escrita;

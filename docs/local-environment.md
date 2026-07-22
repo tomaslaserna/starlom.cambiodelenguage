@@ -33,6 +33,7 @@ DATABASE_URL=
 
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
@@ -78,6 +79,10 @@ el pooler de Supabase exige usuario calificado, usar
   separados por coma y sin comodines. En produccion deben ser `https://`.
 - El bucket `STARLIM_STORAGE_BUCKET` debe ser privado. La app guarda referencias
   internas y sirve archivos por URL firmada desde rutas autenticadas.
+- `NEXT_PUBLIC_APP_URL` debe ser el origen publico de la aplicacion. En Supabase
+  Auth > URL Configuration, agregar tambien
+  `https://starlim.vercel.app/reset-password` y
+  `http://localhost:3000/reset-password` a las Redirect URLs autorizadas.
 - La app rechaza cuerpos JSON/form grandes por defecto. Los CSV y comprobantes
   tienen limites especificos para evitar abuso de memoria.
 

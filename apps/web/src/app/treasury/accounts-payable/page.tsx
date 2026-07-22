@@ -6,7 +6,20 @@ import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION, PURCHASES_READ_PERMISSION } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
-import { Button, Card, Field, Input } from "@/components/ui";
+import {
+  Button,
+  Card,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  Field,
+  Input,
+  StatCard,
+  StatusBadge,
+} from "@/components/ui";
 
 type AccountsPayablePageProps = {
   searchParams: Promise<{
@@ -56,46 +69,54 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
           </form>
         </Card>
 
-        <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-          <div className="text-sm text-[color:var(--muted)]">Saldo abierto total</div>
-          <div className="mt-2 text-2xl font-semibold">{formatCurrency(payables.meta.total)}</div>
+        <div className="grid gap-3 md:grid-cols-3">
+          <StatCard label="Saldo abierto total" tone="warning" value={formatCurrency(payables.meta.total)} />
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-          <div>
-            <table className="w-full table-fixed border-collapse text-left text-sm">
-              <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-                <tr>
-                  <th className="w-[11%] px-4 py-3 font-semibold">Fecha</th>
-                  <th className="w-[16%] px-4 py-3 font-semibold">Origen</th>
-                  <th className="w-[25%] px-4 py-3 font-semibold">Concepto</th>
-                  <th className="w-[10%] px-4 py-3 font-semibold">Estado</th>
-                  <th className="w-[12%] px-4 py-3 text-right font-semibold">Saldo</th>
-                  <th className="w-[14%] px-4 py-3 text-right font-semibold">Programado</th>
-                  <th className="w-[12%] px-4 py-3 font-semibold">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
+        <Card className="overflow-hidden">
+          <DataTable
+            caption="Cuentas pendientes de pago"
+            className="rounded-none border-0 shadow-none"
+            minWidth="1080px"
+            tableLabel="Cuentas por pagar"
+            tableProps={{ className: "table-fixed" }}
+          >
+              <DataTableHeader>
+                <DataTableRow className="hover:bg-transparent">
+                  <DataTableHead className="w-[11%]">Fecha</DataTableHead>
+                  <DataTableHead className="w-[16%]">Origen</DataTableHead>
+                  <DataTableHead className="w-[25%]">Concepto</DataTableHead>
+                  <DataTableHead className="w-[10%]">Estado</DataTableHead>
+                  <DataTableHead align="right" className="w-[12%]">Saldo</DataTableHead>
+                  <DataTableHead align="right" className="w-[14%]">Programado</DataTableHead>
+                  <DataTableHead className="w-[12%]">Acciones</DataTableHead>
+                </DataTableRow>
+              </DataTableHeader>
+              <DataTableBody>
                 {payables.data.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-[color:var(--muted)]" colSpan={7}>
+                  <DataTableRow className="hover:bg-transparent">
+                    <DataTableCell className="py-8 text-center text-[color:var(--muted)]" colSpan={7}>
                       No hay cuentas por pagar abiertas.
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 ) : (
                   payables.data.map((item) => (
-                    <tr className="border-t border-[color:var(--border)]" key={`${item.source}-${item.id}`}>
-                      <td className="px-4 py-4">{formatDate(item.date)}</td>
-                      <td className="break-words px-4 py-4">{item.provider}</td>
-                      <td className="px-4 py-4">
+                    <DataTableRow key={`${item.source}-${item.id}`}>
+                      <DataTableCell className="whitespace-nowrap">{formatDate(item.date)}</DataTableCell>
+                      <DataTableCell className="break-words">{item.provider}</DataTableCell>
+                      <DataTableCell>
                         <div className="break-words">{item.concept}</div>
                         <div className="mt-1 text-xs text-[color:var(--muted)]">
                           Total {formatCurrency(item.total)} - pagado {formatCurrency(item.paid)}
                         </div>
-                      </td>
-                      <td className="break-words px-4 py-4">{item.status}</td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">{formatCurrency(item.balance)}</td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">
+                      </DataTableCell>
+                      <DataTableCell className="break-words">
+                        <StatusBadge tone="warning">{item.status}</StatusBadge>
+                      </DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                        {formatCurrency(item.balance)}
+                      </DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
                         {item.scheduledAmount > 0 ? (
                           <div>
                             <div>{formatCurrency(item.scheduledAmount)}</div>
@@ -104,8 +125,8 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
                         ) : (
                           "-"
                         )}
-                      </td>
-                      <td className="px-4 py-4">
+                      </DataTableCell>
+                      <DataTableCell>
                         {item.source === "compra" && item.balance > item.scheduledAmount ? (
                           <details className="rounded-[8px] border border-[color:var(--border)] bg-[color:var(--panel)] p-2">
                             <summary className="flex min-h-[var(--control-height-md)] cursor-pointer list-none select-none items-center justify-center rounded-[var(--radius-md)] bg-[color:var(--accent)] px-4 font-black text-white shadow-sm [&::-webkit-details-marker]:hidden">
@@ -142,14 +163,13 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
                         ) : (
                           <span className="text-xs text-[color:var(--muted)]">-</span>
                         )}
-                      </td>
-                    </tr>
+                      </DataTableCell>
+                    </DataTableRow>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </DataTableBody>
+          </DataTable>
+        </Card>
       </div>
     </ModulePage>
   );

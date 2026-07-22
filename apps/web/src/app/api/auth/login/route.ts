@@ -13,6 +13,7 @@ import {
   recordFailedLogin,
 } from "@/lib/login-rate-limit";
 import { assertRequestSize } from "@/lib/request-body";
+import { safeLocalReturnPath } from "@/lib/safe-return-path";
 
 export const runtime = "nodejs";
 const LOGIN_BODY_LIMIT_BYTES = 16 * 1024;
@@ -47,6 +48,7 @@ export async function POST(request: NextRequest) {
   const contentType = request.headers.get("content-type") ?? "";
   let identifier = "";
   let password = "";
+  let returnTo = "/";
 
   if (contentType.includes("application/json")) {
     const raw = await request.text().catch(() => "");
@@ -56,6 +58,7 @@ export async function POST(request: NextRequest) {
     const body = safeJson(raw);
     identifier = String(body.identifier ?? body.correo ?? "");
     password = String(body.password ?? body.contrasena ?? "");
+    returnTo = safeLocalReturnPath(body.next);
   } else if (
     contentType.includes("application/x-www-form-urlencoded") ||
     contentType.includes("multipart/form-data")
@@ -63,6 +66,7 @@ export async function POST(request: NextRequest) {
     const form = await request.formData();
     identifier = String(form.get("identifier") ?? form.get("correo") ?? "");
     password = String(form.get("password") ?? form.get("contrasena") ?? "");
+    returnTo = safeLocalReturnPath(form.get("next"));
   } else {
     return wantsJson(request)
       ? NextResponse.json({ ok: false, error: "Content-Type no soportado." }, { status: 415 })
@@ -86,7 +90,7 @@ export async function POST(request: NextRequest) {
   clearLoginRateLimit(rateLimitKey);
   const response = wantsJson(request)
     ? NextResponse.json({ ok: true, user: publicSessionUser(session) })
-    : NextResponse.redirect(new URL("/", request.url), { status: 303 });
+    : NextResponse.redirect(new URL(returnTo, request.url), { status: 303 });
 
   response.cookies.set(SESSION_COOKIE, encodeSession(session), sessionCookieOptions());
   return response;

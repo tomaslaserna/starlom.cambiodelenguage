@@ -1,26 +1,34 @@
 import { ModulePage } from "@/components/module-page";
-import { Button, ButtonLink, Card, CardContent, PageHeader, StatusBadge } from "@/components/ui";
+import { ButtonLink, Card, CardContent, PageHeader, StatusBadge } from "@/components/ui";
 import { updateLoadedOrderAction } from "@/app/orders/[id]/edit/actions";
 import { OrderEntryFields, type OrderEntryInitialValue } from "@/app/orders/new/order-entry-fields";
 import { requireStaffSession } from "@/lib/auth";
+import { currentMonth } from "@/lib/month-range";
+import { listActiveOffers } from "@/lib/offers";
 import { getOrder, getOrderFormData } from "@/lib/orders";
 import { orderStatusLabel } from "@/lib/order-status";
+import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { uuidParam } from "@/lib/request-body";
 import { requirePagePermission } from "@/lib/page-auth";
+import { getBreakEvenStatus } from "@/lib/profitability";
 import { localDateIso } from "@/lib/timezone";
 
 type EditOrderPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ status?: string; message?: string }>;
 };
 
-export default async function EditOrderPage({ params }: EditOrderPageProps) {
+export default async function EditOrderPage({ params, searchParams }: EditOrderPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [{ resource: "pedidos", action: "editar" }]);
   const { id: rawId } = await params;
+  const query = await searchParams;
   const id = uuidParam(rawId, "Pedido");
-  const [order, formData] = await Promise.all([
+  const [order, formData, offers, breakEven] = await Promise.all([
     getOrder(session.companyId, id),
-    getOrderFormData(session.companyId),
+    getOrderFormData(session.companyId, { excludeReservedSaleId: id }),
+    listActiveOffers(session.companyId),
+    getBreakEvenStatus(session.companyId, currentMonth()),
   ]);
 
   const initialValue: OrderEntryInitialValue = {
@@ -37,18 +45,27 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
         discount: String(line.discount),
       })),
   };
+  const availableOffers = breakEven.reached
+    ? offers.map((offer) => ({ id: offer.id, title: offer.title, description: offer.description }))
+    : [];
+  const orderNumberLabel = formatSaleCommercialCode({
+    commercialNumber: order.commercialNumber,
+    saleNumber: order.saleNumber,
+    deliveryNumber: order.deliveryNumber,
+    legacyRemittanceNumber: order.receiptNumber,
+  });
 
   return (
     <ModulePage
       active="orders"
-      description="Correccion del pedido cargado antes de confirmar stock."
+      description="Correccion del pedido antes de entregarlo."
       session={session}
       title="Modificar pedido"
     >
       <div className="grid gap-4">
         <PageHeader
-          title={`Modificar pedido #${order.receiptNumber || order.id.slice(0, 8)}`}
-          description="Ajusta cliente, productos, cantidades, descuentos, lista y comprobante antes de confirmar."
+          title={`Modificar pedido #${orderNumberLabel}`}
+          description="Ajusta cliente, productos, cantidades, descuentos, lista y comprobante antes de entregar."
           actions={
             <ButtonLink href="/orders?status=cargado" variant="secondary">
               Volver
@@ -56,12 +73,21 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
           }
         />
 
+        {query.status === "error" ? (
+          <div
+            className="rounded-lg border border-[color:var(--danger)] bg-[color:var(--danger-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--danger)]"
+            role="alert"
+          >
+            {query.message ?? "No se pudieron guardar los cambios."}
+          </div>
+        ) : null}
+
         {order.orderStatus !== "cargado" && order.orderStatus !== "confirmado" ? (
           <Card>
             <CardContent className="grid gap-3 p-5">
               <div className="flex flex-wrap items-center gap-3">
                 <span className="font-bold">El pedido ya no esta editable.</span>
-                <StatusBadge tone={order.orderStatus === "entregado" ? "success" : "warning"}>
+                <StatusBadge tone={order.orderStatus === "entregado" ? "success" : "danger"}>
                   {orderStatusLabel(order.orderStatus)}
                 </StatusBadge>
               </div>
@@ -81,16 +107,19 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
             <input name="id" type="hidden" value={order.id} />
             {order.orderStatus === "confirmado" ? (
               <p className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-3 text-sm text-[color:var(--foreground)]">
-                <strong>Atención:</strong> este pedido está confirmado. Al guardar, volverá a <strong>cargado</strong> y tenés que confirmarlo nuevamente (se libera la reserva de stock hasta reconfirmar).
+                <strong>Atención:</strong> este pedido está confirmado. Al guardar, volverá a <strong>cargado</strong> y se liberará su reserva de stock hasta que sea entregado.
               </p>
             ) : null}
             <OrderEntryFields
               clients={formData.clients}
               initialValue={initialValue}
+              offers={availableOffers}
+              offersEnabled={breakEven.reached}
+              offersRemaining={breakEven.remaining}
               priceLists={formData.priceLists}
               products={formData.products}
+              submitLabel="Guardar cambios"
             />
-            <Button type="submit">Guardar cambios</Button>
           </form>
         )}
       </div>

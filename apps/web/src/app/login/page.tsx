@@ -3,20 +3,27 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button, Field, Input } from "@/components/ui";
 import { currentSession } from "@/lib/auth";
+import { safeLocalReturnPath } from "@/lib/safe-return-path";
 
 type LoginPageProps = {
   searchParams: Promise<{
     error?: string;
+    expired?: string;
+    next?: string;
+    password_reset?: string;
   }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const session = await currentSession();
-  if (session) redirect("/");
-
   const params = await searchParams;
+  const returnTo = safeLocalReturnPath(params.next);
+  const session = await currentSession();
+  if (session) redirect(returnTo);
+
   const hasError = params.error === "invalid";
   const isRateLimited = params.error === "rate_limited";
+  const sessionExpired = params.expired === "1";
+  const passwordReset = params.password_reset === "1";
 
   return (
     <main className="grid min-h-screen overflow-x-hidden bg-[#f3f6fb] text-[#172033] lg:grid-cols-[minmax(360px,40%)_minmax(0,60%)]">
@@ -70,12 +77,23 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
       <section className="grid min-h-0 min-w-0 place-items-center bg-[linear-gradient(90deg,rgba(255,255,255,0.55)_0_1px,transparent_1px_100%),linear-gradient(0deg,rgba(255,255,255,0.62)_0_1px,transparent_1px_100%),#f3f6fb] bg-[length:64px_64px] px-4 py-8 sm:px-8 lg:min-h-screen">
         <div className="w-full max-w-[456px]">
-          {hasError || isRateLimited ? (
+          {passwordReset ? (
+            <div className="mb-3 rounded-[10px] border border-[#bbf7d0] bg-[#f0fdf4] px-3.5 py-3 font-extrabold leading-5 text-[#166534] shadow-[0_8px_18px_rgba(22,101,52,0.06)]" role="status">
+              Contraseña actualizada. Ingresá con tu nueva contraseña.
+            </div>
+          ) : null}
+          {hasError || isRateLimited || sessionExpired ? (
             <div className="mb-3 flex items-start gap-2.5 rounded-[10px] border border-[#fecaca] bg-[#fef2f2] px-3.5 py-3 font-extrabold leading-5 text-[#991b1b] shadow-[0_8px_18px_rgba(153,27,27,0.06)]" role="alert">
               <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#fee2e2] text-xs font-black text-[#b91c1c]">
                 i
               </span>
-              <span>{isRateLimited ? "Demasiados intentos. Proba nuevamente mas tarde." : "Usuario, correo o contrasena invalida."}</span>
+              <span>
+                {isRateLimited
+                  ? "Demasiados intentos. Proba nuevamente mas tarde."
+                  : sessionExpired
+                    ? "La sesion vencio. Inicia sesion para continuar con la carga abierta."
+                    : "Usuario, correo o contrasena invalida."}
+              </span>
             </div>
           ) : null}
 
@@ -94,6 +112,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               </div>
 
               <form action="/api/auth/login" className="grid min-w-0 gap-[18px]" method="post">
+                <input name="next" type="hidden" value={returnTo} />
                 <Field className="min-w-0 gap-[7px]" label="Usuario o correo" required>
                   <Input
                     autoComplete="username"
@@ -113,6 +132,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                     type="password"
                   />
                 </Field>
+                <div className="-mt-2 text-right">
+                  <Link className="erp-text-body-sm font-extrabold text-[#075ac7] hover:underline" href="/forgot-password">
+                    ¿Olvidaste tu contraseña?
+                  </Link>
+                </div>
                 <Button className="mt-1 w-full rounded-[10px] bg-[#006dfe] hover:bg-[#005eea]" size="lg" type="submit">
                   Entrar al panel
                 </Button>

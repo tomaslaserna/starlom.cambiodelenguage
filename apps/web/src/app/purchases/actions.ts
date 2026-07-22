@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import {
   assertPurchaseReceiptUploadAllowed,
   createPurchase,
+  deletePurchase,
   packageReviewFromBody,
   purchaseInputFromBody,
   purchaseIdFromParam,
@@ -77,6 +78,14 @@ export async function uploadPurchaseReceiptAction(formData: FormData) {
   });
   await updatePurchaseReceiptPhoto(session, id, uploaded.url);
   revalidatePath("/purchases");
+}
+
+export async function deletePurchaseAction(formData: FormData) {
+  const session = await requireApiSession();
+  const id = purchaseIdFromParam(String(formData.get("id") ?? ""), "Compra");
+  await deletePurchase(session, id);
+  revalidatePath("/purchases");
+  revalidatePath("/treasury/accounts-payable");
 }
 
 export async function requestSupplierPaymentAction(formData: FormData) {

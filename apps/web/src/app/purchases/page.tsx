@@ -14,6 +14,7 @@ import {
   PURCHASES_EDIT_PERMISSION,
   PURCHASES_READ_PERMISSION,
   sessionAllows,
+  sessionCanDeleteOperationalRecords,
 } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
 import {
@@ -39,12 +40,15 @@ import {
 } from "@/components/ui";
 import {
   createPurchaseAction,
+  deletePurchaseAction,
   requestSupplierPaymentAction,
   reviewPurchasePackageAction,
   updatePurchaseStatusAction,
   uploadPurchaseReceiptAction,
 } from "@/app/purchases/actions";
 import { PurchaseEntryFields } from "@/app/purchases/purchase-entry-fields";
+import { PurchaseReceiptUpload } from "@/app/purchases/purchase-receipt-upload";
+import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { getReplenishmentSuggestions } from "@/lib/replenishment";
 
 type PurchasesPageProps = {
@@ -147,9 +151,10 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   const viewParam = params.view?.trim() ?? "";
   const view = viewForParams(type, viewParam);
   const today = localDateIso();
-  const [canCreatePurchases, canEditPurchases] = await Promise.all([
+  const [canCreatePurchases, canEditPurchases, canDeleteRecords] = await Promise.all([
     sessionAllows(session, [PURCHASES_CREATE_PERMISSION]),
     sessionAllows(session, [PURCHASES_EDIT_PERMISSION]),
+    sessionCanDeleteOperationalRecords(session),
   ]);
   const showCreateForm = view === purchaseViews.nueva && canCreatePurchases;
   const showRegistry = view !== purchaseViews.nueva;
@@ -292,7 +297,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
               <DataTable
                 caption="Listado de compras filtradas"
                 className="rounded-none border-0 shadow-none"
-                minWidth="100%"
+                minWidth="1180px"
                 tableLabel="Compras"
                 tableProps={{ className: "table-fixed" }}
               >
@@ -322,7 +327,6 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                   ) : (
                     purchases.map((purchase) => {
                       const statusSelectId = `purchase-${purchase.id}-status`;
-                      const receiptInputId = `purchase-${purchase.id}-receipt`;
                       const paymentDateInputId = `purchase-${purchase.id}-payment-date`;
                       const paymentAmountInputId = `purchase-${purchase.id}-payment-amount`;
                       const paymentNotesInputId = `purchase-${purchase.id}-payment-notes`;
@@ -393,6 +397,17 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                                   Devol.
                                 </ButtonLink>
                               </div>
+                              {canDeleteRecords ? (
+                                <form action={deletePurchaseAction}>
+                                  <input name="id" type="hidden" value={purchase.id} />
+                                  <ConfirmDeleteButton
+                                    aria-label={`Borrar compra ${purchase.id}`}
+                                    className="w-full"
+                                    confirmation={`¿Borrar definitivamente la compra #${purchase.id}? También se eliminarán pagos y movimientos relacionados que no estén conciliados.`}
+                                    size="sm"
+                                  />
+                                </form>
+                              ) : null}
                               {canEditPurchases ? (
                                 <form action={updatePurchaseStatusAction} className="grid min-w-0 gap-2">
                                   <input name="id" type="hidden" value={purchase.id} />
@@ -467,28 +482,14 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                             </details>
                           ) : null}
                           {purchase.status === "recibida" && canEditPurchases ? (
-                            <form action={uploadPurchaseReceiptAction} className="grid gap-2">
+                            <form
+                              action={uploadPurchaseReceiptAction}
+                              className="grid gap-1"
+                              suppressHydrationWarning
+                            >
                               <input name="id" type="hidden" value={purchase.id} />
-                              <Field className="gap-1" htmlFor={receiptInputId} label="Recibo">
-                                <input
-                                  accept="image/jpeg,image/png,image/webp,image/gif"
-                                  aria-label={`Seleccionar recibo de compra ${purchase.id}`}
-                                  className="block w-full text-xs text-[color:var(--muted)] file:mr-2 file:min-h-9 file:rounded-[var(--radius-md)] file:border-0 file:bg-[color:var(--panel-subtle)] file:px-3 file:text-xs file:font-semibold file:text-[color:var(--foreground)]"
-                                  id={receiptInputId}
-                                  name="foto"
-                                  suppressHydrationWarning
-                                  type="file"
-                                />
-                              </Field>
-                              <Button
-                                aria-label={`Subir recibo de compra ${purchase.id}`}
-                                className="w-full"
-                                size="sm"
-                                type="submit"
-                                variant="secondary"
-                              >
-                                Subir recibo
-                              </Button>
+                              <span className="text-xs">Recibo</span>
+                              <PurchaseReceiptUpload purchaseId={purchase.id} />
                             </form>
                           ) : null}
                           {purchase.status === "recibida" &&
@@ -499,13 +500,13 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                                 <input name="id" type="hidden" value={purchase.id} />
                                 <input name="action" type="hidden" value="marcar_revisado" />
                                 <Button
-                                  aria-label={`Marcar revisado el paquete de la compra ${purchase.id}`}
+                                  aria-label={`Acreditar compra ${purchase.id}`}
                                   className="w-full"
                                   size="sm"
                                   type="submit"
                                   variant="secondary"
                                 >
-                                  Marcar revisado (acredita stock)
+                                  Acreditar compra
                                 </Button>
                               </form>
                               <details className="text-xs">

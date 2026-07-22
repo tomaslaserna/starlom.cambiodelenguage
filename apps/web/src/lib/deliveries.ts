@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
 
@@ -87,6 +88,10 @@ export async function createDelivery(
 
     const orders = await client.query<{
       id: string;
+      commercial_number: string | null;
+      sale_number: string;
+      receipt_number: number | null;
+      delivery_number: number | null;
       nombre_cliente: string;
       observacion: string;
       estado_pedido: string;
@@ -96,6 +101,10 @@ export async function createDelivery(
     }>(
       `
         SELECT v.id::text AS id,
+               v.commercial_number::text AS commercial_number,
+               COALESCE(v.sale_number, '') AS sale_number,
+               v.receipt_number,
+               dd.delivery_number,
                COALESCE(v.client_name, c.display_name, '') AS nombre_cliente,
                COALESCE(v.notes,'') AS observacion,
                ${normalizedOrderStatusSql("v")} AS estado_pedido,
@@ -104,6 +113,7 @@ export async function createDelivery(
                COALESCE(c.province,'') AS provincia
         FROM sales v
         LEFT JOIN clients c ON c.id = v.client_id AND c.empresa_id = v.empresa_id
+        LEFT JOIN delivery_documents dd ON dd.sale_id = v.id AND dd.empresa_id = v.empresa_id
         WHERE v.id = ANY($1::uuid[]) AND v.empresa_id = $2
         ORDER BY v.id
       `,
@@ -115,18 +125,49 @@ export async function createDelivery(
     }
     for (const order of orders.rows) {
       if (order.estado_pedido !== "confirmado") {
-        throw new ApiError(400, `El pedido #${order.id} no esta confirmado para stock`);
+        const code = formatSaleCommercialCode({
+          commercialNumber: order.commercial_number,
+          saleNumber: order.sale_number,
+          deliveryNumber: order.delivery_number,
+          legacyRemittanceNumber: order.receipt_number,
+        });
+        throw new ApiError(400, `El pedido #${code} no esta confirmado para stock`);
       }
     }
 
-    const assigned = await client.query<{ id_venta: string }>(
-      "SELECT sale_id::text AS id_venta FROM delivery_run_sales WHERE empresa_id = $1 AND sale_id = ANY($2::uuid[])",
+    const assigned = await client.query<{
+      id_venta: string;
+      commercial_number: string | null;
+      sale_number: string;
+      receipt_number: number | null;
+      delivery_number: number | null;
+    }>(
+      `
+        SELECT drs.sale_id::text AS id_venta,
+               s.commercial_number::text AS commercial_number,
+               COALESCE(s.sale_number, '') AS sale_number,
+               s.receipt_number,
+               dd.delivery_number
+        FROM delivery_run_sales drs
+        JOIN sales s ON s.id = drs.sale_id AND s.empresa_id = drs.empresa_id
+        LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
+        WHERE drs.empresa_id = $1 AND drs.sale_id = ANY($2::uuid[])
+      `,
       [session.companyId, input.orderIds],
     );
     if (assigned.rows.length) {
       throw new ApiError(
         409,
-        `Hay pedidos que ya estan en un reparto: #${assigned.rows.map((row) => row.id_venta).join(", #")}`,
+        `Hay pedidos que ya estan en un reparto: #${assigned.rows
+          .map((row) =>
+            formatSaleCommercialCode({
+              commercialNumber: row.commercial_number,
+              saleNumber: row.sale_number,
+              deliveryNumber: row.delivery_number,
+              legacyRemittanceNumber: row.receipt_number,
+            }),
+          )
+          .join(", #")}`,
       );
     }
 

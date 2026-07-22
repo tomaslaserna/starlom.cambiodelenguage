@@ -17,6 +17,7 @@ import {
   PageHeader,
   StatCard,
   StatusBadge,
+  Toolbar,
 } from "@/components/ui";
 import {
   createOperatingCostAction,
@@ -58,15 +59,16 @@ export default async function RentabilidadPage({ searchParams }: RentabilidadPag
           title="Rentabilidad"
           description={`Punto de equilibrio y costos del mes ${month}.`}
           moduleIntro
-          actions={
-            <form action="/rentabilidad" className="flex items-end gap-2">
-              <Field htmlFor="rent-month" label="Mes">
-                <Input defaultValue={month} id="rent-month" name="month" type="month" />
-              </Field>
-              <Button type="submit">Ver</Button>
-            </form>
-          }
         />
+
+        <Toolbar ariaLabel="Filtro de rentabilidad">
+          <form action="/rentabilidad" className="flex w-full items-end gap-2">
+            <Field htmlFor="rent-month" label="Mes">
+              <Input defaultValue={month} id="rent-month" name="month" type="month" />
+            </Field>
+            <Button type="submit">Ver</Button>
+          </form>
+        </Toolbar>
 
         <div className="grid gap-3 md:grid-cols-4">
           <StatCard label="Costos fijos del mes" value={formatCurrency(status.fixedCosts)} />
@@ -117,7 +119,11 @@ export default async function RentabilidadPage({ searchParams }: RentabilidadPag
         </Card>
 
         <Card className="overflow-hidden">
-          <DataTable caption="Costos operativos del mes" tableLabel="Costos operativos">
+          <DataTable
+            caption="Costos operativos del mes"
+            className="rounded-none border-0 shadow-none"
+            tableLabel="Costos operativos"
+          >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
                 <DataTableHead>Concepto</DataTableHead>

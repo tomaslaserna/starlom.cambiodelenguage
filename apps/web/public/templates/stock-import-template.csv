@@ -1,0 +1,4 @@
+id_producto;codigo;tipo;cantidad;motivo
+;SKU-001;entrada;10;Compra de mercaderia
+;SKU-002;salida;2;Rotura o merma
+;SKU-003;exacto;25;Recuento fisico

@@ -4,6 +4,18 @@ import { getCashflow } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { ADMIN_CASHFLOW_READ_PERMISSION, ADMIN_TREASURY_READ_PERMISSION } from "@/lib/route-auth";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  StatCard,
+} from "@/components/ui";
 
 export default async function CashFlowPage() {
   const session = await requireStaffSession();
@@ -20,63 +32,53 @@ export default async function CashFlowPage() {
       <div className="grid gap-5">
 
         <div className="grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Ingresos proyectados</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(cashflow.meta.inflow)}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Gastos proyectados</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(cashflow.meta.outflow)}</div>
-          </div>
-          <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Neto proyectado</div>
-            <div className="mt-2 text-2xl font-semibold">{formatCurrency(cashflow.meta.net)}</div>
-          </div>
+          <StatCard label="Ingresos proyectados" tone="success" value={formatCurrency(cashflow.meta.inflow)} />
+          <StatCard label="Gastos proyectados" tone="warning" value={formatCurrency(cashflow.meta.outflow)} />
+          <StatCard label="Neto proyectado" tone="accent" value={formatCurrency(cashflow.meta.net)} />
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
           {cashflow.meta.horizons.map((horizon) => (
-            <div
-              className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4"
+            <StatCard
+              detail={`Ingresos ${formatCurrency(horizon.inflow)} · Egresos ${formatCurrency(horizon.outflow)}`}
               key={horizon.days}
-            >
-              <div className="text-sm font-semibold text-[color:var(--muted)]">{horizon.days} dias</div>
-              <div className="mt-2 text-2xl font-semibold">{formatCurrency(horizon.net)}</div>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-[color:var(--muted)]">
-                <span>Ingresos {formatCurrency(horizon.inflow)}</span>
-                <span>Egresos {formatCurrency(horizon.outflow)}</span>
-              </div>
-            </div>
+              label={`${horizon.days} dias`}
+              value={formatCurrency(horizon.net)}
+            />
           ))}
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-          <div className="border-b border-[color:var(--border)] px-4 py-3">
-            <h2 className="font-semibold">Calendario de caja</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] border-collapse text-left text-sm">
-              <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Fecha</th>
-                  <th className="px-4 py-3 font-semibold">Movimientos</th>
-                  <th className="px-4 py-3 text-right font-semibold">Ingresos</th>
-                  <th className="px-4 py-3 text-right font-semibold">Egresos</th>
-                  <th className="px-4 py-3 text-right font-semibold">Neto</th>
-                </tr>
-              </thead>
-              <tbody>
+        <Card>
+          <CardHeader>
+            <CardTitle>Calendario de caja</CardTitle>
+          </CardHeader>
+          <DataTable
+            caption="Calendario de movimientos proyectados"
+            className="rounded-none border-0 shadow-none"
+            minWidth="820px"
+            tableLabel="Calendario de caja"
+          >
+              <DataTableHeader>
+                <DataTableRow className="hover:bg-transparent">
+                  <DataTableHead>Fecha</DataTableHead>
+                  <DataTableHead>Movimientos</DataTableHead>
+                  <DataTableHead align="right">Ingresos</DataTableHead>
+                  <DataTableHead align="right">Egresos</DataTableHead>
+                  <DataTableHead align="right">Neto</DataTableHead>
+                </DataTableRow>
+              </DataTableHeader>
+              <DataTableBody>
                 {cashflow.calendar.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-[color:var(--muted)]" colSpan={5}>
+                  <DataTableRow className="hover:bg-transparent">
+                    <DataTableCell className="py-8 text-center text-[color:var(--muted)]" colSpan={5}>
                       No hay movimientos para calendarizar.
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 ) : (
                   cashflow.calendar.map((day) => (
-                    <tr className="border-t border-[color:var(--border)]" key={day.date ?? "sin_fecha"}>
-                      <td className="whitespace-nowrap px-4 py-4">{formatDate(day.date)}</td>
-                      <td className="px-4 py-4">
+                    <DataTableRow key={day.date ?? "sin_fecha"}>
+                      <DataTableCell className="whitespace-nowrap">{formatDate(day.date)}</DataTableCell>
+                      <DataTableCell>
                         <div className="grid gap-1">
                           {day.items.slice(0, 3).map((item) => (
                             <span className="truncate" key={`${item.kind}-${item.id}-${item.label}`}>
@@ -89,50 +91,55 @@ export default async function CashFlowPage() {
                             </span>
                           ) : null}
                         </div>
-                      </td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">{formatCurrency(day.inflow)}</td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">{formatCurrency(day.outflow)}</td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">{formatCurrency(day.net)}</td>
-                    </tr>
+                      </DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">{formatCurrency(day.inflow)}</DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">{formatCurrency(day.outflow)}</DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">{formatCurrency(day.net)}</DataTableCell>
+                    </DataTableRow>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </DataTableBody>
+          </DataTable>
+        </Card>
 
-        <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-              <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Fecha</th>
-                  <th className="px-4 py-3 font-semibold">Concepto</th>
-                  <th className="px-4 py-3 font-semibold">Tipo</th>
-                  <th className="px-4 py-3 text-right font-semibold">Monto</th>
-                </tr>
-              </thead>
-              <tbody>
+        <Card>
+          <CardHeader>
+            <CardTitle>Movimientos proyectados</CardTitle>
+          </CardHeader>
+          <DataTable
+            caption="Detalle de movimientos proyectados"
+            className="rounded-none border-0 shadow-none"
+            minWidth="760px"
+            tableLabel="Movimientos proyectados"
+          >
+              <DataTableHeader>
+                <DataTableRow className="hover:bg-transparent">
+                  <DataTableHead>Fecha</DataTableHead>
+                  <DataTableHead>Concepto</DataTableHead>
+                  <DataTableHead>Tipo</DataTableHead>
+                  <DataTableHead align="right">Monto</DataTableHead>
+                </DataTableRow>
+              </DataTableHeader>
+              <DataTableBody>
                 {cashflow.data.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-[color:var(--muted)]" colSpan={4}>
+                  <DataTableRow className="hover:bg-transparent">
+                    <DataTableCell className="py-8 text-center text-[color:var(--muted)]" colSpan={4}>
                       No hay movimientos proyectados.
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 ) : (
                   cashflow.data.map((item) => (
-                    <tr className="border-t border-[color:var(--border)]" key={`${item.kind}-${item.id}-${item.label}`}>
-                      <td className="px-4 py-4">{formatDate(item.date)}</td>
-                      <td className="px-4 py-4">{item.label}</td>
-                      <td className="px-4 py-4">{item.kind === "inflow" ? "Ingreso" : "Egreso"}</td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">{formatCurrency(item.amount)}</td>
-                    </tr>
+                    <DataTableRow key={`${item.kind}-${item.id}-${item.label}`}>
+                      <DataTableCell className="whitespace-nowrap">{formatDate(item.date)}</DataTableCell>
+                      <DataTableCell>{item.label}</DataTableCell>
+                      <DataTableCell>{item.kind === "inflow" ? "Ingreso" : "Egreso"}</DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">{formatCurrency(item.amount)}</DataTableCell>
+                    </DataTableRow>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              </DataTableBody>
+          </DataTable>
+        </Card>
       </div>
     </ModulePage>
   );

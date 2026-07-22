@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { accountBalanceExpressionSql, activeAccountMovementWhereSql } from "@/lib/accounts";
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { getPurchase } from "@/lib/purchases";
 import { getQuote } from "@/lib/quotes";
 import {
@@ -67,6 +68,8 @@ function digitsOnly(value: string | number | null | undefined) {
 
 function arcaDate(value: string | null | undefined) {
   if (!value) return localDateIso();
+  const isoDate = value.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  if (isoDate) return isoDate;
   const raw = value.includes("T") ? value : `${value}T00:00:00`;
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return localDateIso();
@@ -153,13 +156,13 @@ function compactPdfCode(value: string | number | null | undefined) {
 export async function buildQuotePdf(companyId: number, quoteId: string) {
   const quote = await getQuote(companyId, quoteId);
   const products = asQuoteProducts(quote.products);
-  const filename = `presupuesto_${quote.id}.pdf`;
+  const filename = `presupuesto_${safeFilename(quote.quoteNumber)}.pdf`;
 
   return createPdfFile(filename, ({ pdf }) => {
     pdf.drawHeader({
       title: "Presupuesto",
       code: "P",
-      number: `P-${String(quote.id).padStart(6, "0")}`,
+      number: quote.quoteNumber,
       date: pdfDate(quote.issueDate),
       extra: [`Validez hasta ${pdfDate(quote.expirationDate)}`],
       footerLeft: "Validez del presupuesto",
@@ -205,9 +208,15 @@ export async function buildQuotePdf(companyId: number, quoteId: string) {
 
     const totals: [string, string][] = [["Subtotal productos", pdfMoney(quote.netAmount)]];
     if (quote.discountAmount > 0) totals.push(["Descuento", `-${pdfMoney(quote.discountAmount)}`]);
+    if (quote.includeVat) {
+      totals.push(
+        ["Subtotal antes de IVA", pdfMoney(quote.subtotal)],
+        [`IVA ${String(quote.vatRate).replace(".", ",")}%`, pdfMoney(quote.vatAmount)],
+      );
+    }
     pdf.totals(totals, "Total", pdfMoney(quote.total));
     pdf.note(
-      "Documento no fiscal. Precios unitarios finales expresados en pesos argentinos. Presupuesto valido hasta la fecha indicada, sujeto a disponibilidad de stock y confirmacion comercial.",
+      `Documento no fiscal. ${quote.includeVat ? `IVA ${String(quote.vatRate).replace(".", ",")}% discriminado.` : "IVA no discriminado."} Presupuesto valido hasta la fecha indicada, sujeto a disponibilidad de stock y confirmacion comercial.`,
     );
     pdf.signatures("Por Starlim S.A.S.", "Conformidad del cliente");
   });
@@ -551,7 +560,8 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
     dni_cliente: string;
     condicion_iva_cliente: string;
     domicilio_cliente: string;
-    fecha: string | null;
+    sale_date: string | null;
+    fiscal_issue_date: string | null;
     monto: string;
     condicion_pago: string;
     fiscal_point_of_sale: number | null;
@@ -568,7 +578,12 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
              COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
              COALESCE(c.fiscal_condition, '') AS condicion_iva_cliente,
              COALESCE(c.delivery_address, c.address, '') AS domicilio_cliente,
-             s.sale_date::text AS fecha,
+             s.sale_date::text AS sale_date,
+             COALESCE(
+               s.fiscal_issue_date,
+               (s.fiscal_authorized_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,
+               s.sale_date
+             )::text AS fiscal_issue_date,
              COALESCE(s.total_amount, 0)::text AS monto,
              COALESCE(s.payment_condition, '') AS condicion_pago,
              s.fiscal_point_of_sale,
@@ -614,6 +629,9 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
     `,
     [saleId, companyId],
   );
+  if (detail.rows.length === 0) {
+    throw new ApiError(409, "La factura fiscal no tiene detalle de productos y no puede generarse.");
+  }
 
   const receiptType = Number(sale.fiscal_receipt_type ?? 0);
   const receipt = fiscalReceiptLabel(receiptType);
@@ -621,7 +639,7 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
   const amounts = fiscalAmounts(receiptType, total);
   const number = fiscalReceiptNumber(sale.fiscal_point_of_sale, sale.fiscal_receipt_number);
   const qrImage = await buildArcaQrImage({
-    issueDate: sale.fecha,
+    issueDate: sale.fiscal_issue_date,
     pointOfSale: Number(sale.fiscal_point_of_sale),
     receiptType,
     receiptNumber: Number(sale.fiscal_receipt_number),
@@ -636,8 +654,8 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
       code: receipt.letter,
       fiscalCode: receipt.afipCode,
       number,
-      date: pdfDate(sale.fecha),
-      extra: [`Periodo: ${pdfDate(sale.fecha)}`, sale.cae_expires_at ? `Vto: ${pdfDate(sale.cae_expires_at)}` : ""].filter(Boolean),
+      date: pdfDate(sale.fiscal_issue_date),
+      extra: [`Periodo: ${pdfDate(sale.sale_date)}`, sale.cae_expires_at ? `Vto: ${pdfDate(sale.cae_expires_at)}` : ""].filter(Boolean),
       variant: "fiscal",
       footerLeft: "Comprobante autorizado - ARCA",
       footerRight: `Total ${pdfMoney(amounts.total)}`,
@@ -693,6 +711,7 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
     detail_json: unknown;
     reason: string;
     created_at: string;
+    fiscal_issue_date: string | null;
     fiscal_point_of_sale: number | null;
     fiscal_receipt_type: number | null;
     fiscal_receipt_number: number | null;
@@ -717,6 +736,11 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
              sid.detail_json,
              COALESCE(sid.reason, '') AS reason,
              sid.created_at::text,
+             COALESCE(
+               sid.fiscal_issue_date,
+               (sid.fiscal_authorized_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date,
+               sid.created_at::date
+             )::text AS fiscal_issue_date,
              sid.fiscal_point_of_sale,
              sid.fiscal_receipt_type,
              sid.fiscal_receipt_number,
@@ -754,9 +778,12 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
   const total = Number(note.amount);
   const amounts = fiscalAmounts(receiptType, total);
   const detail = asFiscalDetail(note.detail_json);
+  if (detail.length === 0) {
+    throw new ApiError(409, "La nota fiscal no tiene detalle y no puede generarse.");
+  }
   const associated = fiscalReceiptNumber(note.sale_fiscal_point_of_sale, note.sale_fiscal_receipt_number);
   const qrImage = await buildArcaQrImage({
-    issueDate: note.created_at,
+    issueDate: note.fiscal_issue_date,
     pointOfSale: Number(note.fiscal_point_of_sale),
     receiptType,
     receiptNumber: Number(note.fiscal_receipt_number ?? note.receipt_number),
@@ -771,8 +798,8 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
       code: receipt.letter,
       fiscalCode: receipt.afipCode,
       number,
-      date: pdfDate(note.created_at),
-      extra: [`Periodo: ${pdfDate(note.created_at)}`, note.cae_expires_at ? `Vto: ${pdfDate(note.cae_expires_at)}` : ""].filter(Boolean),
+      date: pdfDate(note.fiscal_issue_date),
+      extra: [`Periodo: ${pdfDate(note.fiscal_issue_date)}`, note.cae_expires_at ? `Vto: ${pdfDate(note.cae_expires_at)}` : ""].filter(Boolean),
       variant: "fiscal",
       footerLeft: "Nota fiscal autorizada - ARCA",
       footerRight: `Total ${pdfMoney(amounts.total)}`,
@@ -931,6 +958,10 @@ export async function buildPriceListPdf(companyId: number, list: number) {
 export async function buildOrderRequestPdf(companyId: number, orderId: string) {
   const order = await queryWithCompanyContext<{
     id: string;
+    commercial_number: string | null;
+    sale_number: string;
+    receipt_number: number | null;
+    delivery_number: number | null;
     nombre_cliente: string;
     dni_cliente: string;
     fecha: string | null;
@@ -940,6 +971,10 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
     companyId,
     `
       SELECT s.id::text AS id,
+             s.commercial_number::text AS commercial_number,
+             COALESCE(s.sale_number, '') AS sale_number,
+             s.receipt_number,
+             dd.delivery_number,
              COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
              COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
              s.sale_date::text AS fecha,
@@ -947,6 +982,7 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
              COALESCE(s.notes, '') AS observacion
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
       WHERE s.id = $1::uuid AND s.empresa_id = $2
       LIMIT 1
     `,
@@ -954,6 +990,12 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
   );
   const current = order.rows[0];
   if (!current) throw new ApiError(404, "Pedido no encontrado");
+  const commercialCode = formatSaleCommercialCode({
+    commercialNumber: current.commercial_number,
+    saleNumber: current.sale_number,
+    deliveryNumber: current.delivery_number,
+    legacyRemittanceNumber: current.receipt_number,
+  });
 
   const detail = await queryWithCompanyContext<{
     product_code: string;
@@ -985,11 +1027,11 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
     [orderId, companyId],
   );
 
-  return createPdfFile(`pedido_operativo_${orderId}.pdf`, ({ pdf }) => {
+  return createPdfFile(`pedido_operativo_${safeFilename(commercialCode)}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Pedido operativo",
       code: "PO",
-      number: `PO-${orderId.slice(0, 8).toUpperCase()}`,
+      number: commercialCode === "Sin número" ? "PO sin número" : `PO-${commercialCode}`,
       date: pdfDate(current.fecha),
       extra: [`Estado: ${current.estado_pedido}`],
       variant: "internal",
@@ -997,7 +1039,7 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
       footerRight: "Uso interno",
     });
     pdf.section("Pedido");
-    pdf.title(current.nombre_cliente || `Pedido #${orderId}`, 12);
+    pdf.title(current.nombre_cliente || `Pedido ${commercialCode}`, 12);
     pdf.muted(`Documento: ${current.dni_cliente || "-"}${current.observacion ? ` - Obs: ${current.observacion}` : ""}`);
     pdf.doc.y += 14;
     pdf.table(

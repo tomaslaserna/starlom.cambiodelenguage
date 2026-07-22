@@ -33,6 +33,7 @@ import { authorizeFiscalInvoiceAction, rejectFiscalInvoiceAction } from "@/app/b
 type BillingPageProps = {
   searchParams: Promise<{
     page?: string;
+    cliente?: string;
     nro_id?: string;
     nro_factura?: string;
     tipo_factura?: string;
@@ -132,8 +133,16 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
         <Toolbar ariaLabel="Filtros de facturacion">
           <form
             action="/billing"
-            className="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_150px_170px_170px_auto]"
+            className="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-[1.25fr_1fr_1fr_150px_170px_170px_auto]"
           >
+            <Field htmlFor="billing-customer" label="Cliente">
+              <Input
+                id="billing-customer"
+                name="cliente"
+                defaultValue={params.cliente ?? ""}
+                placeholder="Nombre o razon social"
+              />
+            </Field>
             <Field htmlFor="billing-tax-id" label="CUIT/DNI">
               <Input id="billing-tax-id" name="nro_id" defaultValue={params.nro_id ?? ""} />
             </Field>
@@ -179,7 +188,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
           <DataTable
             caption="Ledger de facturas aprobadas"
             className="rounded-none border-0 shadow-none"
-            minWidth="0"
+            minWidth="1080px"
             tableLabel="Registro de facturas"
             tableProps={{ className: "table-fixed" }}
           >
@@ -363,6 +372,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
             query=""
             totalPages={ledger.meta.totalPages}
             extraParams={{
+              cliente: params.cliente,
               nro_id: params.nro_id,
               nro_factura: params.nro_factura,
               tipo_factura: params.tipo_factura,

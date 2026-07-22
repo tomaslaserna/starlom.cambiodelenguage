@@ -1,7 +1,21 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { Button, Card, CardContent, Field, Input, Select } from "@/components/ui";
+import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  Button,
+  Card,
+  CardContent,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  Field,
+  Input,
+  SearchableSelect,
+  Select,
+} from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, priceForList, resolvePriceListName } from "@/lib/order-pricing";
 import { localDateIso } from "@/lib/timezone";
@@ -37,6 +51,7 @@ type OrderEntryFieldsProps = {
   offers?: { id: string; title: string; description: string }[];
   offersEnabled?: boolean;
   offersRemaining?: number;
+  submitLabel: string;
 };
 
 const emptyLine = (): OrderLineDraft => ({ productId: "", quantity: "1", discount: "0" });
@@ -44,6 +59,10 @@ const emptyLine = (): OrderLineDraft => ({ productId: "", quantity: "1", discoun
 function numericInput(value: string, fallback = 0) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : fallback;
+}
+
+function isWholeQuantityInput(value: string) {
+  return value === "" || /^\d+$/.test(value);
 }
 
 export function OrderEntryFields({
@@ -54,6 +73,7 @@ export function OrderEntryFields({
   offers = [],
   offersEnabled = true,
   offersRemaining = 0,
+  submitLabel,
 }: OrderEntryFieldsProps) {
   const [customerId, setCustomerId] = useState(initialValue?.customerId ?? "");
   const [draftLine, setDraftLine] = useState<OrderLineDraft>(emptyLine());
@@ -68,22 +88,43 @@ export function OrderEntryFields({
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
   const [documentOverride, setDocumentOverride] = useState(initialValue?.desiredDocumentOverride ?? "");
   const [vatRate, setVatRate] = useState<IvaRate>(0);
+  const [draftError, setDraftError] = useState("");
   const lineIdRef = useRef(initialValue?.lines.length ?? 0);
 
   const selectedClient = clients.find((client) => client.id === customerId) ?? null;
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const clientOptions = useMemo(
+    () =>
+      clients.map((client) => ({
+        value: client.id,
+        label: client.name,
+        description: [client.taxId, client.legalName !== client.name ? client.legalName : ""].filter(Boolean).join(" - "),
+        searchText: [client.legalName, client.taxId, client.seller, client.phone].filter(Boolean).join(" "),
+      })),
+    [clients],
+  );
   const priceListOptions = priceLists.length ? priceLists : [{ name: DEFAULT_PRICE_LIST_NAME }];
   const suggestedDocument = selectedClient
     ? normalizeOrderCreationDocument(selectedClient.receiptType, selectedClient.fiscalCondition)
     : "remito";
   const desiredDocument = documentOverride || suggestedDocument;
   const activePriceList = resolvePriceListName(priceListOverride || selectedClient?.priceList, priceListOptions);
+  const productOptions = useMemo(
+    () =>
+      products.map((product) => ({
+        value: product.id,
+        label: product.name,
+        description: `${product.code || "Sin codigo"} - Disponible: ${formatNumber(product.available)} - Precio: ${formatCurrency(priceForList(product.prices, activePriceList))}`,
+        searchText: product.code,
+      })),
+    [activePriceList, products],
+  );
 
   const calculatedLines = lines
     .map((line) => {
       const product = productMap.get(line.productId);
-      if (!product || !selectedClient) return null;
-      const quantity = Math.max(0, numericInput(line.quantity, 0));
+      if (!product) return null;
+      const quantity = Math.max(0, Math.trunc(numericInput(line.quantity, 0)));
       const discount = Math.min(100, Math.max(0, numericInput(line.discount, 0)));
       const unitPrice = priceForList(product.prices, activePriceList);
       return {
@@ -107,11 +148,14 @@ export function OrderEntryFields({
       subtotal: line.subtotal,
     }));
   const draftProduct = productMap.get(draftLine.productId) ?? null;
-  const draftQuantity = Math.max(0, numericInput(draftLine.quantity, 0));
+  const draftQuantity = Math.max(0, Math.trunc(numericInput(draftLine.quantity, 0)));
   const draftDiscount = Math.min(100, Math.max(0, numericInput(draftLine.discount, 0)));
-  const draftUnitPrice = draftProduct && selectedClient ? priceForList(draftProduct.prices, activePriceList) : 0;
+  const draftUnitPrice = draftProduct ? priceForList(draftProduct.prices, activePriceList) : 0;
   const draftSubtotal = draftProduct ? lineSubtotal(draftUnitPrice, draftQuantity, draftDiscount) : 0;
-  const canAddLine = Boolean(selectedClient && draftProduct && draftQuantity > 0);
+  const draftHasPrice = draftUnitPrice > 0;
+  const missingDraftPrice = Boolean(draftProduct && !draftHasPrice);
+  const canAddLine = Boolean(selectedClient && draftProduct && draftQuantity > 0 && draftHasPrice);
+  const canSubmit = Boolean(selectedClient) && calculatedLines.some((line) => line.quantity > 0);
 
   const payload = calculatedLines.map((line) => ({
     productId: line.product.id,
@@ -120,11 +164,23 @@ export function OrderEntryFields({
   }));
 
   function updateDraftLine(next: Partial<OrderLineDraft>) {
+    setDraftError("");
     setDraftLine((current) => ({ ...current, ...next }));
   }
 
   function addDraftLine() {
-    if (!canAddLine) return;
+    if (!canAddLine) {
+      setDraftError(
+        !selectedClient
+          ? "Selecciona un cliente antes de agregar productos."
+          : !draftProduct
+            ? "Selecciona un producto."
+            : draftQuantity <= 0
+              ? "La cantidad debe ser mayor a cero."
+              : `El producto no tiene precio para la lista ${activePriceList}.`,
+      );
+      return;
+    }
     setLines((current) => [
       ...current,
       {
@@ -135,6 +191,13 @@ export function OrderEntryFields({
       },
     ]);
     setDraftLine(emptyLine());
+    setDraftError("");
+  }
+
+  function addDraftLineOnEnter(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    addDraftLine();
   }
 
   function updateLine(index: number, next: Partial<OrderLineDraft>) {
@@ -156,27 +219,22 @@ export function OrderEntryFields({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_180px]">
         <Field htmlFor="order-customer" label="Cliente" required>
-          <Select
+          <SearchableSelect
             id="order-customer"
             name="customerId"
+            options={clientOptions}
+            placeholder="Seleccionar cliente"
             required
             value={customerId}
-            onChange={(event) => {
-              const nextClient = clients.find((client) => client.id === event.target.value) ?? null;
-              setCustomerId(event.target.value);
+            onChange={(nextCustomerId) => {
+              const nextClient = clients.find((client) => client.id === nextCustomerId) ?? null;
+              setCustomerId(nextCustomerId);
               setPriceListOverride(resolvePriceListName(nextClient?.priceList, priceListOptions));
               setDocumentOverride(
                 nextClient ? normalizeOrderCreationDocument(nextClient.receiptType, nextClient.fiscalCondition) : "remito",
               );
             }}
-          >
-            <option value="">Seleccionar cliente</option>
-            {clients.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name} {client.taxId ? `- ${client.taxId}` : ""}
-              </option>
-            ))}
-          </Select>
+          />
         </Field>
         <Field htmlFor="order-date" label="Fecha de entrega">
           <Input id="order-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
@@ -227,34 +285,36 @@ export function OrderEntryFields({
         </div>
       ) : null}
 
-      <Card className="shadow-none">
+      <Card className="overflow-visible shadow-none">
         <CardContent className="grid gap-4 p-4">
           <div className="grid gap-3 rounded-md border border-[color:var(--border)] bg-white p-4">
-            <div className="grid gap-3 xl:grid-cols-[minmax(320px,1fr)_120px_120px_130px_130px_auto] xl:items-end">
+            <div className="grid gap-3 xl:grid-cols-[minmax(280px,1fr)_120px_120px] xl:items-end 2xl:grid-cols-[minmax(320px,1fr)_120px_120px_130px_130px_auto]">
               <Field className="min-w-0" htmlFor="order-product-draft" label="Producto">
-                <Select
+                <SearchableSelect
                   className="w-full"
                   id="order-product-draft"
+                  options={productOptions}
+                  placeholder="Seleccionar producto"
+                  compactOptions
                   value={draftLine.productId}
-                  onChange={(event) => updateDraftLine({ productId: event.target.value })}
-                >
-                  <option value="">Seleccionar producto</option>
-                  {products.map((option) => (
-                    <option key={option.id} value={option.id}>
-                      {option.name} {option.code ? `(${option.code})` : ""}
-                    </option>
-                  ))}
-                </Select>
+                  onChange={(productId) => updateDraftLine({ productId })}
+                />
               </Field>
               <Field htmlFor="order-quantity-draft" label="Cant.">
                 <Input
                   className="w-full"
                   id="order-quantity-draft"
+                  inputMode="numeric"
                   min="1"
                   step="1"
                   type="number"
                   value={draftLine.quantity}
-                  onChange={(event) => updateDraftLine({ quantity: event.target.value })}
+                  onChange={(event) => {
+                    if (isWholeQuantityInput(event.target.value)) {
+                      updateDraftLine({ quantity: event.target.value });
+                    }
+                  }}
+                  onKeyDown={addDraftLineOnEnter}
                 />
               </Field>
               <Field htmlFor="order-discount-draft" label="Desc. %">
@@ -267,6 +327,7 @@ export function OrderEntryFields({
                   type="number"
                   value={draftLine.discount}
                   onChange={(event) => updateDraftLine({ discount: event.target.value })}
+                  onKeyDown={addDraftLineOnEnter}
                 />
               </Field>
               <div>
@@ -288,49 +349,59 @@ export function OrderEntryFields({
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-[color:var(--muted)]">
               <span>Disponible: {draftProduct ? formatNumber(draftProduct.available) : "-"}</span>
               <span>Lista: {activePriceList}</span>
+              <span>Enter en cantidad o descuento agrega el producto.</span>
             </div>
+            {draftError || missingDraftPrice ? (
+              <div className="text-sm font-semibold text-[color:var(--danger)]" role="alert">
+                {draftError || `El producto no tiene precio para la lista ${activePriceList}.`}
+              </div>
+            ) : null}
           </div>
 
-          <div className="overflow-x-auto rounded-md border border-[color:var(--border)]">
-            <table className="w-full min-w-[760px] border-collapse bg-white text-sm">
-              <thead className="bg-[color:var(--panel-subtle)] text-left text-xs uppercase text-[color:var(--muted)]">
-                <tr>
-                  <th className="px-3 py-2 font-bold">Producto</th>
-                  <th className="px-3 py-2 text-right font-bold">Cant.</th>
-                  <th className="px-3 py-2 text-right font-bold">Desc.</th>
-                  <th className="px-3 py-2 text-right font-bold">Unitario</th>
-                  <th className="px-3 py-2 text-right font-bold">Subtotal</th>
-                  <th className="px-3 py-2 text-right font-bold">Accion</th>
-                </tr>
-              </thead>
-              <tbody>
+          <DataTable caption="Productos del pedido" minWidth="760px" tableLabel="Productos del pedido">
+            <DataTableHeader>
+              <DataTableRow className="hover:bg-transparent">
+                <DataTableHead>Producto</DataTableHead>
+                <DataTableHead align="right">Cant.</DataTableHead>
+                <DataTableHead align="right">Desc.</DataTableHead>
+                <DataTableHead align="right">Unitario</DataTableHead>
+                <DataTableHead align="right">Subtotal</DataTableHead>
+                <DataTableHead align="right">Accion</DataTableHead>
+              </DataTableRow>
+            </DataTableHeader>
+            <DataTableBody>
                 {calculatedLines.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-4 text-center text-[color:var(--muted)]" colSpan={6}>
+                  <DataTableRow>
+                    <DataTableCell className="py-6 text-center text-[color:var(--muted)]" colSpan={6}>
                       Sin productos
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 ) : (
                   calculatedLines.map((line, index) => (
-                    <tr className="border-t border-[color:var(--border)]" key={line.id}>
-                      <td className="px-3 py-2">
+                    <DataTableRow key={line.id}>
+                      <DataTableCell>
                         <div className="max-w-[360px] truncate font-semibold">{line.product.name}</div>
                         <div className="text-xs text-[color:var(--muted)]">
                           {line.product.code || "-"} - Disp. {formatNumber(line.product.available)}
                         </div>
-                      </td>
-                      <td className="px-3 py-2 text-right">
+                      </DataTableCell>
+                      <DataTableCell align="right">
                         <Input
                           aria-label={`Cantidad ${line.product.name}`}
                           className="ml-auto w-24 text-right"
+                          inputMode="numeric"
                           min="1"
                           step="1"
                           type="number"
                           value={line.quantity}
-                          onChange={(event) => updateLine(index, { quantity: event.target.value })}
+                          onChange={(event) => {
+                            if (isWholeQuantityInput(event.target.value)) {
+                              updateLine(index, { quantity: event.target.value });
+                            }
+                          }}
                         />
-                      </td>
-                      <td className="px-3 py-2 text-right">
+                      </DataTableCell>
+                      <DataTableCell align="right">
                         <Input
                           aria-label={`Descuento ${line.product.name}`}
                           className="ml-auto w-24 text-right"
@@ -341,24 +412,23 @@ export function OrderEntryFields({
                           value={line.discount}
                           onChange={(event) => updateLine(index, { discount: event.target.value })}
                         />
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-semibold">
+                      </DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono font-semibold">
                         {formatCurrency(line.unitPrice)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-right font-mono font-bold">
+                      </DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono font-bold">
                         {formatCurrency(line.subtotal)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
+                      </DataTableCell>
+                      <DataTableCell align="right">
                         <Button size="sm" type="button" variant="secondary" onClick={() => removeLine(index)}>
                           Quitar
                         </Button>
-                      </td>
-                    </tr>
+                      </DataTableCell>
+                    </DataTableRow>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
+            </DataTableBody>
+          </DataTable>
         </CardContent>
       </Card>
 
@@ -400,10 +470,14 @@ export function OrderEntryFields({
         offersEnabled={offersEnabled}
         offersRemaining={offersRemaining}
         phone={selectedClient?.phone ?? ""}
-        ready={Boolean(selectedClient) && calculatedLines.some((line) => line.quantity > 0)}
+        ready={canSubmit}
         ivaRate={vatRate}
         onIvaRateChange={setVatRate}
       />
+
+      <Button disabled={!canSubmit} type="submit">
+        {submitLabel}
+      </Button>
     </div>
   );
 }

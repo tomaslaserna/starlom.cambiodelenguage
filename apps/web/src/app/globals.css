@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #101828;
+  --background: #f6f8fb;
+  --foreground: #0f172a;
   --muted: #64748b;
   --panel: #ffffff;
   --panel-raised: #ffffff;
   --panel-subtle: #eff6ff;
   --panel-muted: #f8fafc;
-  --border: #e2e8f0;
-  --border-strong: #cbd5e1;
+  --border: #e1e7ef;
+  --border-strong: #c7d1de;
   --accent: #2563eb;
   --accent-strong: #1d4ed8;
   --accent-contrast: #ffffff;
@@ -17,7 +17,7 @@
   --accent-secondary: #14b8a6;
   --accent-secondary-subtle: #ccfbf1;
   --focus: #2563eb;
-  --focus-soft: rgba(37, 99, 235, 0.18);
+  --focus-soft: rgba(37, 99, 235, 0.12);
   --success: #15803d;
   --success-subtle: #e9f8ef;
   --warning: #b45309;
@@ -26,18 +26,18 @@
   --danger-subtle: #fdecec;
   --info: #1d4ed8;
   --info-subtle: #e9f0ff;
-  --hover: #edf2f7;
+  --hover: #f8fafc;
   --field: #ffffff;
-  --table-header: #eef3f7;
-  --table-row-hover: #f7fafc;
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 12px;
-  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-sm: 0 10px 26px rgba(16, 24, 40, 0.08);
+  --table-header: #f8fafc;
+  --table-row-hover: #f8fbff;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.035);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.035), 0 8px 24px rgba(15, 23, 42, 0.055);
   --shadow-md: 0 18px 42px rgba(16, 24, 40, 0.13);
-  --shadow-control: 0 1px 2px rgba(16, 24, 40, 0.06), inset 0 -1px 0 rgba(16, 24, 40, 0.05);
+  --shadow-control: 0 1px 2px rgba(15, 23, 42, 0.04);
   --control-height-sm: 2.25rem;
   --control-height-md: 2.5rem;
   --control-height-lg: 2.75rem;
@@ -124,17 +124,17 @@ body {
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   font-size: var(--text-body);
+  font-weight: 400;
+  letter-spacing: -0.005em;
   line-height: var(--leading-body);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
 body::before {
-  background:
-    radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 34%),
-    radial-gradient(circle at top right, rgba(20, 184, 166, 0.10), transparent 32%);
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.035), transparent 240px);
   content: "";
-  height: 260px;
+  height: 240px;
   inset: 0 0 auto;
   pointer-events: none;
   position: fixed;
@@ -215,7 +215,9 @@ input,
 select,
 textarea,
 summary {
-  font: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 button,
@@ -236,10 +238,10 @@ button:disabled,
 
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--focus);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 4px var(--focus-soft);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px var(--focus-soft);
 }
 
 :where(input, select, textarea)::placeholder {
-  color: color-mix(in srgb, var(--muted) 72%, white);
+  color: var(--muted);
 }

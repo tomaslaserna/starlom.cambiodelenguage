@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { resolvePriceListName } from "@/lib/order-pricing";
-import { assertRequestSize, numberField, textField, uuidParam, type RequestBody } from "@/lib/request-body";
+import { assertRequestSize, numberField, textField, type RequestBody } from "@/lib/request-body";
 
 type CsvImportResult = {
   inserted?: number;
@@ -134,7 +134,6 @@ export async function importProductsFromCsv(request: Request, companyId: number)
       const supplierName = value(row, 4);
       const name = value(row, 5);
       const cost = toArgentineDecimal(value(row, 6), 0);
-      const stock = Number.parseInt(value(row, 7), 10) || 0;
 
       if (!name) {
         result.skipped++;
@@ -164,7 +163,7 @@ export async function importProductsFromCsv(request: Request, companyId: number)
           )
         : { rows: [] };
 
-      const created = await client.query<{ id: string }>(
+      await client.query<{ id: string }>(
         `
           INSERT INTO products (
             category, category_code, supplier_id, name, cost, empresa_id
@@ -175,15 +174,6 @@ export async function importProductsFromCsv(request: Request, companyId: number)
         [category || rubro, code, supplier.rows[0]?.id ?? null, name, cost, companyId],
       );
 
-      if (stock > 0) {
-        await client.query(
-          `
-            INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
-            VALUES ($1::uuid, 'ajuste_positivo', $2, $3, $4)
-          `,
-          [created.rows[0].id, Math.max(0, stock), "Stock inicial importado por CSV", companyId],
-        );
-      }
       result.inserted = (result.inserted ?? 0) + 1;
     }
   });
@@ -341,106 +331,24 @@ export async function importProductCodesFromCsv(request: Request, companyId: num
   return result;
 }
 
-export function stockRecountInputFromBody(body: RequestBody) {
-  const rawItems = body.items;
-  if (!Array.isArray(rawItems)) throw new ApiError(400, "Sin datos");
-  const mode = textField(body, "mode") || textField(body, "modo") || "delta";
-  return {
-    mode: mode === "exacto" || mode === "exact" ? "exact" : "delta",
-    items: rawItems
-      .map((item) => {
-        if (!item || typeof item !== "object") return null;
-        const record = item as Record<string, unknown>;
-        const id = String(record.id ?? "").trim();
-        const valueNumber = Number(record.value ?? record.valor);
-        try {
-          uuidParam(id, "Producto");
-        } catch {
-          return null;
-        }
-        if (!Number.isFinite(valueNumber)) return null;
-        return { id, value: valueNumber };
-      })
-      .filter((item): item is { id: string; value: number } => Boolean(item)),
-  };
-}
-
-export async function applyStockRecount(
-  session: AuthSession,
-  input: ReturnType<typeof stockRecountInputFromBody>,
-) {
-  let updated = 0;
-  const errors: string[] = [];
-
-  await withCompanyContext(session.companyId, async (client) => {
-    for (const item of input.items) {
-      const current = await client.query<{ stock: string }>(
-        `
-          SELECT COALESCE(SUM(
-            CASE
-              WHEN movement_type IN ('entrada_compra', 'ajuste_positivo') THEN quantity
-              ELSE -quantity
-            END
-          ), 0)::text AS stock
-          FROM stock_movements
-          WHERE product_id = $1::uuid AND empresa_id = $2
-        `,
-        [item.id, session.companyId],
-      );
-
-      const exists = await client.query<{ id: string }>(
-        "SELECT id::text AS id FROM products WHERE id = $1::uuid AND empresa_id = $2 AND active = true LIMIT 1",
-        [item.id, session.companyId],
-      );
-      if (!exists.rows[0]) {
-        errors.push(item.id);
-        continue;
-      }
-
-      const currentStock = Number(current.rows[0]?.stock ?? 0);
-      const delta = input.mode === "exact" ? Math.max(0, item.value) - currentStock : item.value;
-      if (delta !== 0) {
-        await client.query(
-          `
-            INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
-            VALUES ($1::uuid, $2::stock_movement_type, $3, $4, $5)
-          `,
-          [
-            item.id,
-            delta > 0 ? "ajuste_positivo" : "ajuste_negativo",
-            Math.abs(delta),
-            `Recuento de stock por ${session.username}`,
-            session.companyId,
-          ],
-        );
-      }
-      updated++;
-    }
-  });
-
-  clearReadQueryCache();
-  return { updated, errors };
-}
-
 export function productCreateInputFromBody(body: RequestBody) {
   const name = textField(body, "name") || textField(body, "nombre");
   const code = (textField(body, "code") || textField(body, "codigo")).toUpperCase();
+  const sku = (textField(body, "sku") || textField(body, "codigoProducto")).toUpperCase();
   const cost = numberField(body, "cost", numberField(body, "costo", 0));
-  const stock = Math.max(0, Number.parseInt(String(body.stock ?? 0), 10) || 0);
   if (!name) throw new ApiError(400, "El nombre del producto es requerido");
   if (!code) throw new ApiError(400, "Debes seleccionar una categoria de precio");
   if (cost <= 0) throw new ApiError(400, "El costo debe ser mayor a 0");
   return {
     name,
     code,
+    sku,
     cost,
-    stock,
     provider: textField(body, "provider") || textField(body, "proveedor"),
-    description: textField(body, "description") || textField(body, "descripcion"),
   };
 }
 
-export async function createStockProduct(
+export async function createCatalogProduct(
   session: AuthSession,
   input: ReturnType<typeof productCreateInputFromBody>,
 ) {
@@ -451,6 +359,14 @@ export async function createStockProduct(
     );
     if (!margin.rows[0]) {
       throw new ApiError(400, `El codigo de categoria ${input.code} no existe en margenes`);
+    }
+
+    if (input.sku) {
+      const duplicate = await client.query<{ id: string }>(
+        "SELECT id::text AS id FROM products WHERE empresa_id = $1 AND UPPER(COALESCE(sku, '')) = $2 LIMIT 1",
+        [session.companyId, input.sku],
+      );
+      if (duplicate.rows[0]) throw new ApiError(409, `Ya existe un producto con el codigo ${input.sku}`);
     }
 
     const rubric = input.code.replace(/\d+$/g, "");
@@ -464,14 +380,15 @@ export async function createStockProduct(
     const created = await client.query<{ id: string }>(
       `
         INSERT INTO products (
-          category, category_code, supplier_id, name, cost, empresa_id
+          category, category_code, sku, supplier_id, name, cost, empresa_id
         )
-        VALUES ($1, $2, $3::uuid, $4, $5, $6)
+        VALUES ($1, $2, $3, $4::uuid, $5, $6, $7)
         RETURNING id::text AS id
       `,
       [
         margin.rows[0].nombre || rubric,
         input.code,
+        input.sku || null,
         supplier.rows[0]?.id ?? null,
         input.name,
         input.cost,
@@ -479,108 +396,11 @@ export async function createStockProduct(
       ],
     );
 
-    if (input.stock > 0) {
-      await client.query(
-        `
-          INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
-          VALUES ($1::uuid, 'ajuste_positivo', $2, $3, $4)
-        `,
-        [created.rows[0].id, input.stock, `Stock inicial por ${session.username}`, session.companyId],
-      );
-    }
-
     return { id: created.rows[0].id };
   });
 
   clearReadQueryCache();
   return result;
-}
-
-export function productBulkUpdateInputFromBody(body: RequestBody): Record<string, unknown>[] {
-  if (Array.isArray(body.items)) {
-    return body.items
-      .map((item) => (item && typeof item === "object" ? (item as Record<string, unknown>) : null))
-      .filter((item): item is Record<string, unknown> => Boolean(item));
-  }
-
-  const ids = Array.isArray(body.id) ? body.id : [];
-  return ids.map((id, index): Record<string, unknown> => ({
-    id,
-    name: Array.isArray(body.nombre) ? body.nombre[index] : undefined,
-    cost: Array.isArray(body.precio) ? body.precio[index] : undefined,
-    description: Array.isArray(body.descripcion) ? body.descripcion[index] : undefined,
-    stock: Array.isArray(body.cantidad) ? body.cantidad[index] : undefined,
-  }));
-}
-
-export async function bulkUpdateProducts(
-  session: AuthSession,
-  items: ReturnType<typeof productBulkUpdateInputFromBody>,
-) {
-  let updated = 0;
-
-  await withCompanyContext(session.companyId, async (client) => {
-    for (const item of items) {
-      const id = String(item.id ?? "").trim();
-      try {
-        uuidParam(id, "Producto");
-      } catch {
-        continue;
-      }
-
-      const current = await client.query<{ stock: string }>(
-        `
-          SELECT COALESCE(SUM(
-            CASE
-              WHEN movement_type IN ('entrada_compra', 'ajuste_positivo') THEN quantity
-              ELSE -quantity
-            END
-          ), 0)::text AS stock
-          FROM stock_movements
-          WHERE product_id = $1::uuid AND empresa_id = $2
-        `,
-        [id, session.companyId],
-      );
-
-      const nextStock = Math.max(0, Number.parseInt(String(item.stock ?? item.cantidad ?? 0), 10) || 0);
-      const result = await client.query<{ id: string }>(
-        `
-          UPDATE products
-          SET name = $1, cost = $2, updated_at = now()
-          WHERE id = $3::uuid AND empresa_id = $4 AND active = true
-          RETURNING id::text AS id
-        `,
-        [
-          String(item.name ?? item.nombre ?? "").trim(),
-          Number(item.cost ?? item.costo ?? item.precio ?? 0),
-          id,
-          session.companyId,
-        ],
-      );
-      if (result.rows[0]) {
-        const delta = nextStock - Number(current.rows[0]?.stock ?? 0);
-        if (delta !== 0) {
-          await client.query(
-            `
-              INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
-              VALUES ($1::uuid, $2::stock_movement_type, $3, $4, $5)
-            `,
-            [
-              id,
-              delta > 0 ? "ajuste_positivo" : "ajuste_negativo",
-              Math.abs(delta),
-              `Actualizacion masiva por ${session.username}`,
-              session.companyId,
-            ],
-          );
-        }
-        updated++;
-      }
-    }
-  });
-
-  clearReadQueryCache();
-  return { updated };
 }
 
 export async function listVendors(companyId: number) {

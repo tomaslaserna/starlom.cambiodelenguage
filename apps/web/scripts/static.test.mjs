@@ -211,7 +211,7 @@ test("collections screen lists delivered sales to collect with due dates", () =>
   assert.match(registerDialog, /action=\{action\}/);
 });
 
-test("orders lifecycle follows cargado-confirmado-entregado and opens collection only on delivery", () => {
+test("orders lifecycle delivers loaded orders directly and opens collection only on delivery", () => {
   const orderStatus = read("apps/web/src/lib/order-status.ts");
   assert.match(orderStatus, /"cargado"/);
   assert.match(orderStatus, /"confirmado"/);
@@ -219,6 +219,8 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(orderStatus, /"cancelado"/);
   assert.match(orderStatus, /recibido[\s\S]*return "cargado"/);
   assert.match(orderStatus, /pendiente_entrega[\s\S]*return "confirmado"/);
+  assert.match(orderStatus, /export function orderStatusTransitionError/);
+  assert.match(orderStatus, /currentStatus !== "cargado" && currentStatus !== "confirmado"/);
 
   const orders = read("apps/web/src/lib/orders.ts");
   assert.match(orders, /'no_aplica', 'cargado'/);
@@ -227,8 +229,9 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(orders, /order_status = 'cargado'/);
   assert.match(orders, /"pedido\.cargado"/);
   assert.match(orders, /"pedido\.modificado"/);
-  assert.match(orders, /Solo los pedidos cargados pueden confirmarse/);
-  assert.match(orders, /confirmsAsSale = nextStatus === "entregado" && currentStatus === "cargado"/);
+  assert.match(orders, /orderStatusTransitionError/);
+  assert.match(orders, /assertSaleStockAvailableForConfirmation/);
+  assert.match(orders, /const confirmsAsSale = nextStatus === "entregado" && currentStatus === "cargado"/);
   assert.match(orders, /confirmationDocument/);
   assert.match(orders, /normalizeOrderConfirmationDocument/);
   assert.match(orders, /nextStatus === "entregado" \? "pendiente"/);
@@ -241,23 +244,66 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(editPage, /initialValue/);
   assert.match(editPage, /order\.orderStatus !== "cargado" && order\.orderStatus !== "confirmado"/);
   assert.match(editPage, /order\.orderStatus === "confirmado"/);
+  assert.match(editPage, /query\.status === "error"/);
+  assert.match(editPage, /excludeReservedSaleId: id/);
+  assert.match(editPage, /offersEnabled=\{breakEven\.reached\}/);
+  assert.match(editPage, /submitLabel="Guardar cambios"/);
 
   const editActions = read("apps/web/src/app/orders/[id]/edit/actions.ts");
   assert.match(editActions, /updateBasicOrder/);
   assert.match(editActions, /redirect\("\/orders\?status=cargado"\)/);
+  assert.match(editActions, /error instanceof ApiError/);
+  assert.match(editActions, /status=error&message=/);
 
   const orderEntryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
   assert.match(orderEntryFields, /OrderEntryInitialValue/);
   assert.match(orderEntryFields, /initialValue\?\.lines/);
+  assert.match(orderEntryFields, /addDraftLineOnEnter/);
+  assert.match(orderEntryFields, /event\.preventDefault\(\)/);
+  assert.match(orderEntryFields, /disabled=\{!canSubmit\}/);
+  assert.match(orderEntryFields, /Enter en cantidad o descuento agrega el producto/);
 
   const orderActions = read("apps/web/src/app/orders/new/actions.ts");
   assert.match(orderActions, /redirect\("\/orders\?status=cargado"\)/);
   assert.match(orderActions, /ORDERS_CREATE_PERMISSION/);
+  assert.match(orderActions, /error instanceof ApiError/);
+  assert.match(orderActions, /\/orders\/new\?status=error&message=/);
   assert.doesNotMatch(orderActions, /resource: "ventas", action: "crear"/);
+
+  const orderStatusActions = read("apps/web/src/app/orders/actions.ts");
+  assert.match(orderStatusActions, /error instanceof ApiError/);
+  assert.match(orderStatusActions, /\/orders\?error=1&message=/);
+  assert.match(orderStatusActions, /deleteOrderAction[\s\S]*error instanceof ApiError/);
+  assert.match(orderStatusActions, /revalidateOrderFlow/);
 
   const newOrderPage = read("apps/web/src/app/orders/new/page.tsx");
   assert.match(newOrderPage, /active="orders"/);
+  assert.match(newOrderPage, /params\.status === "error"/);
+  assert.match(newOrderPage, /submitLabel="Crear pedido"/);
+  assert.match(newOrderPage, /Luego se entrega o cancela desde el registro/);
+  assert.doesNotMatch(newOrderPage, /Despues se confirma para stock/);
   assert.doesNotMatch(newOrderPage, /active="sales"/);
+
+  const orderStatusPage = read("apps/web/src/app/orders/page.tsx");
+  assert.match(orderStatusPage, /sessionAllows/);
+  assert.match(orderStatusPage, /const \[result, canEditOrders\] = await Promise\.all/);
+  assert.match(orderStatusPage, /isOpenOrder && canEditOrders/);
+  assert.match(orderStatusPage, /params\.error/);
+  assert.match(orderStatusPage, /No se pudo actualizar el estado del pedido/);
+  assert.match(orderStatusPage, /Revisar stock/);
+  assert.match(orderStatusPage, /value="entregado"[\s\S]*Entregado/);
+  assert.match(orderStatusPage, />\s*Cancelar\s*</);
+  assert.match(orderStatusPage, />\s*Modificar\s*</);
+  assert.match(orderStatusPage, />\s*Ver PDF\s*</);
+  assert.doesNotMatch(orderStatusPage, /value="confirmado"|Confirmar stock|ConfirmDeleteButton|Borrar pedido/);
+  assert.match(orderStatusPage, /key=\{`orders-status-\$\{result\.meta\.status \|\| "all"\}`\}/);
+
+  const stock = read("apps/web/src/lib/stock.ts");
+  assert.match(stock, /export async function assertSaleStockAvailableForConfirmation/);
+  assert.match(stock, /export async function discountSaleStockOnDelivery/);
+  assert.match(stock, /la entrega no se frena por saldo/);
+  assert.match(stock, /reserved_stock/);
+  assert.match(stock, /s\.id <> \$3::uuid/);
 
   const quotes = read("apps/web/src/lib/quotes.ts");
   assert.match(quotes, /collection_status, order_status, desired_document, notes,[\s\S]*stock_discounted, status, empresa_id/);
@@ -311,7 +357,15 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(purchasesPage, /purchaseViews[\s\S]*registro/);
   assert.match(purchasesPage, /redirect\("\/admin\/approvals"\)/);
   assert.match(purchasesPage, /<details className="rounded-\[8px\][\s\S]*Acciones[\s\S]*OC PDF[\s\S]*Devol\./);
+  assert.match(purchasesPage, /PurchaseReceiptUpload purchaseId=\{purchase\.id\}/);
+  assert.match(purchasesPage, /Acreditar compra/);
+  assert.match(purchasesPage, /canDeleteRecords[\s\S]*deletePurchaseAction/);
+  assert.doesNotMatch(purchasesPage, /Marcar revisado|type="file"/);
   assert.doesNotMatch(purchasesPage, /label="Tipo"|label="Estado inicial"|Cantidad opcional|title: "Solicitudes de compra"|purchase\.description \|\| purchase\.type|xl:grid-cols-\[minmax\(260px,1fr\)_minmax\(120px,150px\)_minmax\(140px,180px\)\]/);
+
+  const purchaseReceiptUpload = read("apps/web/src/app/purchases/purchase-receipt-upload.tsx");
+  assert.match(purchaseReceiptUpload, /event\.currentTarget\.form\?\.requestSubmit\(\)/);
+  assert.match(purchaseReceiptUpload, /Subir recibo/);
 
   const purchaseEntryFields = read("apps/web/src/app/purchases/purchase-entry-fields.tsx");
   assert.match(purchaseEntryFields, /name="productsJson"/);
@@ -336,6 +390,11 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(purchases, /product\.supplier_id !== input\.supplierId/);
   assert.match(purchases, /no corresponde al proveedor seleccionado/);
 
+  const salesSource = read("apps/web/src/lib/sales-source-sql.ts");
+  assert.match(salesSource, /DRIVE_SALES_SOURCE/);
+  assert.match(salesSource, /sale_date < DATE '\$\{DRIVE_SALES_CUTOFF\}'/);
+  assert.match(salesSource, /ENTREGAS MACRO/);
+
   const replenishment = read("apps/web/src/lib/replenishment.ts");
   assert.match(replenishment, /export async function getReplenishmentSuggestions/);
   assert.match(replenishment, /INTERVAL '90 days'/);
@@ -350,7 +409,11 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.match(replenishmentPage, /cubrir \$\{replenishment\.meta\.targetDays\} dias/);
   assert.match(replenishmentPage, /Mandar a nueva compra/);
   assert.match(replenishmentPage, /\/purchases\?view=nueva&mrpSupplier=/);
-  assert.doesNotMatch(replenishmentPage, /createReplenishmentPurchaseRequestAction/);
+  assert.match(replenishmentPage, /createReplenishmentPurchaseRequestAction/);
+  assert.match(
+    read("apps/web/src/app/purchases/replenishment/actions.ts"),
+    /export async function createReplenishmentPurchaseRequestAction/,
+  );
 
   const approvals = read("apps/web/src/lib/approvals.ts");
   assert.match(approvals, /ApprovalSource = "collection" \| "request" \| "purchase"/);
@@ -370,7 +433,7 @@ test("orders lifecycle follows cargado-confirmado-entregado and opens collection
   assert.doesNotMatch(databasePage, /EMPLOYEES_READ_PERMISSION|label: "Empleados"|href: "\/employees"|Empleados/);
 
   const ordersPage = read("apps/web/src/app/orders/page.tsx");
-  assert.match(ordersPage, /Ver documento/);
+  assert.match(ordersPage, /Ver PDF/);
   assert.match(ordersPage, /\/api\/pdfs\/orders\/\$\{order\.id\}\/document/);
   assert.match(ordersPage, /Modificar/);
   assert.match(ordersPage, /value="entregado"/);
@@ -474,6 +537,10 @@ test("order creation exposes the full legacy receipt type set", () => {
   assert.match(orderEntryFields, /ORDER_CREATION_RECEIPT_OPTIONS/);
   assert.match(orderEntryFields, /priceForList/);
   assert.match(orderEntryFields, /priceLists/);
+  assert.match(orderEntryFields, /Precio: \$\{formatCurrency\(priceForList\(product\.prices, activePriceList\)\)\}/);
+  assert.doesNotMatch(orderEntryFields, /if \(!product \|\| !selectedClient\) return null/);
+  assert.doesNotMatch(orderEntryFields, /draftProduct && selectedClient \? priceForList/);
+  assert.match(orderEntryFields, /El producto no tiene precio para la lista/);
   assert.doesNotMatch(orderEntryFields, /PRECIO 1/);
 
   assert.match(orders, /priceListOverride/);
@@ -488,6 +555,8 @@ test("order creation exposes the full legacy receipt type set", () => {
 
   const quoteEntryFields = read("apps/web/src/app/quotes/quote-entry-fields.tsx");
   assert.match(quoteEntryFields, /name="customerId"/);
+  assert.match(quoteEntryFields, /Cliente ocasional/);
+  assert.match(quoteEntryFields, /name="customerName"/);
   assert.match(quoteEntryFields, /name="productsJson"/);
   assert.match(quoteEntryFields, /priceForList/);
   assert.match(quoteEntryFields, /priceLists/);
@@ -496,12 +565,19 @@ test("order creation exposes the full legacy receipt type set", () => {
   assert.match(quoteEntryFields, /quickQuoteHref/);
   assert.match(quoteEntryFields, /<ButtonLink href=\{quickQuoteHref\}/);
   assert.match(quoteEntryFields, /Crear presupuesto formal/);
+  assert.match(quoteEntryFields, /name="vatRate"/);
+  assert.match(quoteEntryFields, /Sumar IVA 21%/);
+  assert.match(quoteEntryFields, /Sumar IVA 10,5%/);
   assert.doesNotMatch(quoteEntryFields, /window\.open/);
 
   const quotes = read("apps/web/src/lib/quotes.ts");
   assert.match(quotes, /resolveQuoteProductsFromCatalog/);
   assert.match(quotes, /dynamicPriceSqlExpression/);
   assert.match(quotes, /price_list_name/);
+  assert.match(quotes, /client_legal_name/);
+  assert.match(quotes, /calculateQuoteTotals/);
+  assert.match(quotes, /if \(!clientId\)[\s\S]*INSERT INTO clients/);
+  assert.match(quotes, /UPDATE quotes[\s\S]*client_id = \$4::uuid/);
 
   const catalogManagement = read("apps/web/src/lib/catalog-management.ts");
   assert.match(catalogManagement, /resolveCustomerPriceList/);
@@ -512,43 +588,52 @@ test("order creation exposes the full legacy receipt type set", () => {
 
   const billingPage = read("apps/web/src/app/billing/page.tsx");
   assert.match(billingPage, /<option value="c">Factura C<\/option>/);
+  assert.match(billingPage, /name="cliente"/);
 
   const salesAdmin = read("apps/web/src/lib/sales-admin.ts");
   assert.match(salesAdmin, /TYPE_CODES = new Set\(\[1, 2, 3, 6, 7, 8, 11, 12, 13\]\)/);
   assert.match(salesAdmin, /FROM sales_internal_documents sid/);
   assert.match(salesAdmin, /sid\.class_name = 'NC'/);
   assert.match(salesAdmin, /sid\.class_name = 'ND'/);
+  assert.match(salesAdmin, /filters\.customerName/);
 });
 
-test("informal commercial documents keep final unit prices and do not split VAT", () => {
+test("orders keep final prices while quotes can add optional VAT", () => {
   const orderEntryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
   assert.doesNotMatch(orderEntryFields, /receiptAddsVat|name="includeVat"|>\s*IVA\s*<|>\s*Neto\s*</);
   assert.match(orderEntryFields, /Subtotal productos/);
 
   const quoteEntryFields = read("apps/web/src/app/quotes/quote-entry-fields.tsx");
-  assert.doesNotMatch(quoteEntryFields, /receiptAddsVat|name="includeVat"|IVA:|Neto:|>\s*IVA\s*</);
-  assert.match(quoteEntryFields, /Precios unitarios finales/);
+  assert.match(quoteEntryFields, /name="includeVat"/);
+  assert.match(quoteEntryFields, /calculateQuoteTotals/);
+  assert.match(quoteEntryFields, /IVA \{String\(vatRate\)/);
   assert.match(quoteEntryFields, /Subtotal productos/);
 
   const quotesPage = read("apps/web/src/app/quotes/page.tsx");
-  assert.doesNotMatch(quotesPage, /DataTableHead align="right">IVA|quote\.vatAmount/);
+  assert.match(quotesPage, /DataTableHead align="right">IVA/);
+  assert.match(quotesPage, /quote\.vatAmount/);
+  assert.match(quotesPage, /quote\.quoteNumber/);
+  assert.doesNotMatch(quotesPage, />#\{quote\.id\}</);
   assert.match(quotesPage, /DataTableHead align="right">Subtotal/);
 
   const orders = read("apps/web/src/lib/orders.ts");
   assert.doesNotMatch(orders, /receiptAddsVat|money\(netAmount \* 0\.21\)|money\(subtotal \* 0\.21\)/);
   assert.match(orders, /0::text AS monto_iva/);
-  assert.match(orders, /confirmationTotalAmount = netAmount/);
+  assert.match(orders, /confirmationTotalAmount = money\(Number\(order\.total_amount\)\)/);
+  assert.match(orders, /normalizeStoredVatRate/);
 
   const quotes = read("apps/web/src/lib/quotes.ts");
-  assert.doesNotMatch(quotes, /receiptAddsVat|optionalBooleanField|body\.includeVat|money\(subtotal \* 0\.21\)/);
-  assert.match(quotes, /const total = subtotal/);
+  assert.match(quotes, /booleanValue\(body\.includeVat/);
+  assert.match(quotes, /calculateQuoteTotals/);
+  assert.match(quotes, /vat_rate/);
 
   const receiptTypes = read("apps/web/src/lib/receipt-types.ts");
   assert.doesNotMatch(receiptTypes, /receiptAddsVat/);
 
   const pdfDocuments = read("apps/web/src/lib/pdf/documents.ts");
-  assert.doesNotMatch(pdfDocuments, /Subtotal neto|Base imponible|quote\.includeVat|quote\.vatAmount/);
-  assert.match(pdfDocuments, /Documento no fiscal\. Precios unitarios finales/);
+  assert.match(pdfDocuments, /quote\.includeVat/);
+  assert.match(pdfDocuments, /quote\.vatAmount/);
+  assert.match(pdfDocuments, /quote\.quoteNumber/);
   assert.match(pdfDocuments, /\["IVA 21%"/);
 });
 
@@ -592,11 +677,9 @@ test("pricing lists use the L0-L3 normalized names and L2 as default anchor", ()
 
 test("admin sales edits cannot bypass the order lifecycle", () => {
   const salesAdmin = read("apps/web/src/lib/sales-admin.ts");
-  assert.match(salesAdmin, /function assertSaleOrderTransition/);
+  assert.match(salesAdmin, /orderStatusTransitionError/);
+  assert.match(salesAdmin, /assertSaleStockAvailableForConfirmation/);
   assert.match(salesAdmin, /applySaleOrderStatusTransition/);
-  assert.match(salesAdmin, /No se puede volver un pedido a cargado/);
-  assert.match(salesAdmin, /Solo los pedidos cargados pueden confirmarse/);
-  assert.match(salesAdmin, /Solo los pedidos confirmados pueden marcarse como entregados/);
   assert.match(salesAdmin, /collectionStatusForOrderStatus/);
   assert.match(salesAdmin, /orderIntegrationEventType/);
   assert.doesNotMatch(salesAdmin, /input\.target === "sale" && input\.field === "estado_pedido" && input\.value === "entregado"[\s\S]*UPDATE sales SET collection_status/);
@@ -606,8 +689,6 @@ test("sales reporting uses the canonical imported sales source", () => {
   const salesSourceSql = read("apps/web/src/lib/sales-source-sql.ts");
   assert.match(salesSourceSql, /ENTREGAS MACRO/);
   assert.match(salesSourceSql, /VENTAS ANUAL/);
-  assert.match(salesSourceSql, /2026-06-01/);
-  assert.match(salesSourceSql, /2026-06-29/);
   assert.match(salesSourceSql, /2026-07-01/);
 
   for (const path of [
@@ -721,7 +802,7 @@ test("form controls tolerate browser extension attributes during hydration", () 
     "apps/web/src/app/calendar/page.tsx",
     "apps/web/src/app/collections/register-collection-dialog.tsx",
     "apps/web/src/app/employees/page.tsx",
-    "apps/web/src/app/messages/page.tsx",
+    "apps/web/src/app/messages/messages-client.tsx",
     "apps/web/src/app/orders/page.tsx",
     "apps/web/src/app/orders/new/order-confirmation-preview.tsx",
     "apps/web/src/app/orders/new/order-entry-fields.tsx",
@@ -741,59 +822,187 @@ test("Escritorio previews up to 5 unread messages alongside pending tasks", () =
   assert.match(home, /\.filter\(\(message\) => !message\.read\)/);
   assert.match(home, /\.slice\(0, 5\)/);
   assert.match(home, /Mensajes sin leer/);
-  assert.match(home, /href="\/messages"/);
+  assert.match(home, /href=\{`\/messages\?message=\$\{message\.id\}`\}/);
+  assert.match(home, /Tareas delegadas/);
+  assert.match(home, /Delegada a \$\{task\.assignedTo\}/);
+  assert.match(home, /max-h-\[680px\].*overflow-y-auto/);
 });
 
-test("shared button variants stay blue for a consistent action system", () => {
+test("Mensajes is a single navigation entry without obsolete inbox or sent menus", () => {
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.match(
+    navigation,
+    /href: "\/messages",\s*label: "Mensajes",\s*active: "messages",\s*badge: "messages"/,
+  );
+  assert.doesNotMatch(navigation, /label: "Recibidos"/);
+  assert.doesNotMatch(navigation, /label: "Enviados"/);
+  assert.doesNotMatch(navigation, /messages\?box=/);
+});
+
+test("desktop sidebar contains wheel scrolling without moving the page", () => {
+  const modulePage = read("apps/web/src/components/module-page.tsx");
+  assert.match(modulePage, /lg:overflow-hidden lg:overscroll-none/);
+  assert.match(modulePage, /<aside className="[^"]*overflow-hidden overscroll-none/);
+  assert.match(modulePage, /min-h-0 flex-1 overflow-y-auto overscroll-none/);
+});
+
+test("reported ERP controls keep consistent spacing, dates, menus, and whole quantities", () => {
+  const home = read("apps/web/src/app/page.tsx");
+  const calendar = read("apps/web/src/app/calendar/page.tsx");
+  const format = read("apps/web/src/lib/format.ts");
+  const modulePage = read("apps/web/src/components/module-page.tsx");
+  const presence = read("apps/web/src/components/presence-indicator.tsx");
+  const messages = read("apps/web/src/app/messages/messages-client.tsx");
+  const orderFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
+  const orders = read("apps/web/src/lib/orders.ts");
+  const ordersPage = read("apps/web/src/app/orders/page.tsx");
+  const salesPage = read("apps/web/src/app/sales/page.tsx");
+
+  assert.doesNotMatch(home, /eyebrow="Inicio"/);
+  assert.match(home, /formatDateTime\(task\.deadline\)/);
+  assert.match(calendar, /formatDateTime\(task\.deadline\)/);
+  assert.doesNotMatch(calendar, /min-w-\[820px\]/);
+  assert.match(format, /export function formatDateTime/);
+  assert.match(format, /America\/Argentina\/Buenos_Aires/);
+
+  assert.match(modulePage, /flex h-10 max-w-\[360px\] items-center/);
+  assert.match(modulePage, /<LogoutButton className="h-10 min-h-10 px-4"/);
+  assert.match(presence, /flex h-10 items-center/);
+  assert.match(messages, /\[&>span\]:items-center \[&>span\]:justify-center/);
+  assert.match(messages, /style=\{\{ paddingInline: 0 \}\}/);
+  assert.match(messages, /block h-5 w-5 -translate-x-px/);
+
+  const globals = read("apps/web/src/app/globals.css");
+  assert.doesNotMatch(globals, /button,[\s\S]*summary \{\s*font: inherit;/);
+  assert.match(globals, /summary \{\s*font-family: inherit;\s*font-size: inherit;\s*line-height: inherit;/);
+
+  assert.match(orderFields, /<Card className="overflow-visible shadow-none">/);
+  assert.match(orderFields, /placeholder="Seleccionar producto"[\s\S]*compactOptions/);
+  assert.match(orderFields, /xl:grid-cols-\[minmax\(280px,1fr\)_120px_120px\]/);
+  assert.match(orderFields, /2xl:grid-cols-\[minmax\(320px,1fr\)_120px_120px_130px_130px_auto\]/);
+  assert.match(orderFields, /isWholeQuantityInput/);
+  assert.ok((orderFields.match(/step="1"/g) ?? []).length >= 2);
+  assert.doesNotMatch(orderFields, /min="0\.001"|step="0\.001"/);
+  assert.match(orders, /Number\.isInteger\(line\.quantity\)/);
+  assert.match(orders, /cantidad de cada producto debe ser un numero entero/);
+
+  assert.match(ordersPage, /appearance-none[\s\S]*text-sm font-semibold leading-5/);
+  assert.ok((ordersPage.match(/min-w-28 font-extrabold/g) ?? []).length >= 2);
+  assert.match(salesPage, /DataTableHead align="center"[^>]*>Comprobante<\/DataTableHead>/);
+  assert.match(salesPage, /DataTableCell align="center"[\s\S]*Ver PDF/);
+});
+
+test("message center groups messages into WhatsApp-style contact conversations with private attachments", () => {
+  const db = read("apps/web/src/lib/db.ts");
+  const page = read("apps/web/src/app/messages/page.tsx");
+  const client = read("apps/web/src/app/messages/messages-client.tsx");
+  const messages = read("apps/web/src/lib/messages.ts");
+  const attachments = read("apps/web/src/lib/message-attachments.ts");
+  const signRoute = read("apps/web/src/app/api/messages/attachments/sign/route.ts");
+  const downloadRoute = read("apps/web/src/app/api/messages/[messageId]/attachments/[attachmentId]/route.ts");
+  const migration = read("supabase/migrations/20260720212657_messaging_attachments.sql");
+
+  assert.match(page, /MessagesClient/);
+  assert.match(page, /initialContact/);
+  assert.match(page, /initialRevision=\{center\.meta\.revision\}/);
+  assert.match(page, /\.\.\.center\.inbox, \.\.\.center\.sent/);
+  assert.match(client, /Buscar o iniciar un chat/);
+  assert.match(client, /message-contact-search/);
+  assert.match(client, /selectedConversation/);
+  assert.match(client, /Chat con/);
+  assert.match(client, /markConversationReadAction/);
+  assert.match(client, /MESSAGE_REFRESH_INTERVAL_MS = 3_000/);
+  assert.match(client, /\/api\/messages\?mode=revision/);
+  assert.match(client, /revision !== revisionRef\.current/);
+  assert.match(client, /await refreshMessages\(signal\)/);
+  assert.match(client, /refreshWhenAvailable\(\)/);
+  assert.match(client, /visibilitychange/);
+  assert.match(client, /window\.addEventListener\("online"/);
+  assert.match(client, /refreshInFlightRef/);
+  assert.match(client, /Reconectando mensajes/);
+  assert.match(client, /credentials: "same-origin"/);
+  assert.match(client, /shiftKey/);
+  assert.match(client, /whitespace-pre-wrap break-words/);
+  assert.match(client, /aria-label="Adjuntar archivos"/);
+  assert.match(client, /aria-label=\{sending \? "Enviando mensaje" : "Enviar mensaje"\}/);
+  assert.match(client, /rounded-\[22px\][\s\S]*focus-within:ring-2/);
+  assert.doesNotMatch(client, /name="importance"/);
+  assert.doesNotMatch(client, />\s*Adjuntar\s*</);
+  assert.doesNotMatch(client, />\s*Enviar\s*</);
+  assert.match(client, /uploadToSignedUrl/);
+  assert.match(client, /MESSAGE_ATTACHMENT_MAX_FILES/);
+  assert.match(client, /attachment\.downloadUrl/);
+  assert.match(messages, /listMessageAttachments/);
+  assert.match(messages, /attachPreparedMessageUploads/);
+  assert.match(messages, /AND \(\$3::bigint IS NULL OR id = \$3\)/);
+  assert.match(messages, /export async function markConversationRead/);
+  assert.match(messages, /export async function getMessageCenterRevision/);
+  assert.ok((messages.match(/\{ cache: false \}/g) ?? []).length >= 4);
+  assert.match(db, /options: \{ cache\?: boolean \} = \{\}/);
+  assert.match(db, /const readOnly = isCacheableRead\(sql\)/);
+  assert.match(db, /options\.cache !== false && readOnly/);
+  assert.match(db, /else if \(!readOnly\)/);
+  assert.match(messages, /AND de = \$3/);
+  assert.match(attachments, /AND \(m\.de = \$4 OR m\.para = \$4\)/);
+  assert.match(attachments, /storageObjectInfo/);
+  assert.match(signRoute, /requireApiSession/);
+  assert.match(downloadRoute, /getMessageAttachment/);
+  assert.match(downloadRoute, /createSignedStorageUrl/);
+  const messagesRoute = read("apps/web/src/app/api/messages/route.ts");
+  assert.match(messagesRoute, /private, no-store, max-age=0/);
+  assert.match(messagesRoute, /messages\.read\.completed/);
+  assert.match(messagesRoute, /messages\.send\.completed/);
+  assert.match(messagesRoute, /Server-Timing/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.mensaje_adjuntos/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.mensaje_cargas/);
+  assert.match(migration, /mensaje_cargas_starlim_app_tenant/);
+  assert.match(migration, /mensaje_adjuntos_starlim_app_tenant/);
+  assert.ok((migration.match(/current_setting\('app\.current_empresa_id', true\)/g) ?? []).length >= 4);
+  assert.match(migration, /public = false/);
+  assert.match(migration, /20971520/);
+});
+
+test("shared button variants keep a consistent action hierarchy", () => {
   const button = read("apps/web/src/components/ui/button.tsx");
   assert.match(button, /const primaryButtonClass =[\s\S]*bg-\[color:var\(--accent\)\]/);
   assert.match(button, /const secondaryButtonClass =[\s\S]*bg-\[#1d4ed8\]/);
-  assert.match(button, /const outlineButtonClass =[\s\S]*bg-\[#dbeafe\]/);
-  assert.match(button, /const ghostButtonClass =[\s\S]*bg-\[#eff6ff\]/);
-  assert.match(button, /const dangerButtonClass =[\s\S]*bg-\[#073f94\]/);
-  assert.match(button, /const buttonSizeClass = "erp-text-body-sm min-h-\[var\(--control-height-md\)\] px-4"/);
+  assert.match(button, /const outlineButtonClass =[\s\S]*bg-white[\s\S]*text-\[#1755b8\]/);
+  assert.match(button, /const ghostButtonClass =[\s\S]*bg-transparent[\s\S]*text-\[#334155\]/);
+  assert.match(button, /const dangerButtonClass =[\s\S]*bg-\[#b91c1c\]/);
   assert.match(button, /primary: primaryButtonClass/);
   assert.match(button, /secondary: secondaryButtonClass/);
   assert.match(button, /ghost: ghostButtonClass/);
   assert.match(button, /outline: outlineButtonClass/);
   assert.match(button, /danger: dangerButtonClass/);
-  assert.match(button, /sm: buttonSizeClass/);
-  assert.match(button, /md: buttonSizeClass/);
-  assert.match(button, /lg: buttonSizeClass/);
-  assert.doesNotMatch(button, /bg-\[color:var\(--panel\)\]|bg-transparent|bg-\[color:var\(--danger\)\]/);
-  assert.doesNotMatch(button, /control-height-sm|control-height-lg|erp-text-caption|erp-text-body"/);
+  assert.match(button, /sm: "erp-text-body-sm min-h-\[var\(--control-height-sm\)\] px-3\.5"/);
+  assert.match(button, /md: "erp-text-body-sm min-h-\[var\(--control-height-md\)\] px-4"/);
+  assert.match(button, /lg: "erp-text-body min-h-\[var\(--control-height-lg\)\] px-5"/);
 
-  const sourcePaths = filesUnder("apps/web/src", (path) => path.endsWith(".tsx"));
-  const whiteButtonHits = [];
-  const whiteButtonPattern = /bg-white|bg-\[color:var\(--panel\)\]|bg-transparent|border border-\[color:var\(--border\)\]/;
-  const sizeOverrideHits = [];
-  const componentButtonPattern = /<Button(?:Link)?[\s\S]*?>/g;
-  const forbiddenSizeOverridePattern = /className=(?:"[^"]*(?:min-h-|px-[235]|text-xs|text-sm|text-\[)|\{`[^`]*(?:min-h-|px-[235]|text-xs|text-sm|text-\[))/;
+});
 
-  for (const path of sourcePaths) {
-    const source = read(path);
-    const lines = source.split(/\r?\n/);
-    lines.forEach((line, index) => {
-      if (!/<button|<Button|<ButtonLink/.test(line)) return;
-      if (whiteButtonPattern.test(line)) whiteButtonHits.push(`${path}:${index + 1}`);
-    });
-    let match;
-    while ((match = componentButtonPattern.exec(source))) {
-      const tag = match[0].replace(/\s+/g, " ");
-      if (forbiddenSizeOverridePattern.test(tag)) {
-        const line = source.slice(0, match.index).split(/\r?\n/).length;
-        sizeOverrideHits.push(`${path}:${line}`);
-      }
-    }
+test("shared tables stay compact, aligned and free of page-level HTML tables", () => {
+  const dataTable = read("apps/web/src/components/ui/data-table.tsx");
+  const toolbar = read("apps/web/src/components/ui/toolbar.tsx");
+  const pagination = read("apps/web/src/components/pagination-links.tsx");
+
+  assert.match(dataTable, /tabular-nums/);
+  assert.match(dataTable, /\[&>tr\]:h-10/);
+  assert.match(dataTable, /\[&>tr\]:h-\[52px\]/);
+  assert.match(dataTable, /first:pl-5 last:pr-5/);
+  assert.match(toolbar, /items-(?:start|center)/);
+  assert.match(pagination, /Mostrando/);
+  assert.match(pagination, /por pagina/);
+
+  for (const path of filesUnder("apps/web/src/app", (path) => path.endsWith(".tsx"))) {
+    assert.doesNotMatch(read(path), /<table\b|<thead\b|<tbody\b/, `${path} must use the shared DataTable`);
   }
-  assert.deepEqual(whiteButtonHits, [], "white, panel, or transparent button styling found");
-  assert.deepEqual(sizeOverrideHits, [], "button size override found");
 });
 
 test("billing uses real ARCA authorization state for invoices and fiscal notes", () => {
   assert.equal(existsSync(join(repoRoot, "migrations/035_sales_fiscal_authorization_state.sql")), true);
   assert.equal(existsSync(join(repoRoot, "migrations/036_sales_fiscal_receipt_identity.sql")), true);
   assert.equal(existsSync(join(repoRoot, "migrations/037_sales_internal_documents_fiscal_identity.sql")), true);
+  assert.equal(existsSync(join(repoRoot, "migrations/20260713220000_fiscal_issue_date_and_recent_sale_items.sql")), true);
   assert.equal(existsSync(join(repoRoot, "migrations/040_structured_supplier_purchase_tax_fields.sql")), true);
 
   const fiscal = read("apps/web/src/lib/fiscal.ts");
@@ -815,6 +1024,10 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.ok((fiscal.match(/fiscal_receipt_number = \$3::integer/g) ?? []).length >= 2);
   assert.ok((fiscal.match(/receipt_number = \$9::bigint/g) ?? []).length >= 2);
   assert.doesNotMatch(fiscal, /fiscal_receipt_number = \$3,\s*receipt_type = \$2,\s*receipt_number = \$3/);
+  assert.match(fiscal, /AS item_count/);
+  assert.match(fiscal, /sale\.itemCount <= 0/);
+  assert.match(fiscal, /La venta no tiene detalle de productos/);
+  assert.ok((fiscal.match(/fiscal_issue_date = COALESCE/g) ?? []).length >= 2);
 
   const arcaWsaa = read("apps/web/src/lib/arca/wsaa.ts");
   assert.match(arcaWsaa, /loginTicketRequest/);
@@ -841,6 +1054,8 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.match(arcaWsfe, /CbtesAsoc/);
   assert.match(arcaWsfe, /export async function findLastArcaAuthorizedReceipt/);
   assert.match(arcaWsfe, /export async function consultArcaAuthorizedReceipt/);
+  assert.match(arcaWsfe, /issueDate: arcaDateToIso\(invoiceDate\)/);
+  assert.match(arcaWsfe, /issueDate: arcaDateToIso\(tagContent\(detail, "CbteFch"\)\)/);
 
   const billingPage = read("apps/web/src/app/billing/page.tsx");
   assert.match(billingPage, /Registro de facturas/);
@@ -901,6 +1116,17 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.match(pdfDocuments, /QRCode\.toBuffer/);
   assert.match(pdfDocuments, /https:\/\/www\.arca\.gob\.ar\/fe\/qr\/\?p=/);
   assert.match(pdfDocuments, /tipoCodAut: "E"/);
+  assert.match(pdfDocuments, /issueDate: sale\.fiscal_issue_date/);
+  assert.match(pdfDocuments, /date: pdfDate\(sale\.fiscal_issue_date\)/);
+  assert.match(pdfDocuments, /Periodo: \$\{pdfDate\(sale\.sale_date\)\}/);
+  assert.match(pdfDocuments, /detail\.rows\.length === 0/);
+
+  const fiscalIntegrityMigration = read("migrations/20260713220000_fiscal_issue_date_and_recent_sale_items.sql");
+  assert.match(fiscalIntegrityMigration, /ADD COLUMN IF NOT EXISTS fiscal_issue_date date/);
+  assert.match(fiscalIntegrityMigration, /REM-2026-1069/);
+  assert.match(fiscalIntegrityMigration, /complete_sales/);
+  assert.match(fiscalIntegrityMigration, /WHERE s\.empresa_id = 1/);
+  assert.match(fiscalIntegrityMigration, /drive\.sale_items_backfilled/);
 
   const pdfRenderer = read("apps/web/src/lib/pdf/renderer.ts");
   assert.match(pdfRenderer, /size: "LETTER"/);
@@ -963,6 +1189,8 @@ test("security hardening stays enabled at the HTTP edge", () => {
   assert.match(nextConfig, /Content-Security-Policy/);
   assert.match(nextConfig, /frame-ancestors 'none'/);
   assert.match(nextConfig, /object-src 'none'/);
+  assert.match(nextConfig, /process\.env\.NODE_ENV === "development"/);
+  assert.match(nextConfig, /isDevelopment \? \["'unsafe-eval'"\] : \[\]/);
   assert.match(nextConfig, /Strict-Transport-Security/);
   assert.match(nextConfig, /X-Content-Type-Options/);
   assert.match(nextConfig, /Permissions-Policy/);
@@ -1172,7 +1400,7 @@ test("Auditoria screen surfaces the operational audit log", () => {
   assert.match(navigation, /groupByLabel\("Auditoria"\)/);
 });
 
-test("Recompra MRP groups by supplier and hands the detail to a prefilled nueva compra", () => {
+test("Recompra MRP groups by supplier and preserves both purchase request paths", () => {
   const page = read("apps/web/src/app/purchases/replenishment/page.tsx");
   // agrupa por proveedor y despliega el detalle
   assert.match(page, /<details/, "supplier boxes must be expandable");
@@ -1193,20 +1421,24 @@ test("Recompra MRP groups by supplier and hands the detail to a prefilled nueva 
   assert.match(entry, /initialSupplierId/);
   assert.match(entry, /initialLines/);
 
-  // el action por item ya no existe
+  // la solicitud directa por item convive con la compra agrupada y editable
   assert.equal(
     existsSync(join(webRoot, "src/app/purchases/replenishment/actions.ts")),
-    false,
-    "the per-item request action must be removed",
+    true,
+    "the per-item request action must stay available",
   );
+  assert.match(page, /createReplenishmentPurchaseRequestAction/);
 });
 
 test("Registro de ventas can edit and cancel a delivered sale", () => {
   const salesAdmin = read("apps/web/src/lib/sales-admin.ts");
   assert.match(salesAdmin, /nextStatus === "cancelado"/, "cancelling a delivered sale must be allowed");
   assert.match(salesAdmin, /restoreSaleStock/, "cancelling a delivered sale must return its stock");
-  assert.match(salesAdmin, /No se puede volver un pedido a cargado/, "other lifecycle locks stay");
-  assert.match(salesAdmin, /Solo los pedidos confirmados pueden marcarse como entregados/);
+  assert.match(salesAdmin, /orderStatusTransitionError/, "other lifecycle locks stay centralized");
+
+  const orderStatus = read("apps/web/src/lib/order-status.ts");
+  assert.match(orderStatus, /No se puede volver un pedido a cargado/);
+  assert.match(orderStatus, /Solo los pedidos cargados o confirmados pueden marcarse como entregados/);
 
   const stock = read("apps/web/src/lib/stock.ts");
   assert.match(stock, /export async function restoreSaleStock/);
@@ -1278,4 +1510,250 @@ test("cargar pedido and presupuestos quantity steppers move by whole units, not 
   assert.doesNotMatch(quoteEntryFields, /min="0\.001"/);
   const quoteQuantityStepCount = (quoteEntryFields.match(/step="1"/g) ?? []).length;
   assert.ok(quoteQuantityStepCount >= 2);
+});
+
+test("password recovery is visible, generic and backed by Supabase recovery tokens", () => {
+  const loginPage = read("apps/web/src/app/login/page.tsx");
+  const forgotPage = read("apps/web/src/app/forgot-password/page.tsx");
+  const resetPage = read("apps/web/src/app/reset-password/reset-password-form.tsx");
+  const recoveryRoute = read("apps/web/src/app/api/auth/password-recovery/route.ts");
+  const auth = read("apps/web/src/lib/auth.ts");
+
+  assert.match(loginPage, /href="\/forgot-password"/);
+  assert.match(forgotPage, /action="\/api\/auth\/password-recovery"/);
+  assert.match(forgotPage, /Si el correo está registrado/);
+  assert.match(recoveryRoute, /PASSWORD_RECOVERY_BODY_LIMIT_BYTES = 8 \* 1024/);
+  assert.match(recoveryRoute, /Si el correo esta registrado/);
+  assert.doesNotMatch(recoveryRoute, /profiles|usuario_empresa/);
+  assert.match(auth, /resetPasswordForEmail\(email, \{ redirectTo \}\)/);
+  assert.match(auth, /flowType: "implicit"/);
+  assert.match(resetPage, /window\.history\.replaceState/);
+  assert.match(resetPage, /supabase\.auth[\s\S]*\.setSession/);
+  assert.match(resetPage, /supabase\.auth\.updateUser\(\{ password \}\)/);
+  assert.match(resetPage, /signOut\(\{ scope: "global" \}\)/);
+  assert.match(resetPage, /MIN_PASSWORD_LENGTH = 8/);
+});
+
+test("catalog creation and stock operations stay on separate audited paths", () => {
+  const productsPage = read("apps/web/src/app/products/page.tsx");
+  const pricingPage = read("apps/web/src/app/pricing/page.tsx");
+  const inventory = read("apps/web/src/lib/inventory.ts");
+  const quoteMigration = read("supabase/migrations/20260722123457_quote_customers_vat_and_commercial_numbers.sql");
+  assert.match(quoteMigration, /client_legal_name text not null default ''/);
+  assert.match(quoteMigration, /vat_rate numeric\(4, 1\)/);
+  assert.match(quoteMigration, /add column if not exists commercial_number bigint/);
+  assert.match(quoteMigration, /P-' \|\| lpad/);
+  assert.match(quoteMigration, /ux_sales_empresa_commercial_number_not_null/);
+  assert.match(quoteMigration, /on public\.sales \(empresa_id, commercial_number\)/);
+  assert.match(quoteMigration, /sales_commercial_number_check/);
+  assert.match(quoteMigration, /quotes_customer_reference_check/);
+
+  const orders = read("apps/web/src/lib/orders.ts");
+  const quotes = read("apps/web/src/lib/quotes.ts");
+  assert.match(orders, /MAX\(commercial_number\)/);
+  assert.match(orders, /INSERT INTO sales \([\s\S]*sale_number, commercial_number/);
+  assert.match(orders, /COALESCE\(lpad\(s\.commercial_number::text, GREATEST\(4, length\(s\.commercial_number::text\)\)/);
+  assert.match(quotes, /MAX\(commercial_number\)/);
+  assert.match(quotes, /INSERT INTO sales \([\s\S]*sale_number, commercial_number/);
+
+  const catalogManagement = read("apps/web/src/lib/catalog-management.ts");
+
+  assert.doesNotMatch(productsPage, /createProductAction|Crear producto|Stock inicial/);
+  assert.match(pricingPage, /Nuevo producto/);
+  assert.match(pricingPage, /La existencia se administra por separado/);
+  assert.match(inventory, /INSERT INTO stock_movements/);
+  assert.match(inventory, /idempotency_key/);
+  assert.match(catalogManagement, /se modifica desde Entradas y salidas/);
+});
+
+test("stock exposes separate modification and information windows", () => {
+  const stockPage = read("apps/web/src/app/stock/page.tsx");
+  const stockWorkspace = read("apps/web/src/app/stock/stock-product-workspace.tsx");
+  const stockAdjustmentDialog = read("apps/web/src/app/stock/stock-adjustment-dialog.tsx");
+  const stockMovementForm = read("apps/web/src/app/stock/stock-movement-form.tsx");
+  const productsPage = read("apps/web/src/app/products/page.tsx");
+  const priceDetails = read("apps/web/src/app/products/product-price-details.tsx");
+  const catalog = read("apps/web/src/lib/catalog.ts");
+  const inventory = read("apps/web/src/lib/inventory.ts");
+
+  assert.match(stockPage, /Modificación de producto/);
+  assert.doesNotMatch(stockPage, /ButtonLink/);
+  assert.match(stockWorkspace, /Modificar stock/);
+  assert.match(stockWorkspace, /Ver detalle/);
+  assert.match(stockWorkspace, /Proveedor/);
+  assert.match(stockWorkspace, /compactOptions/);
+  assert.match(stockWorkspace, /Card className="overflow-visible"/);
+  assert.match(stockWorkspace, /aria-label="Acción del producto"/);
+  assert.match(stockWorkspace, /aria-haspopup="dialog"/);
+  assert.match(stockWorkspace, /setDialogOpen\(canEdit && Boolean\(nextProductId\)\)/);
+  assert.match(stockWorkspace, /lg:grid-cols-2/);
+  assert.match(stockWorkspace, /Disponible al elegir un producto/);
+  assert.doesNotMatch(stockWorkspace, /Seleccionar una opción|<Select/);
+  assert.doesNotMatch(stockWorkspace, /description: `\$\{product\.code/);
+  assert.match(stockAdjustmentDialog, /aria-modal="true"/);
+  assert.match(stockAdjustmentDialog, /role="dialog"/);
+  assert.match(stockAdjustmentDialog, /event\.key === "Escape"/);
+  assert.match(stockAdjustmentDialog, /quantityInput\.select\(\)/);
+  assert.match(stockMovementForm, /Agregar/);
+  assert.match(stockMovementForm, /Quitar/);
+  assert.match(stockMovementForm, /Corregir total/);
+  assert.match(stockMovementForm, /Nuevo stock final/);
+  assert.match(stockMovementForm, /Restar una unidad/);
+  assert.match(stockMovementForm, /Sumar una unidad/);
+  assert.match(stockMovementForm, /focus-within:border-\[color:var\(--border-strong\)\]/);
+  assert.match(stockMovementForm, /focus-visible:outline-none/);
+  assert.match(stockMovementForm, /style=\{\{ boxShadow: "none", outline: "none" \}\}/);
+  assert.doesNotMatch(stockMovementForm, /focus:border-\[color:var\(--accent\)\]/);
+  assert.match(stockMovementForm, /<fieldset[\s\S]*<legend[^>]*>Tipo de ajuste<\/legend>/);
+  assert.match(stockMovementForm, /aria-pressed=\{mode === stockMode\.value\}/);
+  assert.match(stockMovementForm, /grid-cols-3/);
+  assert.match(stockMovementForm, /sm:grid-cols-2/);
+  assert.match(stockMovementForm, /className="w-full" disabled=/);
+  assert.match(stockMovementForm, /Number\.isInteger\(parsedQuantity\)/);
+  assert.match(stockMovementForm, /step="1"/);
+  assert.doesNotMatch(stockMovementForm, /0\.001|step="0\.001"|inputMode="decimal"/);
+  assert.match(stockMovementForm, /Motivo del ajuste/);
+  assert.match(stockMovementForm, /Observaciones/);
+  assert.match(stockMovementForm, /maxLength=\{300\}/);
+  assert.match(stockMovementForm, /className="content-start"/);
+  assert.doesNotMatch(stockMovementForm, /Seleccionar una opción/);
+  assert.doesNotMatch(`${stockAdjustmentDialog}\n${stockMovementForm}`, /precio actual|nuevo precio|actualizar precio/i);
+  assert.match(inventory, /Number\.isInteger\(quantity\)/);
+  assert.match(inventory, /La cantidad debe ser un numero entero/);
+  assert.match(read("apps/web/src/lib/stock-import.ts"), /la cantidad debe ser un numero entero/);
+  assert.match(productsPage, /Información de stock/);
+  assert.doesNotMatch(productsPage, /href="\/stock(?:\?|\")/);
+  assert.match(productsPage, /Cantidad/);
+  assert.match(priceDetails, /Ganancia/);
+  assert.match(priceDetails, /% sobre costo/);
+  assert.match(catalog, /jsonb_agg/);
+  assert.match(catalog, /margenes_listas/);
+  assert.doesNotMatch(inventory, /p\.description/);
+});
+
+test("operational record deletion is restricted to explicitly granted profiles", () => {
+  const routeAuth = read("apps/web/src/lib/route-auth.ts");
+  assert.match(routeAuth, /OPERATIONAL_RECORDS_DELETE_PERMISSION/);
+  assert.match(routeAuth, /ap\.sensitive = TRUE/);
+  assert.match(routeAuth, /sessionCanDeleteOperationalRecords/);
+  assert.match(routeAuth, /requireOperationalRecordDeletePermission/);
+
+  const purchases = read("apps/web/src/lib/purchases.ts");
+  assert.match(purchases, /export async function deletePurchase\(session: AuthSession/);
+  assert.match(purchases, /purchase\.deleted/);
+  assert.match(purchases, /pago conciliado y no puede borrarse/);
+
+  const sales = read("apps/web/src/lib/sales-admin.ts");
+  assert.match(sales, /export async function deleteSale\(session: AuthSession/);
+  assert.match(sales, /comprobante fiscal autorizado y no puede borrarse/);
+  assert.match(sales, /cobro conciliado y no puede borrarse/);
+  assert.match(sales, /sale\.deleted/);
+
+  for (const path of ["apps/web/src/app/sales/page.tsx", "apps/web/src/app/purchases/page.tsx"]) {
+    const page = read(path);
+    assert.match(page, /ConfirmDeleteButton/);
+    assert.match(page, /canDeleteRecords/);
+  }
+
+  const ordersPage = read("apps/web/src/app/orders/page.tsx");
+  assert.doesNotMatch(ordersPage, /ConfirmDeleteButton|canDeleteRecords|Borrar pedido/);
+
+  const salesActions = read("apps/web/src/app/sales/actions.ts");
+  assert.match(salesActions, /deleteSaleAction[\s\S]*error instanceof ApiError/);
+  assert.match(salesActions, /\/sales\?error=1&message=/);
+  assert.match(read("apps/web/src/app/sales/page.tsx"), /No se pudo borrar la venta/);
+});
+
+test("project flow diagram stays aligned with active ERP flows and smoke coverage", () => {
+  const diagram = read("docs/project-flow.md");
+  assert.ok((diagram.match(/```mermaid/g) ?? []).length >= 8);
+  assert.match(diagram, /Arquitectura general/);
+  assert.match(diagram, /Flujo de autenticacion y autorizacion/);
+  assert.match(diagram, /Flujo operativo comercial/);
+  assert.match(diagram, /Flujo operativo de compras, stock y pagos proveedor/);
+  assert.match(diagram, /Flujo de datos multiempresa/);
+  assert.match(diagram, /Flujo de APIs privadas/);
+  assert.match(diagram, /mensajes, tareas y seguimiento/);
+
+  const sourceByLabel = {
+    "auth.ts": "apps/web/src/lib/auth.ts",
+    "session-token.ts": "apps/web/src/lib/session-token.ts",
+    "proxy.ts": "apps/web/src/proxy.ts",
+    "navigation.ts": "apps/web/src/lib/navigation.ts",
+    "route-auth.ts": "apps/web/src/lib/route-auth.ts",
+    "db.ts": "apps/web/src/lib/db.ts",
+    "orders": "apps/web/src/lib/orders.ts",
+    "quotes": "apps/web/src/lib/quotes.ts",
+    "purchases": "apps/web/src/lib/purchases.ts",
+    "collections": "apps/web/src/lib/collections.ts",
+    "messages": "apps/web/src/lib/messages.ts",
+    "storage.ts": "apps/web/src/lib/storage.ts",
+  };
+
+  for (const [label, path] of Object.entries(sourceByLabel)) {
+    assert.equal(existsSync(join(repoRoot, path)), true, `${label} source file is missing`);
+    assert.match(diagram, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${label} missing from diagram`);
+  }
+
+  for (const table of [
+    "profiles",
+    "usuario_empresa",
+    "empresas",
+    "clients",
+    "products",
+    "quotes",
+    "quote_items",
+    "sales",
+    "sale_items",
+    "purchases",
+    "purchase_items",
+    "payments",
+    "current_account_movements",
+    "stock_movements",
+    "mensajes",
+    "recordatorios",
+    "tareas_asignadas",
+  ]) {
+    assert.match(diagram, new RegExp(`\\b${table}\\b`), `${table} missing from flow diagram`);
+  }
+
+  const smoke = read("apps/web/scripts/smoke.mjs");
+  for (const endpoint of [
+    "/api/health",
+    "/api/auth/me",
+    "/api/admin/metrics",
+    "/api/orders?pageSize=1",
+    "/api/quotes?status=pendiente",
+    "/api/customers?pageSize=1",
+    "/api/products?pageSize=1",
+    "/api/suppliers",
+    "/api/pricing/price-lists",
+    "/api/purchases",
+    "/api/admin/accounts-payable",
+    "/api/collections/pending",
+    "/api/admin/cashflow",
+    "/api/messages",
+    "/api/tasks",
+    "/api/customers/follow-up",
+  ]) {
+    assert.match(smoke, new RegExp(endpoint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${endpoint} missing from smoke flow coverage`);
+  }
+
+  assert.match(smoke, /STARLIM_SMOKE_MAX_LATENCY_MS/);
+  assert.match(smoke, /admin read smoke covers every documented project flow within latency budgets/);
+});
+
+test("local products preview is development-only and isolated from real data", () => {
+  const previewPage = read("apps/web/src/app/preview/products/page.tsx");
+  const previewClient = read("apps/web/src/app/preview/products/products-preview.tsx");
+
+  assert.match(previewPage, /process\.env\.NODE_ENV !== "development"/);
+  assert.match(previewPage, /notFound\(\)/);
+  assert.match(previewPage, /force-dynamic/);
+  assert.match(previewPage, /index: false/);
+  assert.match(previewClient, /Datos ficticios/);
+  assert.match(previewClient, /SAMPLE_PRODUCTS/);
+  assert.doesNotMatch(previewClient, /@\/lib\/(?:auth|catalog|db|inventory|stock)/);
+  assert.doesNotMatch(previewClient, /\/api\//);
+  assert.doesNotMatch(previewClient, /<form|action=/);
 });

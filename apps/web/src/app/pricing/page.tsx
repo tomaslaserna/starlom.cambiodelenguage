@@ -27,13 +27,39 @@ import {
   updateMultiplierAction,
   upsertRubricAction,
 } from "@/app/pricing/actions";
+import {
+  createProductAction,
+  importProductCodesCsvAction,
+  importProductsCsvAction,
+} from "@/app/products/actions";
 import { listMargins, listPriceLists, listRubrics, marginFieldLabel } from "@/lib/pricing";
 import { requireStaffSession } from "@/lib/auth";
-import { sessionCanReadProducts } from "@/lib/route-auth";
+import {
+  isFullAccessRole,
+  PRODUCTS_CREATE_PERMISSION,
+  sessionAllows,
+  sessionCanReadProducts,
+} from "@/lib/route-auth";
 
-export default async function PricingPage() {
+type PricingPageProps = {
+  searchParams: Promise<{
+    mode?: string;
+    created?: string;
+    inserted?: string;
+    processed?: string;
+    skipped?: string;
+    updated?: string;
+  }>;
+};
+
+export default async function PricingPage({ searchParams }: PricingPageProps) {
   const session = await requireStaffSession();
   if (!(await sessionCanReadProducts(session))) redirect("/");
+  const params = await searchParams;
+  const canCreateProducts = await sessionAllows(session, [PRODUCTS_CREATE_PERMISSION]);
+  const canImportCatalog = isFullAccessRole(session.role);
+  if (params.mode === "new-product" && !canCreateProducts) redirect("/pricing");
+  if (params.mode === "bulk" && !canImportCatalog) redirect("/pricing");
 
   const [margins, priceLists, rubrics] = await Promise.all([
     listMargins(session.companyId),
@@ -59,6 +85,19 @@ export default async function PricingPage() {
               <ButtonLink href="/pricing/offers" size="sm" variant="secondary">
                 Ofertas
               </ButtonLink>
+              {canCreateProducts ? (
+                <ButtonLink href="/pricing?mode=new-product" size="sm" variant="secondary">
+                  Nuevo producto
+                </ButtonLink>
+              ) : null}
+              {canImportCatalog ? (
+                <ButtonLink href="/pricing?mode=bulk" size="sm" variant="secondary">
+                  Importar catalogo
+                </ButtonLink>
+              ) : null}
+              <ButtonLink href="/products" size="sm" variant="secondary">
+                Existencias
+              </ButtonLink>
               <ButtonLink href="/api/pdfs/pricing/price-list?list=2" prefetch={false} size="sm" target="_blank">
                 Lista PDF
               </ButtonLink>
@@ -71,6 +110,94 @@ export default async function PricingPage() {
           <StatCard label="Listas activas" value={activeLists.length} />
           <StatCard label="Rubros" value={rubrics.length} />
         </div>
+
+        {params.created ? (
+          <div className="rounded-[var(--radius-md)] border border-[color:var(--success)] bg-[color:var(--success-subtle)] p-3 text-sm font-semibold text-[color:var(--success)]" role="status">
+            Producto creado en el catalogo. El stock inicial se registra desde Entradas y salidas.
+          </div>
+        ) : null}
+
+        {params.mode === "new-product" ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Nuevo producto</CardTitle>
+              <CardDescription>
+                Alta de articulo, codigo y costo. La existencia se administra por separado para conservar el historial.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form action={createProductAction} className="grid gap-4 lg:grid-cols-2">
+                <Field htmlFor="product-name" label="Nombre" required>
+                  <Input id="product-name" name="name" required />
+                </Field>
+                <Field htmlFor="product-sku" label="Codigo / SKU" description="Debe ser unico si se informa.">
+                  <Input id="product-sku" name="sku" />
+                </Field>
+                <Field htmlFor="product-code" label="Categoria de precio" required>
+                  <Select id="product-code" name="code" required>
+                    {margins.map((margin) => (
+                      <option key={margin.code} value={margin.code}>
+                        {margin.code} - {margin.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field htmlFor="product-cost" label="Costo" required>
+                  <Input id="product-cost" min="0.01" name="cost" required step="0.01" type="number" />
+                </Field>
+                <Field className="lg:col-span-2" htmlFor="product-provider" label="Proveedor">
+                  <Input id="product-provider" name="provider" placeholder="Nombre exacto del proveedor" />
+                </Field>
+                <div className="lg:col-span-2 flex flex-wrap gap-2">
+                  <Button type="submit">Crear producto</Button>
+                  <ButtonLink href="/stock" variant="secondary">
+                    Ir a movimientos de stock
+                  </ButtonLink>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {params.mode === "bulk" ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Importar productos CSV</CardTitle>
+                <CardDescription>
+                  Crea articulos, costos y proveedores. Las columnas de stock no se aplican aqui: usa la carga masiva de Stock.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form action={importProductsCsvAction} className="grid gap-3">
+                  <Field htmlFor="products-csv" label="Archivo CSV">
+                    <Input accept=".csv,text/csv" id="products-csv" name="csv_file" required type="file" />
+                  </Field>
+                  <Button type="submit">Importar catalogo</Button>
+                </form>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Actualizar categorias CSV</CardTitle>
+                <CardDescription>Actualiza las categorias de precio sin tocar cantidades de stock.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form action={importProductCodesCsvAction} className="grid gap-3">
+                  <Field htmlFor="codes-csv" label="Archivo CSV">
+                    <Input accept=".csv,text/csv" id="codes-csv" name="csv_file" required type="file" />
+                  </Field>
+                  <Button type="submit" variant="secondary">Actualizar categorias</Button>
+                </form>
+              </CardContent>
+            </Card>
+            {params.processed ? (
+              <div className="rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-3 text-sm xl:col-span-2">
+                Procesadas: {params.processed}. Insertadas: {params.inserted ?? "0"}. Actualizadas: {params.updated ?? "0"}. Omitidas: {params.skipped ?? "0"}.
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="grid gap-4 xl:grid-cols-2">
           <Card>

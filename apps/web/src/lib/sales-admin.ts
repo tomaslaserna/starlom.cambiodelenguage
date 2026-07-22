@@ -6,13 +6,19 @@ import {
   ORDER_STATUSES,
   normalizeOrderStatusValue,
   normalizedOrderStatusSql,
+  orderStatusTransitionError,
   type OrderStatus,
 } from "@/lib/order-status";
 import { parsePagination } from "@/lib/pagination";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
-import { discountSaleStockIfAvailable, restoreSaleStock } from "@/lib/stock";
+import {
+  assertSaleStockAvailableForConfirmation,
+  discountSaleStockOnDelivery,
+  restoreSaleStock,
+} from "@/lib/stock";
 import type { PoolClient } from "pg";
+import { requireOperationalRecordDeletePermission } from "@/lib/route-auth";
 
 const ORDER_STATES = new Set<string>(ORDER_STATUSES);
 const TRACKING_STATES = new Set(["facturada", "no_facturada"]);
@@ -47,6 +53,10 @@ function currentPeriod(period: string | null) {
 function parseMaybeDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ApiError(400, "Fecha invalida");
   return value;
+}
+
+function searchPattern(value: string) {
+  return `%${value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
 }
 
 function normalizeSaleEditValue(type: string, raw: string, label: string) {
@@ -99,28 +109,7 @@ const SALE_DB_FIELDS: Record<SaleEditField, string> = {
 };
 
 async function discountSaleStock(client: PoolClient, companyId: number, saleId: string) {
-  return discountSaleStockIfAvailable(client, companyId, saleId, `Descuento admin por venta ${saleId}`);
-}
-
-function assertSaleOrderTransition(currentStatus: OrderStatus, nextStatus: OrderStatus) {
-  if (currentStatus === nextStatus) {
-    throw new ApiError(400, `El pedido ya esta en '${currentStatus}'.`);
-  }
-  if (currentStatus === "cancelado") {
-    throw new ApiError(400, `El pedido ya esta cancelado y no puede modificarse.`);
-  }
-  if (currentStatus === "entregado" && nextStatus !== "cancelado") {
-    throw new ApiError(400, `El pedido ya esta entregado y no puede modificarse.`);
-  }
-  if (nextStatus === "cargado") {
-    throw new ApiError(400, "No se puede volver un pedido a cargado.");
-  }
-  if (nextStatus === "confirmado" && currentStatus !== "cargado") {
-    throw new ApiError(400, "Solo los pedidos cargados pueden confirmarse.");
-  }
-  if (nextStatus === "entregado" && currentStatus !== "confirmado") {
-    throw new ApiError(400, "Solo los pedidos confirmados pueden marcarse como entregados.");
-  }
+  return discountSaleStockOnDelivery(client, companyId, saleId, `Descuento admin por venta ${saleId}`);
 }
 
 function collectionStatusForOrderStatus(status: OrderStatus) {
@@ -155,7 +144,12 @@ async function applySaleOrderStatusTransition(
   if (!current) throw new ApiError(404, "Venta no encontrada");
 
   const currentStatus = normalizeOrderStatusValue(current.estado_pedido);
-  assertSaleOrderTransition(currentStatus, nextStatus);
+  const transitionError = orderStatusTransitionError(currentStatus, nextStatus);
+  if (transitionError) throw new ApiError(400, transitionError);
+
+  if (nextStatus === "confirmado") {
+    await assertSaleStockAvailableForConfirmation(client, session.companyId, saleId);
+  }
 
   let stockDiscounted = false;
   if (nextStatus === "entregado") {
@@ -427,6 +421,101 @@ export async function updateSalesAdminRecord(session: AuthSession, id: string, b
   });
 }
 
+export async function deleteSale(session: AuthSession, id: string) {
+  await requireOperationalRecordDeletePermission(session);
+
+  return withCompanyContext(session.companyId, async (client) => {
+    const saleResult = await client.query<{
+      snapshot: Record<string, unknown>;
+      sale_label: string;
+      fiscalized: boolean;
+    }>(
+      `
+        SELECT to_jsonb(s) AS snapshot,
+               'Venta #' || COALESCE(
+                 CASE
+                   WHEN s.commercial_number IS NOT NULL
+                     THEN lpad(s.commercial_number::text, GREATEST(4, length(s.commercial_number::text)), '0')
+                 END,
+                 CASE
+                   WHEN COALESCE(s.sale_number, '') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+                     THEN NULLIF(s.sale_number, '')
+                 END,
+                 s.receipt_number::text,
+                 'sin numero'
+               ) ||
+                 ' - ' || COALESCE(NULLIF(s.client_name, ''), 'sin cliente') AS sale_label,
+               COALESCE(s.cae, '') <> '' OR COALESCE(s.invoice_cae, '') <> '' OR
+                 COALESCE(s.fiscal_status, '') = 'aprobado' OR
+                 COALESCE(s.invoice_authorization_status, '') = 'aprobado' AS fiscalized
+        FROM sales s
+        WHERE s.id = $1::uuid AND s.empresa_id = $2
+        FOR UPDATE
+      `,
+      [id, session.companyId],
+    );
+    const sale = saleResult.rows[0];
+    if (!sale) throw new ApiError(404, "Venta o pedido no encontrado");
+    if (sale.fiscalized) {
+      throw new ApiError(409, "La venta tiene un comprobante fiscal autorizado y no puede borrarse");
+    }
+
+    const reconciled = await client.query(
+      `
+        SELECT 1
+        FROM admin_bank_reconciliation_matches match
+        JOIN payments payment ON payment.id = match.payment_id
+        WHERE payment.sale_id = $1::uuid
+          AND payment.empresa_id = $2
+        LIMIT 1
+      `,
+      [id, session.companyId],
+    );
+    if (reconciled.rows[0]) {
+      throw new ApiError(409, "La venta tiene un cobro conciliado y no puede borrarse");
+    }
+
+    await client.query(
+      `
+        DELETE FROM current_account_movements
+        WHERE empresa_id = $2
+          AND (sale_id = $1::uuid OR payment_id IN (
+            SELECT id FROM payments WHERE sale_id = $1::uuid AND empresa_id = $2
+          ))
+      `,
+      [id, session.companyId],
+    );
+    await client.query("DELETE FROM payments WHERE sale_id = $1::uuid AND empresa_id = $2", [id, session.companyId]);
+    await client.query("DELETE FROM sale_documents WHERE sale_id = $1::uuid AND empresa_id = $2", [id, session.companyId]);
+    await client.query(
+      `
+        DELETE FROM stock_movements
+        WHERE empresa_id = $2
+          AND (sale_id = $1::uuid OR order_id IN (
+            SELECT id FROM orders WHERE sale_id = $1::uuid AND empresa_id = $2
+          ))
+      `,
+      [id, session.companyId],
+    );
+    await client.query("DELETE FROM orders WHERE sale_id = $1::uuid AND empresa_id = $2", [id, session.companyId]);
+    await client.query(
+      `
+        INSERT INTO sales_admin_audit (employee, sale_id, sale_label, action, changes, empresa_id)
+        VALUES ($1, $2, $3, 'eliminacion', $4, $5)
+      `,
+      [session.username, id, sale.sale_label, JSON.stringify([{ accion: "Registro eliminado" }]), session.companyId],
+    );
+    await client.query("DELETE FROM sales WHERE id = $1::uuid AND empresa_id = $2", [id, session.companyId]);
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, old_data, empresa_id) VALUES ($1, 'sale.deleted', 'sales', $2, $3, $4)",
+      [session.userId, id, sale.snapshot, session.companyId],
+    );
+
+    clearReadQueryCache();
+    return { id };
+  });
+}
+
 export async function listSalesAdminAudit(companyId: number) {
   const result = await queryWithCompanyContext<{
     id: string;
@@ -467,6 +556,7 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     pageSize: searchParams.get("pageSize") ?? searchParams.get("limite"),
   });
   const filters = {
+    customerName: (searchParams.get("cliente") ?? "").trim(),
     taxId: (searchParams.get("nro_id") ?? "").replace(/\D/g, ""),
     receiptNumber: searchParams.get("nro_factura") ?? "",
     receiptType: (searchParams.get("tipo_factura") ?? "").toLowerCase(),
@@ -493,6 +583,11 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
 
   if (filters.taxId) {
     saleConditions.push(`regexp_replace(COALESCE(v.client_document, ''), '[^0-9]', '', 'g') = ${pushParam(filters.taxId)}`);
+  }
+  if (filters.customerName) {
+    saleConditions.push(
+      `COALESCE(v.client_name, '') ILIKE ${pushParam(searchPattern(filters.customerName))} ESCAPE '\\'`,
+    );
   }
   if (filters.receiptNumber) {
     saleConditions.push(`COALESCE(v.fiscal_receipt_number, v.receipt_number, 0)::text LIKE ${pushParam(`%${filters.receiptNumber.replace(/^0+/, "") || "0"}%`)}`);
@@ -623,6 +718,11 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     ];
     if (filters.taxId) {
       deliveryConditions.push(`regexp_replace(COALESCE(r.client_document, ''), '[^0-9]', '', 'g') = ${pushParam(filters.taxId)}`);
+    }
+    if (filters.customerName) {
+      deliveryConditions.push(
+        `COALESCE(r.client_name, '') ILIKE ${pushParam(searchPattern(filters.customerName))} ESCAPE '\\'`,
+      );
     }
     for (const [key, expression] of [
       ["day", "EXTRACT(DAY FROM r.delivery_date)"],

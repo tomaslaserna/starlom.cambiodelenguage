@@ -14,10 +14,12 @@ import {
   EMPLOYEES_READ_PERMISSION,
   ORDERS_CREATE_PERMISSION,
   ORDERS_READ_PERMISSION,
+  PRODUCTS_CREATE_PERMISSION,
   PRODUCTS_READ_PERMISSION,
   PURCHASES_READ_PERMISSION,
   QUOTES_READ_PERMISSION,
   SALES_READ_PERMISSION,
+  STOCK_EDIT_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
   sessionAllows,
   sessionCanApproveCollections,
@@ -134,6 +136,8 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       { href: "/prices", label: "Precios", active: "database", permission: PRODUCTS_READ_PERMISSION },
       { href: "/pricing", label: "Margenes y listas", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/pricing?mode=new-product", label: "Nuevo producto", active: "pricing", permission: PRODUCTS_CREATE_PERMISSION },
+      { href: "/pricing?mode=bulk", label: "Importar catalogo", active: "pricing", permission: PRODUCTS_CREATE_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/customers/follow-up", label: "Seguimiento clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/suppliers", label: "Proveedores", active: "database", permission: SUPPLIERS_READ_PERMISSION },
@@ -143,9 +147,9 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Stock",
     active: "stock",
     items: [
-      { href: "/products", label: "Cambiar stock", active: "stock", permission: PRODUCTS_READ_PERMISSION },
-      { href: "/products?mode=new", label: "Nuevo stock", active: "stock", permission: PRODUCTS_READ_PERMISSION },
-      { href: "/products?mode=bulk", label: "Carga masiva", active: "stock", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/stock", label: "Modificar productos", active: "stock", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/products", label: "Información de stock", active: "stock", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/stock?mode=bulk", label: "Carga masiva", active: "stock", permission: STOCK_EDIT_PERMISSION },
     ],
   },
   {
@@ -219,14 +223,10 @@ export const navigationGroups: NavigationGroup[] = [
   },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   {
+    href: "/messages",
     label: "Mensajes",
     active: "messages",
     badge: "messages",
-    items: [
-      { href: "/messages", label: "Recibidos", active: "messages", badge: "messages" },
-      { href: "/messages?box=sent", label: "Enviados", active: "messages" },
-      { href: "/messages?box=drafts", label: "Borradores", active: "messages" },
-    ],
   },
 ];
 

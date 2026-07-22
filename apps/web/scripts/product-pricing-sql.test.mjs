@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { priceSqlExpression } from "../src/lib/product-pricing-sql.ts";
+import { calculateProductProfit } from "../src/lib/product-profit.ts";
 
 test("priceSqlExpression: lista 4 heredada usa Minorista", () => {
   const expr3 = priceSqlExpression("3");
@@ -15,4 +16,10 @@ test("priceSqlExpression: listas 0, 1, 2 y revendedor siguen usando su propia co
   assert.match(priceSqlExpression("1"), /m\.precio_1/);
   assert.match(priceSqlExpression("2"), /m\.precio_2/);
   assert.match(priceSqlExpression("rev"), /m\.margen_minorista/);
+});
+
+test("calculateProductProfit: informa ganancia y porcentaje sobre costo", () => {
+  assert.deepEqual(calculateProductProfit(100, 145), { amount: 45, percentOnCost: 45 });
+  assert.deepEqual(calculateProductProfit(80, 60), { amount: -20, percentOnCost: -25 });
+  assert.deepEqual(calculateProductProfit(0, 120), { amount: 120, percentOnCost: null });
 });

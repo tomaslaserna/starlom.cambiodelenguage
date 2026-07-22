@@ -4,6 +4,7 @@ import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { localDateIso } from "@/lib/timezone";
 import { storageDownloadUrl } from "@/lib/storage";
+import { requireOperationalRecordDeletePermission } from "@/lib/route-auth";
 
 type PurchaseItem = {
   productId: string;
@@ -437,19 +438,53 @@ export async function updatePurchaseStatus(companyId: number, id: string, status
   return getPurchase(companyId, id);
 }
 
-export async function deletePurchase(companyId: number, id: string) {
-  await queryWithCompanyContext(
-    companyId,
-    "DELETE FROM purchase_items WHERE purchase_id = $1 AND empresa_id = $2",
-    [id, companyId],
-  );
-  const result = await queryWithCompanyContext<{ id: string }>(
-    companyId,
-    "DELETE FROM purchases WHERE id = $1 AND empresa_id = $2 RETURNING id",
-    [id, companyId],
-  );
-  if (!result.rows[0]) throw new ApiError(404, "Compra no encontrada");
-  return { id };
+export async function deletePurchase(session: AuthSession, id: string) {
+  await requireOperationalRecordDeletePermission(session);
+
+  return withCompanyContext(session.companyId, async (client) => {
+    const purchaseResult = await client.query<{ snapshot: Record<string, unknown> }>(
+      "SELECT to_jsonb(p) AS snapshot FROM purchases p WHERE p.id = $1::uuid AND p.empresa_id = $2 FOR UPDATE",
+      [id, session.companyId],
+    );
+    const purchase = purchaseResult.rows[0];
+    if (!purchase) throw new ApiError(404, "Compra no encontrada");
+
+    const reconciled = await client.query(
+      `
+        SELECT 1
+        FROM admin_bank_reconciliation_matches match
+        JOIN payments payment ON payment.id = match.payment_id
+        WHERE payment.purchase_id = $1::uuid
+          AND payment.empresa_id = $2
+        LIMIT 1
+      `,
+      [id, session.companyId],
+    );
+    if (reconciled.rows[0]) {
+      throw new ApiError(409, "La compra tiene un pago conciliado y no puede borrarse");
+    }
+
+    await client.query(
+      `
+        DELETE FROM current_account_movements
+        WHERE empresa_id = $2
+          AND (purchase_id = $1::uuid OR payment_id IN (
+            SELECT id FROM payments WHERE purchase_id = $1::uuid AND empresa_id = $2
+          ))
+      `,
+      [id, session.companyId],
+    );
+    await client.query("DELETE FROM payments WHERE purchase_id = $1::uuid AND empresa_id = $2", [id, session.companyId]);
+    await client.query("DELETE FROM stock_movements WHERE purchase_id = $1::uuid AND empresa_id = $2", [id, session.companyId]);
+    await client.query("DELETE FROM purchase_items WHERE purchase_id = $1::uuid AND empresa_id = $2", [id, session.companyId]);
+    await client.query("DELETE FROM purchases WHERE id = $1::uuid AND empresa_id = $2", [id, session.companyId]);
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, old_data, empresa_id) VALUES ($1, 'purchase.deleted', 'purchases', $2, $3, $4)",
+      [session.userId, id, purchase.snapshot, session.companyId],
+    );
+
+    return { id };
+  });
 }
 
 export function packageReviewFromBody(body: RequestBody) {

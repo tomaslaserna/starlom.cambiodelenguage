@@ -31,6 +31,21 @@ export function orderStatusLabel(value: string) {
   return ORDER_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? "Cargado";
 }
 
+export function orderStatusTransitionError(currentStatus: OrderStatus, nextStatus: OrderStatus) {
+  if (currentStatus === nextStatus) return `El pedido ya esta en '${currentStatus}'.`;
+  if (currentStatus === "entregado" || currentStatus === "cancelado") {
+    return `El pedido ya esta ${currentStatus} y no puede modificarse.`;
+  }
+  if (nextStatus === "cargado") return "No se puede volver un pedido a cargado.";
+  if (nextStatus === "confirmado" && currentStatus !== "cargado") {
+    return "Solo los pedidos cargados pueden confirmarse.";
+  }
+  if (nextStatus === "entregado" && currentStatus !== "cargado" && currentStatus !== "confirmado") {
+    return "Solo los pedidos cargados o confirmados pueden marcarse como entregados.";
+  }
+  return null;
+}
+
 function assertSqlIdentifier(identifier: string) {
   if (!SQL_IDENTIFIER.test(identifier)) {
     throw new Error(`Invalid SQL identifier: ${identifier}`);

@@ -2,7 +2,7 @@ import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { resolvePriceListName } from "@/lib/order-pricing";
 import { parsePagination } from "@/lib/pagination";
-import { intField, numberField, textField, type RequestBody } from "@/lib/request-body";
+import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
 
 type ListInput = {
@@ -87,8 +87,6 @@ export type ProductDetail = {
 export type ProductUpdateInput = {
   name: string;
   cost: number;
-  description: string;
-  stock: number;
   code: string;
   justification: string;
 };
@@ -129,15 +127,6 @@ function firstNumber(body: RequestBody, keys: string[], fallback = 0) {
   for (const key of keys) {
     if (body[key] !== undefined && body[key] !== null && body[key] !== "") {
       return numberField(body, key, fallback);
-    }
-  }
-  return fallback;
-}
-
-function firstInt(body: RequestBody, keys: string[], fallback = 0) {
-  for (const key of keys) {
-    if (body[key] !== undefined && body[key] !== null && body[key] !== "") {
-      return intField(body, key, fallback);
     }
   }
   return fallback;
@@ -282,18 +271,18 @@ export function productUpdateInputFromBody(
   body: RequestBody,
   defaults: ProductDetail,
 ): ProductUpdateInput {
+  if (body.stock !== undefined || body.cantidad !== undefined) {
+    throw new ApiError(400, "El stock se modifica desde Entradas y salidas, no desde el catalogo");
+  }
   const input = {
     name: firstText(body, ["name", "nombre"], defaults.name),
     cost: firstNumber(body, ["cost", "precio", "costo"], defaults.cost),
-    description: firstText(body, ["description", "descripcion"], defaults.description),
-    stock: firstInt(body, ["stock", "cantidad"], defaults.stock),
     code: firstText(body, ["code", "codigo"], defaults.code).toUpperCase(),
     justification: firstText(body, ["justification", "justificacion"]),
   };
 
   if (!input.name) throw new ApiError(400, "El nombre es obligatorio");
   if (input.cost < 0) throw new ApiError(400, "El costo no puede ser negativo");
-  if (input.stock < 0) throw new ApiError(400, "El stock no puede ser negativo");
   if (!input.justification) {
     throw new ApiError(400, "Debe ingresar una justificacion para el cambio");
   }
@@ -631,26 +620,6 @@ export async function updateProduct(
     );
     if (!updateResult.rows[0]) throw new ApiError(404, "Producto no encontrado");
 
-    const currentStock = Number(current.stock);
-    const stockDelta = input.stock - currentStock;
-    if (stockDelta !== 0) {
-      await client.query(
-        `
-          INSERT INTO stock_movements (
-            product_id, movement_type, quantity, notes, empresa_id
-          )
-          VALUES ($1::uuid, $2::stock_movement_type, $3, $4, $5)
-        `,
-        [
-          id,
-          stockDelta > 0 ? "ajuste_positivo" : "ajuste_negativo",
-          Math.abs(stockDelta),
-          `Ajuste manual por ${session.username}: ${input.justification}`,
-          session.companyId,
-        ],
-      );
-    }
-
     const changes = [
       { key: "name", label: "Nombre", before: current.name, after: input.name },
       {
@@ -658,18 +627,6 @@ export async function updateProduct(
         label: "Costo",
         before: Number(current.cost ?? 0).toFixed(2),
         after: Number(input.cost).toFixed(2),
-      },
-      {
-        key: "descripcion",
-        label: "Descripcion",
-        before: current.description ?? "",
-        after: input.description,
-      },
-      {
-        key: "stock",
-        label: "Stock",
-        before: String(currentStock),
-        after: String(input.stock),
       },
       { key: "codigo", label: "Categoria", before: current.category_code ?? "", after: input.code },
     ]
@@ -681,8 +638,6 @@ export async function updateProduct(
         ...current,
         name: input.name,
         cost: String(input.cost),
-        description: input.description,
-        stock: String(input.stock),
         category_code: input.code,
       }),
       changedFields: changes.length,

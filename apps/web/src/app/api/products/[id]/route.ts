@@ -27,10 +27,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const session = await requireApiSession([
-      { resource: "productos", action: "editar" },
-      { resource: "stock", action: "editar" },
-    ]);
+    const session = await requireApiSession([{ resource: "productos", action: "editar" }]);
     const { id } = await context.params;
     const productId = uuidParam(id, "Producto");
     const body = await readRequestBody(request);

@@ -1,5 +1,21 @@
 import { ModulePage } from "@/components/module-page";
-import { ButtonLink, Card, EmptyState, PageHeader, StatCard, StatusBadge, type StatusBadgeTone } from "@/components/ui";
+import {
+  Button,
+  ButtonLink,
+  Card,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  EmptyState,
+  PageHeader,
+  StatCard,
+  StatusBadge,
+  type StatusBadgeTone,
+} from "@/components/ui";
+import { createReplenishmentPurchaseRequestAction } from "@/app/purchases/replenishment/actions";
 import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
@@ -63,9 +79,16 @@ function groupBySupplier(items: ReplenishmentItem[]): SupplierGroup[] {
   });
 }
 
-export default async function ReplenishmentPage() {
+type ReplenishmentPageProps = {
+  searchParams: Promise<{
+    created?: string;
+  }>;
+};
+
+export default async function ReplenishmentPage({ searchParams }: ReplenishmentPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [PURCHASES_READ_PERMISSION, PRODUCTS_READ_PERMISSION]);
+  const params = await searchParams;
   const replenishment = await getReplenishmentSuggestions(session.companyId);
   const groups = groupBySupplier(replenishment.items);
 
@@ -82,6 +105,15 @@ export default async function ReplenishmentPage() {
           moduleIntro
           title="Recompra MRP"
         />
+
+        {params.created ? (
+          <div
+            className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]"
+            role="status"
+          >
+            Solicitud de compra MRP enviada a Solicitudes y aprobaciones.
+          </div>
+        ) : null}
 
         <div className="grid gap-3 md:grid-cols-3">
           <StatCard
@@ -142,43 +174,74 @@ export default async function ReplenishmentPage() {
                     )}
                   </summary>
 
-                  <div className="overflow-x-auto border-t border-[color:var(--border)]">
-                    <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-                      <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-                        <tr>
-                          <th className="px-4 py-2 font-semibold">Producto</th>
-                          <th className="px-4 py-2 text-right font-semibold">Stock</th>
-                          <th className="px-4 py-2 text-right font-semibold">Pendiente</th>
-                          <th className="px-4 py-2 text-right font-semibold">Venta 90d</th>
-                          <th className="px-4 py-2 text-right font-semibold">Cobertura</th>
-                          <th className="px-4 py-2 text-right font-semibold">Sugerido</th>
-                          <th className="px-4 py-2 font-semibold">Prioridad</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.items.map((item) => (
-                          <tr className="border-t border-[color:var(--border)]" key={item.productId}>
-                            <td className="px-4 py-2">
-                              <div className="break-words font-semibold">{item.name}</div>
-                              <div className="mt-0.5 font-mono text-xs text-[color:var(--muted)]">
-                                {item.sku || item.productId}
-                              </div>
-                            </td>
-                            <td className="px-4 py-2 text-right font-mono text-xs">{formatNumber(item.currentStock)}</td>
-                            <td className="px-4 py-2 text-right font-mono text-xs">{formatNumber(item.pendingPurchase)}</td>
-                            <td className="px-4 py-2 text-right font-mono text-xs">{formatNumber(item.sold90)}</td>
-                            <td className="px-4 py-2 text-right font-mono text-xs">{coverText(item.coverDays)}</td>
-                            <td className="px-4 py-2 text-right font-mono text-xs font-bold">
-                              {formatNumber(item.suggestedQuantity)}
-                            </td>
-                            <td className="px-4 py-2">
-                              <StatusBadge tone={priorityTone(item.priority)}>{priorityLabel(item.priority)}</StatusBadge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <DataTable
+                    caption={`Recompra sugerida para ${group.supplier}`}
+                    className="rounded-none border-x-0 border-b-0 shadow-none"
+                    minWidth="980px"
+                    tableLabel={`Recompra MRP de ${group.supplier}`}
+                    tableProps={{ className: "table-fixed" }}
+                  >
+                    <DataTableHeader>
+                      <DataTableRow className="hover:bg-transparent">
+                        <DataTableHead className="w-[32%]">Producto</DataTableHead>
+                        <DataTableHead align="right" className="w-[10%]">Stock</DataTableHead>
+                        <DataTableHead align="right" className="w-[10%]">Pendiente</DataTableHead>
+                        <DataTableHead align="right" className="w-[10%]">Venta 90d</DataTableHead>
+                        <DataTableHead align="right" className="w-[11%]">Cobertura</DataTableHead>
+                        <DataTableHead align="right" className="w-[10%]">Sugerido</DataTableHead>
+                        <DataTableHead className="w-[9%]">Prioridad</DataTableHead>
+                        <DataTableHead className="w-[8%]">Accion</DataTableHead>
+                      </DataTableRow>
+                    </DataTableHeader>
+                    <DataTableBody>
+                      {group.items.map((item) => (
+                        <DataTableRow key={item.productId}>
+                          <DataTableCell>
+                            <div className="break-words font-semibold">{item.name}</div>
+                            <div className="mt-0.5 font-mono text-xs text-[color:var(--muted)]">
+                              {item.sku || item.productId}
+                            </div>
+                          </DataTableCell>
+                          <DataTableCell align="right" className="font-mono text-xs">
+                            {formatNumber(item.currentStock)}
+                          </DataTableCell>
+                          <DataTableCell align="right" className="font-mono text-xs">
+                            {formatNumber(item.pendingPurchase)}
+                          </DataTableCell>
+                          <DataTableCell align="right" className="font-mono text-xs">
+                            {formatNumber(item.sold90)}
+                          </DataTableCell>
+                          <DataTableCell align="right" className="font-mono text-xs">
+                            {coverText(item.coverDays)}
+                          </DataTableCell>
+                          <DataTableCell align="right" className="font-mono text-xs font-bold">
+                            {formatNumber(item.suggestedQuantity)}
+                          </DataTableCell>
+                          <DataTableCell>
+                            <StatusBadge tone={priorityTone(item.priority)}>{priorityLabel(item.priority)}</StatusBadge>
+                          </DataTableCell>
+                          <DataTableCell>
+                            {item.supplierId && item.suggestedQuantity > 0 ? (
+                              <form action={createReplenishmentPurchaseRequestAction}>
+                                <input name="productId" type="hidden" value={item.productId} />
+                                <input name="quantity" type="hidden" value={item.suggestedQuantity} />
+                                <Button
+                                  aria-label={`Solicitar recompra de ${item.name}`}
+                                  className="w-full"
+                                  size="sm"
+                                  type="submit"
+                                >
+                                  Solicitar
+                                </Button>
+                              </form>
+                            ) : (
+                              <span className="text-xs text-[color:var(--muted)]">Sin proveedor</span>
+                            )}
+                          </DataTableCell>
+                        </DataTableRow>
+                      ))}
+                    </DataTableBody>
+                  </DataTable>
                 </details>
               </Card>
             ))}

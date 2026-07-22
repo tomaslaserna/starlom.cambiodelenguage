@@ -17,6 +17,7 @@ import {
   Field,
   Input,
   PageHeader,
+  SearchableSelectInput,
   Select,
   StatusBadge,
 } from "@/components/ui";
@@ -94,14 +95,21 @@ export default async function OffersPage({ searchParams }: OffersPageProps) {
               </Field>
               <div className="grid gap-3 md:grid-cols-2">
                 <Field htmlFor="offer-product" label="Producto (opcional)">
-                  <Select id="offer-product" name="productId" defaultValue={editing?.productId ?? ""}>
-                    <option value="">Sin producto</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name}
-                      </option>
-                    ))}
-                  </Select>
+                  <SearchableSelectInput
+                    defaultValue={editing?.productId ?? ""}
+                    id="offer-product"
+                    name="productId"
+                    options={[
+                      { value: "", label: "Sin producto" },
+                      ...products.map((product) => ({
+                        value: product.id,
+                        label: product.name,
+                        description: product.code || "Sin codigo",
+                        searchText: product.code,
+                      })),
+                    ]}
+                    placeholder="Sin producto"
+                  />
                 </Field>
                 <Field htmlFor="offer-active" label="Estado">
                   <Select
@@ -127,7 +135,11 @@ export default async function OffersPage({ searchParams }: OffersPageProps) {
         </Card>
 
         <Card className="overflow-hidden">
-          <DataTable caption="Listado de ofertas" tableLabel="Ofertas">
+          <DataTable
+            caption="Listado de ofertas"
+            className="rounded-none border-0 shadow-none"
+            tableLabel="Ofertas"
+          >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
                 <DataTableHead>Titulo</DataTableHead>

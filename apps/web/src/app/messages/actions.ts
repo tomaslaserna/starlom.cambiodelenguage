@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   draftMessageInputFromBody,
+  markConversationRead,
   markMessagesRead,
   messageInputFromBody,
   saveMessageDraft,
@@ -18,6 +19,7 @@ export async function sendMessageAction(formData: FormData) {
   const session = await requireApiSession();
   await sendMessage(session, messageInputFromBody(formBody(formData)));
   revalidatePath("/messages");
+  revalidatePath("/");
 }
 
 export async function saveDraftAction(formData: FormData) {
@@ -30,4 +32,19 @@ export async function markInboxReadAction() {
   const session = await requireApiSession();
   await markMessagesRead(session);
   revalidatePath("/messages");
+  revalidatePath("/");
+}
+
+export async function markMessageReadAction(messageId: number) {
+  const session = await requireApiSession();
+  await markMessagesRead(session, messageId);
+  revalidatePath("/messages");
+  revalidatePath("/");
+}
+
+export async function markConversationReadAction(contact: string) {
+  const session = await requireApiSession();
+  await markConversationRead(session, contact);
+  revalidatePath("/messages");
+  revalidatePath("/");
 }

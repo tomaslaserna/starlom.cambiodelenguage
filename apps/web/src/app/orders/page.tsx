@@ -22,9 +22,10 @@ import {
 import { formatDate } from "@/lib/format";
 import { ORDER_STATUS_OPTIONS, orderStatusLabel } from "@/lib/order-status";
 import { listOrders } from "@/lib/orders";
+import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
-import { ORDERS_READ_PERMISSION } from "@/lib/route-auth";
+import { ORDERS_READ_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { updateOrderStatusAction } from "@/app/orders/actions";
 
 type OrdersPageProps = {
@@ -32,6 +33,8 @@ type OrdersPageProps = {
     q?: string;
     status?: string;
     page?: string;
+    error?: string;
+    message?: string;
   }>;
 };
 
@@ -48,33 +51,50 @@ function orderStatusTone(value: string): StatusBadgeTone {
 }
 
 const actionItemClass =
-  "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-xs font-semibold text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--hover)] hover:text-[color:var(--accent-strong)]";
+  "block min-h-9 w-full appearance-none rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold leading-5 text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--hover)] hover:text-[color:var(--accent-strong)]";
 
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [ORDERS_READ_PERMISSION]);
   const params = await searchParams;
-  const result = await listOrders({
-    companyId: session.companyId,
-    query: params.q,
-    status: params.status,
-    page: params.page,
-    pageSize: "25",
-  });
+  const [result, canEditOrders] = await Promise.all([
+    listOrders({
+      companyId: session.companyId,
+      query: params.q,
+      status: params.status,
+      page: params.page,
+      pageSize: "25",
+    }),
+    sessionAllows(session, [{ resource: "pedidos", action: "editar" }]),
+  ]);
 
   return (
     <ModulePage
       active="orders"
-      description="Pedidos cargados, confirmados para stock y entregados."
+      description="Pedidos cargados, entregados o cancelados."
       session={session}
       title="Pedidos"
     >
       <div className="grid gap-5">
         <PageHeader
-          description="Carga, confirmacion para stock, entrega y apertura de cobro."
+          description="Carga, entrega, cancelacion y apertura de cobro."
           moduleIntro
           title="Gestion de pedidos"
         />
+
+        {params.error ? (
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[color:var(--danger)] bg-[color:var(--danger-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--danger)]"
+            role="alert"
+          >
+            <span>{params.message ?? "No se pudo actualizar el estado del pedido."}</span>
+            {params.message?.startsWith("Stock insuficiente") ? (
+              <ButtonLink href="/stock" size="sm" variant="secondary">
+                Revisar stock
+              </ButtonLink>
+            ) : null}
+          </div>
+        ) : null}
 
         <Toolbar ariaLabel="Filtros de pedidos">
           <form
@@ -85,13 +105,19 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               <Input
                 defaultValue={result.meta.query}
                 id="orders-query"
+                key={`orders-query-${result.meta.query}`}
                 name="q"
                 placeholder="Cliente, CUIT o vendedor"
                 type="search"
               />
             </Field>
             <Field htmlFor="orders-status" label="Estado">
-              <Select defaultValue={result.meta.status} id="orders-status" name="status">
+              <Select
+                defaultValue={result.meta.status}
+                id="orders-status"
+                key={`orders-status-${result.meta.status || "all"}`}
+                name="status"
+              >
                 {orderStates.map((state) => (
                   <option key={state.value} value={state.value}>
                     {state.label}
@@ -99,10 +125,10 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                 ))}
               </Select>
             </Field>
-            <Button className="lg:mb-0" type="submit">
+            <Button className="min-w-28 font-extrabold lg:mb-0" type="submit">
               Filtrar
             </Button>
-            <ButtonLink href="/orders" variant="secondary">
+            <ButtonLink className="min-w-28 font-extrabold" href="/orders" variant="secondary">
               Limpiar
             </ButtonLink>
           </form>
@@ -112,7 +138,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           <DataTable
             caption="Listado de pedidos filtrados"
             className="rounded-none border-0 shadow-none"
-            minWidth="0"
+            minWidth="960px"
             tableLabel="Pedidos"
             tableProps={{ className: "table-fixed" }}
           >
@@ -138,14 +164,18 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                 </DataTableRow>
               ) : (
                 result.data.map((order) => {
-                  const orderNumberLabel = order.receiptNumber ? String(order.receiptNumber) : order.id.slice(0, 8);
+                  const orderNumberLabel = formatSaleCommercialCode({
+                    commercialNumber: order.commercialNumber,
+                    saleNumber: order.saleNumber,
+                    deliveryNumber: order.deliveryNumber,
+                    legacyRemittanceNumber: order.receiptNumber,
+                  });
                   const isOpenOrder = order.orderStatus === "cargado" || order.orderStatus === "confirmado";
 
                   return (
                     <DataTableRow key={order.id}>
                       <DataTableCell className="px-2 py-2">
                         <div className="truncate font-mono text-xs font-black">#{orderNumberLabel}</div>
-                        <div className="mt-1 truncate text-[11px] text-[color:var(--muted)]">ID {order.id.slice(0, 8)}</div>
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
                         <div className="truncate font-medium">{order.customerName || "Sin cliente"}</div>
@@ -166,29 +196,13 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                             Acciones
                           </summary>
                           <div className="grid gap-0.5 border-t border-[color:var(--border)] p-1">
-                            <a
-                              aria-label={`Ver documento del pedido ${order.id}`}
-                              className={actionItemClass}
-                              href={`/api/pdfs/orders/${order.id}/document`}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              Ver documento
-                            </a>
-                            {isOpenOrder ? (
+                            {isOpenOrder && canEditOrders ? (
                               <>
-                                <a
-                                  aria-label={`Modificar pedido ${order.id}`}
-                                  className={actionItemClass}
-                                  href={`/orders/${order.id}/edit`}
-                                >
-                                  Modificar
-                                </a>
                                 <form action={updateOrderStatusAction}>
                                   <input name="id" type="hidden" value={order.id} />
                                   <input name="status" type="hidden" value="entregado" />
                                   <button
-                                    aria-label={`Marcar entregado el pedido ${order.id}`}
+                                    aria-label={`Marcar entregado el pedido ${orderNumberLabel}`}
                                     className={actionItemClass}
                                     suppressHydrationWarning
                                     type="submit"
@@ -200,7 +214,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                                   <input name="id" type="hidden" value={order.id} />
                                   <input name="status" type="hidden" value="cancelado" />
                                   <button
-                                    aria-label={`Cancelar pedido ${order.id}`}
+                                    aria-label={`Cancelar pedido ${orderNumberLabel}`}
                                     className={`${actionItemClass} text-[color:var(--danger)] hover:text-[color:var(--danger)]`}
                                     suppressHydrationWarning
                                     type="submit"
@@ -208,8 +222,24 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                                     Cancelar
                                   </button>
                                 </form>
+                                <a
+                                  aria-label={`Modificar pedido ${orderNumberLabel}`}
+                                  className={actionItemClass}
+                                  href={`/orders/${order.id}/edit`}
+                                >
+                                  Modificar
+                                </a>
                               </>
                             ) : null}
+                            <a
+                              aria-label={`Ver PDF del pedido ${orderNumberLabel}`}
+                              className={actionItemClass}
+                              href={`/api/pdfs/orders/${order.id}/document`}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              Ver PDF
+                            </a>
                           </div>
                         </details>
                       </DataTableCell>

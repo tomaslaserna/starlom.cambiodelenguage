@@ -53,6 +53,7 @@ export type FiscalAuthorizationResult = {
   pointOfSale: number;
   receiptType: number;
   receiptNumber: number;
+  issueDate?: string;
   cae: string;
   caeExpiresAt: string;
   observations?: Array<{ code: string; message: string; source: string }>;
@@ -92,6 +93,7 @@ type SaleFiscalCandidate = {
   fiscalPointOfSale: number | null;
   fiscalReceiptType: number | null;
   fiscalReceiptNumber: number | null;
+  itemCount: number;
 };
 
 export type SaleCreditNotePreview = {
@@ -193,6 +195,7 @@ class ArcaFiscalProvider implements FiscalProvider {
       pointOfSale: result.pointOfSale,
       receiptType: result.receiptType,
       receiptNumber: result.receiptNumber,
+      issueDate: result.issueDate,
       cae: result.cae,
       caeExpiresAt: result.caeExpiresAt,
       observations: result.observations,
@@ -293,6 +296,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
     fiscal_point_of_sale: number | null;
     fiscal_receipt_type: number | null;
     fiscal_receipt_number: number | null;
+    item_count: number;
   }>(
     companyId,
     `
@@ -310,7 +314,13 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
              COALESCE(s.cae, '') AS cae,
              s.fiscal_point_of_sale,
              s.fiscal_receipt_type,
-             s.fiscal_receipt_number
+             s.fiscal_receipt_number,
+             (
+               SELECT COUNT(*)::int
+               FROM sale_items si
+               WHERE si.sale_id = s.id
+                 AND si.empresa_id = s.empresa_id
+             ) AS item_count
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
       WHERE s.id = $1::uuid AND s.empresa_id = $2
@@ -337,6 +347,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
     fiscalPointOfSale: row.fiscal_point_of_sale,
     fiscalReceiptType: row.fiscal_receipt_type,
     fiscalReceiptNumber: row.fiscal_receipt_number,
+    itemCount: Number(row.item_count ?? 0),
   } satisfies SaleFiscalCandidate;
 }
 
@@ -550,6 +561,10 @@ async function markSaleFiscalApproved(
             receipt_number = $9::bigint,
             cae = $4,
             cae_expires_at = $5::date,
+            fiscal_issue_date = COALESCE(
+              NULLIF($10::text, '')::date,
+              (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
+            ),
             fiscal_authorized_at = now(),
             fiscal_last_attempt_at = now(),
             fiscal_error_code = '',
@@ -569,6 +584,7 @@ async function markSaleFiscalApproved(
         saleId,
         session.companyId,
         result.receiptNumber,
+        result.issueDate ?? "",
       ],
     );
     await client.query(
@@ -581,6 +597,7 @@ async function markSaleFiscalApproved(
           pointOfSale: result.pointOfSale,
           receiptType: result.receiptType,
           receiptNumber: result.receiptNumber,
+          issueDate: result.issueDate,
           cae: result.cae,
           caeExpiresAt: result.caeExpiresAt,
           observations: result.observations ?? [],
@@ -600,6 +617,7 @@ async function markSaleFiscalApproved(
           pointOfSale: result.pointOfSale,
           receiptType: result.receiptType,
           receiptNumber: result.receiptNumber,
+          issueDate: result.issueDate,
           cae: result.cae,
           caeExpiresAt: result.caeExpiresAt,
         }),
@@ -838,6 +856,10 @@ async function markSaleFiscalNoteApproved(
             receipt_number = $9::bigint,
             cae = $4,
             cae_expires_at = $5::date,
+            fiscal_issue_date = COALESCE(
+              NULLIF($10::text, '')::date,
+              (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
+            ),
             fiscal_authorized_at = now(),
             fiscal_last_attempt_at = now(),
             fiscal_error_code = '',
@@ -855,6 +877,7 @@ async function markSaleFiscalNoteApproved(
         documentId,
         session.companyId,
         result.receiptNumber,
+        result.issueDate ?? "",
       ],
     );
 
@@ -888,6 +911,7 @@ async function markSaleFiscalNoteApproved(
           pointOfSale: result.pointOfSale,
           receiptType: result.receiptType,
           receiptNumber: result.receiptNumber,
+          issueDate: result.issueDate,
           cae: result.cae,
           caeExpiresAt: result.caeExpiresAt,
           amount: noteAmount,
@@ -911,6 +935,7 @@ async function markSaleFiscalNoteApproved(
           pointOfSale: result.pointOfSale,
           receiptType: result.receiptType,
           receiptNumber: result.receiptNumber,
+          issueDate: result.issueDate,
           cae: result.cae,
         }),
         session.companyId,
@@ -976,6 +1001,7 @@ async function recoverSaleFiscalNoteApproval(
     pointOfSale: receipt.pointOfSale,
     receiptType: receipt.receiptType,
     receiptNumber: receipt.receiptNumber,
+    issueDate: receipt.issueDate,
     cae: receipt.cae,
     caeExpiresAt: receipt.caeExpiresAt,
     observations: receipt.observations,
@@ -1100,6 +1126,9 @@ export async function authorizeSaleFiscalDocument(session: AuthSession, saleId: 
   }
   if (!Number.isFinite(sale.totalAmount) || sale.totalAmount <= 0) {
     throw new ApiError(400, "La venta no tiene monto fiscal valido.");
+  }
+  if (sale.itemCount <= 0) {
+    throw new ApiError(409, "La venta no tiene detalle de productos. Complete los renglones antes de emitir el comprobante fiscal.");
   }
 
   const receiptType = receiptTypeForArcaVatCondition(

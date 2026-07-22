@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Button, Field, Input, Select } from "@/components/ui";
+import { Button, Field, Input, SearchableSelect } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
 
 type PurchaseFormSupplier = {
@@ -67,6 +67,20 @@ export function PurchaseEntryFields({
     () => (supplierId ? products.filter((product) => product.supplierId === supplierId) : []),
     [products, supplierId],
   );
+  const supplierOptions = useMemo(
+    () => suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name })),
+    [suppliers],
+  );
+  const productOptions = useMemo(
+    () =>
+      filteredProducts.map((product) => ({
+        value: product.id,
+        label: product.name,
+        description: product.code || "Sin codigo",
+        searchText: product.code,
+      })),
+    [filteredProducts],
+  );
   const productMap = useMemo(() => new Map(filteredProducts.map((product) => [product.id, product])), [filteredProducts]);
   const draftProduct = productMap.get(draftLine.productId) ?? null;
   const draftQuantity = Math.max(0, Math.trunc(numericInput(draftLine.quantity, 0)));
@@ -128,20 +142,15 @@ export function PurchaseEntryFields({
 
       <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px]">
         <Field htmlFor="purchase-supplier" label="Proveedor">
-          <Select
+          <SearchableSelect
             id="purchase-supplier"
             name="supplierId"
+            options={supplierOptions}
+            placeholder="Seleccionar proveedor"
             required
             value={supplierId}
-            onChange={(event) => updateSupplier(event.target.value)}
-          >
-            <option value="">Seleccionar proveedor</option>
-            {suppliers.map((supplier) => (
-              <option key={supplier.id} value={supplier.id}>
-                {supplier.name}
-              </option>
-            ))}
-          </Select>
+            onChange={updateSupplier}
+          />
         </Field>
         <Field htmlFor="purchase-date" label="Fecha">
           <Input defaultValue={defaultDate} id="purchase-date" name="date" type="date" />
@@ -150,19 +159,15 @@ export function PurchaseEntryFields({
 
       <div className="grid gap-3 xl:grid-cols-[minmax(260px,1fr)_minmax(0,160px)_auto] xl:items-end">
         <Field className="min-w-0" htmlFor="purchase-product-draft" label="Producto">
-          <Select
+          <SearchableSelect
             className="w-full"
+            disabled={!supplierId}
             id="purchase-product-draft"
+            options={productOptions}
+            placeholder={supplierId ? "Seleccionar producto" : "Primero selecciona proveedor"}
             value={draftLine.productId}
-            onChange={(event) => updateDraftLine({ productId: event.target.value })}
-          >
-            <option value="">{supplierId ? "Seleccionar producto" : "Primero selecciona proveedor"}</option>
-            {filteredProducts.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name} {product.code ? `(${product.code})` : ""}
-              </option>
-            ))}
-          </Select>
+            onChange={(productId) => updateDraftLine({ productId })}
+          />
         </Field>
         <Field className="min-w-0" htmlFor="purchase-quantity-draft" label="Cantidad">
           <Input

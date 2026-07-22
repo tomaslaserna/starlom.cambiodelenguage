@@ -97,7 +97,7 @@ export default async function CustomerFollowUpPage({ searchParams }: CustomerFol
           <DataTable
             caption="Clientes priorizados para seguimiento"
             className="rounded-none border-0 shadow-none"
-            minWidth="100%"
+            minWidth="980px"
             tableLabel="Seguimiento clientes"
             tableProps={{ className: "table-fixed" }}
           >

@@ -1,6 +1,14 @@
 import { queryWithCompanyContext } from "@/lib/db";
 import { parsePagination } from "@/lib/pagination";
 import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
+import { calculateProductProfit } from "@/lib/product-profit";
+
+export type ProductPrice = {
+  name: string;
+  price: number;
+  profit: number;
+  marginPercent: number | null;
+};
 
 export type Customer = {
   id: string;
@@ -30,6 +38,7 @@ export type Product = {
   stockReal: number;
   reserved: number;
   available: number;
+  prices: ProductPrice[];
 };
 
 export type ProductSalePrice = {
@@ -77,6 +86,26 @@ const DEFAULT_COMPANY_ID = 1;
 
 function searchPattern(query: string) {
   return `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+}
+
+function mapProductPrices(value: unknown, fallbackPrice: string, cost: number): ProductPrice[] {
+  const rawPrices = Array.isArray(value) ? value : [];
+  const parsed = rawPrices.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const name = typeof row.name === "string" ? row.name.trim() : "";
+    const price = Number(row.price);
+    return name && Number.isFinite(price) ? [{ name, price }] : [];
+  });
+  const source = parsed.length ? parsed : [{ name: "General", price: Number(fallbackPrice) || cost }];
+  return source.map((item) => {
+    const profit = calculateProductProfit(cost, item.price);
+    return {
+      ...item,
+      profit: profit.amount,
+      marginPercent: profit.percentOnCost,
+    };
+  });
 }
 
 export async function listCustomers(input: ListInput = {}): Promise<ListResult<Customer>> {
@@ -295,6 +324,8 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
     stock_real: string;
     reserved: string;
     available: string;
+    list_prices: unknown;
+    fallback_price: string;
   }>(
     companyId,
     `
@@ -307,9 +338,40 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
         p.cost,
         COALESCE(stock.stock_real, 0)::text AS stock_real,
         0::text AS reserved,
-        COALESCE(stock.stock_real, 0)::text AS available
+        COALESCE(stock.stock_real, 0)::text AS available,
+        COALESCE(price_map.list_prices, '[]'::jsonb) AS list_prices,
+        COALESCE(
+          NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
+          p.sale_price,
+          p.cost,
+          0
+        )::text AS fallback_price
       FROM products p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      LEFT JOIN margenes m
+        ON m.empresa_id = p.empresa_id
+       AND m.codigo = ${productMarginCodeExpression("p")}
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+          jsonb_build_object(
+            'name', lp.nombre,
+            'price', COALESCE(
+              NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(ml.multiplicador, 1), 2), 0),
+              NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
+              p.sale_price,
+              p.cost,
+              0
+            )
+          )
+          ORDER BY lp.orden ASC, lp.nombre ASC
+        ) AS list_prices
+        FROM listas_precio lp
+        LEFT JOIN margenes_listas ml
+          ON ml.empresa_id = lp.empresa_id
+         AND ml.lista_id = lp.id
+         AND ml.codigo = ${productMarginCodeExpression("p")}
+        WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1
+      ) price_map ON true
       LEFT JOIN LATERAL (
         SELECT SUM(
           CASE
@@ -342,6 +404,7 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
       stockReal: Number(row.stock_real),
       reserved: Number(row.reserved),
       available: Number(row.available),
+      prices: mapProductPrices(row.list_prices, row.fallback_price, Number(row.cost ?? 0)),
     })),
     meta: {
       companyId,

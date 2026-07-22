@@ -5,7 +5,20 @@ import { listAccountEntities, listAccountMovements } from "@/lib/accounts";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { COLLECTIONS_READ_PERMISSION } from "@/lib/route-auth";
-import { Button, ButtonLink, Field, Select } from "@/components/ui";
+import {
+  Button,
+  ButtonLink,
+  Card,
+  DataTable,
+  DataTableBody,
+  DataTableCell,
+  DataTableHead,
+  DataTableHeader,
+  DataTableRow,
+  Field,
+  Select,
+  Toolbar,
+} from "@/components/ui";
 
 type CurrentAccountsPageProps = {
   searchParams: Promise<{
@@ -42,33 +55,38 @@ export default async function CurrentAccountsPage({ searchParams }: CurrentAccou
       title="Cuentas corrientes"
     >
       <div className="grid gap-5">
-        <form
-          action="/treasury/current-accounts"
-          className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4 md:grid-cols-[180px_minmax(260px,1fr)_auto_auto] md:items-end"
-        >
-          <Field htmlFor="account-type" label="Tipo">
-            <Select defaultValue={accountType} id="account-type" name="type">
-              <option value="cliente">Clientes</option>
-              <option value="proveedor">Proveedores</option>
-            </Select>
-          </Field>
-          <Field htmlFor="account-entity" label="Entidad">
-            <Select defaultValue={params.q ?? ""} id="account-entity" name="q">
-              <option value="">Todas</option>
-              {entities.map((entity) => (
-                <option key={entity} value={entity}>
-                  {entity}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Button type="submit">
-            Filtrar
-          </Button>
-          <ButtonLink href={`/api/pdfs/accounts/current?${pdfParams.toString()}`} prefetch={false} target="_blank" variant="secondary">
-            PDF
-          </ButtonLink>
-        </form>
+        <Toolbar ariaLabel="Filtros de cuentas corrientes">
+          <form
+            action="/treasury/current-accounts"
+            className="grid w-full gap-3 md:grid-cols-[180px_minmax(260px,1fr)_auto_auto] md:items-end"
+          >
+            <Field htmlFor="account-type" label="Tipo">
+              <Select defaultValue={accountType} id="account-type" name="type">
+                <option value="cliente">Clientes</option>
+                <option value="proveedor">Proveedores</option>
+              </Select>
+            </Field>
+            <Field htmlFor="account-entity" label="Entidad">
+              <Select defaultValue={params.q ?? ""} id="account-entity" name="q">
+                <option value="">Todas</option>
+                {entities.map((entity) => (
+                  <option key={entity} value={entity}>
+                    {entity}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Button type="submit">Filtrar</Button>
+            <ButtonLink
+              href={`/api/pdfs/accounts/current?${pdfParams.toString()}`}
+              prefetch={false}
+              target="_blank"
+              variant="secondary"
+            >
+              Exportar PDF
+            </ButtonLink>
+          </form>
+        </Toolbar>
 
         <div className="grid gap-3 md:grid-cols-3">
           <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
@@ -85,39 +103,46 @@ export default async function CurrentAccountsPage({ searchParams }: CurrentAccou
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] border-collapse text-left text-sm">
-              <thead className="bg-[color:var(--panel-subtle)] text-xs uppercase text-[color:var(--muted)]">
-                <tr>
-                  <th className="px-4 py-3 font-semibold">Fecha</th>
-                  <th className="px-4 py-3 font-semibold">Entidad</th>
-                  <th className="px-4 py-3 font-semibold">Descripcion</th>
-                  <th className="px-4 py-3 text-right font-semibold">Debe</th>
-                  <th className="px-4 py-3 text-right font-semibold">Haber</th>
-                </tr>
-              </thead>
-              <tbody>
+        <Card className="overflow-hidden">
+          <DataTable
+            caption="Movimientos de cuentas corrientes"
+            className="rounded-none border-0 shadow-none"
+            minWidth="900px"
+            tableLabel="Cuentas corrientes"
+          >
+              <DataTableHeader>
+                <DataTableRow className="hover:bg-transparent">
+                  <DataTableHead>Fecha</DataTableHead>
+                  <DataTableHead>Entidad</DataTableHead>
+                  <DataTableHead>Descripcion</DataTableHead>
+                  <DataTableHead align="right">Debe</DataTableHead>
+                  <DataTableHead align="right">Haber</DataTableHead>
+                </DataTableRow>
+              </DataTableHeader>
+              <DataTableBody>
                 {result.data.length === 0 ? (
-                  <tr>
-                    <td className="px-4 py-8 text-center text-[color:var(--muted)]" colSpan={5}>
+                  <DataTableRow className="hover:bg-transparent">
+                    <DataTableCell className="py-8 text-center text-[color:var(--muted)]" colSpan={5}>
                       No hay movimientos de cuenta corriente.
-                    </td>
-                  </tr>
+                    </DataTableCell>
+                  </DataTableRow>
                 ) : (
                   result.data.map((item) => (
-                    <tr className="border-t border-[color:var(--border)]" key={item.id}>
-                      <td className="px-4 py-4">{formatDate(item.date)}</td>
-                      <td className="px-4 py-4">{item.entityName}</td>
-                      <td className="px-4 py-4">{item.description}</td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">{formatCurrency(item.debit)}</td>
-                      <td className="px-4 py-4 text-right font-mono text-xs">{formatCurrency(item.credit)}</td>
-                    </tr>
+                    <DataTableRow key={item.id}>
+                      <DataTableCell className="whitespace-nowrap">{formatDate(item.date)}</DataTableCell>
+                      <DataTableCell>{item.entityName}</DataTableCell>
+                      <DataTableCell>{item.description}</DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                        {formatCurrency(item.debit)}
+                      </DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                        {formatCurrency(item.credit)}
+                      </DataTableCell>
+                    </DataTableRow>
                   ))
                 )}
-              </tbody>
-            </table>
-          </div>
+              </DataTableBody>
+          </DataTable>
           <PaginationLinks
             basePath="/treasury/current-accounts"
             extraParams={{ type: params.type || "cliente" }}
@@ -125,7 +150,7 @@ export default async function CurrentAccountsPage({ searchParams }: CurrentAccou
             query={params.q ?? ""}
             totalPages={result.meta.totalPages}
           />
-        </div>
+        </Card>
       </div>
     </ModulePage>
   );

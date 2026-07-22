@@ -26,6 +26,7 @@ export type ArcaInvoiceAuthorization = {
   pointOfSale: number;
   receiptType: number;
   receiptNumber: number;
+  issueDate: string;
   cae: string;
   caeExpiresAt: string;
   observations: ArcaMessage[];
@@ -404,6 +405,7 @@ export async function consultArcaAuthorizedReceipt(
     pointOfSale: config.pointOfSale,
     receiptType,
     receiptNumber: Number(tagContent(detail, "CbteDesde") || receiptNumber),
+    issueDate: arcaDateToIso(tagContent(detail, "CbteFch")),
     cae,
     caeExpiresAt,
     observations: messages,
@@ -496,6 +498,7 @@ export async function authorizeArcaInvoice(input: AuthorizeArcaInvoiceInput): Pr
     pointOfSale: config.pointOfSale,
     receiptType,
     receiptNumber: Number(tagContent(detail, "CbteDesde") || receiptNumber),
+    issueDate: arcaDateToIso(invoiceDate),
     cae,
     caeExpiresAt,
     observations: messages,

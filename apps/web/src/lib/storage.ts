@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api-response";
 import { envValue } from "@/lib/env";
 
@@ -24,6 +25,8 @@ type ImageUploadInput = {
   maxBytes?: number;
 };
 
+let storageAdminClient: SupabaseClient | null = null;
+
 function storageConfig(): StorageConfig {
   const url = (envValue("SUPABASE_URL") || envValue("NEXT_PUBLIC_SUPABASE_URL") || "").replace(
     /\/+$/,
@@ -42,12 +45,31 @@ function storageConfig(): StorageConfig {
   return { url, key, bucket };
 }
 
+function getStorageAdminClient() {
+  if (!storageAdminClient) {
+    const config = storageConfig();
+    storageAdminClient = createClient(config.url, config.key, {
+      auth: {
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        persistSession: false,
+      },
+    });
+  }
+  return storageAdminClient;
+}
+
+function storageErrorStatus(error: { statusCode?: string | number } | null) {
+  const status = Number(error?.statusCode ?? 0);
+  return Number.isInteger(status) && status >= 400 && status <= 599 ? status : 502;
+}
+
 function extensionFromName(name: string) {
   const extension = name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") ?? "";
   return extension;
 }
 
-function sanitizeName(value: string) {
+export function sanitizeStorageName(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -132,8 +154,8 @@ export async function uploadImageFile({
   assertImageSignature(buffer, expectedMime);
 
   const config = storageConfig();
-  const baseName = sanitizeName(file.name.replace(/\.[^.]+$/, "")) || "imagen";
-  const objectPath = `${folder}/${sanitizeName(namePrefix)}_${Date.now()}_${randomUUID()}_${baseName}.${extension}`;
+  const baseName = sanitizeStorageName(file.name.replace(/\.[^.]+$/, "")) || "imagen";
+  const objectPath = `${folder}/${sanitizeStorageName(namePrefix)}_${Date.now()}_${randomUUID()}_${baseName}.${extension}`;
   const endpoint = `${config.url}/storage/v1/object/${encodeURIComponent(config.bucket)}/${encodedObjectPath(objectPath)}`;
 
   const response = await fetch(endpoint, {
@@ -162,27 +184,64 @@ export async function uploadImageFile({
   };
 }
 
-export async function createSignedStorageUrl(bucket: string, path: string, expiresInSeconds = 300) {
+export async function createSignedStorageUpload(path: string) {
+  const config = storageConfig();
+  const { data, error } = await getStorageAdminClient()
+    .storage
+    .from(config.bucket)
+    .createSignedUploadUrl(path, { upsert: false });
+
+  if (error || !data?.token) {
+    throw new ApiError(storageErrorStatus(error), error?.message || "No se pudo autorizar la carga");
+  }
+
+  return {
+    bucket: config.bucket,
+    path: data.path || path,
+    token: data.token,
+  };
+}
+
+export async function storageObjectInfo(bucket: string, path: string) {
   const config = storageConfig();
   if (bucket !== config.bucket) throw new ApiError(403, "Bucket no permitido");
 
-  const response = await fetch(
-    `${config.url}/storage/v1/object/sign/${encodeURIComponent(bucket)}/${encodedObjectPath(path)}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.key}`,
-        apikey: config.key,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ expiresIn: expiresInSeconds }),
-    },
-  );
-
-  const body = (await response.json().catch(() => ({}))) as { signedURL?: string; error?: string; message?: string };
-  if (!response.ok || !body.signedURL) {
-    throw new ApiError(response.status || 500, body.error || body.message || "No se pudo firmar el archivo");
+  const { data, error } = await getStorageAdminClient().storage.from(bucket).info(path);
+  if (error || !data) {
+    throw new ApiError(storageErrorStatus(error), error?.message || "El archivo no termino de cargarse");
   }
 
-  return `${config.url}${body.signedURL}`;
+  return {
+    contentType: data.contentType || "",
+    size: Number(data.size || 0),
+  };
+}
+
+export async function removeStorageObjects(bucket: string, paths: string[]) {
+  if (!paths.length) return;
+  const config = storageConfig();
+  if (bucket !== config.bucket) throw new ApiError(403, "Bucket no permitido");
+
+  const { error } = await getStorageAdminClient().storage.from(bucket).remove(paths);
+  if (error) throw new ApiError(storageErrorStatus(error), error.message || "No se pudo limpiar la carga");
+}
+
+export async function createSignedStorageUrl(
+  bucket: string,
+  path: string,
+  expiresInSeconds = 300,
+  downloadName?: string,
+) {
+  const config = storageConfig();
+  if (bucket !== config.bucket) throw new ApiError(403, "Bucket no permitido");
+
+  const { data, error } = await getStorageAdminClient()
+    .storage
+    .from(bucket)
+    .createSignedUrl(path, expiresInSeconds, downloadName ? { download: downloadName } : undefined);
+  if (error || !data?.signedUrl) {
+    throw new ApiError(storageErrorStatus(error), error?.message || "No se pudo firmar el archivo");
+  }
+
+  return data.signedUrl;
 }

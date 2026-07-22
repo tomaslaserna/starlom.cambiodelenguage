@@ -5,6 +5,7 @@ import { lineSubtotal, money, normalizePriceListKey, resolvePriceListName, type 
 import { dynamicPriceSqlExpression, productMarginCodeExpression } from "@/lib/product-pricing-sql";
 import { receiptTypeCode } from "@/lib/receipt-types";
 import { intField, numberField, textField, uuidParam, type RequestBody } from "@/lib/request-body";
+import { calculateQuoteTotals, type QuoteVatRate } from "@/lib/quote-totals";
 import type { AuthSession } from "@/lib/auth";
 
 type QuoteCustomer = {
@@ -34,6 +35,8 @@ type QuoteInput = {
   activePriceList: number;
   priceListOverride: string;
   validityDays: number;
+  includeVat: boolean;
+  vatRate: QuoteVatRate;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -73,6 +76,20 @@ function nestedNumber(input: Record<string, unknown>, keys: string[], fallback =
     }
   }
   return fallback;
+}
+
+function booleanValue(value: unknown, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "on", "si", "sí"].includes(normalized)) return true;
+  if (["0", "false", "off", "no"].includes(normalized)) return false;
+  throw new ApiError(400, "includeVat invalido");
+}
+
+export function normalizeQuoteVatRate(value: number): QuoteVatRate {
+  if (value === 0 || value === 10.5 || value === 21) return value;
+  throw new ApiError(400, "El IVA debe ser 21%, 10,5% o no mostrarse");
 }
 
 function nestedUuid(input: Record<string, unknown>, keys: string[]) {
@@ -116,14 +133,30 @@ export function quoteInputFromBody(body: RequestBody): QuoteInput {
   const rawCustomerId = textField(body, "customerId") || textField(body, "id_cliente");
   const customerId = rawCustomerId ? uuidParam(rawCustomerId, "Cliente") : "";
   const customer = {
-    name: nestedText(customerBody, "name") || nestedText(customerBody, "nombre"),
+    name:
+      nestedText(customerBody, "name") ||
+      nestedText(customerBody, "nombre") ||
+      textField(body, "customerName"),
     businessName:
-      nestedText(customerBody, "businessName") || nestedText(customerBody, "razon_social"),
-    address: nestedText(customerBody, "address") || nestedText(customerBody, "domicilio"),
-    phone: nestedText(customerBody, "phone") || nestedText(customerBody, "telefono"),
+      nestedText(customerBody, "businessName") ||
+      nestedText(customerBody, "razon_social") ||
+      textField(body, "customerBusinessName"),
+    address:
+      nestedText(customerBody, "address") ||
+      nestedText(customerBody, "domicilio") ||
+      textField(body, "customerAddress"),
+    phone:
+      nestedText(customerBody, "phone") ||
+      nestedText(customerBody, "telefono") ||
+      textField(body, "customerPhone"),
     vatCondition:
-      nestedText(customerBody, "vatCondition") || nestedText(customerBody, "cond_iva"),
-    taxId: nestedText(customerBody, "taxId") || nestedText(customerBody, "cuit"),
+      nestedText(customerBody, "vatCondition") ||
+      nestedText(customerBody, "cond_iva") ||
+      textField(body, "customerVatCondition"),
+    taxId:
+      nestedText(customerBody, "taxId") ||
+      nestedText(customerBody, "cuit") ||
+      textField(body, "customerTaxId"),
   };
 
   let rawProducts: unknown[];
@@ -138,7 +171,10 @@ export function quoteInputFromBody(body: RequestBody): QuoteInput {
 
   const products = rawProducts.map((raw) => {
     const product = objectValue(raw);
-    const quantity = Math.max(0.001, nestedNumber(product, ["quantity", "cantidad"], 1));
+    const quantity = nestedNumber(product, ["quantity", "cantidad"], 1);
+    if (!Number.isInteger(quantity) || quantity <= 0) {
+      throw new ApiError(400, "La cantidad debe ser un numero entero mayor a cero");
+    }
     const unitPrice = nestedNumber(product, ["unitPrice", "precio_unit"], 0);
     const discount = clamp(nestedNumber(product, ["discount", "bonif"], 0), 0, 100);
     const netUnitPrice = unitPrice * (1 - discount / 100);
@@ -155,6 +191,12 @@ export function quoteInputFromBody(body: RequestBody): QuoteInput {
 
   if (!products.length) throw new ApiError(400, "Agrega al menos un producto");
 
+  const requestedVatRate = normalizeQuoteVatRate(
+    numberField(body, "vatRate", numberField(body, "ivaRate", 0)),
+  );
+  const includeVat = booleanValue(body.includeVat, requestedVatRate > 0);
+  const vatRate = includeVat ? (requestedVatRate || 21) : 0;
+
   return {
     customerId,
     customer,
@@ -163,6 +205,8 @@ export function quoteInputFromBody(body: RequestBody): QuoteInput {
     activePriceList: intField(body, "activePriceList", intField(body, "lista_activa", 0)),
     priceListOverride: textField(body, "priceListOverride") || textField(body, "lista_precios"),
     validityDays: clamp(intField(body, "validityDays", intField(body, "vigencia_dias", 15)), 1, 365),
+    includeVat,
+    vatRate,
   };
 }
 
@@ -184,6 +228,9 @@ function mapQuote(row: {
   net_amount: string;
   discount_amount: string;
   subtotal_amount: string;
+  include_vat: boolean;
+  vat_rate: string;
+  vat_amount: string;
   productos_json?: unknown;
   estado: string;
   creado_por: string | null;
@@ -198,6 +245,7 @@ function mapQuote(row: {
 
   return {
     id: row.id,
+    quoteNumber: row.quote_number || "Sin numero",
     issueDate: row.fecha_emision,
     expirationDate: row.fecha_vencimiento,
     customer: {
@@ -214,6 +262,9 @@ function mapQuote(row: {
     netAmount: Number(row.net_amount),
     discountAmount: Number(row.discount_amount),
     subtotal: Number(row.subtotal_amount),
+    includeVat: row.include_vat,
+    vatRate: normalizeQuoteVatRate(Number(row.vat_rate)),
+    vatAmount: Number(row.vat_amount),
     total: Number(row.total),
     products,
     status: row.estado,
@@ -229,15 +280,15 @@ export async function listQuotes(companyId: number, status = "pendiente") {
     companyId,
     `
       SELECT q.id::text,
-             COALESCE(q.quote_number, q.id::text) AS quote_number,
+             COALESCE(NULLIF(q.quote_number, ''), 'Sin numero') AS quote_number,
              q.created_at::date::text AS fecha_emision,
              (q.created_at::date + (q.validity_days || ' days')::interval)::date::text AS fecha_vencimiento,
-             c.display_name AS cliente_nombre,
-             c.legal_name AS cliente_razon_social,
-             c.address AS cliente_domicilio,
-             c.phone AS cliente_telefono,
-             c.fiscal_condition AS cliente_cond_iva,
-             c.tax_id AS cliente_cuit,
+             COALESCE(NULLIF(q.client_name, ''), c.display_name, c.legal_name, '') AS cliente_nombre,
+             COALESCE(NULLIF(q.client_legal_name, ''), c.legal_name, c.display_name, '') AS cliente_razon_social,
+             COALESCE(NULLIF(q.client_address, ''), c.address, '') AS cliente_domicilio,
+             COALESCE(NULLIF(q.client_phone, ''), c.phone, '') AS cliente_telefono,
+             COALESCE(NULLIF(q.client_fiscal_condition, ''), c.fiscal_condition, '') AS cliente_cond_iva,
+             COALESCE(NULLIF(q.client_document, ''), c.tax_id, '') AS cliente_cuit,
              q.total_amount::text AS total,
              q.active_price_list,
              COALESCE(q.price_list_name, '') AS price_list_name,
@@ -245,6 +296,9 @@ export async function listQuotes(companyId: number, status = "pendiente") {
              q.net_amount::text,
              q.discount_amount::text,
              q.subtotal_amount::text,
+             q.include_vat,
+             q.vat_rate::text,
+             q.vat_amount::text,
              q.status AS estado,
              p.username AS creado_por,
              q.created_at::text,
@@ -283,15 +337,15 @@ export async function getQuote(companyId: number, id: string) {
     companyId,
     `
       SELECT q.id::text,
-             COALESCE(q.quote_number, q.id::text) AS quote_number,
+             COALESCE(NULLIF(q.quote_number, ''), 'Sin numero') AS quote_number,
              q.created_at::date::text AS fecha_emision,
              (q.created_at::date + (q.validity_days || ' days')::interval)::date::text AS fecha_vencimiento,
-             c.display_name AS cliente_nombre,
-             c.legal_name AS cliente_razon_social,
-             c.address AS cliente_domicilio,
-             c.phone AS cliente_telefono,
-             c.fiscal_condition AS cliente_cond_iva,
-             c.tax_id AS cliente_cuit,
+             COALESCE(NULLIF(q.client_name, ''), c.display_name, c.legal_name, '') AS cliente_nombre,
+             COALESCE(NULLIF(q.client_legal_name, ''), c.legal_name, c.display_name, '') AS cliente_razon_social,
+             COALESCE(NULLIF(q.client_address, ''), c.address, '') AS cliente_domicilio,
+             COALESCE(NULLIF(q.client_phone, ''), c.phone, '') AS cliente_telefono,
+             COALESCE(NULLIF(q.client_fiscal_condition, ''), c.fiscal_condition, '') AS cliente_cond_iva,
+             COALESCE(NULLIF(q.client_document, ''), c.tax_id, '') AS cliente_cuit,
              q.total_amount::text AS total,
              q.active_price_list,
              COALESCE(q.price_list_name, '') AS price_list_name,
@@ -299,6 +353,9 @@ export async function getQuote(companyId: number, id: string) {
              q.net_amount::text,
              q.discount_amount::text,
              q.subtotal_amount::text,
+             q.include_vat,
+             q.vat_rate::text,
+             q.vat_amount::text,
              q.status AS estado,
              p.username AS creado_por,
              q.created_at::text,
@@ -321,7 +378,8 @@ export async function getQuote(companyId: number, id: string) {
       LEFT JOIN clients c ON c.id = q.client_id AND c.empresa_id = q.empresa_id
       LEFT JOIN profiles p ON p.id = q.seller_id
       LEFT JOIN quote_items qi ON qi.quote_id = q.id AND qi.empresa_id = q.empresa_id
-      WHERE q.id = $1::uuid AND q.empresa_id = $2
+      WHERE q.empresa_id = $2
+        AND (q.id::text = $1 OR q.quote_number = $1)
       GROUP BY q.id, c.id, p.username
     `,
     [id, companyId],
@@ -412,10 +470,11 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
 
   const quoteId = await withCompanyContext(session.companyId, async (client) => {
     type QuoteClientRow = {
-      id: string;
+      id: string | null;
       display_name: string;
       legal_name: string | null;
       tax_id: string | null;
+      fiscal_condition: string | null;
       phone: string | null;
       address: string | null;
       price_list_name: string | null;
@@ -426,7 +485,7 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
     if (input.customerId) {
       const customerResult = await client.query<QuoteClientRow>(
         `
-          SELECT id::text, display_name, legal_name, tax_id,
+          SELECT id::text, display_name, legal_name, tax_id, fiscal_condition,
                  phone, address, price_list_name, seller_name
           FROM clients
           WHERE id = $1::uuid AND empresa_id = $2 AND active = true
@@ -437,41 +496,17 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
       customer = customerResult.rows[0];
       if (!customer) throw new ApiError(404, "Cliente no encontrado");
     } else {
-      const clientResult = await client.query<QuoteClientRow>(
-        `
-          INSERT INTO clients (
-            display_name, legal_name, tax_id, fiscal_condition, phone, address, empresa_id
-          )
-          VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7)
-          ON CONFLICT DO NOTHING
-          RETURNING id::text, display_name, legal_name, tax_id,
-                    phone, address, price_list_name, seller_name
-        `,
-        [
-          input.customer.name || input.customer.businessName,
-          input.customer.businessName || input.customer.name,
-          input.customer.taxId,
-          input.customer.vatCondition,
-          input.customer.phone,
-          input.customer.address,
-          session.companyId,
-        ],
-      );
-      customer = clientResult.rows[0];
-
-      if (!customer && input.customer.taxId) {
-        const existing = await client.query<QuoteClientRow>(
-          `
-            SELECT id::text, display_name, legal_name, tax_id,
-                   phone, address, price_list_name, seller_name
-            FROM clients
-            WHERE empresa_id = $1 AND tax_id = $2
-            LIMIT 1
-          `,
-          [session.companyId, input.customer.taxId],
-        );
-        customer = existing.rows[0];
-      }
+      customer = {
+        id: null,
+        display_name: input.customer.name || input.customer.businessName,
+        legal_name: input.customer.businessName || input.customer.name,
+        tax_id: input.customer.taxId || null,
+        fiscal_condition: input.customer.vatCondition || null,
+        phone: input.customer.phone || null,
+        address: input.customer.address || null,
+        price_list_name: null,
+        seller_name: session.username,
+      };
     }
 
     if (!customer) throw new ApiError(400, "No se pudo resolver el cliente del presupuesto");
@@ -503,22 +538,37 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
     const netAmount = money(detail.reduce((sum, product) => sum + product.subtotal, 0));
     const discountAmount = money((netAmount * input.discountPercent) / 100);
     const subtotal = money(netAmount - discountAmount);
-    const total = subtotal;
+    const calculatedTotals = calculateQuoteTotals(subtotal, input.includeVat ? input.vatRate : 0);
+    const vatAmount = calculatedTotals.vatAmount;
+    const total = calculatedTotals.total;
     if (total <= 0) throw new ApiError(400, "El presupuesto no tiene importe calculable");
+
+    await client.query("SELECT pg_advisory_xact_lock(83011, $1::int)", [session.companyId]);
+    const sequence = await client.query<{ value: string }>(
+      `
+        SELECT (COALESCE(MAX(substring(quote_number FROM '^P-([0-9]+)$')::bigint), 0) + 1)::text AS value
+        FROM quotes
+        WHERE empresa_id = $1 AND quote_number ~ '^P-[0-9]+$'
+      `,
+      [session.companyId],
+    );
+    const commercialNumber = Number(sequence.rows[0]?.value ?? 1);
+    const quoteNumber = `P-${String(commercialNumber).padStart(4, "0")}`;
 
     const quoteResult = await client.query<{ id: string }>(
       `
         INSERT INTO quotes (
           quote_number, client_id, seller_id, status, total_amount,
-          validity_days, include_vat, active_price_list, price_list_name, discount_percent,
-          net_amount, discount_amount, subtotal_amount, vat_amount, empresa_id
+          validity_days, include_vat, vat_rate, active_price_list, price_list_name, discount_percent,
+          net_amount, discount_amount, subtotal_amount, vat_amount,
+          client_name, client_legal_name, client_document, client_fiscal_condition,
+          client_phone, client_address, empresa_id
         )
         VALUES (
-          'P-' || to_char(NOW(), 'YYYYMMDD') || '-' || upper(substr(gen_random_uuid()::text, 1, 6)),
-          $1::uuid,
+          $1,
           $2::uuid,
+          $3::uuid,
           'pendiente',
-          $3,
           $4,
           $5,
           $6,
@@ -528,23 +578,39 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
           $10,
           $11,
           $12,
-          $13
+          $13,
+          $14,
+          $15,
+          $16,
+          $17,
+          $18,
+          $19,
+          $20,
+          $21
         )
         RETURNING id::text
       `,
       [
+        quoteNumber,
         customer.id,
         session.userId,
         total,
         input.validityDays,
-        false,
+        input.includeVat,
+        input.vatRate,
         priceListNumber(priceListKey),
         priceListName,
         input.discountPercent,
         netAmount,
         discountAmount,
         subtotal,
-        0,
+        vatAmount,
+        customer.display_name,
+        customer.legal_name ?? "",
+        customer.tax_id ?? "",
+        customer.fiscal_condition ?? "",
+        customer.phone ?? "",
+        customer.address ?? "",
         session.companyId,
       ],
     );
@@ -582,30 +648,42 @@ export async function acceptQuote(session: AuthSession, id: string) {
   const result = await withCompanyContext(session.companyId, async (client) => {
     const quoteResult = await client.query<{
       id: string;
+      quote_number: string;
       client_id: string | null;
       seller_id: string | null;
       status: string;
       total_amount: string;
       subtotal_amount: string;
+      vat_rate: string;
       active_price_list: number;
       price_list_name: string | null;
       converted_order_id: string | null;
       client_name: string | null;
+      client_legal_name: string | null;
       client_document: string | null;
+      client_fiscal_condition: string | null;
+      client_phone: string | null;
+      client_address: string | null;
       seller_name: string | null;
     }>(
       `
         SELECT q.id::text,
+               COALESCE(NULLIF(q.quote_number, ''), 'Sin numero') AS quote_number,
                q.client_id::text,
                q.seller_id::text,
                q.status,
                q.total_amount::text,
                q.subtotal_amount::text,
+               q.vat_rate::text,
                q.active_price_list,
                COALESCE(q.price_list_name, '') AS price_list_name,
                q.converted_order_id::text,
-               COALESCE(c.display_name, c.legal_name, '') AS client_name,
-               COALESCE(c.tax_id, '') AS client_document,
+               COALESCE(NULLIF(q.client_name, ''), c.display_name, c.legal_name, '') AS client_name,
+               COALESCE(NULLIF(q.client_legal_name, ''), c.legal_name, c.display_name, '') AS client_legal_name,
+               COALESCE(NULLIF(q.client_document, ''), c.tax_id, '') AS client_document,
+               COALESCE(NULLIF(q.client_fiscal_condition, ''), c.fiscal_condition, '') AS client_fiscal_condition,
+               COALESCE(NULLIF(q.client_phone, ''), c.phone, '') AS client_phone,
+               COALESCE(NULLIF(q.client_address, ''), c.address, '') AS client_address,
                COALESCE(p.username, p.full_name, '') AS seller_name
         FROM quotes q
         LEFT JOIN clients c ON c.id = q.client_id AND c.empresa_id = q.empresa_id
@@ -650,44 +728,97 @@ export async function acceptQuote(session: AuthSession, id: string) {
 
     await client.query("SELECT pg_advisory_xact_lock(83010, $1::int)", [session.companyId]);
     const sequence = await client.query<{ value: string }>(
-      "SELECT (COALESCE(MAX(receipt_number), 0) + 1)::text AS value FROM sales WHERE empresa_id = $1",
+      `
+        SELECT (COALESCE(MAX(commercial_number), 0) + 1)::text AS value
+        FROM sales
+        WHERE empresa_id = $1
+      `,
       [session.companyId],
     );
-    const receiptNumber = Number(sequence.rows[0]?.value ?? 0);
-    const saleNumber = `P-${String(receiptNumber).padStart(6, "0")}`;
+    const commercialNumber = Number(sequence.rows[0]?.value ?? 1);
+    const receiptNumber = commercialNumber;
+    const saleNumber = `P-${String(commercialNumber).padStart(4, "0")}`;
     const desiredDocument = "remito";
     const priceList = quote.price_list_name || priceListNameFromNumber(quote.active_price_list);
     const receiptType = receiptTypeCode(desiredDocument);
 
+    let clientId = quote.client_id;
+    if (!clientId) {
+      if ((quote.client_document ?? "").trim()) {
+        const existingClient = await client.query<{ id: string }>(
+          `
+            SELECT id::text
+            FROM clients
+            WHERE empresa_id = $1
+              AND active = true
+              AND regexp_replace(COALESCE(tax_id, ''), '[^0-9]', '', 'g') =
+                  regexp_replace($2, '[^0-9]', '', 'g')
+            ORDER BY created_at
+            LIMIT 1
+          `,
+          [session.companyId, quote.client_document],
+        );
+        clientId = existingClient.rows[0]?.id ?? null;
+      }
+
+      if (!clientId) {
+        const createdClient = await client.query<{ id: string }>(
+          `
+            INSERT INTO clients (
+              display_name, legal_name, tax_id, fiscal_condition, phone, address,
+              seller_name, price_list_name, active, empresa_id
+            )
+            VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''),
+                    NULLIF($6, ''), $7, $8, true, $9)
+            RETURNING id::text
+          `,
+          [
+            quote.client_name || quote.client_legal_name || "Cliente ocasional",
+            quote.client_legal_name,
+            quote.client_document,
+            quote.client_fiscal_condition,
+            quote.client_phone,
+            quote.client_address,
+            quote.seller_name || session.username,
+            priceList,
+            session.companyId,
+          ],
+        );
+        clientId = createdClient.rows[0].id;
+      }
+    }
+
     const saleResult = await client.query<{ id: string }>(
       `
         INSERT INTO sales (
-          sale_number, client_id, seller_id, client_name, client_document, price_list_name,
-          total_amount, receipt_number, receipt_type, payment_condition, sale_date, seller_name,
+          sale_number, commercial_number, client_id, seller_id, client_name, client_document, price_list_name,
+          total_amount, vat_rate, receipt_number, receipt_type, payment_condition, sale_date, seller_name,
           collection_status, order_status, desired_document, notes,
           stock_discounted, status, empresa_id
         )
         VALUES (
-          $1, $2::uuid, $3::uuid, $4, $5, $6,
-          $7, $8, $9, 'pendiente', CURRENT_DATE, $10,
-          'no_aplica', 'cargado', $11, $12,
-          false, 'cargado', $13
+          $1, $2, $3::uuid, $4::uuid, $5, $6, $7,
+          $8, $9, $10, $11, 'pendiente', CURRENT_DATE, $12,
+          'no_aplica', 'cargado', $13, $14,
+          false, 'cargado', $15
         )
         RETURNING id::text
       `,
       [
         saleNumber,
-        quote.client_id,
+        commercialNumber,
+        clientId,
         quote.seller_id ?? session.userId,
         quote.client_name,
         quote.client_document,
         priceList,
         Number(quote.total_amount),
+        Number(quote.vat_rate),
         receiptNumber,
         receiptType,
         quote.seller_name || session.username,
         desiredDocument,
-        `Convertido desde presupuesto ${id}`,
+        `Convertido desde presupuesto ${quote.quote_number}`,
         session.companyId,
       ],
     );
@@ -720,10 +851,11 @@ export async function acceptQuote(session: AuthSession, id: string) {
         SET status = 'aceptada',
             approved_at = NOW(),
             converted_order_id = $1::uuid,
+            client_id = $4::uuid,
             updated_at = NOW()
         WHERE id = $2::uuid AND empresa_id = $3
       `,
-      [orderId, id, session.companyId],
+      [orderId, id, session.companyId, clientId],
     );
 
     await client.query(

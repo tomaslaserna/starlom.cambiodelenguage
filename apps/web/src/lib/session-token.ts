@@ -2,7 +2,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { envValue } from "@/lib/env";
 
 export const SESSION_COOKIE = "starlim_node_session";
-export const SESSION_TTL_SECONDS = 20 * 60;
+export const SESSION_IDLE_TTL_SECONDS = 2 * 60 * 60;
+export const SESSION_ABSOLUTE_TTL_SECONDS = 12 * 60 * 60;
+export const SESSION_REVALIDATE_SECONDS = 5 * 60;
+// Compatibilidad para consumidores existentes: ahora representa el tiempo de inactividad.
+export const SESSION_TTL_SECONDS = SESSION_IDLE_TTL_SECONDS;
 
 export type AuthSession = {
   userId: string;
@@ -12,6 +16,9 @@ export type AuthSession = {
   role: string;
   companyId: number;
   companyName: string;
+  issuedAt?: number;
+  absoluteExpiresAt?: number;
+  validatedAt?: number;
   expiresAt: number;
 };
 
@@ -33,12 +40,33 @@ function sign(payload: string) {
   return createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
 }
 
-export function newSessionExpiry() {
-  return Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
+function unixNow() {
+  return Math.floor(Date.now() / 1000);
+}
+
+export function newSessionTiming(now = unixNow()) {
+  return {
+    issuedAt: now,
+    absoluteExpiresAt: now + SESSION_ABSOLUTE_TTL_SECONDS,
+    validatedAt: now,
+    expiresAt: now + SESSION_IDLE_TTL_SECONDS,
+  };
+}
+
+export function newSessionExpiry(absoluteExpiresAt?: number, now = unixNow()) {
+  return Math.min(now + SESSION_IDLE_TTL_SECONDS, absoluteExpiresAt ?? Number.POSITIVE_INFINITY);
 }
 
 export function refreshSession(session: AuthSession): AuthSession {
-  return { ...session, expiresAt: newSessionExpiry() };
+  const now = unixNow();
+  const issuedAt = session.issuedAt ?? now;
+  const absoluteExpiresAt = session.absoluteExpiresAt ?? now + SESSION_ABSOLUTE_TTL_SECONDS;
+  return {
+    ...session,
+    issuedAt,
+    absoluteExpiresAt,
+    expiresAt: newSessionExpiry(absoluteExpiresAt, now),
+  };
 }
 
 export function encodeSession(session: AuthSession) {
@@ -59,7 +87,9 @@ export function decodeSession(token: string | undefined): AuthSession | null {
 
   try {
     const session = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as AuthSession;
-    if (!session.expiresAt || session.expiresAt <= Math.floor(Date.now() / 1000)) return null;
+    const now = unixNow();
+    if (!session.expiresAt || session.expiresAt <= now) return null;
+    if (session.absoluteExpiresAt && session.absoluteExpiresAt <= now) return null;
     if (!isValidSessionShape(session)) return null;
     return session;
   } catch {
@@ -86,6 +116,9 @@ function isValidSessionShape(session: AuthSession) {
     typeof session.companyName === "string" &&
     session.companyName.length > 0 &&
     session.companyName.length <= 160 &&
+    (session.issuedAt === undefined || Number.isInteger(session.issuedAt)) &&
+    (session.absoluteExpiresAt === undefined || Number.isInteger(session.absoluteExpiresAt)) &&
+    (session.validatedAt === undefined || Number.isInteger(session.validatedAt)) &&
     Number.isInteger(session.expiresAt)
   );
 }
@@ -96,7 +129,7 @@ export function sessionCookieOptions() {
     sameSite: "lax" as const,
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: SESSION_TTL_SECONDS,
+    maxAge: SESSION_IDLE_TTL_SECONDS,
     priority: "high" as const,
   };
 }

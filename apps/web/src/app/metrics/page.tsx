@@ -249,8 +249,8 @@ export default async function MetricsPage() {
       session={session}
       title="Metricas"
     >
-      <section className="overflow-hidden rounded-[8px] border border-[#d8e0eb] bg-white shadow-[0_14px_34px_rgba(15,23,42,0.08)]">
-        <header className="relative border-b border-[#e5e7eb] bg-[#f8fafc] px-5 py-3">
+      <section className="overflow-hidden rounded-[12px] border border-[color:var(--border)] bg-white shadow-[var(--shadow-sm)]">
+        <header className="relative border-b border-[color:var(--border)] bg-[#fbfcfe] px-5 py-4">
           <span className="absolute left-0 top-0 h-6 w-2 bg-[#0ea5e9]" aria-hidden="true" />
           <div className="text-center font-serif text-base text-[#1f2937]">
             Panel de control ERP con salud comercial, caja, stock y ejecucion
@@ -259,8 +259,8 @@ export default async function MetricsPage() {
 
         <div className="grid gap-4 p-4 xl:grid-cols-[330px_minmax(0,1fr)_260px]">
           <div className="grid gap-4">
-            <article className="rounded-[4px] border border-[#e5e7eb] bg-white">
-              <div className="bg-[#f1f5f9] px-3 py-2 text-center text-xs font-black text-[#111827]">
+            <article className="overflow-hidden rounded-[12px] border border-[color:var(--border)] bg-white shadow-[var(--shadow-xs)]">
+              <div className="border-b border-[color:var(--border)] bg-[#fbfcfe] px-4 py-3 text-center text-xs font-bold text-[#0f172a]">
                 Ventas vs objetivo
               </div>
               <div className="grid grid-cols-[1fr_auto] items-center gap-2 p-4">
@@ -277,8 +277,8 @@ export default async function MetricsPage() {
               </div>
             </article>
 
-            <article className="rounded-[4px] border border-[#e5e7eb] bg-white">
-              <div className="bg-[#f1f5f9] px-3 py-2 text-center text-xs font-black text-[#111827]">
+            <article className="overflow-hidden rounded-[12px] border border-[color:var(--border)] bg-white shadow-[var(--shadow-xs)]">
+              <div className="border-b border-[color:var(--border)] bg-[#fbfcfe] px-4 py-3 text-center text-xs font-bold text-[#0f172a]">
                 Cobranza cubierta
               </div>
               <div className="grid grid-cols-[1fr_auto] items-center gap-2 p-4">
@@ -296,7 +296,7 @@ export default async function MetricsPage() {
             </article>
           </div>
 
-          <article className="min-h-[300px] rounded-[4px] border border-[#d1d5db] bg-white p-4">
+          <article className="min-h-[300px] rounded-[12px] border border-[color:var(--border)] bg-white p-4 shadow-[var(--shadow-xs)]">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-sm font-black text-[#111827]">Ingresos, cobros y compras</h2>
               <div className="flex gap-4 text-[10px] font-bold text-[#334155]">
@@ -308,8 +308,8 @@ export default async function MetricsPage() {
             <RevenueBars sales={salesTrend} collections={collectionsTrend} purchases={purchasesTrend} />
           </article>
 
-          <aside className="rounded-[4px] border border-[#d1d5db] bg-white">
-            <div className="border-b border-[#e5e7eb] bg-[#f8fafc] px-3 py-2 text-xs font-black text-[#111827]">
+          <aside className="overflow-hidden rounded-[12px] border border-[color:var(--border)] bg-white shadow-[var(--shadow-xs)]">
+            <div className="border-b border-[color:var(--border)] bg-[#fbfcfe] px-4 py-3 text-xs font-bold text-[#0f172a]">
               Indicadores sin grafico
             </div>
             {plainMetrics.map((item) => (
