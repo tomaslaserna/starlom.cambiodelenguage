@@ -1,16 +1,6 @@
 import { queryWithCompanyContext } from "@/lib/db";
 import { parsePagination } from "@/lib/pagination";
 import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
-import { calculateProductProfit } from "@/lib/product-profit";
-
-export type ProductPrice = {
-  name: string;
-  price: number;
-  profit: number;
-  marginPercent: number | null;
-};
-
-export type ProductStockFilter = "all" | "available" | "empty" | "negative";
 
 export type Customer = {
   id: string;
@@ -40,14 +30,6 @@ export type Product = {
   stockReal: number;
   reserved: number;
   available: number;
-  prices: ProductPrice[];
-};
-
-export type ProductListSummary = {
-  total: number;
-  outOfStock: number;
-  negativeStock: number;
-  inventoryValue: number;
 };
 
 export type ProductSalePrice = {
@@ -77,7 +59,6 @@ type ListInput = {
   query?: string | null;
   page?: string | null;
   pageSize?: string | null;
-  stockFilter?: string | null;
 };
 
 type ListResult<T> = {
@@ -92,40 +73,10 @@ type ListResult<T> = {
   };
 };
 
-type ProductListResult = ListResult<Product> & {
-  stockFilter: ProductStockFilter;
-  summary: ProductListSummary;
-};
-
 const DEFAULT_COMPANY_ID = 1;
 
 function searchPattern(query: string) {
   return `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
-}
-
-export function normalizeProductStockFilter(value: string | null | undefined): ProductStockFilter {
-  return value === "available" || value === "empty" || value === "negative" ? value : "all";
-}
-
-function mapProductPrices(value: unknown, fallbackPrice: string, cost: number): ProductPrice[] {
-  const rawPrices = Array.isArray(value) ? value : [];
-  const parsed = rawPrices.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const row = item as Record<string, unknown>;
-    const name = typeof row.name === "string" ? row.name.trim() : "";
-    const price = Number(row.price);
-    return name && Number.isFinite(price) ? [{ name, price }] : [];
-  });
-  const source = parsed.length ? parsed : [{ name: "General", price: Number(fallbackPrice) || cost }];
-
-  return source.map((item) => {
-    const profit = calculateProductProfit(cost, item.price);
-    return {
-      ...item,
-      profit: profit.amount,
-      marginPercent: profit.percentOnCost,
-    };
-  });
 }
 
 export async function listCustomers(input: ListInput = {}): Promise<ListResult<Customer>> {
@@ -307,10 +258,9 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
   };
 }
 
-export async function listProducts(input: ListInput = {}): Promise<ProductListResult> {
+export async function listProducts(input: ListInput = {}): Promise<ListResult<Product>> {
   const companyId = input.companyId ?? DEFAULT_COMPANY_ID;
   const query = input.query?.trim() ?? "";
-  const stockFilter = normalizeProductStockFilter(input.stockFilter);
   const pagination = parsePagination(input);
   const params: unknown[] = [companyId];
   const filters = ["p.empresa_id = $1"];
@@ -323,54 +273,13 @@ export async function listProducts(input: ListInput = {}): Promise<ProductListRe
   }
 
   const where = filters.join(" AND ");
-  const summaryStockPredicate = {
-    all: "TRUE",
-    available: "inventory.stock_real > 0",
-    empty: "inventory.stock_real = 0",
-    negative: "inventory.stock_real < 0",
-  }[stockFilter];
-  const rowStockPredicate = {
-    all: "TRUE",
-    available: "COALESCE(stock.stock_real, 0) > 0",
-    empty: "COALESCE(stock.stock_real, 0) = 0",
-    negative: "COALESCE(stock.stock_real, 0) < 0",
-  }[stockFilter];
-
-  const summaryResult = await queryWithCompanyContext<{
-    total: string;
-    out_of_stock: string;
-    negative_stock: string;
-    inventory_value: string;
-  }>(
+  const countResult = await queryWithCompanyContext<{ total: string }>(
     companyId,
     `
-      SELECT
-        COUNT(*)::text AS total,
-        COUNT(*) FILTER (WHERE inventory.stock_real = 0)::text AS out_of_stock,
-        COUNT(*) FILTER (WHERE inventory.stock_real < 0)::text AS negative_stock,
-        COALESCE(
-          SUM(GREATEST(inventory.stock_real, 0) * inventory.cost),
-          0
-        )::text AS inventory_value
-      FROM (
-        SELECT
-          COALESCE(p.cost, 0)::numeric AS cost,
-          COALESCE((
-            SELECT SUM(
-              CASE
-                WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
-                ELSE -sm.quantity
-              END
-            )
-            FROM stock_movements sm
-            WHERE sm.empresa_id = p.empresa_id
-              AND sm.product_id = p.id
-          ), 0)::numeric AS stock_real
-        FROM products p
-        LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
-        WHERE ${where}
-      ) inventory
-      WHERE ${summaryStockPredicate}
+      SELECT COUNT(*)::text AS total
+      FROM products p
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      WHERE ${where}
     `,
     params,
   );
@@ -386,8 +295,6 @@ export async function listProducts(input: ListInput = {}): Promise<ProductListRe
     stock_real: string;
     reserved: string;
     available: string;
-    list_prices: unknown;
-    fallback_price: string;
   }>(
     companyId,
     `
@@ -400,40 +307,9 @@ export async function listProducts(input: ListInput = {}): Promise<ProductListRe
         p.cost,
         COALESCE(stock.stock_real, 0)::text AS stock_real,
         0::text AS reserved,
-        COALESCE(stock.stock_real, 0)::text AS available,
-        COALESCE(price_map.list_prices, '[]'::jsonb) AS list_prices,
-        COALESCE(
-          NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
-          p.sale_price,
-          p.cost,
-          0
-        )::text AS fallback_price
+        COALESCE(stock.stock_real, 0)::text AS available
       FROM products p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
-      LEFT JOIN margenes m
-        ON m.empresa_id = p.empresa_id
-       AND m.codigo = ${productMarginCodeExpression("p")}
-      LEFT JOIN LATERAL (
-        SELECT jsonb_agg(
-          jsonb_build_object(
-            'name', lp.nombre,
-            'price', COALESCE(
-              NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(ml.multiplicador, 0), 2), 0),
-              NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
-              p.sale_price,
-              p.cost,
-              0
-            )
-          )
-          ORDER BY lp.id ASC
-        ) AS list_prices
-        FROM listas_precio lp
-        LEFT JOIN margenes_listas ml
-          ON ml.empresa_id = lp.empresa_id
-         AND ml.lista_id = lp.id
-         AND ml.codigo = ${productMarginCodeExpression("p")}
-        WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1
-      ) price_map ON true
       LEFT JOIN LATERAL (
         SELECT SUM(
           CASE
@@ -445,15 +321,14 @@ export async function listProducts(input: ListInput = {}): Promise<ProductListRe
         WHERE sm.empresa_id = p.empresa_id
           AND sm.product_id = p.id
       ) stock ON true
-      WHERE ${where} AND ${rowStockPredicate}
+      WHERE ${where}
       ORDER BY p.name ASC, p.id ASC
       LIMIT $${params.length - 1} OFFSET $${params.length}
     `,
     params,
   );
 
-  const summaryRow = summaryResult.rows[0];
-  const total = Number.parseInt(summaryRow?.total ?? "0", 10);
+  const total = Number.parseInt(countResult.rows[0]?.total ?? "0", 10);
 
   return {
     data: rows.rows.map((row) => ({
@@ -467,7 +342,6 @@ export async function listProducts(input: ListInput = {}): Promise<ProductListRe
       stockReal: Number(row.stock_real),
       reserved: Number(row.reserved),
       available: Number(row.available),
-      prices: mapProductPrices(row.list_prices, row.fallback_price, Number(row.cost ?? 0)),
     })),
     meta: {
       companyId,
@@ -476,13 +350,6 @@ export async function listProducts(input: ListInput = {}): Promise<ProductListRe
       pageSize: pagination.pageSize,
       total,
       totalPages: Math.max(1, Math.ceil(total / pagination.pageSize)),
-    },
-    stockFilter,
-    summary: {
-      total,
-      outOfStock: Number.parseInt(summaryRow?.out_of_stock ?? "0", 10),
-      negativeStock: Number.parseInt(summaryRow?.negative_stock ?? "0", 10),
-      inventoryValue: Number(summaryRow?.inventory_value ?? 0),
     },
   };
 }

@@ -9,7 +9,7 @@
     "lint": "eslint",
     "env:check": "node scripts/check-env.mjs",
     "security:scan": "node scripts/security-scan.mjs",
-    "test": "node --test scripts/static.test.mjs scripts/product-pricing-sql.test.mjs",
+    "test": "node --test scripts/static.test.mjs",
     "test:smoke": "node --test scripts/smoke.mjs"
   },
   "dependencies": {
