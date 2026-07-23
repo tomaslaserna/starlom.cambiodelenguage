@@ -29,24 +29,11 @@ type StockPageProps = {
   searchParams: Promise<{ mode?: string; status?: string; error?: string }>;
 };
 
-function movementLabel(type: string) {
-  const labels: Record<string, string> = {
-    ajuste_negativo: "Salida manual",
-    ajuste_positivo: "Entrada manual",
-    entrada_compra: "Compra acreditada",
-    salida_mayorista: "Salida mayorista",
-    salida_minorista: "Salida minorista",
-    salida_venta: "Venta / pedido",
-  };
-  return labels[type] ?? type.replaceAll("_", " ");
-}
-
 function movementDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("es-AR", {
     dateStyle: "short",
-    timeStyle: "short",
     timeZone: "America/Argentina/Buenos_Aires",
   }).format(date);
 }
@@ -95,9 +82,9 @@ export default async function StockPage({ searchParams }: StockPageProps) {
         ) : null}
 
         <div className="grid gap-3 md:grid-cols-3">
-          <StatCard label="Productos activos" value={formatNumber(products.length)} />
-          <StatCard label="Unidades registradas" value={formatNumber(totalStock)} />
-          <StatCard label="Sin stock" value={formatNumber(withoutStock)} />
+          <StatCard label="Productos activos" tone="accent" value={formatNumber(products.length)} />
+          <StatCard label="Unidades registradas" tone="success" value={formatNumber(totalStock)} />
+          <StatCard label="Sin stock" tone="warning" value={formatNumber(withoutStock)} />
         </div>
 
         {params.mode === "bulk" ? (
@@ -111,49 +98,75 @@ export default async function StockPage({ searchParams }: StockPageProps) {
           />
         )}
 
-        <Card className="overflow-hidden">
-          <CardHeader>
+        <Card className="overflow-hidden border-[#bfe4dc]">
+          <CardHeader className="border-[#bfe4dc] bg-[#f0faf7]">
             <CardTitle>Ultimos movimientos</CardTitle>
             <CardDescription>Historial comun para compras, ventas, recuentos y ajustes manuales.</CardDescription>
           </CardHeader>
           <DataTable
             caption="Ultimos movimientos de stock"
             className="rounded-none border-0 shadow-none"
-            minWidth="960px"
+            minWidth="860px"
             tableLabel="Movimientos de stock"
+            tableProps={{ className: "table-fixed" }}
           >
-            <DataTableHeader>
+            <DataTableHeader className="border-[#bfe4dc] bg-[#eaf7f3] text-[#315b50]">
               <DataTableRow>
-                <DataTableHead>Fecha</DataTableHead>
-                <DataTableHead>Producto</DataTableHead>
-                <DataTableHead>Origen</DataTableHead>
-                <DataTableHead align="right">Cantidad</DataTableHead>
-                <DataTableHead>Motivo</DataTableHead>
-                <DataTableHead>Usuario</DataTableHead>
+                <DataTableHead className="w-[14%]">Fecha</DataTableHead>
+                <DataTableHead className="w-[32%]">Producto</DataTableHead>
+                <DataTableHead align="right" className="w-[12%]">Cantidad</DataTableHead>
+                <DataTableHead className="w-[24%]">Motivo</DataTableHead>
+                <DataTableHead className="w-[18%]">Usuario</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {movements.length ? (
                 movements.map((movement) => (
-                  <DataTableRow key={movement.id}>
-                    <DataTableCell className="whitespace-nowrap">{movementDate(movement.date)}</DataTableCell>
-                    <DataTableCell>
-                      <div className="font-semibold">{movement.productName}</div>
-                      <div className="font-mono text-xs text-[color:var(--muted)]">{movement.productCode || "Sin codigo"}</div>
+                  <DataTableRow className="even:bg-[#fbfefc]" key={movement.id}>
+                    <DataTableCell className="whitespace-nowrap">
+                      <span className="inline-flex rounded-full bg-[#e8f0ff] px-2.5 py-1 text-xs font-bold text-[#315ea8]">
+                        {movementDate(movement.date)}
+                      </span>
                     </DataTableCell>
-                    <DataTableCell>{movementLabel(movement.type)}</DataTableCell>
+                    <DataTableCell>
+                      <div className="font-semibold text-[#173b33]">{movement.productName}</div>
+                    </DataTableCell>
                     <DataTableCell align="right">
                       <StatusBadge tone={movement.mode === "entrada" ? "success" : "warning"}>
                         {movement.mode === "entrada" ? "+" : "-"}{formatNumber(movement.quantity)}
                       </StatusBadge>
                     </DataTableCell>
-                    <DataTableCell>{movement.reason || "-"}</DataTableCell>
+                    <DataTableCell>
+                      {movement.reason ? (
+                        <details className="group rounded-[8px] border border-[#c6ddd7] bg-white open:bg-[#f6fbfa]">
+                          <summary
+                            className="flex min-h-8 list-none items-center justify-between gap-2 px-2.5 py-1 text-xs font-bold text-[#16705c] [&::-webkit-details-marker]:hidden"
+                            title={movement.reason}
+                          >
+                            <span>Ver motivo</span>
+                            <svg
+                              aria-hidden="true"
+                              className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <path d="m7 10 5 5 5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                            </svg>
+                          </summary>
+                          <div className="border-t border-[#dbe9e5] px-2.5 py-2 text-xs leading-5 text-[#405b54]">
+                            {movement.reason}
+                          </div>
+                        </details>
+                      ) : (
+                        <span className="text-xs text-[color:var(--muted)]">Sin motivo</span>
+                      )}
+                    </DataTableCell>
                     <DataTableCell>{movement.actor || "Proceso automatico"}</DataTableCell>
                   </DataTableRow>
                 ))
               ) : (
                 <DataTableRow>
-                  <DataTableCell colSpan={6}>
+                  <DataTableCell colSpan={5}>
                     <EmptyState title="Sin movimientos" description="Los cambios de stock apareceran en este historial." />
                   </DataTableCell>
                 </DataTableRow>

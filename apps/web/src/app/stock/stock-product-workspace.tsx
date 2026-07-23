@@ -37,8 +37,8 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey, product
 
   return (
     <>
-      <Card className="overflow-visible">
-        <CardHeader>
+      <Card className="overflow-visible border-[#c9dafa]">
+        <CardHeader className="border-[#c9dafa] bg-[#f5f9ff]">
           <CardTitle>Buscar producto</CardTitle>
           <CardDescription>
             Elegí un producto y la modificación de stock se abrirá automáticamente.

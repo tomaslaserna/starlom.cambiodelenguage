@@ -16,7 +16,9 @@ import {
   PageHeader,
   Select,
   StatusBadge,
+  TableActionMenu,
   Toolbar,
+  tableActionItemClass,
   type StatusBadgeTone,
 } from "@/components/ui";
 import { formatDate } from "@/lib/format";
@@ -49,9 +51,6 @@ function orderStatusTone(value: string): StatusBadgeTone {
   if (value === "cancelado") return "danger";
   return "neutral";
 }
-
-const actionItemClass =
-  "block min-h-9 w-full appearance-none rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold leading-5 text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--hover)] hover:text-[color:var(--accent-strong)]";
 
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const session = await requireStaffSession();
@@ -96,7 +95,10 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           </div>
         ) : null}
 
-        <Toolbar ariaLabel="Filtros de pedidos">
+        <Toolbar
+          ariaLabel="Filtros de pedidos"
+          className="border-[#c9dafa] bg-[#f5f9ff]"
+        >
           <form
             action="/orders"
             className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_210px_auto_auto] lg:items-end"
@@ -134,7 +136,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           </form>
         </Toolbar>
 
-        <Card className="overflow-hidden">
+        <Card className="overflow-hidden border-[#c9dafa]">
           <DataTable
             caption="Listado de pedidos filtrados"
             className="rounded-none border-0 shadow-none"
@@ -142,7 +144,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             tableLabel="Pedidos"
             tableProps={{ className: "table-fixed" }}
           >
-            <DataTableHeader>
+            <DataTableHeader className="border-[#c9dafa] bg-[#edf4ff] text-[#31507a]">
               <DataTableRow className="hover:bg-transparent">
                 <DataTableHead className="w-[11%] px-2">Pedido</DataTableHead>
                 <DataTableHead className="w-[27%] px-2">Cliente</DataTableHead>
@@ -173,9 +175,11 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                   const isOpenOrder = order.orderStatus === "cargado" || order.orderStatus === "confirmado";
 
                   return (
-                    <DataTableRow key={order.id}>
+                    <DataTableRow className="even:bg-[#fbfdff]" key={order.id}>
                       <DataTableCell className="px-2 py-2">
-                        <div className="truncate font-mono text-xs font-black">#{orderNumberLabel}</div>
+                        <div className="inline-flex max-w-full truncate rounded-full bg-[#e8f0ff] px-2.5 py-1 font-mono text-xs font-black text-[#1d4ed8]">
+                          #{orderNumberLabel}
+                        </div>
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
                         <div className="truncate font-medium">{order.customerName || "Sin cliente"}</div>
@@ -191,57 +195,52 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                         </StatusBadge>
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
-                        <details className="rounded-[8px] border border-[color:var(--border)] bg-white">
-                          <summary className="cursor-pointer select-none rounded-[8px] px-2.5 py-1.5 text-xs font-black text-[color:var(--accent-strong)]">
-                            Acciones
-                          </summary>
-                          <div className="grid gap-0.5 border-t border-[color:var(--border)] p-1">
-                            {isOpenOrder && canEditOrders ? (
-                              <>
-                                <form action={updateOrderStatusAction}>
-                                  <input name="id" type="hidden" value={order.id} />
-                                  <input name="status" type="hidden" value="entregado" />
-                                  <button
-                                    aria-label={`Marcar entregado el pedido ${orderNumberLabel}`}
-                                    className={actionItemClass}
-                                    suppressHydrationWarning
-                                    type="submit"
-                                  >
-                                    Entregado
-                                  </button>
-                                </form>
-                                <form action={updateOrderStatusAction}>
-                                  <input name="id" type="hidden" value={order.id} />
-                                  <input name="status" type="hidden" value="cancelado" />
-                                  <button
-                                    aria-label={`Cancelar pedido ${orderNumberLabel}`}
-                                    className={`${actionItemClass} text-[color:var(--danger)] hover:text-[color:var(--danger)]`}
-                                    suppressHydrationWarning
-                                    type="submit"
-                                  >
-                                    Cancelar
-                                  </button>
-                                </form>
-                                <a
-                                  aria-label={`Modificar pedido ${orderNumberLabel}`}
-                                  className={actionItemClass}
-                                  href={`/orders/${order.id}/edit`}
+                        <TableActionMenu>
+                          {isOpenOrder && canEditOrders ? (
+                            <>
+                              <form action={updateOrderStatusAction}>
+                                <input name="id" type="hidden" value={order.id} />
+                                <input name="status" type="hidden" value="entregado" />
+                                <button
+                                  aria-label={`Marcar entregado el pedido ${orderNumberLabel}`}
+                                  className={tableActionItemClass}
+                                  suppressHydrationWarning
+                                  type="submit"
                                 >
-                                  Modificar
-                                </a>
-                              </>
-                            ) : null}
-                            <a
-                              aria-label={`Ver PDF del pedido ${orderNumberLabel}`}
-                              className={actionItemClass}
-                              href={`/api/pdfs/orders/${order.id}/document`}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              Ver PDF
-                            </a>
-                          </div>
-                        </details>
+                                  Entregado
+                                </button>
+                              </form>
+                              <form action={updateOrderStatusAction}>
+                                <input name="id" type="hidden" value={order.id} />
+                                <input name="status" type="hidden" value="cancelado" />
+                                <button
+                                  aria-label={`Cancelar pedido ${orderNumberLabel}`}
+                                  className={`${tableActionItemClass} text-[color:var(--danger)] hover:bg-[color:var(--danger-subtle)] hover:text-[color:var(--danger)]`}
+                                  suppressHydrationWarning
+                                  type="submit"
+                                >
+                                  Cancelar
+                                </button>
+                              </form>
+                              <a
+                                aria-label={`Modificar pedido ${orderNumberLabel}`}
+                                className={tableActionItemClass}
+                                href={`/orders/${order.id}/edit`}
+                              >
+                                Modificar
+                              </a>
+                            </>
+                          ) : null}
+                          <a
+                            aria-label={`Ver PDF del pedido ${orderNumberLabel}`}
+                            className={tableActionItemClass}
+                            href={`/api/pdfs/orders/${order.id}/document`}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Ver PDF
+                          </a>
+                        </TableActionMenu>
                       </DataTableCell>
                     </DataTableRow>
                   );

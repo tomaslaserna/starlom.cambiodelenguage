@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Field, Input } from "@/components/ui";
+import { Button, Field, Input, TableActionMenu, tableActionItemClass } from "@/components/ui";
 
 type SaleRowActionsProps = {
   editAction: (formData: FormData) => Promise<void>;
   cancelAction: (formData: FormData) => Promise<void>;
+  canEdit: boolean;
   sale: {
     id: string;
     receiptLabel: string;
@@ -19,43 +20,39 @@ type SaleRowActionsProps = {
   };
 };
 
-const actionItemClass =
-  "flex w-full items-center rounded-[6px] px-2.5 py-1.5 text-left text-xs font-semibold text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--hover)] hover:text-[color:var(--accent-strong)]";
-
-export function SaleRowActions({ editAction, cancelAction, sale }: SaleRowActionsProps) {
+export function SaleRowActions({ editAction, cancelAction, canEdit, sale }: SaleRowActionsProps) {
   const [editing, setEditing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const idBase = `sale-${sale.id}`;
 
   return (
     <>
-      <details className="rounded-[8px] border border-[color:var(--border)] bg-white">
-        <summary className="cursor-pointer select-none rounded-[8px] px-2.5 py-1.5 text-xs font-black text-[color:var(--accent-strong)]">
-          Acciones
-        </summary>
-        <div className="grid gap-0.5 border-t border-[color:var(--border)] p-1">
-          <a
-            className={actionItemClass}
-            href={`/api/pdfs/orders/${sale.id}/request`}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Ver PDF
-          </a>
-          <button className={actionItemClass} onClick={() => setEditing(true)} type="button">
-            Editar
-          </button>
-          <button
-            className={`${actionItemClass} text-[color:var(--danger)] hover:text-[color:var(--danger)]`}
-            onClick={() => setCancelling(true)}
-            type="button"
-          >
-            Cancelar venta
-          </button>
-        </div>
-      </details>
+      <TableActionMenu>
+        <a
+          className={tableActionItemClass}
+          href={`/api/pdfs/orders/${sale.id}/request`}
+          rel="noreferrer"
+          target="_blank"
+        >
+          Ver PDF
+        </a>
+        {canEdit ? (
+          <>
+            <button className={tableActionItemClass} onClick={() => setEditing(true)} type="button">
+              Editar
+            </button>
+            <button
+              className={`${tableActionItemClass} text-[color:var(--danger)] hover:bg-[color:var(--danger-subtle)] hover:text-[color:var(--danger)]`}
+              onClick={() => setCancelling(true)}
+              type="button"
+            >
+              Cancelar venta
+            </button>
+          </>
+        ) : null}
+      </TableActionMenu>
 
-      {editing ? (
+      {canEdit && editing ? (
         <div aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog">
           <button
             aria-label="Cerrar"
@@ -101,7 +98,7 @@ export function SaleRowActions({ editAction, cancelAction, sale }: SaleRowAction
         </div>
       ) : null}
 
-      {cancelling ? (
+      {canEdit && cancelling ? (
         <div aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog">
           <button
             aria-label="Cerrar"

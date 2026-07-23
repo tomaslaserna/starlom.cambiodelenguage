@@ -610,11 +610,13 @@ test("orders keep final prices while quotes can add optional VAT", () => {
   assert.match(quoteEntryFields, /Subtotal productos/);
 
   const quotesPage = read("apps/web/src/app/quotes/page.tsx");
-  assert.match(quotesPage, /DataTableHead align="right">IVA/);
-  assert.match(quotesPage, /quote\.vatAmount/);
+  assert.doesNotMatch(quotesPage, /DataTableHead[^>]*>IVA/);
+  assert.doesNotMatch(quotesPage, /quote\.vatAmount/);
+  assert.doesNotMatch(quotesPage, /quote\.subtotal/);
   assert.match(quotesPage, /quote\.quoteNumber/);
   assert.doesNotMatch(quotesPage, />#\{quote\.id\}</);
-  assert.match(quotesPage, /DataTableHead align="right">Subtotal/);
+  assert.doesNotMatch(quotesPage, /DataTableHead[^>]*>Subtotal/);
+  assert.match(quotesPage, /TableActionMenu/);
 
   const orders = read("apps/web/src/lib/orders.ts");
   assert.doesNotMatch(orders, /receiptAddsVat|money\(netAmount \* 0\.21\)|money\(subtotal \* 0\.21\)/);
@@ -857,6 +859,7 @@ test("reported ERP controls keep consistent spacing, dates, menus, and whole qua
   const orders = read("apps/web/src/lib/orders.ts");
   const ordersPage = read("apps/web/src/app/orders/page.tsx");
   const salesPage = read("apps/web/src/app/sales/page.tsx");
+  const saleRowActions = read("apps/web/src/app/sales/sale-row-actions.tsx");
 
   assert.doesNotMatch(home, /eyebrow="Inicio"/);
   assert.match(home, /formatDateTime\(task\.deadline\)/);
@@ -886,10 +889,14 @@ test("reported ERP controls keep consistent spacing, dates, menus, and whole qua
   assert.match(orders, /Number\.isInteger\(line\.quantity\)/);
   assert.match(orders, /cantidad de cada producto debe ser un numero entero/);
 
-  assert.match(ordersPage, /appearance-none[\s\S]*text-sm font-semibold leading-5/);
+  assert.match(ordersPage, /TableActionMenu/);
+  assert.match(ordersPage, /bg-\[#edf4ff\]/);
   assert.ok((ordersPage.match(/min-w-28 font-extrabold/g) ?? []).length >= 2);
-  assert.match(salesPage, /DataTableHead align="center"[^>]*>Comprobante<\/DataTableHead>/);
-  assert.match(salesPage, /DataTableCell align="center"[\s\S]*Ver PDF/);
+  assert.doesNotMatch(salesPage, /DataTableHead[^>]*>Comprobante<\/DataTableHead>/);
+  assert.doesNotMatch(salesPage, /DataTableCell align="center"[\s\S]*Ver PDF/);
+  assert.match(saleRowActions, /TableActionMenu[\s\S]*Ver PDF/);
+  assert.match(salesPage, /<TrashIcon \/>/);
+  assert.match(salesPage, /h-9 min-h-9 w-9 min-w-9 p-0/);
 });
 
 test("message center groups messages into WhatsApp-style contact conversations with private attachments", () => {
@@ -1578,11 +1585,17 @@ test("stock exposes separate modification and information windows", () => {
 
   assert.match(stockPage, /Modificación de producto/);
   assert.doesNotMatch(stockPage, /ButtonLink/);
+  assert.doesNotMatch(stockPage, /timeStyle/);
+  assert.doesNotMatch(stockPage, /DataTableHead[^>]*>Origen/);
+  assert.doesNotMatch(stockPage, /movement\.productCode/);
+  assert.match(stockPage, /Ver motivo/);
+  assert.match(stockPage, /title=\{movement\.reason\}/);
+  assert.match(stockPage, /bg-\[#eaf7f3\]/);
   assert.match(stockWorkspace, /Modificar stock/);
   assert.match(stockWorkspace, /Ver detalle/);
   assert.match(stockWorkspace, /Proveedor/);
   assert.match(stockWorkspace, /compactOptions/);
-  assert.match(stockWorkspace, /Card className="overflow-visible"/);
+  assert.match(stockWorkspace, /Card className="overflow-visible[^"]*"/);
   assert.match(stockWorkspace, /aria-label="Acción del producto"/);
   assert.match(stockWorkspace, /aria-haspopup="dialog"/);
   assert.match(stockWorkspace, /setDialogOpen\(canEdit && Boolean\(nextProductId\)\)/);
