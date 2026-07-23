@@ -589,6 +589,9 @@ test("order creation exposes the full legacy receipt type set", () => {
   const billingPage = read("apps/web/src/app/billing/page.tsx");
   assert.match(billingPage, /<option value="c">Factura C<\/option>/);
   assert.match(billingPage, /name="cliente"/);
+  assert.match(billingPage, /className="grid w-full items-end gap-3 md:grid-cols-2 xl:grid-cols-6"/);
+  assert.match(billingPage, /md:col-span-2 md:flex-row md:justify-end xl:col-span-6/);
+  assert.match(billingPage, /className="w-full md:w-\[112px\]"/);
 
   const salesAdmin = read("apps/web/src/lib/sales-admin.ts");
   assert.match(salesAdmin, /TYPE_CODES = new Set\(\[1, 2, 3, 6, 7, 8, 11, 12, 13\]\)/);

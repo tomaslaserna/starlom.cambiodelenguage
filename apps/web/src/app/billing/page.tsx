@@ -133,9 +133,9 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
         <Toolbar ariaLabel="Filtros de facturacion">
           <form
             action="/billing"
-            className="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-[1.25fr_1fr_1fr_150px_170px_170px_auto]"
+            className="grid w-full items-end gap-3 md:grid-cols-2 xl:grid-cols-6"
           >
-            <Field htmlFor="billing-customer" label="Cliente">
+            <Field className="min-w-0" htmlFor="billing-customer" label="Cliente">
               <Input
                 id="billing-customer"
                 name="cliente"
@@ -143,13 +143,13 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 placeholder="Nombre o razon social"
               />
             </Field>
-            <Field htmlFor="billing-tax-id" label="CUIT/DNI">
+            <Field className="min-w-0" htmlFor="billing-tax-id" label="CUIT/DNI">
               <Input id="billing-tax-id" name="nro_id" defaultValue={params.nro_id ?? ""} />
             </Field>
-            <Field htmlFor="billing-receipt" label="Comprobante">
+            <Field className="min-w-0" htmlFor="billing-receipt" label="Comprobante">
               <Input id="billing-receipt" name="nro_factura" defaultValue={params.nro_factura ?? ""} />
             </Field>
-            <Field htmlFor="billing-type" label="Tipo">
+            <Field className="min-w-0" htmlFor="billing-type" label="Tipo">
               <Select id="billing-type" name="tipo_factura" defaultValue={params.tipo_factura ?? ""}>
                 <option value="">Todos</option>
                 <option value="a">Factura A</option>
@@ -159,14 +159,14 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 <option value="nd">Nota debito</option>
               </Select>
             </Field>
-            <Field htmlFor="billing-tracking" label="Seguimiento">
+            <Field className="min-w-0" htmlFor="billing-tracking" label="Seguimiento">
               <Select id="billing-tracking" name="seguimiento" defaultValue={params.seguimiento ?? ""}>
                 <option value="">Todos</option>
                 <option value="facturada">Facturada</option>
                 <option value="no_facturada">No facturada</option>
               </Select>
             </Field>
-            <Field htmlFor="billing-fiscal-status" label="Estado">
+            <Field className="min-w-0" htmlFor="billing-fiscal-status" label="Estado">
               <Select id="billing-fiscal-status" name="estado_fiscal" defaultValue={params.estado_fiscal ?? ""}>
                 <option value="">Todos</option>
                 <option value="no_enviado">No enviado</option>
@@ -175,9 +175,11 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 <option value="aprobado">Aprobado</option>
               </Select>
             </Field>
-            <div className="flex items-end gap-2">
-              <Button type="submit">Filtrar</Button>
-              <ButtonLink href="/billing" variant="secondary">
+            <div className="flex flex-col gap-2 md:col-span-2 md:flex-row md:justify-end xl:col-span-6">
+              <Button className="w-full md:w-[112px]" type="submit">
+                Filtrar
+              </Button>
+              <ButtonLink className="w-full md:w-[112px]" href="/billing" variant="secondary">
                 Limpiar
               </ButtonLink>
             </div>
