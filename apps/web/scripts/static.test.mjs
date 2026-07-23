@@ -900,7 +900,8 @@ test("reported ERP controls keep consistent spacing, dates, menus, and whole qua
   assert.doesNotMatch(salesPage, /DataTableCell align="center"[\s\S]*Ver PDF/);
   assert.match(saleRowActions, /TableActionMenu[\s\S]*Ver PDF/);
   assert.match(salesPage, /<TrashIcon \/>/);
-  assert.match(salesPage, /h-9 min-h-9 w-9 min-w-9 p-0/);
+  assert.match(salesPage, /h-10 min-h-10 w-10 min-w-10 p-0/);
+  assert.match(salesPage, /height="20"[\s\S]*width="20"/);
 });
 
 test("message center groups messages into WhatsApp-style contact conversations with private attachments", () => {

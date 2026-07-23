@@ -187,7 +187,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                               <input name="id" type="hidden" value={sale.id} />
                               <ConfirmDeleteButton
                                 aria-label={`Borrar venta ${saleNumberLabel}`}
-                                className="h-9 min-h-9 w-9 min-w-9 p-0 [&>span]:flex [&>span]:items-center [&>span]:justify-center"
+                                className="h-10 min-h-10 w-10 min-w-10 p-0 [&>span]:flex [&>span]:h-5 [&>span]:w-5 [&>span]:shrink-0 [&>span]:items-center [&>span]:justify-center"
                                 confirmation={`¿Borrar definitivamente la venta #${saleNumberLabel}? Esta acción también elimina sus movimientos relacionados.`}
                                 size="sm"
                                 title="Borrar venta"
@@ -218,8 +218,18 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
 
 function TrashIcon() {
   return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
-      <path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    <svg
+      aria-hidden="true"
+      className="block h-5 w-5 shrink-0"
+      fill="none"
+      height="20"
+      viewBox="0 0 24 24"
+      width="20"
+    >
+      <path d="M4.5 7h15" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+      <path d="M9 7V4.75h6V7" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
+      <path d="m7 7 .75 12h8.5L17 7" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
+      <path d="M10 10.5v5M14 10.5v5" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
     </svg>
   );
 }
