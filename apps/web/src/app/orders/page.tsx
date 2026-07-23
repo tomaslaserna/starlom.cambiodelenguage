@@ -1,6 +1,7 @@
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
 import {
+  AppIcon,
   Button,
   ButtonLink,
   Card,
@@ -12,8 +13,8 @@ import {
   DataTableRow,
   EmptyState,
   Field,
-  Input,
   PageHeader,
+  SearchInput,
   Select,
   StatusBadge,
   TableActionMenu,
@@ -95,16 +96,13 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           </div>
         ) : null}
 
-        <Toolbar
-          ariaLabel="Filtros de pedidos"
-          className="border-[#c9dafa] bg-[#f5f9ff]"
-        >
+        <Toolbar ariaLabel="Filtros de pedidos">
           <form
             action="/orders"
-            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_210px_auto_auto] lg:items-end"
+            className="grid w-full gap-4 lg:grid-cols-[minmax(320px,1fr)_260px_144px_144px] lg:items-end"
           >
             <Field htmlFor="orders-query" label="Buscar">
-              <Input
+              <SearchInput
                 defaultValue={result.meta.query}
                 id="orders-query"
                 key={`orders-query-${result.meta.query}`}
@@ -127,16 +125,21 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                 ))}
               </Select>
             </Field>
-            <Button className="min-w-28 font-extrabold lg:mb-0" type="submit">
+            <Button className="w-full min-w-28 font-extrabold" leadingIcon={<AppIcon name="filter" />} type="submit">
               Filtrar
             </Button>
-            <ButtonLink className="min-w-28 font-extrabold" href="/orders" variant="secondary">
+            <ButtonLink
+              className="w-full min-w-28 font-extrabold"
+              href="/orders"
+              leadingIcon={<AppIcon name="refresh" />}
+              variant="outline"
+            >
               Limpiar
             </ButtonLink>
           </form>
         </Toolbar>
 
-        <Card className="overflow-hidden border-[#c9dafa]">
+        <Card className="overflow-hidden">
           <DataTable
             caption="Listado de pedidos filtrados"
             className="rounded-none border-0 shadow-none"
@@ -144,7 +147,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             tableLabel="Pedidos"
             tableProps={{ className: "table-fixed" }}
           >
-            <DataTableHeader className="border-[#c9dafa] bg-[#edf4ff] text-[#31507a]">
+            <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
                 <DataTableHead className="w-[11%] px-2">Pedido</DataTableHead>
                 <DataTableHead className="w-[27%] px-2">Cliente</DataTableHead>
@@ -175,7 +178,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                   const isOpenOrder = order.orderStatus === "cargado" || order.orderStatus === "confirmado";
 
                   return (
-                    <DataTableRow className="even:bg-[#fbfdff]" key={order.id}>
+                    <DataTableRow key={order.id}>
                       <DataTableCell className="px-2 py-2">
                         <div className="inline-flex max-w-full truncate rounded-full bg-[#e8f0ff] px-2.5 py-1 font-mono text-xs font-black text-[#1d4ed8]">
                           #{orderNumberLabel}

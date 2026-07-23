@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, SearchableSelect } from "@/components/ui";
+import { AppIcon, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, SearchableSelect } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { InventoryProduct } from "@/lib/inventory";
 import { StockAdjustmentDialog } from "@/app/stock/stock-adjustment-dialog";
@@ -37,8 +37,8 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey, product
 
   return (
     <>
-      <Card className="overflow-visible border-[#c9dafa]">
-        <CardHeader className="border-[#c9dafa] bg-[#f5f9ff]">
+      <Card className="overflow-visible">
+        <CardHeader>
           <CardTitle>Buscar producto</CardTitle>
           <CardDescription>
             Elegí un producto y la modificación de stock se abrirá automáticamente.
@@ -51,7 +51,8 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey, product
                 compactOptions
                 id="stock-workspace-product"
                 options={productOptions}
-                placeholder="Buscar por nombre, codigo o proveedor"
+                placeholder="Escribí para buscar"
+                searchPlaceholder="Escribí para buscar"
                 value={productId}
                 onChange={selectProduct}
               />
@@ -86,7 +87,7 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey, product
               ) : (
                 <div
                   aria-disabled="true"
-                  className="flex min-h-[var(--control-height-md)] items-center rounded-[var(--radius-md)] border border-dashed border-[color:var(--border)] bg-[color:var(--panel-muted)] px-3 text-sm text-[color:var(--muted)]"
+                  className="flex min-h-[var(--control-height-md)] items-center rounded-[9px] border border-[#d7e0eb] bg-[#f7f9fc] px-4 text-sm text-[color:var(--muted)]"
                 >
                   Disponible al elegir un producto
                 </div>
@@ -119,8 +120,9 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey, product
           ) : null}
 
           {!selectedProduct ? (
-            <div className="rounded-[var(--radius-md)] border border-dashed border-[color:var(--border)] p-4 text-sm text-[color:var(--muted)]">
-              Busca y selecciona un producto para comenzar.
+            <div className="flex min-h-[68px] items-center justify-center gap-3 rounded-[10px] border border-dashed border-[#cfd9e6] bg-[#fbfcfe] p-4 text-sm text-[color:var(--muted)]">
+              <AppIcon className="h-6 w-6 text-[#71819a]" name="package" />
+              <span>Busca y selecciona un producto para comenzar.</span>
             </div>
           ) : null}
         </CardContent>

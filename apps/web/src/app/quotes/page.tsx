@@ -1,5 +1,6 @@
 import { ModulePage } from "@/components/module-page";
 import {
+  AppIcon,
   Button,
   Card,
   DataTable,
@@ -10,8 +11,8 @@ import {
   DataTableRow,
   EmptyState,
   Field,
-  Input,
   PageHeader,
+  SearchInput,
   Select,
   StatCard,
   StatusBadge,
@@ -135,13 +136,13 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
         </Card>
         ) : null}
 
-        <Toolbar ariaLabel="Filtros de presupuestos" className="border-[#d7d7f6] bg-[#f7f7ff]">
+        <Toolbar ariaLabel="Filtros de presupuestos">
           <form
             action="/quotes"
-            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_220px_auto] lg:items-end"
+            className="grid w-full gap-4 lg:grid-cols-[minmax(320px,1fr)_260px_144px] lg:items-end"
           >
             <Field htmlFor="quotes-query" label="Buscar">
-              <Input
+              <SearchInput
                 defaultValue={params.q ?? ""}
                 id="quotes-query"
                 name="q"
@@ -158,17 +159,19 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                 ))}
               </Select>
             </Field>
-            <Button type="submit">Filtrar</Button>
+            <Button className="w-full" leadingIcon={<AppIcon name="filter" />} type="submit">
+              Filtrar
+            </Button>
           </form>
         </Toolbar>
 
         <div className="grid gap-3 md:grid-cols-3">
-          <StatCard className="p-3" label="Presupuestos filtrados" tone="accent" value={quotes.length} />
-          <StatCard className="p-3" label="Total filtrado" tone="info" value={formatCurrency(total)} />
-          <StatCard className="p-3" label="Vencidos en filtro" tone="warning" value={expired} />
+          <StatCard icon={<AppIcon className="h-6 w-6" name="quote" />} label="Presupuestos filtrados" tone="accent" value={quotes.length} />
+          <StatCard icon={<AppIcon className="h-6 w-6" name="money" />} label="Total filtrado" tone="info" value={formatCurrency(total)} />
+          <StatCard icon={<AppIcon className="h-6 w-6" name="clock" />} label="Vencidos en filtro" tone="warning" value={expired} />
         </div>
 
-        <Card className="overflow-hidden border-[#d7d7f6]">
+        <Card className="overflow-hidden">
           <DataTable
             caption="Listado de presupuestos filtrados"
             className="rounded-none border-0 shadow-none"
@@ -176,7 +179,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
             tableLabel="Presupuestos"
             tableProps={{ className: "table-fixed" }}
           >
-            <DataTableHeader className="border-[#d7d7f6] bg-[#f1f1ff] text-[#4a4d7a]">
+            <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
                 <DataTableHead className="w-[14%]">Presupuesto</DataTableHead>
                 <DataTableHead className="w-[24%]">Cliente</DataTableHead>
@@ -199,7 +202,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                 </DataTableRow>
               ) : (
                 quotes.map((quote) => (
-                  <DataTableRow className="even:bg-[#fdfdff]" key={quote.id}>
+                  <DataTableRow key={quote.id}>
                     <DataTableCell>
                       <div className="inline-flex max-w-full rounded-full bg-[#ececff] px-2.5 py-1 font-mono text-xs font-black text-[#4f46b8]">
                         {quote.quoteNumber}
@@ -214,9 +217,17 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                         {quote.customer.taxId || "-"}
                       </div>
                     </DataTableCell>
-                    <DataTableCell className="whitespace-nowrap">{formatDate(quote.issueDate)}</DataTableCell>
                     <DataTableCell className="whitespace-nowrap">
-                      <div>{formatDate(quote.expirationDate)}</div>
+                      <span className="inline-flex items-center gap-2">
+                        <AppIcon className="h-4 w-4 text-[#64748b]" name="calendar" />
+                        {formatDate(quote.issueDate)}
+                      </span>
+                    </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap">
+                      <div className="inline-flex items-center gap-2">
+                        <AppIcon className="h-4 w-4 text-[#64748b]" name="calendar" />
+                        {formatDate(quote.expirationDate)}
+                      </div>
                       {quote.valid === false ? (
                         <div className="mt-1 text-xs text-[color:var(--danger)]">Vencido</div>
                       ) : null}

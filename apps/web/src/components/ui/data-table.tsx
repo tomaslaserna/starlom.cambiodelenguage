@@ -27,7 +27,7 @@ export function DataTable({
   return (
     <div
       className={cn(
-        "min-w-0 overflow-hidden rounded-[12px] border border-[color:var(--border)] bg-white shadow-[var(--shadow-xs)]",
+        "min-w-0 overflow-hidden rounded-[14px] border border-[#dbe4ef] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03),0_10px_26px_rgba(15,23,42,0.045)]",
         className,
       )}
       {...props}
@@ -51,7 +51,7 @@ export function DataTableHeader({ className, ...props }: HTMLAttributes<HTMLTabl
   return (
     <thead
       className={cn(
-        "erp-text-caption border-b border-[color:var(--border)] bg-[color:var(--table-header)] uppercase text-[#526177] [&>tr]:h-10",
+        "erp-text-caption border-b border-[#dfe6ef] bg-[#fbfcfe] uppercase text-[#526177] [&>tr]:h-11",
         className,
       )}
       {...props}
@@ -60,7 +60,7 @@ export function DataTableHeader({ className, ...props }: HTMLAttributes<HTMLTabl
 }
 
 export function DataTableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <tbody className={cn("divide-y divide-[color:var(--border)] [&>tr]:h-[52px]", className)} {...props} />;
+  return <tbody className={cn("divide-y divide-[#e4eaf2] [&>tr]:h-[58px]", className)} {...props} />;
 }
 
 export function DataTableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
@@ -92,7 +92,7 @@ export function DataTableHead({
   return (
     <th
       className={cn(
-        "h-10 whitespace-nowrap px-4 py-2 font-semibold tracking-[0.035em] first:pl-5 last:pr-5",
+        "h-11 whitespace-nowrap px-4 py-2.5 font-semibold tracking-[0.035em] first:pl-5 last:pr-5",
         alignClasses[align],
         className,
       )}
@@ -110,7 +110,7 @@ export function DataTableCell({
   return (
     <td
       className={cn(
-        "px-4 py-2 align-middle font-normal leading-[1.3] text-[#172033] first:pl-5 last:pr-5",
+        "px-4 py-2.5 align-middle font-normal leading-[1.35] text-[#172033] first:pl-5 last:pr-5",
         alignClasses[align],
         className,
       )}

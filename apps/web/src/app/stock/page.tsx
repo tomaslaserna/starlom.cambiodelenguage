@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import {
+  AppIcon,
   Card,
   CardDescription,
   CardHeader,
@@ -82,9 +83,9 @@ export default async function StockPage({ searchParams }: StockPageProps) {
         ) : null}
 
         <div className="grid gap-3 md:grid-cols-3">
-          <StatCard label="Productos activos" tone="accent" value={formatNumber(products.length)} />
-          <StatCard label="Unidades registradas" tone="success" value={formatNumber(totalStock)} />
-          <StatCard label="Sin stock" tone="warning" value={formatNumber(withoutStock)} />
+          <StatCard icon={<AppIcon className="h-6 w-6" name="package" />} label="Productos activos" tone="accent" value={formatNumber(products.length)} />
+          <StatCard icon={<AppIcon className="h-6 w-6" name="units" />} label="Unidades registradas" tone="success" value={formatNumber(totalStock)} />
+          <StatCard icon={<AppIcon className="h-6 w-6" name="warning" />} label="Sin stock" tone="warning" value={formatNumber(withoutStock)} />
         </div>
 
         {params.mode === "bulk" ? (
@@ -98,8 +99,8 @@ export default async function StockPage({ searchParams }: StockPageProps) {
           />
         )}
 
-        <Card className="overflow-hidden border-[#bfe4dc]">
-          <CardHeader className="border-[#bfe4dc] bg-[#f0faf7]">
+        <Card className="overflow-hidden">
+          <CardHeader>
             <CardTitle>Ultimos movimientos</CardTitle>
             <CardDescription>Historial comun para compras, ventas, recuentos y ajustes manuales.</CardDescription>
           </CardHeader>
@@ -110,7 +111,7 @@ export default async function StockPage({ searchParams }: StockPageProps) {
             tableLabel="Movimientos de stock"
             tableProps={{ className: "table-fixed" }}
           >
-            <DataTableHeader className="border-[#bfe4dc] bg-[#eaf7f3] text-[#315b50]">
+            <DataTableHeader>
               <DataTableRow>
                 <DataTableHead className="w-[14%]">Fecha</DataTableHead>
                 <DataTableHead className="w-[32%]">Producto</DataTableHead>
@@ -122,7 +123,7 @@ export default async function StockPage({ searchParams }: StockPageProps) {
             <DataTableBody>
               {movements.length ? (
                 movements.map((movement) => (
-                  <DataTableRow className="even:bg-[#fbfefc]" key={movement.id}>
+                  <DataTableRow key={movement.id}>
                     <DataTableCell className="whitespace-nowrap">
                       <span className="inline-flex rounded-full bg-[#e8f0ff] px-2.5 py-1 text-xs font-bold text-[#315ea8]">
                         {movementDate(movement.date)}

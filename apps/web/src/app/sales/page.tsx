@@ -1,6 +1,7 @@
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
 import {
+  AppIcon,
   Button,
   ButtonLink,
   Card,
@@ -12,8 +13,8 @@ import {
   DataTableRow,
   EmptyState,
   Field,
-  Input,
   PageHeader,
+  SearchInput,
   StatCard,
   Toolbar,
 } from "@/components/ui";
@@ -79,16 +80,16 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
         ) : null}
 
         <div className="grid gap-3 md:grid-cols-4">
-          <StatCard className="p-3" label="Comprobantes" tone="accent" value={summary.totalInvoices} />
-          <StatCard className="p-3" label="Monto vendido" tone="success" value={formatCurrency(summary.totalAmount)} />
-          <StatCard className="p-3" label="Facturado" tone="info" value={formatCurrency(summary.invoiced)} />
-          <StatCard className="p-3" label="Pendiente de cobro" tone="warning" value={formatCurrency(summary.pending)} />
+          <StatCard icon={<AppIcon className="h-6 w-6" name="receipt" />} label="Comprobantes" tone="accent" value={summary.totalInvoices} />
+          <StatCard icon={<AppIcon className="h-6 w-6" name="money" />} label="Monto vendido" tone="success" value={formatCurrency(summary.totalAmount)} />
+          <StatCard icon={<AppIcon className="h-6 w-6" name="trend" />} label="Facturado" tone="accent" value={formatCurrency(summary.invoiced)} />
+          <StatCard icon={<AppIcon className="h-6 w-6" name="clock" />} label="Pendiente de cobro" tone="warning" value={formatCurrency(summary.pending)} />
         </div>
 
-        <Toolbar ariaLabel="Buscar ventas" className="border-[#bfe4dc] bg-[#f4fbf9]">
-          <form action="/sales" className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto] lg:items-end">
+        <Toolbar ariaLabel="Buscar ventas">
+          <form action="/sales" className="grid w-full gap-4 lg:grid-cols-[minmax(320px,1fr)_144px_144px] lg:items-end">
             <Field htmlFor="sales-query" label="Buscar">
-              <Input
+              <SearchInput
                 defaultValue={sales.meta.query}
                 id="sales-query"
                 key={`sales-query-${sales.meta.query}`}
@@ -97,16 +98,16 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                 type="search"
               />
             </Field>
-            <Button className="lg:mb-0" type="submit">
+            <Button className="w-full" leadingIcon={<AppIcon name="filter" />} type="submit">
               Filtrar
             </Button>
-            <ButtonLink href="/sales" variant="secondary">
+            <ButtonLink className="w-full" href="/sales" leadingIcon={<AppIcon name="refresh" />} variant="outline">
               Limpiar
             </ButtonLink>
           </form>
         </Toolbar>
 
-        <Card className="overflow-hidden border-[#bfe4dc]">
+        <Card className="overflow-hidden">
           <DataTable
             caption="Listado de ventas entregadas"
             className="rounded-none border-0 shadow-none"
@@ -114,7 +115,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
             tableLabel="Ventas"
             tableProps={{ className: "table-fixed" }}
           >
-            <DataTableHeader className="border-[#bfe4dc] bg-[#ecf8f5] text-[#2f5c52]">
+            <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
                 <DataTableHead className="w-[11%] px-2">Venta</DataTableHead>
                 <DataTableHead className="w-[29%] px-2">Cliente</DataTableHead>
@@ -144,7 +145,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                   });
 
                   return (
-                    <DataTableRow className="even:bg-[#fbfefc]" key={sale.id}>
+                    <DataTableRow key={sale.id}>
                       <DataTableCell className="px-2 py-2">
                         <div className="inline-flex max-w-full truncate rounded-full bg-[#e6f6f1] px-2.5 py-1 font-mono text-xs font-black text-[#087a63]">
                           #{saleNumberLabel}

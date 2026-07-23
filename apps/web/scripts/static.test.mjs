@@ -591,7 +591,7 @@ test("order creation exposes the full legacy receipt type set", () => {
   assert.match(billingPage, /name="cliente"/);
   assert.match(billingPage, /className="grid w-full items-end gap-3 md:grid-cols-2 xl:grid-cols-6"/);
   assert.match(billingPage, /md:col-span-2 md:flex-row md:justify-end xl:col-span-6/);
-  assert.match(billingPage, /className="w-full md:w-\[112px\]"/);
+  assert.match(billingPage, /className="w-full md:w-\[144px\]"/);
 
   const salesAdmin = read("apps/web/src/lib/sales-admin.ts");
   assert.match(salesAdmin, /TYPE_CODES = new Set\(\[1, 2, 3, 6, 7, 8, 11, 12, 13\]\)/);
@@ -893,8 +893,9 @@ test("reported ERP controls keep consistent spacing, dates, menus, and whole qua
   assert.match(orders, /cantidad de cada producto debe ser un numero entero/);
 
   assert.match(ordersPage, /TableActionMenu/);
-  assert.match(ordersPage, /bg-\[#edf4ff\]/);
   assert.ok((ordersPage.match(/min-w-28 font-extrabold/g) ?? []).length >= 2);
+  assert.match(ordersPage, /SearchInput/);
+  assert.match(ordersPage, /leadingIcon=\{<AppIcon name="filter" \/>\}/);
   assert.doesNotMatch(salesPage, /DataTableHead[^>]*>Comprobante<\/DataTableHead>/);
   assert.doesNotMatch(salesPage, /DataTableCell align="center"[\s\S]*Ver PDF/);
   assert.match(saleRowActions, /TableActionMenu[\s\S]*Ver PDF/);
@@ -996,8 +997,8 @@ test("shared tables stay compact, aligned and free of page-level HTML tables", (
   const pagination = read("apps/web/src/components/pagination-links.tsx");
 
   assert.match(dataTable, /tabular-nums/);
-  assert.match(dataTable, /\[&>tr\]:h-10/);
-  assert.match(dataTable, /\[&>tr\]:h-\[52px\]/);
+  assert.match(dataTable, /\[&>tr\]:h-11/);
+  assert.match(dataTable, /\[&>tr\]:h-\[58px\]/);
   assert.match(dataTable, /first:pl-5 last:pr-5/);
   assert.match(toolbar, /items-(?:start|center)/);
   assert.match(pagination, /Mostrando/);
@@ -1079,7 +1080,7 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.doesNotMatch(billingPage, /Estado fiscal|Proveedor|Modo|Listo|ARCA configurado/);
   assert.match(billingPage, /\/billing\/credit-note\/\$\{item\.saleId\}/);
   assert.match(billingPage, /\/billing\/debit-note\/\$\{item\.saleId\}/);
-  assert.match(billingPage, /<details className="rounded-\[8px\][\s\S]*Acciones[\s\S]*Factura PDF[\s\S]*Nota credito[\s\S]*Nota debito/);
+  assert.match(billingPage, /<TableActionMenu>[\s\S]*Factura PDF[\s\S]*Nota credito[\s\S]*Nota debito/);
   assert.match(billingPage, /\/api\/pdfs\/fiscal\/sales\/\$\{item\.saleId\}/);
   assert.match(billingPage, /\/api\/pdfs\/fiscal\/notes\/\$\{item\.creditNoteId\}/);
   assert.match(billingPage, /\/api\/pdfs\/fiscal\/notes\/\$\{item\.debitNoteId\}/);
@@ -1593,7 +1594,7 @@ test("stock exposes separate modification and information windows", () => {
   assert.doesNotMatch(stockPage, /movement\.productCode/);
   assert.match(stockPage, /Ver motivo/);
   assert.match(stockPage, /title=\{movement\.reason\}/);
-  assert.match(stockPage, /bg-\[#eaf7f3\]/);
+  assert.match(stockPage, /icon=\{<AppIcon className="h-6 w-6" name="package" \/>\}/);
   assert.match(stockWorkspace, /Modificar stock/);
   assert.match(stockWorkspace, /Ver detalle/);
   assert.match(stockWorkspace, /Proveedor/);

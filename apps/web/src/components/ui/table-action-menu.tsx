@@ -20,12 +20,12 @@ export function TableActionMenu({
   return (
     <details
       className={cn(
-        "group min-w-[142px] rounded-[9px] border border-[#b8cdf1] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] open:border-[#8fb1e8] open:shadow-[0_5px_14px_rgba(30,64,175,0.10)]",
+        "group min-w-[150px] rounded-[9px] border border-[#b8cdf1] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] open:border-[#8fb1e8] open:shadow-[0_7px_18px_rgba(30,64,175,0.12)]",
         className,
       )}
       {...props}
     >
-      <summary className="flex min-h-9 list-none items-center justify-between gap-2 rounded-[8px] px-3 py-1.5 text-[13px] font-bold text-[#1755b8] transition-colors hover:bg-[#f5f8ff] [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-10 list-none items-center justify-between gap-2 rounded-[8px] px-3.5 py-2 text-[13px] font-bold text-[#1755b8] transition-colors hover:bg-[#f5f8ff] [&::-webkit-details-marker]:hidden">
         <span className="truncate">{label}</span>
         <svg
           aria-hidden="true"

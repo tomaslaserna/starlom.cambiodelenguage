@@ -11,8 +11,8 @@ export function Input({ className, invalid, ...props }: InputProps) {
       {...props}
       aria-invalid={invalid ? true : props["aria-invalid"]}
       className={cn(
-        "erp-text-body-sm min-h-[var(--control-height-md)] rounded-[8px] border bg-white px-3 font-normal text-[#172033] shadow-[var(--shadow-control)] outline-none transition-[background-color,border-color,box-shadow] placeholder:font-normal placeholder:text-[#64748b] disabled:bg-[#f4f6f8] disabled:text-[#7b8797] disabled:opacity-75",
-        invalid ? "border-[color:var(--danger)]" : "border-[color:var(--border-strong)] hover:border-[#9eacbd] focus:border-[color:var(--accent)]",
+        "erp-text-body-sm min-h-[var(--control-height-md)] rounded-[9px] border bg-white px-3 font-normal text-[#172033] shadow-[var(--shadow-control)] outline-none transition-[background-color,border-color,box-shadow] placeholder:font-normal placeholder:text-[#64748b] disabled:bg-[#f4f6f8] disabled:text-[#7b8797] disabled:opacity-75",
+        invalid ? "border-[color:var(--danger)]" : "border-[color:var(--border-strong)] hover:border-[#9eacbd] focus:border-[color:var(--accent)] focus:shadow-[0_0_0_3px_var(--focus-soft)]",
         className,
       )}
       suppressHydrationWarning

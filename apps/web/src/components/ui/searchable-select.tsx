@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { rankSearchOptions } from "@/lib/search-options";
+import { AppIcon } from "./app-icon";
 import { cn } from "./utils";
 
 export type SearchableSelectOption = {
@@ -99,6 +100,9 @@ export function SearchableSelect({
   return (
     <div className={cn("relative min-w-0", className)} onBlur={handleBlur} ref={wrapperRef}>
       {name ? <input name={name} type="hidden" value={value} /> : null}
+      <span className="pointer-events-none absolute inset-y-0 left-3.5 z-10 flex items-center text-[#71819a]">
+        <AppIcon className="h-[18px] w-[18px]" name="search" />
+      </span>
       <input
         aria-activedescendant={open && results[safeActiveIndex] ? `${listboxId}-${safeActiveIndex}` : undefined}
         aria-autocomplete="list"
@@ -107,7 +111,7 @@ export function SearchableSelect({
         aria-haspopup="listbox"
         aria-required={required}
         autoComplete="off"
-        className="erp-text-body-sm min-h-[var(--control-height-md)] w-full rounded-[8px] border border-[color:var(--border-strong)] bg-white px-3 font-normal text-[#172033] shadow-[var(--shadow-control)] outline-none transition-[border-color,box-shadow] placeholder:text-[#64748b] hover:border-[#9eacbd] focus:border-[color:var(--accent)] disabled:bg-[#f4f6f8] disabled:text-[#7b8797] disabled:opacity-75"
+        className="erp-text-body-sm min-h-[var(--control-height-md)] w-full rounded-[9px] border border-[color:var(--border-strong)] bg-white py-2 pl-10 pr-3 font-normal text-[#172033] shadow-[var(--shadow-control)] outline-none transition-[border-color,box-shadow] placeholder:text-[#64748b] hover:border-[#9eacbd] focus:border-[color:var(--accent)] focus:shadow-[0_0_0_3px_var(--focus-soft)] disabled:bg-[#f4f6f8] disabled:text-[#7b8797] disabled:opacity-75"
         disabled={disabled}
         id={id}
         onChange={(event) => {
