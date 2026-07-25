@@ -82,7 +82,32 @@ type ListResult<T> = {
   };
 };
 
+export type ProductStockTotals = {
+  outOfStock: number;
+  negativeStock: number;
+  inventoryValue: number;
+};
+
+export type ProductsResult = ListResult<Product> & {
+  stockTotals: ProductStockTotals;
+};
+
 const DEFAULT_COMPANY_ID = 1;
+
+// Stock real por producto, derivado de los movimientos. Se reutiliza en la
+// consulta paginada y en el agregado de totales para que no diverjan.
+const STOCK_MOVEMENTS_LATERAL = `
+      LEFT JOIN LATERAL (
+        SELECT SUM(
+          CASE
+            WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
+            ELSE -sm.quantity
+          END
+        ) AS stock_real
+        FROM stock_movements sm
+        WHERE sm.empresa_id = p.empresa_id
+          AND sm.product_id = p.id
+      ) stock ON true`;
 
 function searchPattern(query: string) {
   return `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
@@ -287,7 +312,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
   };
 }
 
-export async function listProducts(input: ListInput = {}): Promise<ListResult<Product>> {
+export async function listProducts(input: ListInput = {}): Promise<ProductsResult> {
   const companyId = input.companyId ?? DEFAULT_COMPANY_ID;
   const query = input.query?.trim() ?? "";
   const pagination = parsePagination(input);
@@ -302,12 +327,21 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
   }
 
   const where = filters.join(" AND ");
-  const countResult = await queryWithCompanyContext<{ total: string }>(
+  const countResult = await queryWithCompanyContext<{
+    total: string;
+    out_of_stock: string;
+    negative_stock: string;
+    inventory_value: string;
+  }>(
     companyId,
     `
-      SELECT COUNT(*)::text AS total
+      SELECT
+        COUNT(*)::text AS total,
+        COUNT(*) FILTER (WHERE COALESCE(stock.stock_real, 0) = 0)::text AS out_of_stock,
+        COUNT(*) FILTER (WHERE COALESCE(stock.stock_real, 0) < 0)::text AS negative_stock,
+        COALESCE(SUM(GREATEST(COALESCE(stock.stock_real, 0), 0) * COALESCE(p.cost, 0)), 0)::text AS inventory_value
       FROM products p
-      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id${STOCK_MOVEMENTS_LATERAL}
       WHERE ${where}
     `,
     params,
@@ -371,18 +405,7 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
          AND ml.lista_id = lp.id
          AND ml.codigo = ${productMarginCodeExpression("p")}
         WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1
-      ) price_map ON true
-      LEFT JOIN LATERAL (
-        SELECT SUM(
-          CASE
-            WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
-            ELSE -sm.quantity
-          END
-        ) AS stock_real
-        FROM stock_movements sm
-        WHERE sm.empresa_id = p.empresa_id
-          AND sm.product_id = p.id
-      ) stock ON true
+      ) price_map ON true${STOCK_MOVEMENTS_LATERAL}
       WHERE ${where}
       ORDER BY p.name ASC, p.id ASC
       LIMIT $${params.length - 1} OFFSET $${params.length}
@@ -390,7 +413,13 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
     params,
   );
 
-  const total = Number.parseInt(countResult.rows[0]?.total ?? "0", 10);
+  const totalsRow = countResult.rows[0];
+  const total = Number.parseInt(totalsRow?.total ?? "0", 10);
+  const stockTotals: ProductStockTotals = {
+    outOfStock: Number.parseInt(totalsRow?.out_of_stock ?? "0", 10),
+    negativeStock: Number.parseInt(totalsRow?.negative_stock ?? "0", 10),
+    inventoryValue: Number(totalsRow?.inventory_value ?? "0"),
+  };
 
   return {
     data: rows.rows.map((row) => ({
@@ -414,5 +443,6 @@ export async function listProducts(input: ListInput = {}): Promise<ListResult<Pr
       total,
       totalPages: Math.max(1, Math.ceil(total / pagination.pageSize)),
     },
+    stockTotals,
   };
 }

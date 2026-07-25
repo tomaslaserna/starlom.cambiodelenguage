@@ -157,14 +157,8 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     page: params.page,
     pageSize: "25",
   });
-  const pageProductCount = result.data.length;
-  const outOfStockCount = result.data.filter((product) => product.stockReal === 0).length;
-  const negativeStockCount = result.data.filter((product) => product.stockReal < 0).length;
-  const inventoryValue = result.data.reduce(
-    (total, product) => total + Math.max(0, product.stockReal) * product.cost,
-    0,
-  );
-  const pageDetail = `Página ${result.meta.page} · ${formatNumber(pageProductCount)} visibles`;
+  const { outOfStock, negativeStock, inventoryValue } = result.stockTotals;
+  const scopeDetail = result.meta.query ? "Sobre los productos filtrados" : "Sobre todo el catálogo";
 
   return (
     <ModulePage
@@ -232,7 +226,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             value={formatNumber(result.meta.total)}
           />
           <InventoryMetric
-            detail={pageDetail}
+            detail={scopeDetail}
             icon={
               <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
@@ -241,10 +235,10 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             }
             label="Sin stock"
             tone="warning"
-            value={formatNumber(outOfStockCount)}
+            value={formatNumber(outOfStock)}
           />
           <InventoryMetric
-            detail={pageDetail}
+            detail={scopeDetail}
             icon={
               <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
                 <path d="M12 4v16m0 0-5-5m5 5 5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
@@ -252,10 +246,10 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             }
             label="Stock negativo"
             tone="danger"
-            value={formatNumber(negativeStockCount)}
+            value={formatNumber(negativeStock)}
           />
           <InventoryMetric
-            detail={`Costo estimado · ${pageDetail.toLowerCase()}`}
+            detail={`Costo estimado · ${result.meta.query ? "productos filtrados" : "catálogo completo"}`}
             icon={<span className="text-xl font-bold">$</span>}
             label="Valor de inventario"
             tone="success"
