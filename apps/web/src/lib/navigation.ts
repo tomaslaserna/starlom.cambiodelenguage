@@ -228,6 +228,7 @@ export const navigationGroups: NavigationGroup[] = [
     active: "messages",
     badge: "messages",
   },
+  { href: "/bank", label: "Banco", active: "bank" },
 ];
 
 export type NavigationSection = {
@@ -244,7 +245,7 @@ function groupByLabel(label: string) {
 export const navigationSections: NavigationSection[] = [
   {
     label: "Inicio",
-    groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes")],
+    groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes"), groupByLabel("Banco")],
   },
   {
     label: "Operaciones",

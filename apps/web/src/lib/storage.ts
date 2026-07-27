@@ -4,6 +4,16 @@ import { ApiError } from "@/lib/api-response";
 import { envValue } from "@/lib/env";
 
 const DEFAULT_BUCKET = "uploads";
+// Dedicated private bucket for the "Banco" file storage feature. Kept separate
+// from the message-uploads bucket so it has its own size/mime limits.
+export const BANK_BUCKET = "bank";
+
+function assertAllowedBucket(bucket: string) {
+  const config = storageConfig();
+  if (bucket !== config.bucket && bucket !== BANK_BUCKET) {
+    throw new ApiError(403, "Bucket no permitido");
+  }
+}
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   gif: "image/gif",
   jpeg: "image/jpeg",
@@ -184,11 +194,13 @@ export async function uploadImageFile({
   };
 }
 
-export async function createSignedStorageUpload(path: string) {
+export async function createSignedStorageUpload(path: string, bucket?: string) {
   const config = storageConfig();
+  const targetBucket = bucket ?? config.bucket;
+  assertAllowedBucket(targetBucket);
   const { data, error } = await getStorageAdminClient()
     .storage
-    .from(config.bucket)
+    .from(targetBucket)
     .createSignedUploadUrl(path, { upsert: false });
 
   if (error || !data?.token) {
@@ -196,15 +208,14 @@ export async function createSignedStorageUpload(path: string) {
   }
 
   return {
-    bucket: config.bucket,
+    bucket: targetBucket,
     path: data.path || path,
     token: data.token,
   };
 }
 
 export async function storageObjectInfo(bucket: string, path: string) {
-  const config = storageConfig();
-  if (bucket !== config.bucket) throw new ApiError(403, "Bucket no permitido");
+  assertAllowedBucket(bucket);
 
   const { data, error } = await getStorageAdminClient().storage.from(bucket).info(path);
   if (error || !data) {
@@ -219,8 +230,7 @@ export async function storageObjectInfo(bucket: string, path: string) {
 
 export async function removeStorageObjects(bucket: string, paths: string[]) {
   if (!paths.length) return;
-  const config = storageConfig();
-  if (bucket !== config.bucket) throw new ApiError(403, "Bucket no permitido");
+  assertAllowedBucket(bucket);
 
   const { error } = await getStorageAdminClient().storage.from(bucket).remove(paths);
   if (error) throw new ApiError(storageErrorStatus(error), error.message || "No se pudo limpiar la carga");
@@ -232,8 +242,7 @@ export async function createSignedStorageUrl(
   expiresInSeconds = 300,
   downloadName?: string,
 ) {
-  const config = storageConfig();
-  if (bucket !== config.bucket) throw new ApiError(403, "Bucket no permitido");
+  assertAllowedBucket(bucket);
 
   const { data, error } = await getStorageAdminClient()
     .storage

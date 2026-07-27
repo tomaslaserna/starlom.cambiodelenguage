@@ -91,6 +91,14 @@ export function isStaffRole(role: string) {
   return STAFF_ROLES.has(normalizeRole(role));
 }
 
+const ADMIN_ROLES = new Set(["administrador", "jefe"]);
+
+// True for the administration roles (jefe / administrador). Used to gate writes
+// on shared company resources.
+export function isAdminRole(role: string) {
+  return ADMIN_ROLES.has(normalizeRole(role));
+}
+
 export function publicSessionUser(session: AuthSession) {
   return {
     userId: session.userId,
