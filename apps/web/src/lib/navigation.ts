@@ -131,13 +131,18 @@ export const navigationGroups: NavigationGroup[] = [
     permission: SALES_READ_PERMISSION,
   },
   {
+    label: "Precios",
+    active: "prices",
+    items: [
+      { href: "/prices", label: "Lista de precios", active: "prices", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/prices/margins", label: "Margenes", active: "prices", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/prices/new", label: "Nuevo producto", active: "prices", permission: PRODUCTS_CREATE_PERMISSION },
+    ],
+  },
+  {
     label: "Base de datos",
     active: "database",
     items: [
-      { href: "/prices", label: "Precios", active: "database", permission: PRODUCTS_READ_PERMISSION },
-      { href: "/pricing", label: "Margenes y listas", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
-      { href: "/pricing?mode=new-product", label: "Nuevo producto", active: "pricing", permission: PRODUCTS_CREATE_PERMISSION },
-      { href: "/pricing?mode=bulk", label: "Importar catalogo", active: "pricing", permission: PRODUCTS_CREATE_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/customers/follow-up", label: "Seguimiento clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/suppliers", label: "Proveedores", active: "database", permission: SUPPLIERS_READ_PERMISSION },
@@ -258,7 +263,7 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     label: "Datos",
-    groups: [groupByLabel("Base de datos"), groupByLabel("Stock")],
+    groups: [groupByLabel("Precios"), groupByLabel("Base de datos"), groupByLabel("Stock")],
   },
   {
     label: "Compras",

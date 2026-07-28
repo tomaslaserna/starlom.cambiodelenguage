@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { accountBalanceExpressionSql, activeAccountMovementWhereSql } from "@/lib/accounts";
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
 import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { getPurchase } from "@/lib/purchases";
 import { getQuote } from "@/lib/quotes";
@@ -908,39 +909,56 @@ export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseI
 }
 
 export async function buildPriceListPdf(companyId: number, list: number) {
-  const cols = {
-    0: { expr: "precio_0", label: "L0 - agresivo" },
-    1: { expr: "precio_1", label: "L1 - suave" },
-    2: { expr: "precio_2", label: "L2 - ANCLA" },
-    3: { expr: "precio_3", label: "L3 - caro" },
-    4: { expr: "precio_minorista", label: "Minorista" },
-    5: { expr: "precio_minorista", label: "Minorista" },
-  } as const;
-  const selected = cols[(list in cols ? list : 0) as keyof typeof cols];
+  // `list` es el id de una lista real (listas_precio). Los precios se calculan
+  // igual que en pantalla: costo x multiplicador de la lista, con fallback al
+  // margen base de la categoria.
+  const listRow = await queryWithCompanyContext<{ id: number; nombre: string }>(
+    companyId,
+    `SELECT id, nombre FROM listas_precio WHERE empresa_id = $1 AND activa = 1 AND ($2 <= 0 OR id = $2) ORDER BY orden ASC, nombre ASC LIMIT 1`,
+    [companyId, Number.isInteger(list) ? list : 0],
+  );
+  const selectedList = listRow.rows[0];
+  if (!selectedList) throw new ApiError(404, "La lista de precios no existe");
+  const listName = selectedList.nombre;
+
+  const marginCode = productMarginCodeExpression("p");
   const result = await queryWithCompanyContext<{ codigo: string; nombre: string; precio: string }>(
     companyId,
     `
-      SELECT COALESCE(codigo, '') AS codigo, nombre, ${selected.expr} AS precio
-      FROM vista_precios
-      WHERE empresa_id = $1 AND precio_1 IS NOT NULL AND ${selected.expr} > 0
-      ORDER BY nombre ASC
+      SELECT COALESCE(p.sku, p.category_code, '') AS codigo,
+             p.name AS nombre,
+             COALESCE(
+               NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(ml.multiplicador, 1), 2), 0),
+               NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
+               p.sale_price,
+               p.cost,
+               0
+             ) AS precio
+      FROM products p
+      LEFT JOIN margenes m
+        ON m.empresa_id = p.empresa_id AND m.codigo = ${marginCode}
+      LEFT JOIN margenes_listas ml
+        ON ml.empresa_id = p.empresa_id AND ml.lista_id = $2 AND ml.codigo = ${marginCode}
+      WHERE p.empresa_id = $1 AND p.active = true
+      ORDER BY p.name ASC
     `,
-    [companyId],
+    [companyId, selectedList.id],
   );
+  const rows = result.rows.filter((row) => Number(row.precio) > 0);
 
-  return createPdfFile(`lista_precios_${safeFilename(selected.label)}.pdf`, ({ pdf }) => {
+  return createPdfFile(`lista_precios_${safeFilename(listName)}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Lista de precios",
       code: "LP",
-      number: selected.label,
+      number: listName,
       date: pdfDate(localDateIso()),
-      extra: [`Productos: ${result.rows.length}`],
+      extra: [`Productos: ${rows.length}`],
       footerLeft: "Lista de precios",
-      footerRight: selected.label,
+      footerRight: listName,
     });
     pdf.section("Lista vigente");
-    pdf.title(selected.label, 13);
-    pdf.muted("Precios expresados en pesos argentinos. La lista se emite desde el catalogo vigente de Starlim y puede actualizarse segun condiciones comerciales.");
+    pdf.title(listName, 13);
+    pdf.muted("Precios expresados en pesos argentinos. La lista se emite desde el catalogo vigente y puede actualizarse segun condiciones comerciales.");
     pdf.doc.y += 12;
     pdf.table(
       [
@@ -948,7 +966,7 @@ export async function buildPriceListPdf(companyId: number, list: number) {
         { label: "Producto", width: 297 },
         { label: "Precio", width: 125, align: "right" },
       ],
-      result.rows.map((row) => [row.codigo || "-", row.nombre, pdfMoney(Number(row.precio))]),
+      rows.map((row) => [row.codigo || "-", row.nombre, pdfMoney(Number(row.precio))]),
       { minRowHeight: 20 },
     );
     pdf.note("Documento informativo no fiscal. Verificar condiciones particulares, descuentos y disponibilidad antes de confirmar una operacion.");

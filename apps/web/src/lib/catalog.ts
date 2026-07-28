@@ -45,6 +45,7 @@ export type ProductSalePrice = {
   id: string;
   code: string;
   category: string;
+  supplier: string;
   name: string;
   cost: number;
   prices: Record<string, number>;
@@ -230,14 +231,17 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
   if (query) {
     params.push(searchPattern(query));
     filters.push(
-      `(p.name ILIKE $${params.length} ESCAPE '\\' OR p.sku ILIKE $${params.length} ESCAPE '\\' OR p.category ILIKE $${params.length} ESCAPE '\\' OR p.category_code ILIKE $${params.length} ESCAPE '\\')`,
+      `(p.name ILIKE $${params.length} ESCAPE '\\' OR p.sku ILIKE $${params.length} ESCAPE '\\' OR p.category ILIKE $${params.length} ESCAPE '\\' OR p.category_code ILIKE $${params.length} ESCAPE '\\' OR s.display_name ILIKE $${params.length} ESCAPE '\\')`,
     );
   }
   const where = filters.join(" AND ");
 
   const countResult = await queryWithCompanyContext<{ total: string }>(
     companyId,
-    `SELECT COUNT(*)::text AS total FROM products p WHERE ${where}`,
+    `SELECT COUNT(*)::text AS total
+     FROM products p
+     LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+     WHERE ${where}`,
     params,
   );
 
@@ -246,6 +250,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
     id: string;
     code: string;
     category: string | null;
+    supplier: string | null;
     name: string;
     cost: string | null;
     list_prices: Record<string, string | number> | null;
@@ -255,10 +260,12 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
       SELECT p.id::text AS id,
              COALESCE(p.sku, p.category_code, '') AS code,
              p.category,
+             s.display_name AS supplier,
              p.name,
              p.cost,
              COALESCE(price_map.list_prices, '{}'::jsonb) AS list_prices
       FROM products p
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
       LEFT JOIN margenes m
         ON m.empresa_id = p.empresa_id
        AND m.codigo = ${productMarginCodeExpression("p")}
@@ -295,6 +302,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
       id: row.id,
       code: row.code,
       category: row.category ?? "",
+      supplier: row.supplier ?? "",
       name: row.name,
       cost: Number(row.cost ?? 0),
       prices: Object.fromEntries(
