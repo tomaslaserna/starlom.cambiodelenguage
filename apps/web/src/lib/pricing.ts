@@ -1,6 +1,8 @@
 import { ApiError } from "@/lib/api-response";
 import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { intField, numberField, textField, type RequestBody } from "@/lib/request-body";
+import { computeListMultipliers, type ListRule } from "@/lib/price-list-derivation";
+import type { PoolClient } from "pg";
 
 type MarginRow = {
   codigo: string;
@@ -402,4 +404,207 @@ export async function upsertRubric(companyId: number, input: ReturnType<typeof r
     [input.code, input.name, companyId],
   );
   return { code: result.rows[0].codigo, name: result.rows[0].nombre };
+}
+
+export type PriceListParameters = {
+  id: number;
+  name: string;
+  active: boolean;
+  order: number;
+  derivationType: "costo" | "lista";
+  parentListId: number | null;
+  percentage: number;
+  allowedRoles: string[];
+  validFrom: string | null;
+  validTo: string | null;
+  requiresAuthorization: boolean;
+  admitsOffers: boolean;
+  floorFactor: number | null;
+};
+
+export type SavePriceListInput = {
+  id?: number | null;
+  name: string;
+  derivationType: "costo" | "lista";
+  parentListId: number | null;
+  percentage: number;
+  allowedRoles: string[];
+  validFrom: string | null;
+  validTo: string | null;
+  requiresAuthorization: boolean;
+  admitsOffers: boolean;
+  floorFactor: number | null;
+};
+
+type PriceListParametersRow = {
+  id: number;
+  nombre: string;
+  activa: number;
+  orden: number;
+  derivation_type: string;
+  parent_list_id: number | null;
+  percentage: string;
+  allowed_roles: string[] | null;
+  valid_from: string | null;
+  valid_to: string | null;
+  requires_authorization: boolean;
+  admits_offers: boolean;
+  floor_factor: string | null;
+};
+
+export async function listPriceListParameters(companyId: number): Promise<PriceListParameters[]> {
+  const result = await queryWithCompanyContext<PriceListParametersRow>(
+    companyId,
+    `
+      SELECT id, nombre, activa, orden, derivation_type, parent_list_id, percentage,
+             allowed_roles, valid_from::text AS valid_from, valid_to::text AS valid_to,
+             requires_authorization, admits_offers, floor_factor::text AS floor_factor
+      FROM listas_precio
+      WHERE empresa_id = $1
+      ORDER BY orden ASC, nombre ASC
+    `,
+    [companyId],
+    { cache: false },
+  );
+  return result.rows.map((row) => ({
+    id: Number(row.id),
+    name: row.nombre,
+    active: Number(row.activa) === 1,
+    order: row.orden,
+    derivationType: row.derivation_type === "lista" ? "lista" : "costo",
+    parentListId: row.parent_list_id === null ? null : Number(row.parent_list_id),
+    percentage: Number(row.percentage),
+    allowedRoles: row.allowed_roles ?? [],
+    validFrom: row.valid_from,
+    validTo: row.valid_to,
+    requiresAuthorization: Boolean(row.requires_authorization),
+    admitsOffers: Boolean(row.admits_offers),
+    floorFactor: row.floor_factor === null ? null : Number(row.floor_factor),
+  }));
+}
+
+// Recalcula los multiplicadores por categoria de cada lista (margenes_listas) a
+// partir de las reglas de derivacion. Lo que ya lee todo el calculo de precios.
+export async function recomputeListMultipliers(companyId: number, existingClient?: PoolClient) {
+  const run = async (client: PoolClient) => {
+    const lists = await client.query<{
+      id: number;
+      derivation_type: string;
+      parent_list_id: number | null;
+      percentage: string;
+    }>(
+      `SELECT id, derivation_type, parent_list_id, percentage FROM listas_precio WHERE empresa_id = $1`,
+      [companyId],
+    );
+    const margins = await client.query<{ codigo: string; precio_1: string }>(
+      `SELECT codigo, precio_1 FROM margenes WHERE empresa_id = $1`,
+      [companyId],
+    );
+    const baseMargins = new Map(margins.rows.map((row) => [row.codigo, Number(row.precio_1)]));
+    const rules: ListRule[] = lists.rows.map((row) => ({
+      id: Number(row.id),
+      derivationType: row.derivation_type === "lista" ? "lista" : "costo",
+      parentId: row.parent_list_id === null ? null : Number(row.parent_list_id),
+      percentage: Number(row.percentage),
+    }));
+
+    const computed = computeListMultipliers(rules, baseMargins);
+    const codigos: string[] = [];
+    const listaIds: number[] = [];
+    const mults: number[] = [];
+    for (const [listId, byCategory] of computed) {
+      for (const [codigo, multiplier] of byCategory) {
+        codigos.push(codigo);
+        listaIds.push(listId);
+        mults.push(multiplier);
+      }
+    }
+    if (codigos.length) {
+      await client.query(
+        `
+          INSERT INTO margenes_listas (codigo, lista_id, multiplicador, empresa_id)
+          SELECT c, l, m, $4
+          FROM UNNEST($1::text[], $2::bigint[], $3::numeric[]) AS t(c, l, m)
+          ON CONFLICT (codigo, lista_id) DO UPDATE SET multiplicador = EXCLUDED.multiplicador
+        `,
+        [codigos, listaIds, mults, companyId],
+      );
+    }
+  };
+
+  if (existingClient) return run(existingClient);
+  await withCompanyContext(companyId, run);
+}
+
+export async function savePriceListParameters(companyId: number, input: SavePriceListInput) {
+  const name = input.name.trim();
+  if (!name) throw new ApiError(400, "El nombre no puede estar vacío");
+  if (name.length > 50) throw new ApiError(400, "El nombre no puede superar 50 caracteres");
+  if (input.derivationType === "lista" && !input.parentListId) {
+    throw new ApiError(400, "Elegí la lista de la que deriva");
+  }
+  if (input.id && input.parentListId === input.id) {
+    throw new ApiError(400, "Una lista no puede derivar de sí misma");
+  }
+  const parentId = input.derivationType === "lista" ? input.parentListId : null;
+  const floor = input.floorFactor != null && Number.isFinite(input.floorFactor) ? input.floorFactor : null;
+
+  return withCompanyContext(companyId, async (client) => {
+    let listId = input.id ?? null;
+    if (listId) {
+      const updated = await client.query(
+        `
+          UPDATE listas_precio
+          SET nombre = $1, derivation_type = $2, parent_list_id = $3, percentage = $4,
+              allowed_roles = $5, valid_from = $6, valid_to = $7,
+              requires_authorization = $8, admits_offers = $9, floor_factor = $10
+          WHERE id = $11 AND empresa_id = $12
+        `,
+        [
+          name,
+          input.derivationType,
+          parentId,
+          input.percentage,
+          input.allowedRoles,
+          input.validFrom,
+          input.validTo,
+          input.requiresAuthorization,
+          input.admitsOffers,
+          floor,
+          listId,
+          companyId,
+        ],
+      );
+      if (updated.rowCount === 0) throw new ApiError(404, "La lista no existe");
+    } else {
+      const created = await client.query<{ id: number }>(
+        `
+          INSERT INTO listas_precio (
+            nombre, activa, orden, empresa_id, derivation_type, parent_list_id, percentage,
+            allowed_roles, valid_from, valid_to, requires_authorization, admits_offers, floor_factor
+          )
+          VALUES ($1, 1, 0, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          RETURNING id
+        `,
+        [
+          name,
+          companyId,
+          input.derivationType,
+          parentId,
+          input.percentage,
+          input.allowedRoles,
+          input.validFrom,
+          input.validTo,
+          input.requiresAuthorization,
+          input.admitsOffers,
+          floor,
+        ],
+      );
+      listId = Number(created.rows[0].id);
+    }
+
+    // Recalcula dentro de la misma transaccion; si hay ciclo, lanza y revierte.
+    await recomputeListMultipliers(companyId, client);
+    return { id: listId };
+  });
 }

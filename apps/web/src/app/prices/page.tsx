@@ -25,7 +25,6 @@ import { formatCurrency } from "@/lib/format";
 import { localDateIso } from "@/lib/timezone";
 import { isAdminRole, requireStaffSession } from "@/lib/auth";
 import { PRODUCTS_CREATE_PERMISSION, sessionAllows, sessionCanReadProducts } from "@/lib/route-auth";
-import { createPriceListAction } from "@/app/prices/actions";
 import { ProductImageCell } from "@/app/prices/product-image-cell";
 
 type PricesPageProps = {
@@ -88,20 +87,12 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
             );
           })}
           {canEdit ? (
-            <details className="relative">
-              <summary className="flex h-9 cursor-pointer list-none items-center rounded-full border border-dashed border-[#94a3b8] px-3 text-sm font-bold text-[#475569] hover:border-[#2563eb] hover:text-[#2563eb]">
-                + Nueva lista
-              </summary>
-              <form
-                action={createPriceListAction}
-                className="absolute left-0 z-20 mt-2 flex items-end gap-2 rounded-[10px] border border-[#d9e2ef] bg-white p-3 shadow-[var(--shadow-lg)]"
-              >
-                <Field htmlFor="new-list-name" label="Nombre de la lista">
-                  <Input id="new-list-name" maxLength={50} name="name" placeholder="Ej: Mayorista" required />
-                </Field>
-                <Button type="submit">Crear</Button>
-              </form>
-            </details>
+            <Link
+              className="inline-flex h-9 items-center rounded-full border border-dashed border-[#94a3b8] px-3 text-sm font-bold text-[#475569] hover:border-[#2563eb] hover:text-[#2563eb]"
+              href="/prices/parameters"
+            >
+              + Gestionar listas
+            </Link>
           ) : null}
           {lists.length === 0 ? (
             <span className="text-sm text-[color:var(--muted)]">No hay listas activas todavía.</span>
