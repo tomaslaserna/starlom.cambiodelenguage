@@ -24,8 +24,9 @@ import { listPriceLists } from "@/lib/pricing";
 import { formatCurrency } from "@/lib/format";
 import { localDateIso } from "@/lib/timezone";
 import { isAdminRole, requireStaffSession } from "@/lib/auth";
-import { sessionCanReadProducts } from "@/lib/route-auth";
+import { PRODUCTS_CREATE_PERMISSION, sessionAllows, sessionCanReadProducts } from "@/lib/route-auth";
 import { createPriceListAction } from "@/app/prices/actions";
+import { ProductImageCell } from "@/app/prices/product-image-cell";
 
 type PricesPageProps = {
   searchParams: Promise<{
@@ -49,6 +50,7 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
   const activeList =
     lists.find((list) => list.id === requestedListId) ?? lists[0] ?? null;
   const canEdit = isAdminRole(session.role);
+  const canEditProducts = await sessionAllows(session, [PRODUCTS_CREATE_PERMISSION]);
 
   return (
     <ModulePage
@@ -184,6 +186,7 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
+                <DataTableHead>Imagen</DataTableHead>
                 <DataTableHead>Producto</DataTableHead>
                 <DataTableHead>Código</DataTableHead>
                 <DataTableHead>Categoría</DataTableHead>
@@ -194,7 +197,7 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={5}>
+                  <DataTableCell colSpan={6}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -212,6 +215,9 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
                   const price = activeList ? product.prices[activeList.name] : undefined;
                   return (
                     <DataTableRow key={product.id}>
+                      <DataTableCell>
+                        <ProductImageCell canEdit={canEditProducts} imageUrl={product.imageUrl} productId={product.id} />
+                      </DataTableCell>
                       <DataTableCell>
                         <div className="max-w-[360px] break-words font-medium">{product.name}</div>
                       </DataTableCell>

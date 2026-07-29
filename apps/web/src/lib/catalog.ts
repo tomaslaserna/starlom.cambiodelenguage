@@ -1,6 +1,7 @@
 import { queryWithCompanyContext } from "@/lib/db";
 import { parsePagination } from "@/lib/pagination";
 import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
+import { publicProductImageUrl } from "@/lib/storage";
 import { calculateProductProfit } from "@/lib/product-profit";
 
 export type ProductPrice = {
@@ -48,6 +49,7 @@ export type ProductSalePrice = {
   supplier: string;
   name: string;
   cost: number;
+  imageUrl: string | null;
   prices: Record<string, number>;
 };
 
@@ -253,6 +255,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
     supplier: string | null;
     name: string;
     cost: string | null;
+    image_path: string | null;
     list_prices: Record<string, string | number> | null;
   }>(
     companyId,
@@ -263,6 +266,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
              s.display_name AS supplier,
              p.name,
              p.cost,
+             p.image_path,
              COALESCE(price_map.list_prices, '{}'::jsonb) AS list_prices
       FROM products p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
@@ -305,6 +309,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
       supplier: row.supplier ?? "",
       name: row.name,
       cost: Number(row.cost ?? 0),
+      imageUrl: row.image_path ? publicProductImageUrl(row.image_path) : null,
       prices: Object.fromEntries(
         Object.entries(row.list_prices ?? {}).map(([name, value]) => [name, Number(value)]),
       ),

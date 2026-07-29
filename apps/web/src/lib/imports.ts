@@ -346,6 +346,7 @@ export function productCreateInputFromBody(body: RequestBody) {
     sku,
     cost,
     stock,
+    imagePath: textField(body, "imagePath"),
     provider: textField(body, "provider") || textField(body, "proveedor"),
   };
 }
@@ -379,12 +380,16 @@ export async function createCatalogProduct(
         )
       : { rows: [] };
 
+    // Solo aceptamos una imagen ya subida bajo el prefijo de la empresa.
+    const imagePath =
+      input.imagePath && input.imagePath.startsWith(`empresa_${session.companyId}/`) ? input.imagePath : null;
+
     const created = await client.query<{ id: string }>(
       `
         INSERT INTO products (
-          category, category_code, sku, supplier_id, name, cost, empresa_id
+          category, category_code, sku, supplier_id, name, cost, image_path, empresa_id
         )
-        VALUES ($1, $2, $3, $4::uuid, $5, $6, $7)
+        VALUES ($1, $2, $3, $4::uuid, $5, $6, $7, $8)
         RETURNING id::text AS id
       `,
       [
@@ -394,6 +399,7 @@ export async function createCatalogProduct(
         supplier.rows[0]?.id ?? null,
         input.name,
         input.cost,
+        imagePath,
         session.companyId,
       ],
     );
