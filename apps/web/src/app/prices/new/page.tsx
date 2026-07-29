@@ -69,6 +69,9 @@ export default async function NewProductPage({ searchParams }: NewProductPagePro
               <Field htmlFor="product-cost" label="Costo" required>
                 <Input id="product-cost" inputMode="decimal" name="cost" required step="0.01" type="number" />
               </Field>
+              <Field htmlFor="product-stock" label="Stock inicial" description="Primera carga de stock del producto. Puede ser 0.">
+                <Input defaultValue="0" id="product-stock" inputMode="numeric" min="0" name="stock" step="1" type="number" />
+              </Field>
               <Field className="lg:col-span-2" htmlFor="product-provider" label="Proveedor">
                 <Input id="product-provider" maxLength={255} name="provider" />
               </Field>

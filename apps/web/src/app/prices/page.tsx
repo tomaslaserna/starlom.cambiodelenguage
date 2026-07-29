@@ -71,7 +71,7 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
             if (result.meta.query) query.set("q", result.meta.query);
             return (
               <Link
-                className={`h-9 rounded-full border px-4 text-sm font-bold transition-colors ${
+                className={`inline-flex h-9 items-center justify-center rounded-full border px-4 text-sm font-bold leading-none transition-colors ${
                   isActive
                     ? "border-[#2563eb] bg-[#2563eb] text-white"
                     : "border-[#d9e2ef] bg-white text-[#334155] hover:border-[#2563eb]"

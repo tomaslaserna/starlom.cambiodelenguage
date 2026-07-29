@@ -51,7 +51,7 @@ export default async function MarginsPage() {
               <CardDescription>Código, nombre y margen base (multiplicador sobre el costo).</CardDescription>
             </CardHeader>
             <CardContent>
-              <form action={createMarginAction} className="grid gap-3 sm:grid-cols-[160px_minmax(200px,1fr)_160px_auto] sm:items-end">
+              <form action={createMarginAction} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
                 <Field htmlFor="margin-code" label="Código">
                   <Input id="margin-code" maxLength={40} name="code" placeholder="Ej: 1.10" required />
                 </Field>

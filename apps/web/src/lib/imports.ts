@@ -339,11 +339,13 @@ export function productCreateInputFromBody(body: RequestBody) {
   if (!name) throw new ApiError(400, "El nombre del producto es requerido");
   if (!code) throw new ApiError(400, "Debes seleccionar una categoria de precio");
   if (cost <= 0) throw new ApiError(400, "El costo debe ser mayor a 0");
+  const stock = Math.max(0, Math.trunc(numberField(body, "stock", 0)));
   return {
     name,
     code,
     sku,
     cost,
+    stock,
     provider: textField(body, "provider") || textField(body, "proveedor"),
   };
 }
@@ -395,6 +397,17 @@ export async function createCatalogProduct(
         session.companyId,
       ],
     );
+
+    // Stock inicial como primera carga de stock del producto (ledger).
+    if (input.stock > 0) {
+      await client.query(
+        `
+          INSERT INTO stock_movements (product_id, movement_type, quantity, notes, created_by, empresa_id)
+          VALUES ($1::uuid, 'ajuste_positivo'::stock_movement_type, $2, 'Stock inicial', $3::uuid, $4)
+        `,
+        [created.rows[0].id, input.stock, session.userId, session.companyId],
+      );
+    }
 
     return { id: created.rows[0].id };
   });
