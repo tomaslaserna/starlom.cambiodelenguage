@@ -16,11 +16,13 @@ import {
   Field,
   Input,
   PageHeader,
+  Select,
   Toolbar,
 } from "@/components/ui";
 import { listSalePrices } from "@/lib/catalog";
 import { listPriceLists } from "@/lib/pricing";
 import { formatCurrency } from "@/lib/format";
+import { localDateIso } from "@/lib/timezone";
 import { isAdminRole, requireStaffSession } from "@/lib/auth";
 import { sessionCanReadProducts } from "@/lib/route-auth";
 import { createPriceListAction } from "@/app/prices/actions";
@@ -105,36 +107,72 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
         </div>
 
         <Toolbar ariaLabel="Búsqueda y acciones de la lista de precios">
-          <form
-            action="/prices"
-            aria-label="Buscar en la lista de precios"
-            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto_auto] lg:items-end"
-          >
-            {activeList ? <input name="list" type="hidden" value={activeList.id} /> : null}
-            <Field htmlFor="prices-query" label="Buscar">
-              <Input
-                defaultValue={result.meta.query}
-                id="prices-query"
-                name="q"
-                placeholder="Producto, código, categoría o proveedor"
-                type="search"
-              />
-            </Field>
-            <Button type="submit">Buscar</Button>
-            <ButtonLink
-              aria-label={`Exportar la lista ${activeList?.name ?? ""} en PDF`}
-              href={activeList ? `/api/pdfs/pricing/price-list?list=${activeList.id}` : "#"}
-              prefetch={false}
-              rel="noreferrer"
-              target="_blank"
-              variant="secondary"
+          <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <form
+              action="/prices"
+              aria-label="Buscar en la lista de precios"
+              className="grid w-full gap-3 sm:grid-cols-[minmax(240px,1fr)_auto] sm:items-end lg:max-w-xl"
             >
-              Exportar PDF
-            </ButtonLink>
-            <ButtonLink href="/prices/new" variant="outline">
-              Nuevo producto
-            </ButtonLink>
-          </form>
+              {activeList ? <input name="list" type="hidden" value={activeList.id} /> : null}
+              <Field htmlFor="prices-query" label="Buscar">
+                <Input
+                  defaultValue={result.meta.query}
+                  id="prices-query"
+                  name="q"
+                  placeholder="Producto, código, categoría o proveedor"
+                  type="search"
+                />
+              </Field>
+              <Button type="submit">Buscar</Button>
+            </form>
+
+            <div className="flex items-end gap-2">
+              {activeList ? (
+                <details className="relative">
+                  <summary className="inline-flex h-[var(--control-height-md)] cursor-pointer list-none items-center rounded-[9px] border border-[#d9e2ef] bg-white px-4 text-sm font-bold text-[#334155] shadow-[var(--shadow-xs)] hover:border-[#2563eb]">
+                    Exportar PDF
+                  </summary>
+                  <form
+                    action="/api/pdfs/pricing/price-list"
+                    className="absolute right-0 z-20 mt-2 grid w-[300px] gap-3 rounded-[10px] border border-[#d9e2ef] bg-white p-4 shadow-[var(--shadow-lg)]"
+                    method="GET"
+                    target="_blank"
+                  >
+                    <input name="list" type="hidden" value={activeList.id} />
+                    <p className="erp-text-caption font-bold text-[#0f172a]">Exportar “{activeList.name}”</p>
+                    <Field htmlFor="pdf-vigencia" label="Vigencia desde">
+                      <Input defaultValue={localDateIso()} id="pdf-vigencia" name="vigencia" type="date" />
+                    </Field>
+                    <Field htmlFor="pdf-stock" label="Productos">
+                      <Select defaultValue="todos" id="pdf-stock" name="stock">
+                        <option value="todos">Todos</option>
+                        <option value="con">Solo con stock</option>
+                      </Select>
+                    </Field>
+                    <Field htmlFor="pdf-group" label="Agrupar por">
+                      <Select defaultValue="categoria" id="pdf-group" name="groupBy">
+                        <option value="categoria">Categoría</option>
+                        <option value="proveedor">Proveedor</option>
+                      </Select>
+                    </Field>
+                    <Field htmlFor="pdf-filter" label="Filtrar (opcional)">
+                      <Input id="pdf-filter" name="filter" placeholder="Categoría o proveedor" />
+                    </Field>
+                    <Field htmlFor="pdf-iva" label="IVA">
+                      <Select defaultValue="21" id="pdf-iva" name="iva">
+                        <option value="21">Con IVA (21%)</option>
+                        <option value="10.5">Sin IVA (10,5%)</option>
+                      </Select>
+                    </Field>
+                    <Button type="submit">Generar PDF</Button>
+                  </form>
+                </details>
+              ) : null}
+              <ButtonLink href="/prices/new" variant="outline">
+                Nuevo producto
+              </ButtonLink>
+            </div>
+          </div>
         </Toolbar>
 
         <Card className="overflow-hidden">

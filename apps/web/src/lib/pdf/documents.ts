@@ -4,6 +4,16 @@ import { accountBalanceExpressionSql, activeAccountMovementWhereSql } from "@/li
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
+import {
+  applyVat,
+  normalizeGroupBy,
+  normalizeStock,
+  normalizeVat,
+  vatLegend,
+  type PriceListGroupBy,
+  type PriceListStock,
+  type PriceListVat,
+} from "@/lib/price-list-export";
 import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { getPurchase } from "@/lib/purchases";
 import { getQuote } from "@/lib/quotes";
@@ -908,67 +918,134 @@ export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseI
   });
 }
 
-export async function buildPriceListPdf(companyId: number, list: number) {
-  // `list` es el id de una lista real (listas_precio). Los precios se calculan
-  // igual que en pantalla: costo x multiplicador de la lista, con fallback al
-  // margen base de la categoria.
+export type PriceListPdfOptions = {
+  listId: number;
+  vigencia?: string;
+  stock?: PriceListStock;
+  groupBy?: PriceListGroupBy;
+  filter?: string;
+  iva?: PriceListVat;
+};
+
+export async function buildPriceListPdf(companyId: number, options: PriceListPdfOptions) {
+  const stock = normalizeStock(options.stock);
+  const groupBy = normalizeGroupBy(options.groupBy);
+  const iva = normalizeVat(options.iva == null ? undefined : String(options.iva));
+  const filter = (options.filter ?? "").trim().toLocaleLowerCase("es");
+  const vigencia = options.vigencia && /^\d{4}-\d{2}-\d{2}$/.test(options.vigencia) ? options.vigencia : localDateIso();
+
   const listRow = await queryWithCompanyContext<{ id: number; nombre: string }>(
     companyId,
     `SELECT id, nombre FROM listas_precio WHERE empresa_id = $1 AND activa = 1 AND ($2 <= 0 OR id = $2) ORDER BY orden ASC, nombre ASC LIMIT 1`,
-    [companyId, Number.isInteger(list) ? list : 0],
+    [companyId, Number.isInteger(options.listId) ? options.listId : 0],
   );
   const selectedList = listRow.rows[0];
   if (!selectedList) throw new ApiError(404, "La lista de precios no existe");
   const listName = selectedList.nombre;
 
   const marginCode = productMarginCodeExpression("p");
-  const result = await queryWithCompanyContext<{ codigo: string; nombre: string; precio: string }>(
+  const result = await queryWithCompanyContext<{
+    codigo: string;
+    nombre: string;
+    presentacion: string;
+    categoria: string;
+    proveedor: string;
+    precio: string;
+    stock_real: string;
+  }>(
     companyId,
     `
       SELECT COALESCE(p.sku, p.category_code, '') AS codigo,
              p.name AS nombre,
+             COALESCE(p.unit, '') AS presentacion,
+             COALESCE(NULLIF(p.category, ''), 'Sin categoría') AS categoria,
+             COALESCE(NULLIF(s.display_name, ''), 'Sin proveedor') AS proveedor,
              COALESCE(
                NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(ml.multiplicador, 1), 2), 0),
                NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
                p.sale_price,
                p.cost,
                0
-             ) AS precio
+             ) AS precio,
+             COALESCE(stock.stock_real, 0)::text AS stock_real
       FROM products p
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
       LEFT JOIN margenes m
         ON m.empresa_id = p.empresa_id AND m.codigo = ${marginCode}
       LEFT JOIN margenes_listas ml
         ON ml.empresa_id = p.empresa_id AND ml.lista_id = $2 AND ml.codigo = ${marginCode}
+      LEFT JOIN LATERAL (
+        SELECT SUM(
+          CASE WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity ELSE -sm.quantity END
+        ) AS stock_real
+        FROM stock_movements sm
+        WHERE sm.empresa_id = p.empresa_id AND sm.product_id = p.id
+      ) stock ON true
       WHERE p.empresa_id = $1 AND p.active = true
       ORDER BY p.name ASC
     `,
     [companyId, selectedList.id],
   );
-  const rows = result.rows.filter((row) => Number(row.precio) > 0);
+
+  const rows = result.rows.filter((row) => {
+    if (Number(row.precio) <= 0) return false;
+    if (stock === "con" && Number(row.stock_real) <= 0) return false;
+    if (filter) {
+      const groupValue = (groupBy === "proveedor" ? row.proveedor : row.categoria).toLocaleLowerCase("es");
+      if (!groupValue.includes(filter)) return false;
+    }
+    return true;
+  });
+
+  // Agrupa preservando el orden alfabetico de los grupos.
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = groupBy === "proveedor" ? row.proveedor : row.categoria;
+    const bucket = groups.get(key) ?? [];
+    bucket.push(row);
+    groups.set(key, bucket);
+  }
+  const orderedGroups = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0], "es"));
+
+  const ivaTag = iva === 10.5 ? "IVA 10,5%" : "IVA 21% incluido";
 
   return createPdfFile(`lista_precios_${safeFilename(listName)}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Lista de precios",
       code: "LP",
       number: listName,
-      date: pdfDate(localDateIso()),
-      extra: [`Productos: ${rows.length}`],
+      date: pdfDate(vigencia),
+      extra: [ivaTag, `Productos: ${rows.length}`],
       footerLeft: "Lista de precios",
       footerRight: listName,
     });
     pdf.section("Lista vigente");
     pdf.title(listName, 13);
-    pdf.muted("Precios expresados en pesos argentinos. La lista se emite desde el catalogo vigente y puede actualizarse segun condiciones comerciales.");
+    pdf.muted(`Vigencia desde ${pdfDate(vigencia)}. ${vatLegend(iva)}`);
     pdf.doc.y += 12;
-    pdf.table(
-      [
-        { label: "Codigo", width: 82 },
-        { label: "Producto", width: 297 },
-        { label: "Precio", width: 125, align: "right" },
-      ],
-      rows.map((row) => [row.codigo || "-", row.nombre, pdfMoney(Number(row.precio))]),
-      { minRowHeight: 20 },
-    );
+
+    if (orderedGroups.length === 0) {
+      pdf.muted("No hay productos para los filtros seleccionados.");
+    }
+
+    for (const [groupName, groupRows] of orderedGroups) {
+      pdf.section(groupName);
+      pdf.table(
+        [
+          { label: "Codigo", width: 74 },
+          { label: "Producto", width: 208 },
+          { label: "Presentacion", width: 96 },
+          { label: "Precio unit.", width: 126, align: "right" },
+        ],
+        groupRows.map((row) => [
+          row.codigo || "-",
+          row.nombre,
+          row.presentacion || "-",
+          pdfMoney(applyVat(Number(row.precio), iva)),
+        ]),
+        { minRowHeight: 20 },
+      );
+    }
     pdf.note("Documento informativo no fiscal. Verificar condiciones particulares, descuentos y disponibilidad antes de confirmar una operacion.");
   });
 }
