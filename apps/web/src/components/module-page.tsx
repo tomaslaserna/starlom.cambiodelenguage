@@ -3,15 +3,16 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { AuthSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
+import { MessageNotifications } from "@/components/message-notifications";
+import { NavigationIndicatorsProvider } from "@/components/navigation-indicators-provider";
 import { PresenceIndicator } from "@/components/presence-indicator";
 import { SessionKeepAlive } from "@/components/session-keep-alive";
 import { ShellNavigation } from "@/components/shell-navigation";
-import { ButtonLink } from "@/components/ui";
+import { ButtonLink, cn } from "@/components/ui";
 import {
   emptyNavigationIndicators,
   authorizedNavigationSections,
   getNavigationAuthorization,
-  getNavigationIndicators,
   type NavigationAuthorization,
 } from "@/lib/navigation";
 
@@ -22,6 +23,7 @@ type ModulePageProps = {
   session: AuthSession;
   children: ReactNode;
   navigationAuthorization?: NavigationAuthorization;
+  lockDesktopScroll?: boolean;
 };
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T) {
@@ -59,23 +61,29 @@ export async function ModulePage({
   session,
   children,
   navigationAuthorization,
+  lockDesktopScroll = false,
 }: ModulePageProps) {
-  let indicators = emptyNavigationIndicators();
   const fallbackAuthorization: NavigationAuthorization = {
     allowedPermissionKeys: new Set<string>(),
   };
-  const authorization =
-    navigationAuthorization ??
-    (await withTimeout(getNavigationAuthorization(session), 60, fallbackAuthorization));
+  const authorization = navigationAuthorization
+    ? navigationAuthorization
+    : await withTimeout(getNavigationAuthorization(session), 60, fallbackAuthorization);
+  // Badges and the message preview are useful, but neither may hold the whole
+  // screen hostage. Both client components refresh them right after hydration.
+  const indicators = emptyNavigationIndicators();
   const sections = authorizedNavigationSections(authorization);
 
-  indicators = await withTimeout(getNavigationIndicators(session), 60, emptyNavigationIndicators()).catch(() =>
-    emptyNavigationIndicators(),
-  );
-
   return (
-    <div className="min-h-screen overflow-visible bg-[#f5f7fb] text-foreground lg:grid lg:h-screen lg:grid-cols-[260px_minmax(0,1fr)] lg:overflow-hidden lg:overscroll-none">
+    <NavigationIndicatorsProvider initialIndicators={indicators}>
+      <div className="min-h-screen overflow-visible bg-[color:var(--background)] text-foreground lg:grid lg:h-screen lg:grid-cols-[252px_minmax(0,1fr)] lg:overflow-hidden lg:overscroll-none">
       <SessionKeepAlive />
+      <MessageNotifications
+        currentUsername={session.username}
+        initialLatestMessage={null}
+        initialUnread={0}
+        initialRevision=""
+      />
       <aside className="sticky top-0 hidden h-screen overflow-hidden overscroll-none border-r border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_48%,#073f94_100%)] text-white shadow-[8px_0_30px_rgba(7,63,148,0.22)] lg:flex lg:flex-col">
         <div className="border-b border-white/14 px-4 py-4">
           <BrandBlock />
@@ -94,20 +102,20 @@ export async function ModulePage({
         </div>
       </aside>
 
-      <main className="min-h-screen min-w-0 overflow-visible lg:h-screen lg:overflow-y-auto lg:overscroll-contain">
-        <header className="sticky top-0 z-30 border-b border-[#d9e2ef] bg-white/95 shadow-[0_8px_24px_rgba(15,23,42,0.045)] backdrop-blur">
-          <div className="hidden min-h-[4.25rem] items-center justify-between gap-4 px-7 lg:flex">
+      <main className={cn("min-h-screen min-w-0 overflow-visible lg:h-screen", lockDesktopScroll ? "lg:overflow-hidden" : "lg:overflow-y-auto lg:overscroll-contain")}>
+        <header className="sticky top-0 z-30 border-b border-[color:var(--border)] bg-white/95 shadow-[0_6px_20px_rgba(15,34,62,0.04)] backdrop-blur">
+          <div className="hidden min-h-[4.75rem] items-center justify-between gap-5 px-7 lg:flex">
             <div className="min-w-0">
-              <h1 className="erp-text-title-md truncate font-extrabold tracking-normal text-[#0f172a]">{title}</h1>
-              <p className="erp-text-body-sm mt-0.5 truncate font-medium text-[#64748b]">{description}</p>
+              <h1 className="truncate text-[1.625rem] font-extrabold leading-8 tracking-[-0.03em] text-[color:var(--foreground)]">{title}</h1>
+              <p className="erp-text-body-sm mt-0.5 truncate font-medium text-[color:var(--muted)]">{description}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <PresenceIndicator />
-              <div className="erp-text-caption flex h-10 max-w-[360px] items-center truncate rounded-[9px] border border-[#d9e2ef] bg-[#f8fafc] px-3 shadow-[var(--shadow-xs)]">
+              <div className="erp-text-caption flex h-[var(--control-height-md)] max-w-[360px] items-center truncate rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel-muted)] px-3 shadow-[var(--shadow-xs)]">
                 <span className="font-bold">{session.displayName}</span>
                 <span className="font-medium text-[#64748b]"> - {session.role} - {session.companyName}</span>
               </div>
-              <LogoutButton className="h-10 min-h-10 px-4" />
+              <LogoutButton className="h-[var(--control-height-md)] min-h-[var(--control-height-md)] px-4" />
             </div>
           </div>
 
@@ -138,10 +146,11 @@ export async function ModulePage({
           </div>
         </header>
 
-        <section className="erp-shell-content mx-auto min-w-0 max-w-[1480px] px-4 pb-24 pt-5 sm:px-6 lg:px-7 lg:pb-28 lg:pt-6">
-          {children}
+        <section className={cn("erp-shell-content mx-auto min-w-0 max-w-[1600px] px-4 pb-24 pt-4 sm:px-5 lg:px-6 lg:pt-5", lockDesktopScroll ? "lg:h-[calc(100vh-4.75rem)] lg:overflow-hidden lg:pb-5" : "lg:pb-28")}>
+          <div className={cn("erp-workspace-surface", lockDesktopScroll && "h-full overflow-hidden")}>{children}</div>
         </section>
       </main>
-    </div>
+      </div>
+    </NavigationIndicatorsProvider>
   );
 }

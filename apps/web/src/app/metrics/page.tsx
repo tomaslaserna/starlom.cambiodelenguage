@@ -1,21 +1,11 @@
 import { ModulePage } from "@/components/module-page";
+import { MetricIcon } from "@/components/metric-icon";
+import { Card, CardContent, CardHeader, CardTitle, StatCard, StatusBadge, Toolbar } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { getAdminMetrics } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { ADMIN_METRICS_READ_PERMISSION, REPORTS_READ_PERMISSION } from "@/lib/route-auth";
-
-function deltaLabel(value: number | null) {
-  if (value === null) return "s/c";
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(1)}%`;
-}
-
-function deltaTone(value: number | null) {
-  if (value === null) return "neutral";
-  if (value >= 0) return "good";
-  return "bad";
-}
 
 function compactCurrency(value: number) {
   const abs = Math.abs(value);
@@ -24,167 +14,40 @@ function compactCurrency(value: number) {
   return formatCurrency(value);
 }
 
-function percent(value: number, total: number) {
-  if (!total) return 0;
-  return Math.max(0, Math.min(100, (value / total) * 100));
+function deltaLabel(value: number | null) {
+  if (value === null) return "Sin base comparable";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}% vs. mes anterior`;
 }
 
-function trendSeries(current: number, previous: number, steps = 9) {
-  const base = previous > 0 ? previous : current > 0 ? current * 0.72 : 1;
-  const target = current > 0 ? current : base * 0.82;
-  return Array.from({ length: steps }, (_, index) => {
-    const t = steps === 1 ? 1 : index / (steps - 1);
-    const wave = Math.sin(index * 1.35) * 0.08 * Math.max(base, target);
-    return Math.max(1, base + (target - base) * t + wave);
-  });
+function progress(current: number, total: number) {
+  if (total <= 0) return 0;
+  return Math.max(0, Math.min(100, (current / total) * 100));
 }
 
-function MiniBars({ values }: { values: number[] }) {
-  const max = Math.max(...values, 1);
+function FinancialLine({ label, value, width, tone = "bg-slate-400" }: { label: string; value: string; width: number; tone?: string }) {
   return (
-    <div className="flex h-12 items-end gap-1" aria-hidden="true">
-      {values.map((value, index) => (
-        <span
-          key={`${value}-${index}`}
-          className="w-1.5 rounded-t-sm bg-[#0ea5e9]"
-          style={{ height: `${Math.max(18, (value / max) * 100)}%` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-function Gauge({ value }: { value: number }) {
-  const clamped = Math.max(0, Math.min(100, value));
-  const rotation = -90 + clamped * 1.8;
-
-  return (
-    <div className="relative mx-auto h-24 w-40" aria-hidden="true">
-      <svg viewBox="0 0 160 92" className="h-full w-full">
-        <path d="M28 78a52 52 0 0 1 104 0" fill="none" stroke="#e5e7eb" strokeWidth="20" />
-        <path
-          d="M28 78a52 52 0 0 1 104 0"
-          fill="none"
-          stroke="#111827"
-          strokeDasharray={`${clamped * 1.62} 200`}
-          strokeLinecap="butt"
-          strokeWidth="20"
-        />
-        <line
-          stroke="#111827"
-          strokeLinecap="round"
-          strokeWidth="3"
-          transform={`rotate(${rotation} 80 78)`}
-          x1="80"
-          x2="80"
-          y1="78"
-          y2="35"
-        />
-        <circle cx="80" cy="78" fill="#111827" r="4" />
-      </svg>
-    </div>
-  );
-}
-
-function Donut({ value }: { value: number }) {
-  const clamped = Math.max(0, Math.min(100, value));
-  return (
-    <svg viewBox="0 0 100 100" className="h-24 w-24" aria-hidden="true">
-      <circle cx="50" cy="50" fill="none" r="34" stroke="#e5e7eb" strokeWidth="16" />
-      <circle
-        cx="50"
-        cy="50"
-        fill="none"
-        r="34"
-        stroke="#0ea5e9"
-        strokeDasharray={`${clamped * 2.14} 214`}
-        strokeLinecap="round"
-        strokeWidth="16"
-        transform="rotate(-90 50 50)"
-      />
-      <text fill="#111827" fontSize="16" fontWeight="800" textAnchor="middle" x="50" y="56">
-        {Math.round(clamped)}%
-      </text>
-    </svg>
-  );
-}
-
-function RevenueBars({ sales, collections, purchases }: { sales: number[]; collections: number[]; purchases: number[] }) {
-  const max = Math.max(...sales, ...collections, ...purchases, 1);
-  const labels = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep"];
-
-  return (
-    <div className="grid h-full grid-rows-[1fr_auto] gap-2">
-      <div className="flex items-end gap-3 border-l border-b border-[#d1d5db] px-3 pt-3">
-        {sales.map((value, index) => (
-          <div key={labels[index]} className="flex min-w-0 flex-1 items-end gap-0.5">
-            <span
-              className="w-full bg-[#075985]"
-              title={`Ventas ${labels[index]}`}
-              style={{ height: `${Math.max(12, (value / max) * 100)}%` }}
-            />
-            <span
-              className="w-full bg-[#111827]"
-              title={`Cobros ${labels[index]}`}
-              style={{ height: `${Math.max(8, (collections[index] / max) * 100)}%` }}
-            />
-            <span
-              className="w-full bg-[#0ea5e9]"
-              title={`Compras ${labels[index]}`}
-              style={{ height: `${Math.max(6, (purchases[index] / max) * 100)}%` }}
-            />
-          </div>
-        ))}
+    <div>
+      <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+        <span className="font-semibold text-[color:var(--foreground)]">{label}</span>
+        <span className="font-mono font-bold tabular-nums text-[color:var(--foreground)]">{value}</span>
       </div>
-      <div className="grid grid-cols-9 gap-3 px-3 text-center text-[10px] text-[color:var(--muted)]">
-        {labels.map((label) => (
-          <span key={label}>{label}</span>
-        ))}
+      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+        <div className={`h-full rounded-full ${tone}`} style={{ width: `${Math.max(4, width)}%` }} />
       </div>
     </div>
   );
 }
 
-function KpiStrip({
-  label,
-  value,
-  detail,
-  tone,
-  values,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  tone: "good" | "bad" | "neutral";
-  values: number[];
-}) {
-  const color = tone === "good" ? "#22c55e" : tone === "bad" ? "#ef4444" : "#64748b";
-
+function AlertRow({ detail, icon, label, tone }: { detail: string; icon: "alert" | "money" | "purchase"; label: string; tone: "danger" | "warning" | "info" }) {
   return (
-    <div className="grid min-h-[86px] grid-cols-[auto_1fr_auto] items-center gap-3 border-r border-[#dbe3ee] px-4 py-3 last:border-r-0">
-      <div className="grid h-9 w-9 place-items-center rounded-full bg-[#111827] text-xs font-black text-white">
-        {label.slice(0, 2).toUpperCase()}
-      </div>
+    <div className="grid grid-cols-[22px_minmax(0,1fr)] items-center gap-2 rounded-md border border-[color:var(--border)] bg-[color:var(--panel-muted)] px-2 py-1.5">
+      <span className={`flex h-5 w-5 items-center justify-center rounded-md ${tone === "danger" ? "bg-red-50 text-red-600" : tone === "warning" ? "bg-orange-50 text-orange-600" : "bg-blue-50 text-blue-600"}`}>
+        <span className="h-3 w-3 [&>svg]:h-full [&>svg]:w-full"><MetricIcon name={icon} /></span>
+      </span>
       <div className="min-w-0">
-        <div className="text-xl font-black leading-none text-[#0ea5e9]">{value}</div>
-        <div className="mt-1 truncate text-xs font-extrabold text-[#111827]">{label}</div>
-        <div className="mt-1 text-[10px] text-[color:var(--muted)]" style={{ color }}>
-          {detail}
-        </div>
+        <div className="text-[11px] font-bold leading-4 text-[color:var(--foreground)]">{label}</div>
+        <p className="truncate text-[10px] leading-3.5 text-[color:var(--muted)]">{detail}</p>
       </div>
-      <MiniBars values={values} />
-    </div>
-  );
-}
-
-function PlainMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return (
-    <div className="border-b border-[#e5e7eb] px-3 py-2 last:border-b-0">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="truncate text-xs font-bold text-[#334155]">{label}</span>
-        <span className="text-sm font-black text-[#111827]">{value}</span>
-      </div>
-      <div className="mt-1 truncate text-[10px] text-[color:var(--muted)]">{detail}</div>
     </div>
   );
 }
@@ -194,164 +57,119 @@ export default async function MetricsPage() {
   await requirePagePermission(session, [ADMIN_METRICS_READ_PERMISSION, REPORTS_READ_PERMISSION]);
   const metrics = await getAdminMetrics(session.companyId);
 
-  const salesTrend = trendSeries(metrics.sales.current, metrics.sales.previous);
-  const collectionsTrend = trendSeries(metrics.collections.current, metrics.collections.previous);
-  const purchasesTrend = trendSeries(metrics.purchases.current, metrics.purchases.current * 0.78);
-  const stockTrend = trendSeries(metrics.stock.value, metrics.stock.value * 0.86);
-  const salesTarget = metrics.sales.previous > 0 ? metrics.sales.previous * 1.1 : Math.max(metrics.sales.current, 1);
-  const salesProgress = percent(metrics.sales.current, salesTarget);
-  const collectionCoverage = percent(metrics.collections.current, metrics.collections.current + metrics.receivables.openTotal);
-  const marginPercent = percent(metrics.margin.grossProfit, metrics.sales.current);
-  const operatingPercent = percent(metrics.margin.operatingResult, metrics.sales.current);
-  const updatedAt = new Intl.DateTimeFormat("es-AR", {
-    dateStyle: "short",
-    timeStyle: "short",
-    timeZone: "America/Argentina/Buenos_Aires",
-  }).format(new Date());
-
-  const plainMetrics = [
-    {
-      label: "Margen bruto",
-      value: `${Math.round(marginPercent)}%`,
-      detail: `${formatCurrency(metrics.margin.grossProfit)} despues de costo`,
-    },
-    {
-      label: "Resultado operativo",
-      value: `${Math.round(operatingPercent)}%`,
-      detail: formatCurrency(metrics.margin.operatingResult),
-    },
-    {
-      label: "Por cobrar",
-      value: compactCurrency(metrics.receivables.openTotal),
-      detail: "Ventas entregadas abiertas",
-    },
-    {
-      label: "Por pagar",
-      value: compactCurrency(metrics.purchases.openTotal),
-      detail: "Compras pendientes",
-    },
-    {
-      label: "Productos sin stock",
-      value: formatNumber(metrics.stock.products),
-      detail: "Reposicion o baja pendiente",
-    },
-    {
-      label: "Frescura del dato",
-      value: "Ahora",
-      detail: `Actualizado ${updatedAt}`,
-    },
-  ];
+  const grossMargin = progress(metrics.margin.grossProfit, metrics.sales.current);
+  const operatingMargin = progress(metrics.margin.operatingResult, metrics.sales.current);
+  const collectionCoverage = progress(metrics.collections.current, metrics.collections.current + metrics.receivables.openTotal);
+  const cashExposure = metrics.receivables.openTotal - metrics.purchases.openTotal;
+  const salesVsPrevious = progress(metrics.sales.current, Math.max(metrics.sales.previous, metrics.sales.current));
+  const monthLabel = new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" }).format(
+    new Date(`${metrics.period.currentStart}T12:00:00`),
+  );
 
   return (
     <ModulePage
       active="metrics"
-      description="Panel compacto por rol con KPIs criticos, tendencias y alertas de decision."
+      description="Salud comercial, liquidez y alertas operativas del mes en curso."
+      lockDesktopScroll
       session={session}
-      title="Metricas"
+      title="Métricas"
     >
-      <section className="overflow-hidden rounded-[12px] border border-[color:var(--border)] bg-white shadow-[var(--shadow-sm)]">
-        <header className="relative border-b border-[color:var(--border)] bg-[#fbfcfe] px-5 py-4">
-          <span className="absolute left-0 top-0 h-6 w-2 bg-[#0ea5e9]" aria-hidden="true" />
-          <div className="text-center font-serif text-base text-[#1f2937]">
-            Panel de control ERP con salud comercial, caja, stock y ejecucion
-          </div>
-        </header>
-
-        <div className="grid gap-4 p-4 xl:grid-cols-[330px_minmax(0,1fr)_260px]">
-          <div className="grid gap-4">
-            <article className="overflow-hidden rounded-[12px] border border-[color:var(--border)] bg-white shadow-[var(--shadow-xs)]">
-              <div className="border-b border-[color:var(--border)] bg-[#fbfcfe] px-4 py-3 text-center text-xs font-bold text-[#0f172a]">
-                Ventas vs objetivo
-              </div>
-              <div className="grid grid-cols-[1fr_auto] items-center gap-2 p-4">
-                <div>
-                  <div className="text-2xl font-black text-[#111827]">{compactCurrency(metrics.sales.current)}</div>
-                  <div className="mt-2 text-xs text-[#334155]">
-                    {deltaLabel(metrics.sales.deltaPercent)} vs periodo anterior
-                  </div>
-                  <div className="text-[10px] text-[color:var(--muted)]">
-                    Objetivo base {compactCurrency(salesTarget)}
-                  </div>
-                </div>
-                <Gauge value={salesProgress} />
-              </div>
-            </article>
-
-            <article className="overflow-hidden rounded-[12px] border border-[color:var(--border)] bg-white shadow-[var(--shadow-xs)]">
-              <div className="border-b border-[color:var(--border)] bg-[#fbfcfe] px-4 py-3 text-center text-xs font-bold text-[#0f172a]">
-                Cobranza cubierta
-              </div>
-              <div className="grid grid-cols-[1fr_auto] items-center gap-2 p-4">
-                <div>
-                  <div className="text-2xl font-black text-[#0ea5e9]">{compactCurrency(metrics.collections.current)}</div>
-                  <div className="mt-2 text-xs text-[#334155]">
-                    {deltaLabel(metrics.collections.deltaPercent)} vs periodo anterior
-                  </div>
-                  <div className="text-[10px] text-[color:var(--muted)]">
-                    Abierto {compactCurrency(metrics.receivables.openTotal)}
-                  </div>
-                </div>
-                <Donut value={collectionCoverage} />
-              </div>
-            </article>
-          </div>
-
-          <article className="min-h-[300px] rounded-[12px] border border-[color:var(--border)] bg-white p-4 shadow-[var(--shadow-xs)]">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-black text-[#111827]">Ingresos, cobros y compras</h2>
-              <div className="flex gap-4 text-[10px] font-bold text-[#334155]">
-                <span><i className="mr-1 inline-block h-2 w-2 bg-[#075985]" />Ventas</span>
-                <span><i className="mr-1 inline-block h-2 w-2 bg-[#111827]" />Cobros</span>
-                <span><i className="mr-1 inline-block h-2 w-2 bg-[#0ea5e9]" />Compras</span>
-              </div>
+      <section className="grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] gap-3">
+        <Toolbar ariaLabel="Resumen del período" className="min-h-[68px] items-center px-5 py-3 shadow-[var(--shadow-sm)]">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#bfd4fb] bg-[#eef4ff] text-[#2563eb] [&>svg]:h-[19px] [&>svg]:w-[19px]">
+              <MetricIcon name="calendar" />
+            </span>
+            <div className="min-w-0">
+              <p className="erp-text-caption font-semibold uppercase tracking-[0.08em] text-[color:var(--muted)]">Período actual</p>
+              <h2 className="truncate text-lg font-black tracking-[-0.025em] text-[color:var(--foreground)]">Pulso financiero · {monthLabel}</h2>
             </div>
-            <RevenueBars sales={salesTrend} collections={collectionsTrend} purchases={purchasesTrend} />
-          </article>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge tone="accent">Ventas, caja y stock</StatusBadge>
+            <StatusBadge tone={metrics.margin.operatingResult >= 0 ? "success" : "danger"}>Resultado {compactCurrency(metrics.margin.operatingResult)}</StatusBadge>
+          </div>
+        </Toolbar>
 
-          <aside className="overflow-hidden rounded-[12px] border border-[color:var(--border)] bg-white shadow-[var(--shadow-xs)]">
-            <div className="border-b border-[color:var(--border)] bg-[#fbfcfe] px-4 py-3 text-xs font-bold text-[#0f172a]">
-              Indicadores sin grafico
-            </div>
-            {plainMetrics.map((item) => (
-              <PlainMetric key={item.label} {...item} />
-            ))}
-          </aside>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard className="min-h-[104px] px-4 py-3" detail={deltaLabel(metrics.sales.deltaPercent)} icon={<MetricIcon name="sales" />} label="Ventas entregadas" tone="accent" value={compactCurrency(metrics.sales.current)} />
+          <StatCard className="min-h-[104px] px-4 py-3" detail={deltaLabel(metrics.collections.deltaPercent)} icon={<MetricIcon name="wallet" />} label="Cobros registrados" tone="success" value={compactCurrency(metrics.collections.current)} />
+          <StatCard className="min-h-[104px] px-4 py-3" detail={`${formatNumber(metrics.stock.units)} unidades valorizadas`} icon={<MetricIcon name="stock" />} label="Capital en stock" tone="neutral" value={compactCurrency(metrics.stock.value)} />
+          <StatCard className="min-h-[104px] px-4 py-3" detail={`${compactCurrency(metrics.purchases.openTotal)} aún pendiente`} icon={<MetricIcon name="purchase" />} label="Compras del mes" tone="warning" value={compactCurrency(metrics.purchases.current)} />
         </div>
 
-        <div className="grid border-t border-[#dbe3ee] bg-[#f8fafc] md:grid-cols-2 xl:grid-cols-4">
-          <KpiStrip
-            detail={deltaLabel(metrics.sales.deltaPercent)}
-            label="Ventas"
-            tone={deltaTone(metrics.sales.deltaPercent)}
-            value={compactCurrency(metrics.sales.current)}
-            values={salesTrend}
-          />
-          <KpiStrip
-            detail={deltaLabel(metrics.collections.deltaPercent)}
-            label="Cobros"
-            tone={deltaTone(metrics.collections.deltaPercent)}
-            value={compactCurrency(metrics.collections.current)}
-            values={collectionsTrend}
-          />
-          <KpiStrip
-            detail={`${formatNumber(metrics.stock.units)} unidades`}
-            label="Stock"
-            tone="neutral"
-            value={compactCurrency(metrics.stock.value)}
-            values={stockTrend}
-          />
-          <KpiStrip
-            detail="Compras registradas"
-            label="Compras"
-            tone="neutral"
-            value={compactCurrency(metrics.purchases.current)}
-            values={purchasesTrend}
-          />
-        </div>
+        <Card>
+          <CardContent className="flex min-h-[50px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
+            <StatusBadge tone={metrics.sales.deltaPercent !== null && metrics.sales.deltaPercent < 0 ? "danger" : "success"}>
+              Ventas {deltaLabel(metrics.sales.deltaPercent)}
+            </StatusBadge>
+            <span className="erp-text-caption font-medium text-[color:var(--muted)]">Margen bruto <strong className="text-[color:var(--foreground)]">{Math.round(grossMargin)}%</strong></span>
+            <span className="erp-text-caption font-medium text-[color:var(--muted)]">Cobertura <strong className="text-[color:var(--foreground)]">{Math.round(collectionCoverage)}%</strong></span>
+            <span className="erp-text-caption font-medium text-[color:var(--muted)]">Sin stock <strong className="text-[color:var(--foreground)]">{formatNumber(metrics.stock.products)}</strong></span>
+          </CardContent>
+        </Card>
 
-        <footer className="border-t border-[#e5e7eb] px-5 py-2 text-center text-[10px] text-[color:var(--muted)]">
-          KPIs priorizados por impacto: caja, ventas, margen, stock y compromisos. El detalle transaccional queda en cada modulo.
-        </footer>
+        <div className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1.3fr)_minmax(335px,0.7fr)]">
+          <Card className="min-h-0 overflow-hidden">
+            <CardHeader className="flex min-h-[52px] flex-row items-center justify-between gap-3 px-4 py-3">
+              <div>
+                <p className="erp-text-caption font-semibold uppercase tracking-[0.08em] text-[color:var(--muted)]">Ejecución comercial</p>
+                <CardTitle className="mt-0.5">Qué deja cada peso vendido</CardTitle>
+              </div>
+              <StatusBadge tone="accent">Base: entregadas</StatusBadge>
+            </CardHeader>
+            <CardContent className="grid h-[calc(100%_-_52px)] min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3 p-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded-lg bg-[color:var(--panel-muted)] px-3 py-2.5">
+                  <p className="erp-text-caption font-semibold text-[color:var(--muted)]">Ventas vs. mes anterior</p>
+                  <div className="mt-1 flex items-baseline justify-between gap-2"><strong className="font-mono text-xl tracking-[-0.04em] tabular-nums">{compactCurrency(metrics.sales.current)}</strong><span className={metrics.sales.deltaPercent !== null && metrics.sales.deltaPercent < 0 ? "text-xs font-bold text-red-600" : "text-xs font-bold text-emerald-600"}>{deltaLabel(metrics.sales.deltaPercent)}</span></div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-[#2563eb]" style={{ width: `${Math.max(6, salesVsPrevious)}%` }} /></div>
+                </div>
+                <div className="rounded-lg bg-[color:var(--panel-muted)] px-3 py-2.5">
+                  <p className="erp-text-caption font-semibold text-[color:var(--muted)]">Margen operativo</p>
+                  <div className="mt-1 flex items-baseline justify-between gap-2"><strong className="font-mono text-xl tracking-[-0.04em] tabular-nums">{Math.round(operatingMargin)}%</strong><span className="text-xs font-bold text-[color:var(--muted)]">{compactCurrency(metrics.margin.operatingResult)}</span></div>
+                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-[#059669]" style={{ width: `${Math.max(4, operatingMargin)}%` }} /></div>
+                </div>
+              </div>
+              <div className="grid content-evenly gap-2.5 border-t border-[color:var(--border)] pt-3">
+                <FinancialLine label="Ingresos entregados" tone="bg-[#2563eb]" value={compactCurrency(metrics.sales.current)} width={100} />
+                <FinancialLine label="Costo de mercadería" tone="bg-slate-400" value={compactCurrency(metrics.margin.grossCost)} width={progress(metrics.margin.grossCost, metrics.sales.current)} />
+                <FinancialLine label="Costos operativos" tone="bg-[#d97706]" value={compactCurrency(metrics.margin.operatingCosts)} width={progress(metrics.margin.operatingCosts, metrics.sales.current)} />
+                <FinancialLine label="Resultado operativo" tone={metrics.margin.operatingResult >= 0 ? "bg-[#059669]" : "bg-[#dc2626]"} value={compactCurrency(metrics.margin.operatingResult)} width={Math.abs(progress(metrics.margin.operatingResult, metrics.sales.current))} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="min-h-0 overflow-hidden">
+            <CardHeader className="flex min-h-[52px] flex-row items-center justify-between gap-3 px-4 py-3">
+              <div>
+                <p className="erp-text-caption font-semibold uppercase tracking-[0.08em] text-[color:var(--muted)]">Caja y compromisos</p>
+                <CardTitle className="mt-0.5">Liquidez bajo control</CardTitle>
+              </div>
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#eef4ff] text-[#2563eb] [&>svg]:h-4 [&>svg]:w-4"><MetricIcon name="money" /></span>
+            </CardHeader>
+            <CardContent className="grid h-[calc(100%_-_52px)] min-h-0 grid-cols-2 gap-3 p-4">
+              <div className="grid content-start gap-2.5">
+                <div className="rounded-lg bg-[#10213b] px-3 py-2 text-white">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-blue-200">Exposición neta</p>
+                  <div className="mt-0.5 font-mono text-xl font-black tracking-[-0.04em] tabular-nums">{compactCurrency(cashExposure)}</div>
+                  <p className="mt-0.5 text-[10px] leading-3.5 text-slate-300">Por cobrar menos compromisos abiertos.</p>
+                </div>
+                <div className="grid gap-2">
+                  <FinancialLine label="Por cobrar" tone="bg-[#2563eb]" value={compactCurrency(metrics.receivables.openTotal)} width={100} />
+                  <FinancialLine label="Por pagar" tone="bg-[#d97706]" value={compactCurrency(metrics.purchases.openTotal)} width={progress(metrics.purchases.openTotal, Math.max(metrics.receivables.openTotal, metrics.purchases.openTotal))} />
+                  <FinancialLine label="Cobrado en el mes" tone="bg-[#059669]" value={compactCurrency(metrics.collections.current)} width={collectionCoverage} />
+                </div>
+              </div>
+              <div className="grid content-start gap-1.5 border-l border-[color:var(--border)] pl-3">
+                <p className="erp-text-caption font-semibold uppercase tracking-[0.08em] text-[color:var(--muted)]">Alertas para decidir hoy</p>
+                <AlertRow detail={`${compactCurrency(metrics.receivables.openTotal)} pendiente de cobro`} icon="money" label="Cobranza abierta" tone="warning" />
+                <AlertRow detail={`${formatNumber(metrics.stock.products)} productos sin stock efectivo`} icon="alert" label="Riesgo de stock" tone="danger" />
+                <AlertRow detail={`${compactCurrency(metrics.purchases.openTotal)} comprometido en compras`} icon="purchase" label="Compromisos de compra" tone="info" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </section>
     </ModulePage>
   );

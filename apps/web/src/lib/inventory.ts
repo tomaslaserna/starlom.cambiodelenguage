@@ -64,7 +64,14 @@ function movementTypeForDelta(delta: number) {
   return delta > 0 ? "ajuste_positivo" : "ajuste_negativo";
 }
 
-export async function listInventoryProducts(companyId: number) {
+export async function listInventoryProducts(companyId: number, query = "", limit = 40) {
+  const normalizedQuery = query.trim();
+  const safeLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
+  const searchFilter = normalizedQuery
+    ? `AND (p.name ILIKE '%' || $2 || '%' OR COALESCE(p.sku, '') ILIKE '%' || $2 || '%' OR COALESCE(s.display_name, '') ILIKE '%' || $2 || '%')`
+    : "";
+  const params = normalizedQuery ? [companyId, normalizedQuery, safeLimit] : [companyId, safeLimit];
+  const limitParam = normalizedQuery ? "$3" : "$2";
   const result = await queryWithCompanyContext<{
     id: string;
     sku: string | null;
@@ -99,10 +106,11 @@ export async function listInventoryProducts(companyId: number) {
       ) stock ON true
       WHERE p.empresa_id = $1
         AND p.active = true
+        ${searchFilter}
       ORDER BY p.name ASC, p.id ASC
-      LIMIT 10000
+      LIMIT ${limitParam}
     `,
-    [companyId],
+    params,
   );
 
   return result.rows.map((row): InventoryProduct => ({
@@ -115,6 +123,29 @@ export async function listInventoryProducts(companyId: number) {
     cost: stockNumber(row.cost),
     stock: stockNumber(row.stock),
   }));
+}
+
+export async function getInventorySummary(companyId: number) {
+  const result = await queryWithCompanyContext<{ products: string; units: string; without_stock: string }>(
+    companyId,
+    `
+      SELECT COUNT(*)::text AS products,
+             COALESCE(SUM(COALESCE(stock.current_stock, 0)), 0)::text AS units,
+             COUNT(*) FILTER (WHERE COALESCE(stock.current_stock, 0) <= 0)::text AS without_stock
+      FROM products p
+      LEFT JOIN (
+        SELECT product_id,
+               SUM(CASE WHEN movement_type IN ('entrada_compra', 'ajuste_positivo') THEN quantity ELSE -quantity END) AS current_stock
+        FROM stock_movements
+        WHERE empresa_id = $1
+        GROUP BY product_id
+      ) stock ON stock.product_id = p.id
+      WHERE p.empresa_id = $1 AND p.active = true
+    `,
+    [companyId],
+  );
+  const row = result.rows[0];
+  return { products: stockNumber(row?.products), units: stockNumber(row?.units), withoutStock: stockNumber(row?.without_stock) };
 }
 
 export async function listRecentStockMovements(companyId: number, limit = 60) {

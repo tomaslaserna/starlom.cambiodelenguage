@@ -21,7 +21,7 @@ import {
   SALES_READ_PERMISSION,
   STOCK_EDIT_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
-  sessionAllows,
+  sessionAllowedPermissionKeys,
   sessionCanApproveCollections,
   sessionCanReadCollections,
   type Permission,
@@ -134,8 +134,7 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Base de datos",
     active: "database",
     items: [
-      { href: "/prices", label: "Precios", active: "database", permission: PRODUCTS_READ_PERMISSION },
-      { href: "/pricing", label: "Margenes y listas", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/pricing", label: "Precios", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
       { href: "/pricing?mode=new-product", label: "Nuevo producto", active: "pricing", permission: PRODUCTS_CREATE_PERMISSION },
       { href: "/pricing?mode=bulk", label: "Importar catalogo", active: "pricing", permission: PRODUCTS_CREATE_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
@@ -215,12 +214,6 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "approvals",
     permission: COLLECTIONS_APPROVE_PERMISSION,
   },
-  {
-    href: "/admin/audit",
-    label: "Auditoria",
-    active: "audit",
-    permission: ADMIN_MOVEMENTS_READ_PERMISSION,
-  },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   {
     href: "/messages",
@@ -228,6 +221,7 @@ export const navigationGroups: NavigationGroup[] = [
     active: "messages",
     badge: "messages",
   },
+  { href: "/bank", label: "Banco", active: "bank" },
 ];
 
 export type NavigationSection = {
@@ -244,7 +238,7 @@ function groupByLabel(label: string) {
 export const navigationSections: NavigationSection[] = [
   {
     label: "Inicio",
-    groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes")],
+    groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes"), groupByLabel("Banco")],
   },
   {
     label: "Operaciones",
@@ -266,17 +260,16 @@ export const navigationSections: NavigationSection[] = [
   {
     label: "Administracion",
     groups: [
-      groupByLabel("Balance"),
       groupByLabel("RR.HH"),
       groupByLabel("Metricas"),
       groupByLabel("Rentabilidad"),
       groupByLabel("Solicitudes y aprobaciones"),
-      groupByLabel("Auditoria"),
     ],
   },
   {
     label: "Finanzas",
     groups: [
+      groupByLabel("Balance"),
       groupByLabel("Sueldos y dividendos"),
       groupByLabel("Caja"),
       groupByLabel("Cash Flow"),
@@ -335,14 +328,7 @@ export async function getNavigationAuthorization(session: AuthSession): Promise<
   const cached = authorizationCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const allowedPermissionKeys = new Set<string>();
-  await Promise.all(
-    collectRequiredNavigationPermissions().map(async (permission) => {
-      if (await sessionAllows(session, [permission])) {
-        allowedPermissionKeys.add(navigationPermissionKey(permission));
-      }
-    }),
-  );
+  const allowedPermissionKeys = await sessionAllowedPermissionKeys(session, collectRequiredNavigationPermissions());
 
   const authorization = { allowedPermissionKeys };
   authorizationCache.set(cacheKey, {

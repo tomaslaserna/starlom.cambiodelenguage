@@ -1,37 +1,16 @@
-import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
 import { requireApiSession } from "@/lib/route-auth";
+import { touchPresence } from "@/lib/presence-store";
 
 export const runtime = "nodejs";
 
-async function touchPresence(request: NextRequest) {
-  const session = await requireApiSession();
-
-  return {
-    onlineUsers: [
-      {
-        userId: session.userId,
-        username: session.username,
-        displayName: session.displayName,
-        lastSeen: new Date().toISOString(),
-      },
-    ],
-    requestPath: request.nextUrl.pathname,
-  };
-}
-
-export async function GET(request: NextRequest) {
+// Heartbeat: records the caller as present and returns the live snapshot of who
+// is online in their company. Called on mount and every ~30s by the presence
+// indicator in the app header.
+export async function POST() {
   try {
-    const data = await touchPresence(request);
-    return ok({ data });
-  } catch (error) {
-    return handleApiError(error);
-  }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    const data = await touchPresence(request);
+    const session = await requireApiSession();
+    const data = await touchPresence(session);
     return ok({ data });
   } catch (error) {
     return handleApiError(error);

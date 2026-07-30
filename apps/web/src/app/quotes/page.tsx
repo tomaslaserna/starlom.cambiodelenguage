@@ -1,7 +1,8 @@
 import { ModulePage } from "@/components/module-page";
+import { MetricIcon } from "@/components/metric-icon";
 import {
-  AppIcon,
   Button,
+  ButtonLink,
   Card,
   DataTable,
   DataTableBody,
@@ -11,14 +12,12 @@ import {
   DataTableRow,
   EmptyState,
   Field,
+  Input,
   PageHeader,
-  SearchInput,
   Select,
   StatCard,
   StatusBadge,
-  TableActionMenu,
   Toolbar,
-  tableActionItemClass,
   type StatusBadgeTone,
 } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -34,6 +33,7 @@ import {
 } from "@/lib/route-auth";
 import { acceptQuoteAction, acceptQuoteAndRemitAction, createQuoteAction } from "@/app/quotes/actions";
 import { QuoteEntryFields } from "@/app/quotes/quote-entry-fields";
+import { QuoteEntryForm } from "@/app/quotes/quote-entry-form";
 
 type QuotesPageProps = {
   searchParams: Promise<{
@@ -48,6 +48,8 @@ const quoteStates = [
   { value: "rechazada", label: "Rechazadas" },
   { value: "all", label: "Todas" },
 ];
+
+const quoteActionClassName = "w-full justify-start";
 
 function matchesQuery(item: Awaited<ReturnType<typeof listQuotes>>[number], query: string) {
   if (!query) return true;
@@ -126,23 +128,23 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
 
         {canCreateQuotes ? (
         <Card>
-          <form action={createQuoteAction} className="grid gap-4 p-4">
+          <QuoteEntryForm action={createQuoteAction} className="grid gap-4 p-4">
             <QuoteEntryFields
               clients={quoteFormData.clients}
               priceLists={quoteFormData.priceLists}
               products={quoteFormData.products}
             />
-          </form>
+          </QuoteEntryForm>
         </Card>
         ) : null}
 
         <Toolbar ariaLabel="Filtros de presupuestos">
           <form
             action="/quotes"
-            className="grid w-full gap-4 lg:grid-cols-[minmax(320px,1fr)_260px_144px] lg:items-end"
+            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_220px_auto] lg:items-end"
           >
             <Field htmlFor="quotes-query" label="Buscar">
-              <SearchInput
+              <Input
                 defaultValue={params.q ?? ""}
                 id="quotes-query"
                 name="q"
@@ -159,35 +161,33 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                 ))}
               </Select>
             </Field>
-            <Button className="w-full" leadingIcon={<AppIcon name="filter" />} type="submit">
-              Filtrar
-            </Button>
+            <Button type="submit">Filtrar</Button>
           </form>
         </Toolbar>
 
         <div className="grid gap-3 md:grid-cols-3">
-          <StatCard icon={<AppIcon className="h-6 w-6" name="quote" />} label="Presupuestos filtrados" tone="accent" value={quotes.length} />
-          <StatCard icon={<AppIcon className="h-6 w-6" name="money" />} label="Total filtrado" tone="info" value={formatCurrency(total)} />
-          <StatCard icon={<AppIcon className="h-6 w-6" name="clock" />} label="Vencidos en filtro" tone="warning" value={expired} />
+          <StatCard icon={<MetricIcon name="document" />} label="Presupuestos filtrados" tone="accent" value={quotes.length} />
+          <StatCard icon={<MetricIcon name="money" />} label="Total filtrado" tone="success" value={formatCurrency(total)} />
+          <StatCard icon={<MetricIcon name="calendar" />} label="Vencidos en filtro" tone={expired > 0 ? "danger" : "warning"} value={expired} />
         </div>
 
         <Card className="overflow-hidden">
           <DataTable
             caption="Listado de presupuestos filtrados"
             className="rounded-none border-0 shadow-none"
-            minWidth="980px"
+            minWidth="860px"
             tableLabel="Presupuestos"
             tableProps={{ className: "table-fixed" }}
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
                 <DataTableHead className="w-[14%]">Presupuesto</DataTableHead>
-                <DataTableHead className="w-[24%]">Cliente</DataTableHead>
+                <DataTableHead className="w-[23%]">Cliente</DataTableHead>
                 <DataTableHead className="w-[11%]">Emision</DataTableHead>
-                <DataTableHead className="w-[14%]">Vencimiento</DataTableHead>
+                <DataTableHead className="w-[12%]">Vencimiento</DataTableHead>
                 <DataTableHead className="w-[12%]">Estado</DataTableHead>
-                <DataTableHead align="right" className="w-[10%]">Total</DataTableHead>
-                <DataTableHead className="w-[15%]">Acciones</DataTableHead>
+                <DataTableHead align="right" className="w-[12%]">Total</DataTableHead>
+                <DataTableHead className="w-[16%]">Acciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
@@ -204,9 +204,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                 quotes.map((quote) => (
                   <DataTableRow key={quote.id}>
                     <DataTableCell>
-                      <div className="inline-flex max-w-full rounded-full bg-[#ececff] px-2.5 py-1 font-mono text-xs font-black text-[#4f46b8]">
-                        {quote.quoteNumber}
-                      </div>
+                      <div className="font-mono text-xs font-black">{quote.quoteNumber}</div>
                       <div className="mt-1 text-xs text-[color:var(--muted)]">{quote.createdBy || "-"}</div>
                     </DataTableCell>
                     <DataTableCell>
@@ -217,17 +215,9 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                         {quote.customer.taxId || "-"}
                       </div>
                     </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap">{formatDate(quote.issueDate)}</DataTableCell>
                     <DataTableCell className="whitespace-nowrap">
-                      <span className="inline-flex items-center gap-2">
-                        <AppIcon className="h-4 w-4 text-[#64748b]" name="calendar" />
-                        {formatDate(quote.issueDate)}
-                      </span>
-                    </DataTableCell>
-                    <DataTableCell className="whitespace-nowrap">
-                      <div className="inline-flex items-center gap-2">
-                        <AppIcon className="h-4 w-4 text-[#64748b]" name="calendar" />
-                        {formatDate(quote.expirationDate)}
-                      </div>
+                      <div>{formatDate(quote.expirationDate)}</div>
                       {quote.valid === false ? (
                         <div className="mt-1 text-xs text-[color:var(--danger)]">Vencido</div>
                       ) : null}
@@ -237,54 +227,68 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                         {statusLabel(quote.status)}
                       </StatusBadge>
                     </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs font-black text-[#3347a8]">
+                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
                       {formatCurrency(quote.total)}
                     </DataTableCell>
                     <DataTableCell>
-                      <TableActionMenu>
-                        <a
-                          aria-label={`Abrir PDF del presupuesto ${quote.quoteNumber}`}
-                          className={tableActionItemClass}
-                          href={`/api/pdfs/quotes/${encodeURIComponent(quote.quoteNumber)}`}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          PDF
-                        </a>
-                        <a
-                          aria-label={`Enviar presupuesto ${quote.quoteNumber} por WhatsApp`}
-                          className={tableActionItemClass}
-                          href={quoteWhatsappHref(quote)}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          WhatsApp
-                        </a>
-                        {quote.status === "pendiente" && canApproveQuotes ? (
-                          <>
-                            <form action={acceptQuoteAction}>
-                              <input name="id" type="hidden" value={quote.id} />
-                              <button
-                                aria-label={`Aceptar presupuesto ${quote.quoteNumber}`}
-                                className={tableActionItemClass}
-                                type="submit"
-                              >
-                                Aceptar
-                              </button>
-                            </form>
-                            <form action={acceptQuoteAndRemitAction}>
-                              <input name="id" type="hidden" value={quote.id} />
-                              <button
-                                aria-label={`Aprobar y remitar presupuesto ${quote.quoteNumber}`}
-                                className={tableActionItemClass}
-                                type="submit"
-                              >
-                                Aprobar y remitar
-                              </button>
-                            </form>
-                          </>
-                        ) : null}
-                      </TableActionMenu>
+                      <details className="erp-action-menu">
+                        <summary>
+                          Acciones
+                        </summary>
+                        <div className="grid gap-1.5">
+                          <ButtonLink
+                            aria-label={`Abrir PDF del presupuesto ${quote.quoteNumber}`}
+                            className={quoteActionClassName}
+                            href={`/api/pdfs/quotes/${encodeURIComponent(quote.quoteNumber)}`}
+                            prefetch={false}
+                            rel="noreferrer"
+                            size="sm"
+                            target="_blank"
+                            variant="secondary"
+                          >
+                            PDF
+                          </ButtonLink>
+                          <ButtonLink
+                            aria-label={`Enviar presupuesto ${quote.quoteNumber} por WhatsApp`}
+                            className={quoteActionClassName}
+                            href={quoteWhatsappHref(quote)}
+                            prefetch={false}
+                            rel="noreferrer"
+                            size="sm"
+                            target="_blank"
+                            variant="outline"
+                          >
+                            WhatsApp
+                          </ButtonLink>
+                          {quote.status === "pendiente" && canApproveQuotes ? (
+                            <>
+                              <form action={acceptQuoteAction}>
+                                <input name="id" type="hidden" value={quote.id} />
+                                <Button
+                                  aria-label={`Aceptar presupuesto ${quote.quoteNumber}`}
+                                  className={quoteActionClassName}
+                                  size="sm"
+                                  type="submit"
+                                >
+                                  Aceptar
+                                </Button>
+                              </form>
+                              <form action={acceptQuoteAndRemitAction}>
+                                <input name="id" type="hidden" value={quote.id} />
+                                <Button
+                                  aria-label={`Aprobar y remitar presupuesto ${quote.quoteNumber}`}
+                                  className={quoteActionClassName}
+                                  size="sm"
+                                  type="submit"
+                                  variant="secondary"
+                                >
+                                  Aprobar y remitar
+                                </Button>
+                              </form>
+                            </>
+                          ) : null}
+                        </div>
+                      </details>
                     </DataTableCell>
                   </DataTableRow>
                 ))

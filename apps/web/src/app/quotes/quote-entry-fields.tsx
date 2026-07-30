@@ -14,6 +14,7 @@ import {
   Input,
   SearchableSelect,
   Select,
+  Textarea,
 } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, priceForList, resolvePriceListName } from "@/lib/order-pricing";
@@ -82,6 +83,11 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
   const [vatRate, setVatRate] = useState<QuoteVatRate>(0);
   const [draftLine, setDraftLine] = useState<QuoteLineDraft>(emptyLine());
   const [lines, setLines] = useState<QuoteLineState[]>([]);
+  const [isQuickQuoteMessageEditing, setIsQuickQuoteMessageEditing] = useState(false);
+  const [quickQuoteMessageOverride, setQuickQuoteMessageOverride] = useState<{
+    source: string;
+    text: string;
+  } | null>(null);
   const lineIdRef = useRef(0);
 
   const selectedClient = clients.find((client) => client.id === customerId) ?? null;
@@ -149,8 +155,8 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
     quantity: line.quantity,
     discount: line.discount,
   }));
-  const canSendQuickQuote = Boolean(customerReady && calculatedLines.length && quoteTotal > 0);
-  const quickQuoteText = customerReady
+  const canComposeQuickQuote = Boolean(customerReady && calculatedLines.length && quoteTotal > 0);
+  const generatedQuickQuoteText = customerReady
     ? [
         `Hola ${quoteCustomerName}, te paso presupuesto rapido de Starlim:`,
         "",
@@ -167,6 +173,11 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
         `Vigencia: ${validityDays || "15"} dias`,
       ].join("\n")
     : "";
+  const quickQuoteText =
+    quickQuoteMessageOverride?.source === generatedQuickQuoteText
+      ? quickQuoteMessageOverride.text
+      : generatedQuickQuoteText;
+  const canSendQuickQuote = Boolean(canComposeQuickQuote && quickQuoteText.trim());
   const quickQuotePhone = customerReady ? whatsappPhone(quoteCustomerPhone) : "";
   const quickQuoteHref = canSendQuickQuote
     ? quickQuotePhone
@@ -559,7 +570,53 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
         </div>
       </div>
 
-      <div className="flex flex-col justify-end gap-2 sm:flex-row">
+      {isQuickQuoteMessageEditing && canComposeQuickQuote ? (
+        <div
+          className="grid gap-3 rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4"
+          id="quick-quote-whatsapp-editor"
+        >
+          <Field
+            description="Podes ajustar el texto antes de abrir WhatsApp. Los importes y productos no cambian en el presupuesto formal."
+            htmlFor="quick-quote-whatsapp-message"
+            label="Mensaje de WhatsApp"
+          >
+            <Textarea
+              id="quick-quote-whatsapp-message"
+              rows={9}
+              value={quickQuoteText}
+              onChange={(event) =>
+                setQuickQuoteMessageOverride({
+                  source: generatedQuickQuoteText,
+                  text: event.target.value,
+                })
+              }
+            />
+          </Field>
+          <div className="flex justify-end">
+            <Button
+              disabled={quickQuoteMessageOverride === null}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => setQuickQuoteMessageOverride(null)}
+            >
+              Restablecer mensaje automatico
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex flex-col justify-end gap-2 sm:flex-row sm:flex-wrap">
+        <Button
+          aria-controls="quick-quote-whatsapp-editor"
+          aria-expanded={isQuickQuoteMessageEditing}
+          disabled={!canComposeQuickQuote}
+          type="button"
+          variant="secondary"
+          onClick={() => setIsQuickQuoteMessageEditing((current) => !current)}
+        >
+          {isQuickQuoteMessageEditing ? "Ocultar mensaje" : "Editar mensaje"}
+        </Button>
         {canSendQuickQuote ? (
           <ButtonLink href={quickQuoteHref} prefetch={false} rel="noreferrer" target="_blank" variant="outline">
             WhatsApp rapido

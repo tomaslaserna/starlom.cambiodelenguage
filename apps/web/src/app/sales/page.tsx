@@ -1,7 +1,7 @@
 import { ModulePage } from "@/components/module-page";
+import { MetricIcon } from "@/components/metric-icon";
 import { PaginationLinks } from "@/components/pagination-links";
 import {
-  AppIcon,
   Button,
   ButtonLink,
   Card,
@@ -13,8 +13,8 @@ import {
   DataTableRow,
   EmptyState,
   Field,
+  Input,
   PageHeader,
-  SearchInput,
   StatCard,
   Toolbar,
 } from "@/components/ui";
@@ -24,16 +24,9 @@ import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { getSalesSummary } from "@/lib/sales-admin";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
-import {
-  SALES_READ_PERMISSION,
-  sessionAllows,
-  sessionCanDeleteOperationalRecords,
-} from "@/lib/route-auth";
-import { SaleRowActions } from "@/app/sales/sale-row-actions";
-import { cancelSaleAction, deleteSaleAction, editSaleAction } from "@/app/sales/actions";
+import { SALES_READ_PERMISSION, sessionCanDeleteOperationalRecords } from "@/lib/route-auth";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
-
-const SALES_EDIT_PERMISSION = { resource: "ventas", action: "editar" } as const;
+import { deleteSaleAction } from "@/app/sales/actions";
 
 type SalesPageProps = {
   searchParams: Promise<{ q?: string; page?: string; error?: string; message?: string }>;
@@ -43,7 +36,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [SALES_READ_PERMISSION]);
   const params = await searchParams;
-  const [summary, sales, canEdit, canDeleteRecords] = await Promise.all([
+  const [summary, sales, canDeleteRecords] = await Promise.all([
     getSalesSummary(session.companyId, "mes"),
     listOrders({
       companyId: session.companyId,
@@ -52,7 +45,6 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
       page: params.page,
       pageSize: "25",
     }),
-    sessionAllows(session, [SALES_EDIT_PERMISSION]),
     sessionCanDeleteOperationalRecords(session),
   ]);
 
@@ -80,16 +72,16 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
         ) : null}
 
         <div className="grid gap-3 md:grid-cols-4">
-          <StatCard icon={<AppIcon className="h-6 w-6" name="receipt" />} label="Comprobantes" tone="accent" value={summary.totalInvoices} />
-          <StatCard icon={<AppIcon className="h-6 w-6" name="money" />} label="Monto vendido" tone="success" value={formatCurrency(summary.totalAmount)} />
-          <StatCard icon={<AppIcon className="h-6 w-6" name="trend" />} label="Facturado" tone="accent" value={formatCurrency(summary.invoiced)} />
-          <StatCard icon={<AppIcon className="h-6 w-6" name="clock" />} label="Pendiente de cobro" tone="warning" value={formatCurrency(summary.pending)} />
+          <StatCard icon={<MetricIcon name="document" />} label="Comprobantes" tone="accent" value={summary.totalInvoices} />
+          <StatCard icon={<MetricIcon name="sales" />} label="Monto vendido" tone="success" value={formatCurrency(summary.totalAmount)} />
+          <StatCard icon={<MetricIcon name="receipt" />} label="Facturado" tone="info" value={formatCurrency(summary.invoiced)} />
+          <StatCard icon={<MetricIcon name="wallet" />} label="Pendiente de cobro" tone="warning" value={formatCurrency(summary.pending)} />
         </div>
 
         <Toolbar ariaLabel="Buscar ventas">
-          <form action="/sales" className="grid w-full gap-4 lg:grid-cols-[minmax(320px,1fr)_144px_144px] lg:items-end">
+          <form action="/sales" className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto] lg:items-end">
             <Field htmlFor="sales-query" label="Buscar">
-              <SearchInput
+              <Input
                 defaultValue={sales.meta.query}
                 id="sales-query"
                 key={`sales-query-${sales.meta.query}`}
@@ -98,10 +90,10 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                 type="search"
               />
             </Field>
-            <Button className="w-full" leadingIcon={<AppIcon name="filter" />} type="submit">
+            <Button className="lg:mb-0" type="submit">
               Filtrar
             </Button>
-            <ButtonLink className="w-full" href="/sales" leadingIcon={<AppIcon name="refresh" />} variant="outline">
+            <ButtonLink href="/sales" variant="secondary">
               Limpiar
             </ButtonLink>
           </form>
@@ -111,24 +103,25 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
           <DataTable
             caption="Listado de ventas entregadas"
             className="rounded-none border-0 shadow-none"
-            minWidth="960px"
+            minWidth="1040px"
             tableLabel="Ventas"
             tableProps={{ className: "table-fixed" }}
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[11%] px-2">Venta</DataTableHead>
-                <DataTableHead className="w-[29%] px-2">Cliente</DataTableHead>
-                <DataTableHead className="w-[14%] px-2">Vendedor</DataTableHead>
+                <DataTableHead className="w-[13%] px-2">Venta</DataTableHead>
+                <DataTableHead className="w-[30%] px-2">Cliente</DataTableHead>
+                <DataTableHead className="w-[16%] px-2">Vendedor</DataTableHead>
                 <DataTableHead className="w-[13%] px-2">Fecha</DataTableHead>
-                <DataTableHead className="w-[14%] px-2">Monto</DataTableHead>
-                <DataTableHead className="w-[19%] px-2">Acciones</DataTableHead>
+                <DataTableHead className="w-[13%] px-2">Monto</DataTableHead>
+                <DataTableHead align="center" className="w-[10%] px-2">Comprobante</DataTableHead>
+                {canDeleteRecords ? <DataTableHead className="w-[10%] px-2">Acciones</DataTableHead> : null}
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {sales.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={6}>
+                  <DataTableCell colSpan={canDeleteRecords ? 7 : 6}>
                     <EmptyState
                       description="Ajusta la busqueda para volver al listado completo de ventas entregadas."
                       title="No hay ventas entregadas para los filtros actuales"
@@ -147,9 +140,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                   return (
                     <DataTableRow key={sale.id}>
                       <DataTableCell className="px-2 py-2">
-                        <div className="inline-flex max-w-full truncate rounded-full bg-[#e6f6f1] px-2.5 py-1 font-mono text-xs font-black text-[#087a63]">
-                          #{saleNumberLabel}
-                        </div>
+                        <div className="truncate font-mono text-xs font-black">#{saleNumberLabel}</div>
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
                         <div className="truncate font-medium">{sale.customerName || "Sin cliente"}</div>
@@ -159,45 +150,33 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                       </DataTableCell>
                       <DataTableCell className="truncate px-2 py-2">{sale.seller || "-"}</DataTableCell>
                       <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">{formatDate(sale.date)}</DataTableCell>
-                      <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs font-bold text-[#08783b]">
+                      <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs font-semibold">
                         {formatCurrency(sale.amount)}
                       </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        <div className="flex items-start gap-2">
-                          <div className="min-w-[142px] flex-1">
-                            <SaleRowActions
-                              canEdit={canEdit}
-                              cancelAction={cancelSaleAction}
-                              editAction={editSaleAction}
-                              sale={{
-                                id: sale.id,
-                                receiptLabel: `#${saleNumberLabel}`,
-                                customerName: sale.customerName,
-                                customerDocument: sale.customerDocument,
-                                date: sale.date ?? "",
-                                amount: sale.amount,
-                                seller: sale.seller,
-                                paymentCondition: sale.paymentCondition,
-                                receiptNumber: sale.receiptNumber,
-                              }}
-                            />
-                          </div>
-                          {canDeleteRecords ? (
-                            <form action={deleteSaleAction} className="shrink-0">
-                              <input name="id" type="hidden" value={sale.id} />
-                              <ConfirmDeleteButton
-                                aria-label={`Borrar venta ${saleNumberLabel}`}
-                                className="h-10 min-h-10 w-10 min-w-10 p-0 [&>span]:flex [&>span]:h-5 [&>span]:w-5 [&>span]:shrink-0 [&>span]:items-center [&>span]:justify-center"
-                                confirmation={`¿Borrar definitivamente la venta #${saleNumberLabel}? Esta acción también elimina sus movimientos relacionados.`}
-                                size="sm"
-                                title="Borrar venta"
-                              >
-                                <TrashIcon />
-                              </ConfirmDeleteButton>
-                            </form>
-                          ) : null}
-                        </div>
+                      <DataTableCell align="center" className="px-2 py-2">
+                        <a
+                          aria-label={`Ver PDF de solicitud de la venta ${saleNumberLabel}`}
+                          className="text-xs font-black text-[color:var(--accent-strong)] hover:underline"
+                          href={`/api/pdfs/orders/${sale.id}/request`}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Ver PDF
+                        </a>
                       </DataTableCell>
+                      {canDeleteRecords ? (
+                        <DataTableCell className="px-2 py-2">
+                          <form action={deleteSaleAction}>
+                            <input name="id" type="hidden" value={sale.id} />
+                            <ConfirmDeleteButton
+                              aria-label={`Borrar venta ${saleNumberLabel}`}
+                              className="w-full px-2"
+                              confirmation={`¿Borrar definitivamente la venta #${saleNumberLabel}? Esta acción también elimina sus movimientos relacionados.`}
+                              size="sm"
+                            />
+                          </form>
+                        </DataTableCell>
+                      ) : null}
                     </DataTableRow>
                   );
                 })
@@ -213,23 +192,5 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
         </Card>
       </div>
     </ModulePage>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg
-      aria-hidden="true"
-      className="block h-5 w-5 shrink-0"
-      fill="none"
-      height="20"
-      viewBox="0 0 24 24"
-      width="20"
-    >
-      <path d="M4.5 7h15" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-      <path d="M9 7V4.75h6V7" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-      <path d="m7 7 .75 12h8.5L17 7" stroke="currentColor" strokeLinejoin="round" strokeWidth="2" />
-      <path d="M10 10.5v5M14 10.5v5" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
-    </svg>
   );
 }

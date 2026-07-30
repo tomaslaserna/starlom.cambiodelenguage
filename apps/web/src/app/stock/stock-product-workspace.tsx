@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { AppIcon, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, SearchableSelect } from "@/components/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Field, SearchableSelect } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import type { InventoryProduct } from "@/lib/inventory";
 import { StockAdjustmentDialog } from "@/app/stock/stock-adjustment-dialog";
@@ -10,10 +10,11 @@ type StockProductWorkspaceProps = {
   action: (formData: FormData) => void | Promise<void>;
   canEdit: boolean;
   idempotencyKey: string;
-  products: InventoryProduct[];
 };
 
-export function StockProductWorkspace({ action, canEdit, idempotencyKey, products }: StockProductWorkspaceProps) {
+export function StockProductWorkspace({ action, canEdit, idempotencyKey }: StockProductWorkspaceProps) {
+  const [products, setProducts] = useState<InventoryProduct[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [productId, setProductId] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
@@ -29,10 +30,30 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey, product
     [products],
   );
 
+  useEffect(() => {
+    const query = searchTerm.trim();
+    if (query.length < 2) return;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      void fetch(`/api/stock/products?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+        .then(async (response) => {
+          const payload = (await response.json()) as { data?: InventoryProduct[] };
+          if (response.ok) setProducts(payload.data ?? []);
+        })
+        .catch(() => undefined);
+    }, 150);
+    return () => { controller.abort(); window.clearTimeout(timeout); };
+  }, [searchTerm]);
+
   function selectProduct(nextProductId: string) {
     setProductId(nextProductId);
     setShowDetail(!canEdit && Boolean(nextProductId));
     setDialogOpen(canEdit && Boolean(nextProductId));
+  }
+
+  function updateSearchTerm(nextSearchTerm: string) {
+    setSearchTerm(nextSearchTerm);
+    if (nextSearchTerm.trim().length < 2) setProducts([]);
   }
 
   return (
@@ -51,10 +72,11 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey, product
                 compactOptions
                 id="stock-workspace-product"
                 options={productOptions}
-                placeholder="Escribí para buscar"
-                searchPlaceholder="Escribí para buscar"
+                emptyMessage={searchTerm.trim().length < 2 ? "Escribí al menos 2 letras para buscar" : "No hay coincidencias"}
+                placeholder="Buscar por nombre, codigo o proveedor"
                 value={productId}
                 onChange={selectProduct}
+                onSearchChange={updateSearchTerm}
               />
             </Field>
             <div className="grid gap-1.5">
@@ -87,7 +109,7 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey, product
               ) : (
                 <div
                   aria-disabled="true"
-                  className="flex min-h-[var(--control-height-md)] items-center rounded-[9px] border border-[#d7e0eb] bg-[#f7f9fc] px-4 text-sm text-[color:var(--muted)]"
+                  className="flex min-h-[var(--control-height-md)] items-center rounded-[var(--radius-md)] border border-dashed border-[color:var(--border)] bg-[color:var(--panel-muted)] px-3 text-sm text-[color:var(--muted)]"
                 >
                   Disponible al elegir un producto
                 </div>
@@ -120,9 +142,8 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey, product
           ) : null}
 
           {!selectedProduct ? (
-            <div className="flex min-h-[68px] items-center justify-center gap-3 rounded-[10px] border border-dashed border-[#cfd9e6] bg-[#fbfcfe] p-4 text-sm text-[color:var(--muted)]">
-              <AppIcon className="h-6 w-6 text-[#71819a]" name="package" />
-              <span>Busca y selecciona un producto para comenzar.</span>
+            <div className="rounded-[var(--radius-md)] border border-dashed border-[color:var(--border)] p-4 text-sm text-[color:var(--muted)]">
+              Busca y selecciona un producto para comenzar.
             </div>
           ) : null}
         </CardContent>

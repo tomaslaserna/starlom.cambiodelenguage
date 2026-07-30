@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import {
   assertPurchaseReceiptUploadAllowed,
   createPurchase,
@@ -81,11 +82,17 @@ export async function uploadPurchaseReceiptAction(formData: FormData) {
 }
 
 export async function deletePurchaseAction(formData: FormData) {
-  const session = await requireApiSession();
-  const id = purchaseIdFromParam(String(formData.get("id") ?? ""), "Compra");
-  await deletePurchase(session, id);
-  revalidatePath("/purchases");
-  revalidatePath("/treasury/accounts-payable");
+  try {
+    const session = await requireApiSession();
+    const id = purchaseIdFromParam(String(formData.get("id") ?? ""), "Compra");
+    await deletePurchase(session, id);
+    revalidatePath("/purchases");
+    revalidatePath("/treasury/accounts-payable");
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    const message = encodeURIComponent(error.message.slice(0, 500));
+    redirect(`/purchases?error=1&message=${message}`);
+  }
 }
 
 export async function requestSupplierPaymentAction(formData: FormData) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useFormStatus } from "react-dom";
 import {
   Button,
   Card,
@@ -20,9 +21,9 @@ import { formatCurrency, formatNumber } from "@/lib/format";
 import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, priceForList, resolvePriceListName } from "@/lib/order-pricing";
 import { localDateIso } from "@/lib/timezone";
 import { ORDER_CREATION_RECEIPT_OPTIONS, normalizeOrderCreationDocument } from "@/lib/receipt-types";
+import type { IvaRate } from "@/lib/order-confirmation";
 import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
 import { OrderConfirmationPreview } from "@/app/orders/new/order-confirmation-preview";
-import type { IvaRate } from "@/lib/order-confirmation";
 
 type OrderLineDraft = {
   productId: string;
@@ -65,6 +66,26 @@ function isWholeQuantityInput(value: string) {
   return value === "" || /^\d+$/.test(value);
 }
 
+function OrderSubmitButton({
+  canSubmit,
+  submitLabel,
+}: {
+  canSubmit: boolean;
+  submitLabel: string;
+}) {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      disabled={!canSubmit}
+      isLoading={pending}
+      loadingLabel="Guardando pedido"
+      type="submit"
+    >
+      {submitLabel}
+    </Button>
+  );
+}
+
 export function OrderEntryFields({
   clients,
   priceLists,
@@ -87,7 +108,7 @@ export function OrderEntryFields({
   const [observation, setObservation] = useState(initialValue?.observation ?? "");
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
   const [documentOverride, setDocumentOverride] = useState(initialValue?.desiredDocumentOverride ?? "");
-  const [vatRate, setVatRate] = useState<IvaRate>(0);
+  const [ivaRate, setIvaRate] = useState<IvaRate>(0);
   const [draftError, setDraftError] = useState("");
   const lineIdRef = useRef(initialValue?.lines.length ?? 0);
 
@@ -215,7 +236,6 @@ export function OrderEntryFields({
       <input name="observation" type="hidden" value={observation} />
       <input name="priceListOverride" type="hidden" value={activePriceList} />
       <input name="desiredDocumentOverride" type="hidden" value={desiredDocument} />
-      <input name="vatRate" type="hidden" value={String(vatRate)} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_180px]">
         <Field htmlFor="order-customer" label="Cliente" required>
@@ -469,15 +489,13 @@ export function OrderEntryFields({
         pricedLines={pricedLines}
         offersEnabled={offersEnabled}
         offersRemaining={offersRemaining}
+        ivaRate={ivaRate}
+        onIvaRateChange={setIvaRate}
         phone={selectedClient?.phone ?? ""}
         ready={canSubmit}
-        ivaRate={vatRate}
-        onIvaRateChange={setVatRate}
       />
 
-      <Button disabled={!canSubmit} type="submit">
-        {submitLabel}
-      </Button>
+      <OrderSubmitButton canSubmit={canSubmit} submitLabel={submitLabel} />
     </div>
   );
 }

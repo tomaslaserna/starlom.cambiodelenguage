@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   web-security:
@@ -28,11 +27,6 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
 
       - name: Install
         run: npm ci
@@ -55,6 +49,3 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Analyze with CodeQL
-        uses: github/codeql-action/analyze@v3

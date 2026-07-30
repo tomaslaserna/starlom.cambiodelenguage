@@ -20,7 +20,7 @@ export function StatusBadge({ className, tone = "neutral", ...props }: StatusBad
   return (
     <span
       className={cn(
-        "erp-text-caption inline-flex min-h-7 items-center justify-center rounded-full border px-3 py-1 font-semibold leading-none tabular-nums",
+        "erp-text-caption inline-flex min-h-6 items-center justify-center whitespace-nowrap rounded-full border px-2.5 py-0.5 font-bold leading-none tabular-nums shadow-[inset_0_0_0_1px_rgba(255,255,255,0.28)]",
         toneClasses[tone],
         className,
       )}

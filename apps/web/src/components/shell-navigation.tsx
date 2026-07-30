@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useNavigationIndicators } from "@/components/navigation-indicators-provider";
 import { cn } from "@/components/ui";
 import type {
   NavigationBadgeKey,
@@ -117,8 +118,10 @@ function NavigationItemLink({
   indicators: NavigationIndicators;
   item: NavigationItem;
 }) {
+  const router = useRouter();
   const itemCurrent = activeGroup && hrefMatchesCurrent(item.href, current, competingHrefs);
   const itemBadge = badgeValue(item.badge, indicators);
+  const prefetch = () => router.prefetch(item.href);
 
   return (
     <Link
@@ -130,6 +133,8 @@ function NavigationItemLink({
           : "text-white/74 hover:bg-white/10 hover:text-white",
       )}
       href={item.href}
+      onFocus={prefetch}
+      onMouseEnter={prefetch}
     >
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
       <Badge active={itemCurrent} value={itemBadge} />
@@ -187,16 +192,20 @@ function NavigationGroupBlock({
   group: NavigationGroup;
   indicators: NavigationIndicators;
 }) {
+  const router = useRouter();
   const activeGroup = groupIsActive(group, active);
   const groupBadge = groupBadgeValue(group, indicators);
 
   if (group.href) {
     const groupCurrent = hrefMatchesCurrent(group.href, current, []);
+    const prefetch = () => router.prefetch(group.href!);
     return (
       <Link
         aria-current={groupCurrent ? "page" : undefined}
         className={navigationRowClass(groupCurrent || activeGroup)}
         href={group.href}
+        onFocus={prefetch}
+        onMouseEnter={prefetch}
       >
         <span className="min-w-0 flex-1 truncate">{group.label}</span>
         <Badge active={groupCurrent || activeGroup} value={groupBadge} />
@@ -221,6 +230,8 @@ function NavigationGroupBlock({
 export function ShellNavigation({ active, indicators, sections }: ShellNavigationProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const liveIndicators = useNavigationIndicators(indicators);
+
   const current: CurrentLocation = {
     pathname,
     searchParams: new URLSearchParams(searchParams.toString()),
@@ -230,7 +241,7 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
     <nav aria-label="Navegacion principal" className="grid gap-2">
       {sections.map((section) => {
         const activeSection = sectionIsActive(section, active);
-        const sectionBadge = sectionBadgeValue(section, indicators);
+        const sectionBadge = sectionBadgeValue(section, liveIndicators);
 
         return (
           <details className="group/section" key={section.label} open={activeSection || undefined}>
@@ -254,7 +265,7 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
                   activeGroup={activeSection}
                   current={current}
                   group={section.groups[0]}
-                  indicators={indicators}
+                  indicators={liveIndicators}
                 />
               ) : (
                 section.groups.map((group) => (
@@ -262,7 +273,7 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
                     active={active}
                     current={current}
                     group={group}
-                    indicators={indicators}
+                    indicators={liveIndicators}
                     key={group.label}
                   />
                 ))

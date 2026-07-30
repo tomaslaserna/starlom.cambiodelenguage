@@ -93,7 +93,7 @@ type SaleFiscalCandidate = {
   fiscalPointOfSale: number | null;
   fiscalReceiptType: number | null;
   fiscalReceiptNumber: number | null;
-  itemCount: number;
+  hasItemDetail: boolean;
 };
 
 export type SaleCreditNotePreview = {
@@ -296,7 +296,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
     fiscal_point_of_sale: number | null;
     fiscal_receipt_type: number | null;
     fiscal_receipt_number: number | null;
-    item_count: number;
+    has_item_detail: boolean;
   }>(
     companyId,
     `
@@ -316,11 +316,33 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
              s.fiscal_receipt_type,
              s.fiscal_receipt_number,
              (
-               SELECT COUNT(*)::int
-               FROM sale_items si
-               WHERE si.sale_id = s.id
-                 AND si.empresa_id = s.empresa_id
-             ) AS item_count
+               EXISTS (
+                 SELECT 1
+                 FROM sale_items si
+                 WHERE si.sale_id = s.id
+                   AND si.empresa_id = s.empresa_id
+                   AND COALESCE(si.quantity, 0) > 0
+                   AND COALESCE(si.total_amount, 0) >= 0
+                   AND (
+                     si.product_id IS NOT NULL
+                     OR NULLIF(BTRIM(COALESCE(si.description, '')), '') IS NOT NULL
+                   )
+               )
+               AND NOT EXISTS (
+                 SELECT 1
+                 FROM sale_items si
+                 WHERE si.sale_id = s.id
+                   AND si.empresa_id = s.empresa_id
+                   AND (
+                     COALESCE(si.quantity, 0) <= 0
+                     OR COALESCE(si.total_amount, 0) < 0
+                     OR (
+                       si.product_id IS NULL
+                       AND NULLIF(BTRIM(COALESCE(si.description, '')), '') IS NULL
+                     )
+                   )
+               )
+             ) AS has_item_detail
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
       WHERE s.id = $1::uuid AND s.empresa_id = $2
@@ -347,7 +369,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
     fiscalPointOfSale: row.fiscal_point_of_sale,
     fiscalReceiptType: row.fiscal_receipt_type,
     fiscalReceiptNumber: row.fiscal_receipt_number,
-    itemCount: Number(row.item_count ?? 0),
+    hasItemDetail: Boolean(row.has_item_detail),
   } satisfies SaleFiscalCandidate;
 }
 
@@ -1127,8 +1149,11 @@ export async function authorizeSaleFiscalDocument(session: AuthSession, saleId: 
   if (!Number.isFinite(sale.totalAmount) || sale.totalAmount <= 0) {
     throw new ApiError(400, "La venta no tiene monto fiscal valido.");
   }
-  if (sale.itemCount <= 0) {
-    throw new ApiError(409, "La venta no tiene detalle de productos. Complete los renglones antes de emitir el comprobante fiscal.");
+  if (!sale.hasItemDetail) {
+    throw new ApiError(
+      409,
+      "La venta no tiene un detalle de productos valido. Revise los renglones antes de emitir el comprobante fiscal.",
+    );
   }
 
   const receiptType = receiptTypeForArcaVatCondition(

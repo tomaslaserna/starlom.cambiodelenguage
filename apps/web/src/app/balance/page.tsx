@@ -4,6 +4,7 @@ import { getBalanceDashboard } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION } from "@/lib/route-auth";
+import { MetricIcon } from "@/components/metric-icon";
 import {
   Card,
   CardHeader,
@@ -20,7 +21,7 @@ export default async function BalancePage() {
   await requirePagePermission(session, [ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION]);
   const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId);
   const incomeRows = [
-    { label: "Ventas entregadas (neto, sin IVA facturado)", amount: metrics.sales.current },
+    { label: "Ventas entregadas", amount: metrics.sales.current },
     { label: "Costo de mercaderia vendida", amount: -metrics.margin.grossCost },
     { label: "Ganancia bruta", amount: metrics.margin.grossProfit, strong: true },
     { label: "Costos fijos operativos y sueldos vigentes", amount: -metrics.margin.operatingCosts },
@@ -36,23 +37,28 @@ export default async function BalancePage() {
     >
       <div className="grid gap-5">
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
-            detail="Monto total cobrado, IVA incluido"
-            label="Ventas brutas"
+            icon={<MetricIcon name="sales" />}
+            label="Ventas del mes"
             tone="accent"
-            value={formatCurrency(metrics.sales.grossCurrent)}
-          />
-          <StatCard
-            detail="Sin el IVA de lo ya facturado"
-            label="Ventas netas"
-            tone="info"
             value={formatCurrency(metrics.sales.current)}
           />
-          <StatCard label="Resultado operativo" tone="success" value={formatCurrency(metrics.margin.operatingResult)} />
-          <StatCard label="Costos operativos" tone="warning" value={formatCurrency(metrics.margin.operatingCosts)} />
+          <StatCard
+            icon={<MetricIcon name="result" />}
+            label="Resultado operativo"
+            tone="success"
+            value={formatCurrency(metrics.margin.operatingResult)}
+          />
+          <StatCard
+            icon={<MetricIcon name="costs" />}
+            label="Costos operativos"
+            tone="warning"
+            value={formatCurrency(metrics.margin.operatingCosts)}
+          />
           <StatCard
             detail={`${formatNumber(metrics.stock.units)} unidades`}
+            icon={<MetricIcon name="stock" />}
             label="Stock valorizado"
             value={formatCurrency(metrics.stock.value)}
           />

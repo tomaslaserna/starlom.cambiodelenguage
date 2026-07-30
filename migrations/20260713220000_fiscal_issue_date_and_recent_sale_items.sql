@@ -110,8 +110,7 @@ WITH source_items (
 eligible_sales AS (
   SELECT s.id, s.empresa_id, s.sale_number
   FROM public.sales s
-  WHERE s.empresa_id = 1
-    AND s.sale_number IN (SELECT DISTINCT sale_number FROM source_items)
+  WHERE s.sale_number IN (SELECT DISTINCT sale_number FROM source_items)
     AND NOT EXISTS (
       SELECT 1
       FROM public.sale_items existing
