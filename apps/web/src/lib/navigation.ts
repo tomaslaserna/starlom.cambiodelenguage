@@ -14,7 +14,6 @@ import {
   EMPLOYEES_READ_PERMISSION,
   ORDERS_CREATE_PERMISSION,
   ORDERS_READ_PERMISSION,
-  PRODUCTS_CREATE_PERMISSION,
   PRODUCTS_READ_PERMISSION,
   PURCHASES_READ_PERMISSION,
   QUOTES_READ_PERMISSION,
@@ -137,7 +136,6 @@ export const navigationGroups: NavigationGroup[] = [
       { href: "/prices", label: "Lista de precios", active: "prices", permission: PRODUCTS_READ_PERMISSION },
       { href: "/prices/margins", label: "Margenes", active: "prices", permission: PRODUCTS_READ_PERMISSION },
       { href: "/prices/parameters", label: "Parametros", active: "prices", permission: PRODUCTS_READ_PERMISSION },
-      { href: "/prices/new", label: "Nuevo producto", active: "prices", permission: PRODUCTS_CREATE_PERMISSION },
     ],
   },
   {
