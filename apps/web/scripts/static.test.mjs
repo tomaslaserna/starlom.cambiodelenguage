@@ -1495,10 +1495,11 @@ test("request parsing, sessions and CI keep security guardrails", () => {
   assert.match(securityScan, /PRIVATE KEY/);
 
   const workflow = read(".github/workflows/security.yml");
-  assert.match(workflow, /security-events: write/);
-  assert.match(workflow, /github\/codeql-action\/init@v3/);
   assert.match(workflow, /npm run security:scan/);
   assert.match(workflow, /npm audit signatures/);
+  assert.match(workflow, /npm audit --omit=dev --audit-level=moderate/);
+  assert.match(workflow, /npm run build/);
+  assert.doesNotMatch(workflow, /github\/codeql-action/);
 });
 
 test("password recovery is visible, generic and backed by Supabase recovery tokens", () => {
