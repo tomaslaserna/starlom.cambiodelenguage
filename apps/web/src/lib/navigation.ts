@@ -136,6 +136,7 @@ export const navigationGroups: NavigationGroup[] = [
       { href: "/prices", label: "Lista de precios", active: "prices", permission: PRODUCTS_READ_PERMISSION },
       { href: "/prices/margins", label: "Margenes", active: "prices", permission: PRODUCTS_READ_PERMISSION },
       { href: "/prices/parameters", label: "Parametros", active: "prices", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/prices/offers", label: "Ofertas", active: "prices", permission: PRODUCTS_READ_PERMISSION },
     ],
   },
   {
