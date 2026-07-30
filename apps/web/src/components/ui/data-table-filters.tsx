@@ -69,8 +69,7 @@ function createEmptyRow(table: HTMLTableElement, columnCount: number) {
 }
 
 export function DataTableFilters() {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDetailsElement>(null);
   const [columns, setColumns] = useState<TableColumn[]>([]);
   const [query, setQuery] = useState("");
   const [columnIndex, setColumnIndex] = useState("all");
@@ -160,7 +159,7 @@ export function DataTableFilters() {
   const activeFilters = Boolean(query || columnIndex !== "all" || exactValue !== "all" || dateFrom || dateTo);
 
   return (
-    <div className="border-b border-[color:var(--border)] bg-[color:var(--panel-subtle)] px-3 py-2" ref={rootRef}>
+    <details className="border-b border-[color:var(--border)] bg-[color:var(--panel-subtle)] px-3 py-2" ref={rootRef}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-semibold text-[color:var(--muted)]">
           {visibleRows === null ? "Filtros de tabla" : `${visibleRows} fila${visibleRows === 1 ? "" : "s"} visible${visibleRows === 1 ? "" : "s"}`}
@@ -171,22 +170,16 @@ export function DataTableFilters() {
               Limpiar
             </button>
           ) : null}
-          <button
-            aria-expanded={open}
-            className="inline-flex min-h-8 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[color:var(--border-strong)] bg-white px-3 text-xs font-bold text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--panel)]"
-            onClick={() => setOpen((current) => !current)}
-            type="button"
-          >
+          <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded-[var(--radius-sm)] border border-[color:var(--border-strong)] bg-white px-3 text-xs font-bold text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--panel)] [&::-webkit-details-marker]:hidden">
             <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path d="M4 6h16M7 12h10m-7 6h4" strokeLinecap="round" />
             </svg>
             Filtrar{activeFilters ? " · activo" : ""}
-          </button>
+          </summary>
         </div>
       </div>
 
-      {open ? (
-        <div className="mt-3 grid gap-3 border-t border-[color:var(--border)] pt-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 grid gap-3 border-t border-[color:var(--border)] pt-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="grid gap-1 text-xs font-semibold text-[color:var(--muted)]">
             Buscar
             <input className="h-9 rounded-[var(--radius-sm)] border border-[color:var(--border)] bg-white px-2 text-sm font-normal text-[color:var(--foreground)]" onChange={(event) => setQuery(event.target.value)} placeholder="Texto a buscar" type="search" value={query} />
@@ -225,8 +218,7 @@ export function DataTableFilters() {
               <input className="h-9 rounded-[var(--radius-sm)] border border-[color:var(--border)] bg-white px-2 text-sm font-normal text-[color:var(--foreground)]" onChange={(event) => setDateTo(event.target.value)} type="date" value={dateTo} />
             </label>
           ) : null}
-        </div>
-      ) : null}
-    </div>
+      </div>
+    </details>
   );
 }

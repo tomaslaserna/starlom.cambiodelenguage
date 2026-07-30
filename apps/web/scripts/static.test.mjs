@@ -1093,6 +1093,8 @@ test("shared tables stay compact, aligned and free of page-level HTML tables", (
   assert.match(dataTable, /data-data-table/);
   const dataTableFilters = read("apps/web/src/components/ui/data-table-filters.tsx");
   assert.match(dataTableFilters, /Buscar/);
+  assert.match(dataTableFilters, /<details className=/);
+  assert.match(dataTableFilters, /<summary className=/);
   assert.match(dataTableFilters, /Valor exacto/);
   assert.match(dataTableFilters, /Desde/);
   assert.match(dataTableFilters, /Hasta/);
