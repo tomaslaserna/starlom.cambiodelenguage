@@ -160,26 +160,27 @@ export function DataTableFilters() {
 
   return (
     <details className="border-b border-[color:var(--border)] bg-[color:var(--panel-subtle)] px-3 py-2" ref={rootRef}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-3 rounded-[var(--radius-sm)] px-1 text-xs font-bold text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--panel)] [&::-webkit-details-marker]:hidden">
         <span className="text-xs font-semibold text-[color:var(--muted)]">
           {visibleRows === null ? "Filtros de tabla" : `${visibleRows} fila${visibleRows === 1 ? "" : "s"} visible${visibleRows === 1 ? "" : "s"}`}
         </span>
-        <div className="flex items-center gap-2">
-          {activeFilters ? (
-            <button className="text-xs font-semibold text-[color:var(--accent-strong)] hover:underline" onClick={clearFilters} type="button">
-              Limpiar
-            </button>
-          ) : null}
-          <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded-[var(--radius-sm)] border border-[color:var(--border-strong)] bg-white px-3 text-xs font-bold text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--panel)] [&::-webkit-details-marker]:hidden">
-            <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path d="M4 6h16M7 12h10m-7 6h4" strokeLinecap="round" />
-            </svg>
-            Filtrar{activeFilters ? " · activo" : ""}
-          </summary>
-        </div>
-      </div>
+        <span className="inline-flex min-h-8 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[color:var(--border-strong)] bg-white px-3">
+          <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path d="M4 6h16M7 12h10m-7 6h4" strokeLinecap="round" />
+          </svg>
+          Filtrar{activeFilters ? " · activo" : ""}
+        </span>
+      </summary>
 
-      <div className="mt-3 grid gap-3 border-t border-[color:var(--border)] pt-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-3 border-t border-[color:var(--border)] pt-3">
+        {activeFilters ? (
+          <div className="mb-3 flex justify-end">
+            <button className="text-xs font-semibold text-[color:var(--accent-strong)] hover:underline" onClick={clearFilters} type="button">
+              Limpiar filtros
+            </button>
+          </div>
+        ) : null}
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <label className="grid gap-1 text-xs font-semibold text-[color:var(--muted)]">
             Buscar
             <input className="h-9 rounded-[var(--radius-sm)] border border-[color:var(--border)] bg-white px-2 text-sm font-normal text-[color:var(--foreground)]" onChange={(event) => setQuery(event.target.value)} placeholder="Texto a buscar" type="search" value={query} />
@@ -218,6 +219,7 @@ export function DataTableFilters() {
               <input className="h-9 rounded-[var(--radius-sm)] border border-[color:var(--border)] bg-white px-2 text-sm font-normal text-[color:var(--foreground)]" onChange={(event) => setDateTo(event.target.value)} type="date" value={dateTo} />
             </label>
           ) : null}
+        </div>
       </div>
     </details>
   );

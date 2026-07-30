@@ -1095,6 +1095,7 @@ test("shared tables stay compact, aligned and free of page-level HTML tables", (
   assert.match(dataTableFilters, /Buscar/);
   assert.match(dataTableFilters, /<details className=/);
   assert.match(dataTableFilters, /<summary className=/);
+  assert.match(dataTableFilters, /<details[^>]*>\s*<summary/);
   assert.match(dataTableFilters, /Valor exacto/);
   assert.match(dataTableFilters, /Desde/);
   assert.match(dataTableFilters, /Hasta/);
