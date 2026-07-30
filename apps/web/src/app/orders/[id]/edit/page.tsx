@@ -2,6 +2,7 @@ import { ModulePage } from "@/components/module-page";
 import { ButtonLink, Card, CardContent, PageHeader, StatusBadge } from "@/components/ui";
 import { updateLoadedOrderAction } from "@/app/orders/[id]/edit/actions";
 import { OrderEntryFields, type OrderEntryInitialValue } from "@/app/orders/new/order-entry-fields";
+import { OrderEntryForm } from "@/app/orders/order-entry-form";
 import { requireStaffSession } from "@/lib/auth";
 import { currentMonth } from "@/lib/month-range";
 import { listActiveOffers } from "@/lib/offers";
@@ -15,14 +16,12 @@ import { localDateIso } from "@/lib/timezone";
 
 type EditOrderPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ status?: string; message?: string }>;
 };
 
-export default async function EditOrderPage({ params, searchParams }: EditOrderPageProps) {
+export default async function EditOrderPage({ params }: EditOrderPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [{ resource: "pedidos", action: "editar" }]);
   const { id: rawId } = await params;
-  const query = await searchParams;
   const id = uuidParam(rawId, "Pedido");
   const [order, formData, offers, breakEven] = await Promise.all([
     getOrder(session.companyId, id),
@@ -73,15 +72,6 @@ export default async function EditOrderPage({ params, searchParams }: EditOrderP
           }
         />
 
-        {query.status === "error" ? (
-          <div
-            className="rounded-lg border border-[color:var(--danger)] bg-[color:var(--danger-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--danger)]"
-            role="alert"
-          >
-            {query.message ?? "No se pudieron guardar los cambios."}
-          </div>
-        ) : null}
-
         {order.orderStatus !== "cargado" && order.orderStatus !== "confirmado" ? (
           <Card>
             <CardContent className="grid gap-3 p-5">
@@ -100,7 +90,7 @@ export default async function EditOrderPage({ params, searchParams }: EditOrderP
             </CardContent>
           </Card>
         ) : (
-          <form
+          <OrderEntryForm
             action={updateLoadedOrderAction}
             className="grid gap-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5"
           >
@@ -120,7 +110,7 @@ export default async function EditOrderPage({ params, searchParams }: EditOrderP
               products={formData.products}
               submitLabel="Guardar cambios"
             />
-          </form>
+          </OrderEntryForm>
         )}
       </div>
     </ModulePage>

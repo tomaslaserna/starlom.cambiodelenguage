@@ -5,6 +5,7 @@ import type {
   TdHTMLAttributes,
   ThHTMLAttributes,
 } from "react";
+import { DataTableFilters } from "./data-table-filters";
 import { cn } from "./utils";
 
 type DataTableProps = HTMLAttributes<HTMLDivElement> & {
@@ -27,16 +28,18 @@ export function DataTable({
   return (
     <div
       className={cn(
-        "min-w-0 overflow-hidden rounded-[14px] border border-[#dbe4ef] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03),0_10px_26px_rgba(15,23,42,0.045)]",
+        "min-w-0 overflow-hidden rounded-[var(--radius-lg)] border border-[color:var(--border)] bg-[color:var(--panel)] shadow-[var(--shadow-xs)]",
         className,
       )}
+      data-data-table
       {...props}
     >
+      <DataTableFilters />
       <div className="overflow-x-auto overscroll-x-contain">
         <table
           {...tableProps}
           aria-label={tableLabel}
-          className={cn("erp-text-body-sm w-full border-collapse text-left text-[#1e293b] tabular-nums", tableProps?.className)}
+          className={cn("erp-text-body-sm w-full border-collapse text-left text-[color:var(--foreground)] tabular-nums", tableProps?.className)}
           style={{ minWidth, ...tableProps?.style }}
         >
           {caption ? <caption className="sr-only">{caption}</caption> : null}
@@ -51,7 +54,7 @@ export function DataTableHeader({ className, ...props }: HTMLAttributes<HTMLTabl
   return (
     <thead
       className={cn(
-        "erp-text-caption border-b border-[#dfe6ef] bg-[#fbfcfe] uppercase text-[#526177] [&>tr]:h-11",
+        "erp-text-caption border-b border-[color:var(--border)] bg-[color:var(--table-header)] uppercase text-[#526177] [&>tr]:h-[var(--table-header-height)]",
         className,
       )}
       {...props}
@@ -60,7 +63,7 @@ export function DataTableHeader({ className, ...props }: HTMLAttributes<HTMLTabl
 }
 
 export function DataTableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <tbody className={cn("divide-y divide-[#e4eaf2] [&>tr]:h-[58px]", className)} {...props} />;
+  return <tbody className={cn("divide-y divide-[color:var(--border)] [&>tr]:h-[var(--table-row-height)]", className)} {...props} />;
 }
 
 export function DataTableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) {
@@ -92,7 +95,7 @@ export function DataTableHead({
   return (
     <th
       className={cn(
-        "h-11 whitespace-nowrap px-4 py-2.5 font-semibold tracking-[0.035em] first:pl-5 last:pr-5",
+        "h-[var(--table-header-height)] whitespace-nowrap px-4 py-2 font-bold tracking-[0.035em] first:pl-5 last:pr-5",
         alignClasses[align],
         className,
       )}
@@ -110,7 +113,7 @@ export function DataTableCell({
   return (
     <td
       className={cn(
-        "px-4 py-2.5 align-middle font-normal leading-[1.35] text-[#172033] first:pl-5 last:pr-5",
+        "px-4 py-2 align-middle font-normal leading-[1.3] text-[color:var(--foreground)] first:pl-5 last:pr-5",
         alignClasses[align],
         className,
       )}

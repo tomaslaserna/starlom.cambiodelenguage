@@ -605,7 +605,7 @@ export async function listSalesToCollect(companyId: number) {
         AND ${canonicalSalesSourceSql("v")}
         AND ${normalizedOrderStatusSql("v")} = 'entregado'
         AND GREATEST(COALESCE(v.total_amount, 0) + COALESCE(approved.debit_notes, 0) - COALESCE(approved.total_credit, 0), 0) > 0.005
-      ORDER BY fecha_vencimiento ASC, v.sale_date ASC, v.id ASC
+      ORDER BY v.sale_date DESC NULLS LAST, v.created_at DESC, v.id DESC
     `,
     [companyId],
   );

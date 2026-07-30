@@ -3,7 +3,7 @@ import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { localDateIso } from "@/lib/timezone";
-import { storageDownloadUrl } from "@/lib/storage";
+import { storageDownloadUrl, storageObjectReference } from "@/lib/storage";
 import { requireOperationalRecordDeletePermission } from "@/lib/route-auth";
 
 type PurchaseItem = {
@@ -171,7 +171,9 @@ export async function listPurchaseFormSuppliers(companyId: number) {
   return result.rows.map((row) => ({ id: row.id, name: row.display_name }));
 }
 
-export async function listPurchaseFormProducts(companyId: number) {
+export async function listPurchaseFormProducts(companyId: number, supplierId?: string) {
+  const supplierFilter = supplierId ? "AND supplier_id = $2::uuid" : "";
+  const params = supplierId ? [companyId, supplierId] : [companyId];
   const result = await queryWithCompanyContext<{
     id: string;
     sku: string | null;
@@ -182,11 +184,11 @@ export async function listPurchaseFormProducts(companyId: number) {
     `
       SELECT id, sku, name, supplier_id::text
       FROM products
-      WHERE empresa_id = $1 AND active = true
+      WHERE empresa_id = $1 AND active = true ${supplierFilter}
       ORDER BY name ASC, id ASC
       LIMIT 300
     `,
-    [companyId],
+    params,
   );
 
   return result.rows.map((row) => ({
@@ -301,6 +303,28 @@ export async function assertPurchaseReceiptUploadAllowed(companyId: number, id: 
     throw new ApiError(400, "La compra debe estar en estado recibida para cargar el recibo");
   }
   return purchase;
+}
+
+export async function assertPurchaseReceiptStorageAccess(
+  companyId: number,
+  bucket: string,
+  objectPath: string,
+) {
+  const reference = storageObjectReference(bucket, objectPath);
+  const result = await queryWithCompanyContext<{ id: string }>(
+    companyId,
+    `
+      SELECT id::text AS id
+      FROM purchases
+      WHERE empresa_id = $1
+        AND receipt_photo = $2
+      LIMIT 1
+    `,
+    [companyId, reference],
+  );
+  if (!result.rows[0]) {
+    throw new ApiError(404, "Recibo no encontrado o no autorizado");
+  }
 }
 
 export async function updatePurchaseReceiptPhoto(
@@ -464,6 +488,9 @@ export async function deletePurchase(session: AuthSession, id: string) {
       throw new ApiError(409, "La compra tiene un pago conciliado y no puede borrarse");
     }
 
+    // Some purchase references do not have database foreign keys yet, so this
+    // cleanup stays explicit and transactional. Keep it synchronized with
+    // docs/operational-record-deletion.md when the schema changes.
     await client.query(
       `
         DELETE FROM current_account_movements

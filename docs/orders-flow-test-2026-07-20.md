@@ -1,6 +1,6 @@
 # Pedidos: prueba integral y política de stock
 
-Fecha: 2026-07-20
+Fecha: 2026-07-20  
 Alcance: `/orders/new`, `/orders`, `/orders/[id]/edit` y `/sales`.
 
 ## Recorrido verificado

@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f8fb;
-  --foreground: #0f172a;
-  --muted: #64748b;
+  --background: #f4f7fb;
+  --foreground: #10213d;
+  --muted: #61718a;
   --panel: #ffffff;
   --panel-raised: #ffffff;
-  --panel-subtle: #eff6ff;
+  --panel-subtle: #f5f8ff;
   --panel-muted: #f8fafc;
-  --border: #e1e7ef;
-  --border-strong: #c7d1de;
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
+  --border: #dfe6ef;
+  --border-strong: #cbd6e4;
+  --accent: #2468f2;
+  --accent-strong: #1756d8;
   --accent-contrast: #ffffff;
   --accent-subtle: #eff6ff;
   --accent-secondary: #14b8a6;
   --accent-secondary-subtle: #ccfbf1;
-  --focus: #2563eb;
-  --focus-soft: rgba(37, 99, 235, 0.12);
+  --focus: #2468f2;
+  --focus-soft: rgba(36, 104, 242, 0.13);
   --success: #15803d;
   --success-subtle: #e9f8ef;
   --warning: #b45309;
@@ -26,21 +26,26 @@
   --danger-subtle: #fdecec;
   --info: #1d4ed8;
   --info-subtle: #e9f0ff;
-  --hover: #f8fafc;
+  --hover: #f5f8fd;
   --field: #ffffff;
-  --table-header: #f8fafc;
-  --table-row-hover: #f8fbff;
+  --table-header: #f7f9fc;
+  --table-row-hover: #f7faff;
   --radius-sm: 8px;
   --radius-md: 10px;
   --radius-lg: 12px;
-  --radius-xl: 14px;
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.035);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.035), 0 8px 24px rgba(15, 23, 42, 0.055);
-  --shadow-md: 0 18px 42px rgba(16, 24, 40, 0.13);
-  --shadow-control: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --radius-xl: 16px;
+  --shadow-xs: 0 1px 2px rgba(15, 34, 62, 0.035);
+  --shadow-sm: 0 1px 2px rgba(15, 34, 62, 0.035), 0 8px 22px rgba(15, 34, 62, 0.05);
+  --shadow-md: 0 18px 42px rgba(15, 34, 62, 0.12);
+  --shadow-control: 0 1px 2px rgba(15, 34, 62, 0.04), 0 3px 10px rgba(15, 34, 62, 0.025);
   --control-height-sm: 2.25rem;
-  --control-height-md: 2.75rem;
-  --control-height-lg: 2.75rem;
+  --control-height-md: 2.625rem;
+  --control-height-lg: 2.875rem;
+  --table-row-height: 3.375rem;
+  --table-header-height: 2.875rem;
+  --workspace-gap: 1rem;
+  --workspace-padding: clamp(1rem, 1.8vw, 1.5rem);
+  --entity-icon-size: 2.25rem;
   --text-caption: 0.75rem;       /* 12px */
   --text-body-sm: 0.8125rem;     /* 13px */
   --text-body: 0.875rem;         /* 14px */
@@ -132,13 +137,40 @@ body {
 }
 
 body::before {
-  background: linear-gradient(180deg, rgba(37, 99, 235, 0.035), transparent 240px);
+  background:
+    radial-gradient(circle at 82% -10%, rgba(36, 104, 242, 0.065), transparent 29rem),
+    linear-gradient(180deg, rgba(36, 104, 242, 0.025), transparent 240px);
   content: "";
   height: 240px;
   inset: 0 0 auto;
   pointer-events: none;
   position: fixed;
   z-index: -1;
+}
+
+@keyframes erp-navigation-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  55% {
+    transform: translateX(110%);
+  }
+
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.erp-navigation-progress {
+  animation: erp-navigation-progress 1.15s ease-in-out infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .erp-navigation-progress {
+    animation-duration: 2.5s;
+  }
 }
 
 .erp-text-caption {
@@ -197,6 +229,109 @@ body::before {
   overflow-y: visible;
 }
 
+.erp-workspace-surface {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-sm);
+  padding: var(--workspace-padding);
+}
+
+.erp-workspace-surface > :where(div, section, form) {
+  min-width: 0;
+}
+
+.erp-symmetric-grid {
+  align-items: stretch;
+}
+
+.erp-symmetric-grid > * {
+  height: 100%;
+  min-width: 0;
+}
+
+.erp-number {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.erp-icon-disc {
+  align-items: center;
+  background: var(--panel-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  height: var(--entity-icon-size);
+  justify-content: center;
+  width: var(--entity-icon-size);
+}
+
+.erp-action-cluster {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.erp-action-cluster > * {
+  min-height: var(--control-height-md);
+}
+
+.erp-action-menu {
+  min-width: 9rem;
+  position: relative;
+}
+
+.erp-action-menu > summary {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid #bfd4fb;
+  border-radius: var(--radius-sm);
+  color: var(--accent-strong);
+  display: flex;
+  font-size: var(--text-body-sm);
+  font-weight: 800;
+  justify-content: center;
+  min-height: var(--control-height-sm);
+  padding-inline: 0.75rem;
+  user-select: none;
+}
+
+.erp-action-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.erp-action-menu > summary::after {
+  border-bottom: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  content: "";
+  height: 0.375rem;
+  margin-left: 0.625rem;
+  transform: rotate(45deg) translateY(-0.125rem);
+  transition: transform 150ms ease;
+  width: 0.375rem;
+}
+
+.erp-action-menu[open] > summary {
+  background: var(--accent-subtle);
+  border-color: #9bbcf2;
+}
+
+.erp-action-menu[open] > summary::after {
+  transform: rotate(225deg) translate(-0.125rem, -0.125rem);
+}
+
+.erp-action-menu > :not(summary) {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  margin-top: 0.375rem;
+  padding: 0.375rem;
+}
+
 .erp-employees-table,
 .erp-employees-table > div {
   overflow: visible;
@@ -240,6 +375,16 @@ button:disabled,
   outline: 2px solid var(--focus);
   outline-offset: 1px;
   box-shadow: 0 0 0 3px var(--focus-soft);
+}
+
+@media (max-width: 639px) {
+  .erp-workspace-surface {
+    border-left: 0;
+    border-radius: 0;
+    border-right: 0;
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+  }
 }
 
 :where(input, select, textarea)::placeholder {

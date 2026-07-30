@@ -108,6 +108,15 @@ test("order transitions allow direct delivery from loaded orders", () => {
   assert.match(orderStatus.orderStatusTransitionError("confirmado", "cargado"), /No se puede volver/);
 });
 
+test("stock reservation predicate accepts only confirmed and undiscounted sales", () => {
+  const predicate = orderStatus.saleReservesStockSql("sale");
+
+  assert.match(predicate, /order_status/);
+  assert.match(predicate, /= 'confirmado'/);
+  assert.match(predicate, /COALESCE\(sale\.stock_discounted, false\) = false/);
+  assert.throws(() => orderStatus.saleReservesStockSql("sale; DROP TABLE sales"), /Invalid SQL identifier/);
+});
+
 function confirmationStockClient({ currentStock, reservedStock, requested }) {
   return {
     async query(sql) {

@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
   EmptyState,
-  PageHeader,
   StatusBadge,
   type StatusBadgeTone,
 } from "@/components/ui";
@@ -155,11 +154,6 @@ export default async function Home() {
       title="Inicio"
     >
       <div className="grid gap-5">
-        <PageHeader
-          description="Pendientes operativos visibles al iniciar sesion."
-          title="Recordatorios y tareas"
-        />
-
         <section className="grid gap-4 xl:grid-cols-2">
           <Card>
             <CardHeader>

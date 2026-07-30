@@ -6,8 +6,12 @@ import { ApiError } from "@/lib/api-response";
 import { basicOrderInputFromBody, updateBasicOrder } from "@/lib/orders";
 import { uuidParam } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
+import type { OrderEntryActionState } from "@/app/orders/order-entry-action-state";
 
-export async function updateLoadedOrderAction(formData: FormData) {
+export async function updateLoadedOrderAction(
+  _previousState: OrderEntryActionState,
+  formData: FormData,
+): Promise<OrderEntryActionState> {
   const rawId = String(formData.get("id") ?? "");
   let id = "";
   try {
@@ -18,9 +22,7 @@ export async function updateLoadedOrderAction(formData: FormData) {
     revalidatePath(`/orders/${id}/edit`);
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
-    const message = encodeURIComponent(error.message.slice(0, 500));
-    const target = id ? `/orders/${id}/edit` : "/orders";
-    redirect(`${target}?status=error&message=${message}`);
+    return { error: error.message.slice(0, 500) };
   }
   redirect("/orders?status=cargado");
 }

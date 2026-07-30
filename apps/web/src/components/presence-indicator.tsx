@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { cn } from "@/components/ui";
 import type { OnlineUser, PresenceSnapshot } from "@/lib/presence";
@@ -87,7 +87,7 @@ export function PresenceIndicator({ compact = false }: { compact?: boolean }) {
         aria-haspopup="dialog"
         aria-label={`Ver usuarios conectados (${count} online)`}
         className={cn(
-          "erp-text-caption flex h-10 items-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 shadow-[var(--shadow-sm)] transition-colors hover:border-[color:var(--accent)]",
+          "erp-text-caption flex h-[var(--control-height-md)] items-center gap-2 rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel)] px-3 shadow-[var(--shadow-sm)] transition-colors hover:border-[color:var(--accent)]",
           compact && "px-2",
         )}
         onClick={() => setOpen((value) => !value)}

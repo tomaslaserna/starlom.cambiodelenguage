@@ -64,3 +64,9 @@ export function normalizedOrderStatusSql(alias: string) {
     ELSE 'cargado'
   END`;
 }
+
+export function saleReservesStockSql(alias: string) {
+  const normalizedStatus = normalizedOrderStatusSql(alias);
+  return `${normalizedStatus} = 'confirmado'
+    AND COALESCE(${alias}.stock_discounted, false) = false`;
+}

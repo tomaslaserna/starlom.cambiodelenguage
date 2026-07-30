@@ -211,10 +211,10 @@ const LEGACY_ROLE_PERMISSIONS: Record<string, string[]> = {
 };
 
 const DATABASE_PERMISSION_CACHE_TTL_MS = 60_000;
-const databasePermissionCache = new Map<string, { expiresAt: number; allowed: boolean }>();
+const databasePermissionKeysCache = new Map<string, { expiresAt: number; allowedKeys: string[] }>();
 
 export function clearPermissionCache() {
-  databasePermissionCache.clear();
+  databasePermissionKeysCache.clear();
 }
 
 export function isFullAccessRole(role: string) {
@@ -247,52 +247,79 @@ function legacyRoleAllows(session: AuthSession, permissions: Permission[]) {
   return permissions.some((permission) => permissionKeyAliases(permission).some((key) => allowed.has(key)));
 }
 
-async function databaseAllows(session: AuthSession, permissions: Permission[]) {
-  const role = normalizeRole(session.role);
-  if (isFullAccessRole(role)) return true;
-  if (!permissions.length) return true;
+export async function sessionAllowedPermissionKeys(session: AuthSession, permissions: Permission[]) {
+  if (!isStaffRole(session.role) || !permissions.length) return new Set<string>();
 
-  const keys = permissionKeys(permissions);
-  const cacheKey = `${session.userId}:${session.companyId}:${role}:${keys.sort().join("|")}`;
-  const cached = databasePermissionCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.allowed;
-
-  const result = await queryWithCompanyContext<{ allowed: number }>(
-    session.companyId,
-    `
-      SELECT 1 AS allowed
-      FROM profile_permissions pp
-      JOIN app_permissions ap ON ap.key = pp.permission_key AND ap.sensitive = FALSE
-      WHERE pp.profile_id = $1::uuid
-        AND pp.empresa_id = $2
-        AND pp.permission_key = ANY($4)
-      UNION
-      SELECT 1 AS allowed
-      FROM usuario_empresa ue
-      JOIN role_permissions rp ON rp.role::text = $3
-      JOIN app_permissions ap ON ap.key = rp.permission_key AND ap.sensitive = FALSE
-      WHERE ue.id_usuario = $1::uuid
-        AND ue.empresa_id = $2
-        AND ue.activo = TRUE
-        AND rp.permission_key = ANY($4)
-      LIMIT 1
-    `,
-    [session.userId, session.companyId, role, keys],
+  const uniquePermissions = Array.from(
+    new Map(permissions.map((permission) => [permissionKey(permission), permission])).values(),
   );
+  const allowedPermissionKeys = new Set<string>();
+  if (isFullAccessRole(session.role)) {
+    for (const permission of uniquePermissions) allowedPermissionKeys.add(permissionKey(permission));
+    return allowedPermissionKeys;
+  }
 
-  const allowed = Boolean(result.rows[0]);
-  databasePermissionCache.set(cacheKey, {
-    expiresAt: Date.now() + DATABASE_PERMISSION_CACHE_TTL_MS,
-    allowed,
+  const unresolvedPermissions = uniquePermissions.filter((permission) => {
+    if (!legacyRoleAllows(session, [permission])) return true;
+    allowedPermissionKeys.add(permissionKey(permission));
+    return false;
   });
+  if (!unresolvedPermissions.length) return allowedPermissionKeys;
 
-  return allowed;
+  const role = normalizeRole(session.role);
+  const keys = permissionKeys(unresolvedPermissions);
+  const cacheKey = `${session.userId}:${session.companyId}:${role}:${keys.sort().join("|")}`;
+  const cached = databasePermissionKeysCache.get(cacheKey);
+  let databaseKeys: Set<string>;
+  if (cached && cached.expiresAt > Date.now()) {
+    databaseKeys = new Set(cached.allowedKeys);
+  } else {
+    const result = await queryWithCompanyContext<{ permission_key: string }>(
+      session.companyId,
+      `
+        SELECT DISTINCT permission_key
+        FROM (
+          SELECT pp.permission_key
+          FROM profile_permissions pp
+          JOIN app_permissions ap ON ap.key = pp.permission_key AND ap.sensitive = FALSE
+          WHERE pp.profile_id = $1::uuid
+            AND pp.empresa_id = $2
+            AND pp.permission_key = ANY($4)
+
+          UNION
+
+          SELECT rp.permission_key
+          FROM usuario_empresa ue
+          JOIN role_permissions rp ON rp.role::text = $3
+          JOIN app_permissions ap ON ap.key = rp.permission_key AND ap.sensitive = FALSE
+          WHERE ue.id_usuario = $1::uuid
+            AND ue.empresa_id = $2
+            AND ue.activo = TRUE
+            AND rp.permission_key = ANY($4)
+        ) permissions
+      `,
+      [session.userId, session.companyId, role, keys],
+    );
+    databaseKeys = new Set(result.rows.map((row) => row.permission_key));
+    databasePermissionKeysCache.set(cacheKey, {
+      expiresAt: Date.now() + DATABASE_PERMISSION_CACHE_TTL_MS,
+      allowedKeys: Array.from(databaseKeys),
+    });
+  }
+
+  for (const permission of unresolvedPermissions) {
+    if (permissionKeyAliases(permission).some((key) => databaseKeys.has(key))) {
+      allowedPermissionKeys.add(permissionKey(permission));
+    }
+  }
+  return allowedPermissionKeys;
 }
 
 export async function sessionAllows(session: AuthSession, permissions: Permission[] = []) {
   if (!isStaffRole(session.role)) return false;
   if (!permissions.length) return true;
-  return legacyRoleAllows(session, permissions) || (await databaseAllows(session, permissions));
+  if (legacyRoleAllows(session, permissions)) return true;
+  return (await sessionAllowedPermissionKeys(session, permissions)).size > 0;
 }
 
 export async function sessionCanDeleteOperationalRecords(session: AuthSession) {
@@ -322,7 +349,10 @@ export async function sessionCanDeleteOperationalRecords(session: AuthSession) {
 
 export async function requireOperationalRecordDeletePermission(session: AuthSession) {
   if (!(await sessionCanDeleteOperationalRecords(session))) {
-    throw new ApiError(403, "Solo Tomi Laserna o Augusto Finocchietti pueden borrar registros");
+    throw new ApiError(
+      403,
+      "No tenes permiso para borrar registros operativos. Solicita que te asignen el permiso sensible registros.borrar.",
+    );
   }
   return session;
 }

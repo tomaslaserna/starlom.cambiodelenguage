@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Button,
   ButtonLink,
@@ -14,14 +14,13 @@ import {
   Input,
   SearchableSelect,
   Select,
+  Textarea,
 } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, priceForList, resolvePriceListName } from "@/lib/order-pricing";
 import { normalizeOrderCreationDocument, desiredDocumentLabel } from "@/lib/receipt-types";
 import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
 import { calculateQuoteTotals, type QuoteVatRate } from "@/lib/quote-totals";
-import { shouldPreventImplicitSubmit } from "@/lib/form-submit-guard";
-import type { CreateQuoteState } from "@/lib/quote-form-state";
 
 type QuoteLineDraft = {
   productId: string;
@@ -34,7 +33,6 @@ type QuoteLineState = QuoteLineDraft & {
 };
 
 type QuoteEntryFieldsProps = {
-  action: (prev: CreateQuoteState, formData: FormData) => Promise<CreateQuoteState>;
   clients: OrderFormClient[];
   priceLists: OrderFormPriceList[];
   products: OrderFormProduct[];
@@ -69,56 +67,28 @@ function whatsappPhone(phone: string) {
   return `54${digits.replace(/^0+/, "")}`;
 }
 
-const emptyOccasionalCustomer = (): OccasionalCustomer => ({
-  name: "",
-  businessName: "",
-  taxId: "",
-  vatCondition: "",
-  phone: "",
-  address: "",
-});
-
-export function QuoteEntryFields({ action, clients, priceLists, products }: QuoteEntryFieldsProps) {
+export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFieldsProps) {
   const [customerMode, setCustomerMode] = useState<CustomerMode>("registered");
   const [customerId, setCustomerId] = useState("");
-  const [occasionalCustomer, setOccasionalCustomer] = useState<OccasionalCustomer>(emptyOccasionalCustomer());
+  const [occasionalCustomer, setOccasionalCustomer] = useState<OccasionalCustomer>({
+    name: "",
+    businessName: "",
+    taxId: "",
+    vatCondition: "",
+    phone: "",
+    address: "",
+  });
   const [validityDays, setValidityDays] = useState("15");
   const [priceListOverride, setPriceListOverride] = useState("");
   const [vatRate, setVatRate] = useState<QuoteVatRate>(0);
   const [draftLine, setDraftLine] = useState<QuoteLineDraft>(emptyLine());
   const [lines, setLines] = useState<QuoteLineState[]>([]);
+  const [isQuickQuoteMessageEditing, setIsQuickQuoteMessageEditing] = useState(false);
+  const [quickQuoteMessageOverride, setQuickQuoteMessageOverride] = useState<{
+    source: string;
+    text: string;
+  } | null>(null);
   const lineIdRef = useRef(0);
-
-  const [formState, formAction, isCreating] = useActionState(action, { ok: false } as CreateQuoteState);
-  const formRef = useRef<HTMLFormElement>(null);
-  const handledNonceRef = useRef<number | undefined>(undefined);
-
-  // A quote is only registered when the operator clicks "Crear presupuesto
-  // formal". After a successful create, wipe the whole form so the next quote
-  // starts clean.
-  useEffect(() => {
-    if (formState.ok && formState.nonce && formState.nonce !== handledNonceRef.current) {
-      handledNonceRef.current = formState.nonce;
-      setCustomerMode("registered");
-      setCustomerId("");
-      setOccasionalCustomer(emptyOccasionalCustomer());
-      setValidityDays("15");
-      setPriceListOverride("");
-      setVatRate(0);
-      setDraftLine(emptyLine());
-      setLines([]);
-      formRef.current?.reset();
-    }
-  }, [formState]);
-
-  // Block Enter from submitting the form implicitly; creating a quote must be an
-  // explicit click on the submit button.
-  function handleFormKeyDown(event: KeyboardEvent<HTMLFormElement>) {
-    const target = event.target as HTMLElement;
-    if (shouldPreventImplicitSubmit(event.key, target.tagName, (target as HTMLInputElement).type)) {
-      event.preventDefault();
-    }
-  }
 
   const selectedClient = clients.find((client) => client.id === customerId) ?? null;
   const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
@@ -185,8 +155,8 @@ export function QuoteEntryFields({ action, clients, priceLists, products }: Quot
     quantity: line.quantity,
     discount: line.discount,
   }));
-  const canSendQuickQuote = Boolean(customerReady && calculatedLines.length && quoteTotal > 0);
-  const quickQuoteText = customerReady
+  const canComposeQuickQuote = Boolean(customerReady && calculatedLines.length && quoteTotal > 0);
+  const generatedQuickQuoteText = customerReady
     ? [
         `Hola ${quoteCustomerName}, te paso presupuesto rapido de Starlim:`,
         "",
@@ -203,6 +173,11 @@ export function QuoteEntryFields({ action, clients, priceLists, products }: Quot
         `Vigencia: ${validityDays || "15"} dias`,
       ].join("\n")
     : "";
+  const quickQuoteText =
+    quickQuoteMessageOverride?.source === generatedQuickQuoteText
+      ? quickQuoteMessageOverride.text
+      : generatedQuickQuoteText;
+  const canSendQuickQuote = Boolean(canComposeQuickQuote && quickQuoteText.trim());
   const quickQuotePhone = customerReady ? whatsappPhone(quoteCustomerPhone) : "";
   const quickQuoteHref = canSendQuickQuote
     ? quickQuotePhone
@@ -241,12 +216,7 @@ export function QuoteEntryFields({ action, clients, priceLists, products }: Quot
   }
 
   return (
-    <form
-      action={formAction}
-      className="grid gap-4 p-4"
-      onKeyDown={handleFormKeyDown}
-      ref={formRef}
-    >
+    <div className="grid gap-4">
       <input name="productsJson" type="hidden" value={JSON.stringify(payload)} />
       <input name="priceListOverride" type="hidden" value={activePriceList} />
       <input name="validityDays" type="hidden" value={validityDays} />
@@ -600,11 +570,53 @@ export function QuoteEntryFields({ action, clients, priceLists, products }: Quot
         </div>
       </div>
 
-      {formState.error ? (
-        <p className="text-right text-sm font-semibold text-[color:var(--danger)]">{formState.error}</p>
+      {isQuickQuoteMessageEditing && canComposeQuickQuote ? (
+        <div
+          className="grid gap-3 rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4"
+          id="quick-quote-whatsapp-editor"
+        >
+          <Field
+            description="Podes ajustar el texto antes de abrir WhatsApp. Los importes y productos no cambian en el presupuesto formal."
+            htmlFor="quick-quote-whatsapp-message"
+            label="Mensaje de WhatsApp"
+          >
+            <Textarea
+              id="quick-quote-whatsapp-message"
+              rows={9}
+              value={quickQuoteText}
+              onChange={(event) =>
+                setQuickQuoteMessageOverride({
+                  source: generatedQuickQuoteText,
+                  text: event.target.value,
+                })
+              }
+            />
+          </Field>
+          <div className="flex justify-end">
+            <Button
+              disabled={quickQuoteMessageOverride === null}
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => setQuickQuoteMessageOverride(null)}
+            >
+              Restablecer mensaje automatico
+            </Button>
+          </div>
+        </div>
       ) : null}
 
-      <div className="flex flex-col justify-end gap-2 sm:flex-row">
+      <div className="flex flex-col justify-end gap-2 sm:flex-row sm:flex-wrap">
+        <Button
+          aria-controls="quick-quote-whatsapp-editor"
+          aria-expanded={isQuickQuoteMessageEditing}
+          disabled={!canComposeQuickQuote}
+          type="button"
+          variant="secondary"
+          onClick={() => setIsQuickQuoteMessageEditing((current) => !current)}
+        >
+          {isQuickQuoteMessageEditing ? "Ocultar mensaje" : "Editar mensaje"}
+        </Button>
         {canSendQuickQuote ? (
           <ButtonLink href={quickQuoteHref} prefetch={false} rel="noreferrer" target="_blank" variant="outline">
             WhatsApp rapido
@@ -614,10 +626,10 @@ export function QuoteEntryFields({ action, clients, priceLists, products }: Quot
             WhatsApp rapido
           </Button>
         )}
-        <Button disabled={!customerReady || calculatedLines.length === 0 || isCreating} type="submit">
-          {isCreating ? "Creando..." : "Crear presupuesto formal"}
+        <Button disabled={!customerReady || calculatedLines.length === 0} type="submit">
+          Crear presupuesto formal
         </Button>
       </div>
-    </form>
+    </div>
   );
 }

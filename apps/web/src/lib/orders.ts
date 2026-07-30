@@ -18,6 +18,7 @@ import {
   normalizeOrderStatusValue,
   normalizedOrderStatusSql,
   orderStatusTransitionError,
+  saleReservesStockSql,
 } from "@/lib/order-status";
 import {
   invoiceDocumentForFiscalCondition,
@@ -25,7 +26,7 @@ import {
   normalizeOrderCreationDocument,
   receiptTypeCode,
 } from "@/lib/receipt-types";
-import { numberField, textField, uuidParam, type RequestBody } from "@/lib/request-body";
+import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { calculateQuoteTotals, type QuoteVatRate } from "@/lib/quote-totals";
 import { assertSaleStockAvailableForConfirmation, discountSaleStockOnDelivery } from "@/lib/stock";
@@ -114,15 +115,9 @@ type BasicOrderLineInput = {
 
 const DEFAULT_COMPANY_ID = 1;
 const COLLECTION_STATES = ["pendiente", "cancelado"] as const;
-const SALE_VAT_RATES = new Set([0, 10.5, 21]);
 
 function searchPattern(query: string) {
   return `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
-}
-
-function normalizeSaleVatRate(value: number) {
-  const rounded = Math.round(value * 100) / 100;
-  return SALE_VAT_RATES.has(rounded) ? rounded : 0;
 }
 
 function mapOrder(row: {
@@ -707,8 +702,7 @@ export async function getOrderFormData(
         JOIN sales s ON s.id = si.sale_id AND s.empresa_id = si.empresa_id
         WHERE si.empresa_id = p.empresa_id
           AND si.product_id = p.id
-          AND ${normalizedOrderStatusSql("s")} = 'confirmado'
-          AND COALESCE(s.stock_discounted, false) = false
+          AND ${saleReservesStockSql("s")}
           AND ($2::uuid IS NULL OR s.id <> $2::uuid)
       ) reserved ON true
       WHERE p.empresa_id = $1 AND p.active = true
@@ -794,7 +788,6 @@ export function basicOrderInputFromBody(body: RequestBody) {
     priceListOverride: textField(body, "priceListOverride") || textField(body, "lista_precios"),
     desiredDocumentOverride: textField(body, "desiredDocumentOverride") || textField(body, "comprobante_deseado"),
     observation: textField(body, "observation") || textField(body, "observacion"),
-    vatRate: normalizeSaleVatRate(numberField(body, "vatRate", 0)),
   };
 }
 
@@ -827,11 +820,11 @@ export async function createBasicOrder(
         INSERT INTO sales (
           sale_number, commercial_number, client_id, seller_id, client_name, client_document, price_list_name,
           total_amount, receipt_number, receipt_type, payment_condition, sale_date, seller_name,
-          collection_status, order_status, desired_document, notes, vat_rate,
+          collection_status, order_status, desired_document, notes,
           stock_discounted, status, empresa_id
         )
         VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                'no_aplica', 'cargado', $14, $15, $16, false, 'cargado', $17)
+                'no_aplica', 'cargado', $14, $15, false, 'cargado', $16)
         RETURNING id::text AS id
       `,
       [
@@ -850,7 +843,6 @@ export async function createBasicOrder(
         customer.seller_name || session.username,
         desiredDocument,
         input.observation,
-        input.vatRate,
         session.companyId,
       ],
     );
@@ -937,10 +929,9 @@ export async function updateBasicOrder(
             status = 'cargado',
             desired_document = $10,
             notes = $11,
-            vat_rate = $12,
             stock_discounted = false,
             updated_at = now()
-        WHERE id = $13::uuid AND empresa_id = $14
+        WHERE id = $12::uuid AND empresa_id = $13
       `,
       [
         customer.id,
@@ -954,7 +945,6 @@ export async function updateBasicOrder(
         customer.seller_name || session.username,
         desiredDocument,
         input.observation,
-        input.vatRate,
         id,
         session.companyId,
       ],

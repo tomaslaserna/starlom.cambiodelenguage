@@ -38,7 +38,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(_request: NextRequest, context: RouteContext) {
   try {
-    const session = await requireApiSession([{ resource: "compras", action: "cancelar" }]);
+    const session = await requireApiSession();
     const { id } = await context.params;
     const data = await deletePurchase(session, purchaseIdFromParam(id, "Compra"));
     return ok({ data });

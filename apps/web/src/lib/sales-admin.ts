@@ -12,11 +12,7 @@ import {
 import { parsePagination } from "@/lib/pagination";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
-import {
-  assertSaleStockAvailableForConfirmation,
-  discountSaleStockOnDelivery,
-  restoreSaleStock,
-} from "@/lib/stock";
+import { assertSaleStockAvailableForConfirmation, discountSaleStockOnDelivery } from "@/lib/stock";
 import type { PoolClient } from "pg";
 import { requireOperationalRecordDeletePermission } from "@/lib/route-auth";
 
@@ -155,9 +151,6 @@ async function applySaleOrderStatusTransition(
   if (nextStatus === "entregado") {
     stockDiscounted = await discountSaleStock(client, session.companyId, saleId);
   }
-  if (nextStatus === "cancelado") {
-    await restoreSaleStock(client, session.companyId, saleId, `Reposicion por anulacion de venta ${saleId}`);
-  }
 
   await client.query(
     `
@@ -195,7 +188,7 @@ export async function getSalesSummary(companyId: number, period: string | null) 
   const params = bounds.start && bounds.end ? [companyId, bounds.start, bounds.end] : [companyId];
   const periodFilter = bounds.start && bounds.end ? "AND sale_date >= $2 AND sale_date < $3" : "";
 
-  const summary = await queryWithCompanyContext<{
+  const summaryQuery = queryWithCompanyContext<{
     total_facturas: string;
     total_monto: string;
     facturadas: string;
@@ -222,7 +215,7 @@ export async function getSalesSummary(companyId: number, period: string | null) 
     params,
   );
 
-  const collections = await queryWithCompanyContext<{ pendiente: string; vencido: string }>(
+  const collectionsQuery = queryWithCompanyContext<{ pendiente: string; vencido: string }>(
     companyId,
     `
       SELECT
@@ -236,6 +229,7 @@ export async function getSalesSummary(companyId: number, period: string | null) 
     [companyId],
   );
 
+  const [summary, collections] = await Promise.all([summaryQuery, collectionsQuery]);
   const row = summary.rows[0];
   const collectionRow = collections.rows[0];
   return {
@@ -475,6 +469,9 @@ export async function deleteSale(session: AuthSession, id: string) {
       throw new ApiError(409, "La venta tiene un cobro conciliado y no puede borrarse");
     }
 
+    // withCompanyContext keeps this dependency cleanup and both audit writes in one
+    // transaction. Keep the explicit order synchronized with
+    // docs/operational-record-deletion.md when the schema gains new references.
     await client.query(
       `
         DELETE FROM current_account_movements
@@ -556,6 +553,7 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     pageSize: searchParams.get("pageSize") ?? searchParams.get("limite"),
   });
   const filters = {
+    query: (searchParams.get("q") ?? "").trim(),
     customerName: (searchParams.get("cliente") ?? "").trim(),
     taxId: (searchParams.get("nro_id") ?? "").replace(/\D/g, ""),
     receiptNumber: searchParams.get("nro_factura") ?? "",
@@ -580,6 +578,22 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     canonicalSalesSourceSql("v"),
     `${normalizedOrderStatusSql("v")} = 'entregado'`,
   ];
+
+  if (filters.query) {
+    const queryPattern = pushParam(searchPattern(filters.query));
+    const queryDigits = filters.query.replace(/\D/g, "");
+    const receiptDigits = queryDigits.replace(/^0+/, "") || queryDigits;
+    const unifiedConditions = [
+      `COALESCE(v.client_name, '') ILIKE ${queryPattern} ESCAPE '\\'`,
+    ];
+    if (queryDigits) {
+      unifiedConditions.push(
+        `regexp_replace(COALESCE(v.client_document, ''), '[^0-9]', '', 'g') LIKE ${pushParam(`%${queryDigits}%`)}`,
+        `COALESCE(v.fiscal_receipt_number, v.receipt_number, 0)::text LIKE ${pushParam(`%${receiptDigits}%`)}`,
+      );
+    }
+    saleConditions.push(`(${unifiedConditions.join(" OR ")})`);
+  }
 
   if (filters.taxId) {
     saleConditions.push(`regexp_replace(COALESCE(v.client_document, ''), '[^0-9]', '', 'g') = ${pushParam(filters.taxId)}`);
@@ -716,6 +730,21 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
       "r.sale_id IS NULL",
       "COALESCE(r.order_status, 'entregado') = 'entregado'",
     ];
+    if (filters.query) {
+      const queryPattern = pushParam(searchPattern(filters.query));
+      const queryDigits = filters.query.replace(/\D/g, "");
+      const deliveryDigits = queryDigits.replace(/^0+/, "") || queryDigits;
+      const unifiedConditions = [
+        `COALESCE(r.client_name, '') ILIKE ${queryPattern} ESCAPE '\\'`,
+      ];
+      if (queryDigits) {
+        unifiedConditions.push(
+          `regexp_replace(COALESCE(r.client_document, ''), '[^0-9]', '', 'g') LIKE ${pushParam(`%${queryDigits}%`)}`,
+          `COALESCE(r.delivery_number, 0)::text LIKE ${pushParam(`%${deliveryDigits}%`)}`,
+        );
+      }
+      deliveryConditions.push(`(${unifiedConditions.join(" OR ")})`);
+    }
     if (filters.taxId) {
       deliveryConditions.push(`regexp_replace(COALESCE(r.client_document, ''), '[^0-9]', '', 'g') = ${pushParam(filters.taxId)}`);
     }

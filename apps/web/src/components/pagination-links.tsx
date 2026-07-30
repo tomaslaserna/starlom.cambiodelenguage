@@ -50,7 +50,7 @@ export function PaginationLinks({
   return (
     <nav
       aria-label="Paginacion"
-      className="erp-text-body-sm flex flex-col gap-3 border-t border-[#e5ebf3] bg-[#fbfcfe] px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+      className="erp-text-body-sm flex min-h-[4.25rem] flex-col gap-3 border-t border-[color:var(--border)] bg-[color:var(--table-header)] px-5 py-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <span className="font-medium text-[#64748b]">{resultSummary}</span>
       <div className="flex items-center gap-2">

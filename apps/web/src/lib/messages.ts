@@ -3,7 +3,6 @@ import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import {
   attachPreparedMessageUploads,
-  listMessageAttachments,
   messageAttachmentIdsFromValue,
 } from "@/lib/message-attachments";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
@@ -106,9 +105,93 @@ export async function getMessageCenterRevision(session: AuthSession) {
   return `${revision?.latest_id ?? "0"}:${revision?.message_count ?? "0"}:${revision?.read_checksum ?? "0"}`;
 }
 
+export type MessageNotificationPreview = {
+  unread: number;
+  revision: string;
+  latest: {
+    id: number;
+    from: string;
+    subject: string;
+    bodyPreview: string;
+    date: string;
+  } | null;
+};
+
+export async function getMessageNotificationPreview(session: AuthSession): Promise<MessageNotificationPreview> {
+  const result = await queryWithCompanyContext<{
+    id: number | null;
+    de: string | null;
+    asunto: string | null;
+    cuerpo: string | null;
+    fecha: string | null;
+    unread_count: string;
+    latest_id: string;
+    message_count: string;
+    read_checksum: string;
+  }>(
+    session.companyId,
+    `
+      WITH visible_messages AS (
+        SELECT id, leido
+        FROM mensajes
+        WHERE empresa_id = $1
+          AND para = $2
+          AND COALESCE(estado, 'enviado') = 'enviado'
+
+        UNION ALL
+
+        SELECT id, leido
+        FROM mensajes
+        WHERE empresa_id = $1
+          AND de = $2
+          AND para <> $2
+          AND COALESCE(estado, 'enviado') = 'enviado'
+      ),
+      unread_messages AS (
+        SELECT id, de, asunto, cuerpo, fecha
+        FROM mensajes
+        WHERE empresa_id = $1
+          AND para = $2
+          AND leido = 0
+          AND COALESCE(estado, 'enviado') = 'enviado'
+      )
+      SELECT
+        latest.id,
+        latest.de,
+        latest.asunto,
+        latest.cuerpo,
+        latest.fecha::text,
+        (SELECT COUNT(*) FROM unread_messages)::text AS unread_count,
+        (SELECT COALESCE(MAX(id), 0)::text FROM visible_messages) AS latest_id,
+        (SELECT COUNT(*)::text FROM visible_messages) AS message_count,
+        (SELECT COALESCE(SUM(CASE WHEN leido = 1 THEN id ELSE 0 END), 0)::text FROM visible_messages) AS read_checksum
+      FROM (SELECT id, de, asunto, cuerpo, fecha FROM unread_messages ORDER BY fecha DESC, id DESC LIMIT 1) latest
+      RIGHT JOIN (SELECT 1) AS always_one ON TRUE
+    `,
+    [session.companyId, session.username],
+    { cache: false },
+  );
+  const latest = result.rows[0];
+  const revision = `${latest?.latest_id ?? "0"}:${latest?.message_count ?? "0"}:${latest?.read_checksum ?? "0"}`;
+  if (!latest?.id || latest.de === null || latest.asunto === null || latest.cuerpo === null || latest.fecha === null) {
+    return { unread: 0, revision, latest: null };
+  }
+  return {
+    unread: Number(latest.unread_count),
+    revision,
+    latest: {
+      id: latest.id,
+      from: latest.de,
+      subject: latest.asunto,
+      bodyPreview: formatPreview(latest.cuerpo),
+      date: latest.fecha,
+    },
+  };
+}
+
 export async function listMessageCenter(session: AuthSession) {
   const revisionPromise = getMessageCenterRevision(session);
-  const inboxPromise = queryWithCompanyContext<{
+  const messagesPromise = queryWithCompanyContext<{
     id: number;
     de: string;
     para: string;
@@ -118,69 +201,73 @@ export async function listMessageCenter(session: AuthSession) {
     leido: number;
     tipo: string;
     importancia: string;
+    folder: "inbox" | "sent" | "draft";
+    attachments: Array<{
+      id: number;
+      fileName: string;
+      contentType: string;
+      size: string | number;
+    }>;
   }>(
     session.companyId,
     `
-      SELECT id, de, para, asunto, cuerpo, fecha::text, leido, tipo,
-             COALESCE(importancia, 'normal') AS importancia
-      FROM mensajes
-      WHERE empresa_id = $1
-        AND para = $2
-        AND COALESCE(estado, 'enviado') = 'enviado'
-      ORDER BY fecha DESC
-      LIMIT 200
-    `,
-    [session.companyId, session.username],
-    { cache: false },
-  );
-
-  const sentPromise = queryWithCompanyContext<{
-    id: number;
-    de: string;
-    para: string;
-    asunto: string;
-    cuerpo: string;
-    fecha: string;
-    leido: number;
-    tipo: string;
-    importancia: string;
-  }>(
-    session.companyId,
-    `
-      SELECT id, de, para, asunto, cuerpo, fecha::text, leido, tipo,
-             COALESCE(importancia, 'normal') AS importancia
-      FROM mensajes
-      WHERE empresa_id = $1
-        AND de = $2
-        AND COALESCE(estado, 'enviado') = 'enviado'
-      ORDER BY fecha DESC
-      LIMIT 200
-    `,
-    [session.companyId, session.username],
-    { cache: false },
-  );
-
-  const draftsPromise = queryWithCompanyContext<{
-    id: number;
-    de: string;
-    para: string;
-    asunto: string;
-    cuerpo: string;
-    fecha: string;
-    leido: number;
-    tipo: string;
-    importancia: string;
-  }>(
-    session.companyId,
-    `
-      SELECT id, de, para, asunto, cuerpo, fecha::text, leido, tipo,
-             COALESCE(importancia, 'normal') AS importancia
-      FROM mensajes
-      WHERE empresa_id = $1
-        AND de = $2
-        AND COALESCE(estado, 'enviado') = 'borrador'
-      ORDER BY fecha DESC
-      LIMIT 200
+      WITH inbox AS (
+        SELECT id, de, para, asunto, cuerpo, fecha, leido, tipo,
+               COALESCE(importancia, 'normal') AS importancia, 'inbox'::text AS folder
+        FROM mensajes
+        WHERE empresa_id = $1
+          AND para = $2
+          AND COALESCE(estado, 'enviado') = 'enviado'
+        ORDER BY fecha DESC
+        LIMIT 200
+      ),
+      sent AS (
+        SELECT id, de, para, asunto, cuerpo, fecha, leido, tipo,
+               COALESCE(importancia, 'normal') AS importancia, 'sent'::text AS folder
+        FROM mensajes
+        WHERE empresa_id = $1
+          AND de = $2
+          AND COALESCE(estado, 'enviado') = 'enviado'
+        ORDER BY fecha DESC
+        LIMIT 200
+      ),
+      drafts AS (
+        SELECT id, de, para, asunto, cuerpo, fecha, leido, tipo,
+               COALESCE(importancia, 'normal') AS importancia, 'draft'::text AS folder
+        FROM mensajes
+        WHERE empresa_id = $1
+          AND de = $2
+          AND COALESCE(estado, 'enviado') = 'borrador'
+        ORDER BY fecha DESC
+        LIMIT 200
+      ),
+      selected_messages AS (
+        SELECT * FROM inbox
+        UNION ALL
+        SELECT * FROM sent
+        UNION ALL
+        SELECT * FROM drafts
+      )
+      SELECT
+        m.id, m.de, m.para, m.asunto, m.cuerpo, m.fecha::text, m.leido, m.tipo, m.importancia, m.folder,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', ma.id,
+              'fileName', ma.nombre_original,
+              'contentType', ma.tipo_mime,
+              'size', ma.tamano_bytes
+            )
+            ORDER BY ma.creado_at ASC, ma.id ASC
+          ) FILTER (WHERE ma.id IS NOT NULL),
+          '[]'::json
+        ) AS attachments
+      FROM selected_messages m
+      LEFT JOIN mensaje_adjuntos ma
+        ON ma.empresa_id = $1
+       AND ma.mensaje_id = m.id
+      GROUP BY m.id, m.de, m.para, m.asunto, m.cuerpo, m.fecha, m.leido, m.tipo, m.importancia, m.folder
+      ORDER BY m.fecha DESC, m.id DESC
     `,
     [session.companyId, session.username],
     { cache: false },
@@ -200,18 +287,13 @@ export async function listMessageCenter(session: AuthSession) {
     [session.companyId],
   );
 
-  const [inbox, sent, drafts, employees, revision] = await Promise.all([
-    inboxPromise,
-    sentPromise,
-    draftsPromise,
+  const [messageRows, employees, revision] = await Promise.all([
+    messagesPromise,
     employeesPromise,
     revisionPromise,
   ]);
 
-  const messageIds = [...inbox.rows, ...sent.rows, ...drafts.rows].map((row) => Number(row.id));
-  const attachments = await listMessageAttachments(session, messageIds);
-
-  const mapMessage = (row: (typeof inbox.rows)[number]) => ({
+  const mapMessage = (row: (typeof messageRows.rows)[number]) => ({
       id: row.id,
       from: row.de,
       to: row.para,
@@ -222,22 +304,31 @@ export async function listMessageCenter(session: AuthSession) {
       read: Number(row.leido) === 1,
       type: row.tipo,
       importance: row.importancia,
-      attachments: attachments.get(Number(row.id)) ?? [],
+      attachments: (Array.isArray(row.attachments) ? row.attachments : []).map((attachment) => ({
+        id: Number(attachment.id),
+        messageId: Number(row.id),
+        fileName: attachment.fileName,
+        contentType: attachment.contentType,
+        size: Number(attachment.size),
+        downloadUrl: `/api/messages/${row.id}/attachments/${attachment.id}`,
+      })),
     });
 
-  const inboxRows = inbox.rows.map(mapMessage);
+  const inboxRows = messageRows.rows.filter((row) => row.folder === "inbox").map(mapMessage);
+  const sentRows = messageRows.rows.filter((row) => row.folder === "sent").map(mapMessage);
+  const draftRows = messageRows.rows.filter((row) => row.folder === "draft").map(mapMessage);
   return {
     messages: inboxRows,
     inbox: inboxRows,
-    sent: sent.rows.map(mapMessage),
-    drafts: drafts.rows.map(mapMessage),
+    sent: sentRows,
+    drafts: draftRows,
     employees: employees.rows
       .map((row) => row.usuario)
       .filter((username) => username && username !== session.username),
     meta: {
       unread: inboxRows.filter((message) => !message.read).length,
-      sent: sent.rowCount,
-      drafts: drafts.rowCount,
+      sent: sentRows.length,
+      drafts: draftRows.length,
       revision,
     },
   };

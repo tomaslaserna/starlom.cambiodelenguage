@@ -1,6 +1,7 @@
 import { ModulePage } from "@/components/module-page";
 import { createOrderAction } from "@/app/orders/new/actions";
 import { OrderEntryFields } from "@/app/orders/new/order-entry-fields";
+import { OrderEntryForm } from "@/app/orders/order-entry-form";
 import { requireStaffSession } from "@/lib/auth";
 import { currentMonth } from "@/lib/month-range";
 import { listActiveOffers } from "@/lib/offers";
@@ -9,14 +10,9 @@ import { requirePagePermission } from "@/lib/page-auth";
 import { getBreakEvenStatus } from "@/lib/profitability";
 import { ORDERS_CREATE_PERMISSION } from "@/lib/route-auth";
 
-type NewOrderPageProps = {
-  searchParams: Promise<{ status?: string; message?: string }>;
-};
-
-export default async function NewOrderPage({ searchParams }: NewOrderPageProps) {
+export default async function NewOrderPage() {
   const session = await requireStaffSession();
   await requirePagePermission(session, [ORDERS_CREATE_PERMISSION]);
-  const params = await searchParams;
   const [formData, offers, breakEven] = await Promise.all([
     getOrderFormData(session.companyId),
     listActiveOffers(session.companyId),
@@ -30,15 +26,7 @@ export default async function NewOrderPage({ searchParams }: NewOrderPageProps) 
       session={session}
       title="Cargar pedido"
     >
-      {params.status === "error" ? (
-        <div
-          className="mb-4 rounded-lg border border-[color:var(--danger)] bg-[color:var(--danger-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--danger)]"
-          role="alert"
-        >
-          {params.message ?? "No se pudo crear el pedido."}
-        </div>
-      ) : null}
-      <form
+      <OrderEntryForm
         action={createOrderAction}
         className="grid gap-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5"
       >
@@ -51,7 +39,7 @@ export default async function NewOrderPage({ searchParams }: NewOrderPageProps) 
           products={formData.products}
           submitLabel="Crear pedido"
         />
-      </form>
+      </OrderEntryForm>
     </ModulePage>
   );
 }

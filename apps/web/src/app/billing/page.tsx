@@ -1,7 +1,7 @@
 import { ModulePage } from "@/components/module-page";
+import { MetricIcon } from "@/components/metric-icon";
 import { PaginationLinks } from "@/components/pagination-links";
 import {
-  AppIcon,
   Button,
   ButtonLink,
   Card,
@@ -13,15 +13,11 @@ import {
   DataTableRow,
   EmptyState,
   Field,
-  Input,
   PageHeader,
-  SearchInput,
   Select,
   StatCard,
   StatusBadge,
-  TableActionMenu,
   Toolbar,
-  tableActionItemClass,
   type StatusBadgeTone,
 } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -33,6 +29,7 @@ import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { SALES_READ_PERMISSION } from "@/lib/route-auth";
 import { authorizeFiscalInvoiceAction, rejectFiscalInvoiceAction } from "@/app/billing/actions";
+import { LiveBillingSearch } from "@/app/billing/live-billing-search";
 
 type BillingPageProps = {
   searchParams: Promise<{
@@ -49,6 +46,7 @@ type BillingPageProps = {
     created?: string;
     arca?: string;
     message?: string;
+    q?: string;
   }>;
 };
 
@@ -94,30 +92,30 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
             detail={`Periodo ${vatSummary.period} - ventas ARCA`}
-            icon={<AppIcon className="h-6 w-6" name="chart" />}
+            icon={<MetricIcon name="sales" />}
             label="IVA ventas"
             tone="accent"
             value={formatCurrency(vatSummary.salesVatDebit + vatSummary.debitNotesVat - vatSummary.creditNotesVat)}
           />
           <StatCard
             detail="Compras cargadas con IVA en el periodo"
-            icon={<AppIcon className="h-6 w-6" name="cart" />}
+            icon={<MetricIcon name="purchase" />}
             label="IVA compras"
-            tone="accent"
+            tone="success"
             value={formatCurrency(vatSummary.purchaseVatCredit)}
           />
           <StatCard
             detail={vatSummary.netVatBalance >= 0 ? "Saldo tecnico a pagar" : "Credito fiscal neto"}
-            icon={<AppIcon className="h-6 w-6" name="wallet" />}
+            icon={<MetricIcon name="wallet" />}
             label="Saldo IVA"
-            tone="accent"
+            tone={vatSummary.netVatBalance >= 0 ? "warning" : "success"}
             value={formatCurrency(vatSummary.netVatBalance)}
           />
           <StatCard
             detail={`Compras con IVA ${formatCurrency(vatSummary.purchaseWithVatTotal)}`}
-            icon={<AppIcon className="h-6 w-6" name="invoice" />}
+            icon={<MetricIcon name="receipt" />}
             label="Facturacion fiscal"
-            tone="accent"
+            tone="info"
             value={formatCurrency(vatSummary.fiscalSalesTotal)}
           />
         </div>
@@ -141,23 +139,15 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
         <Toolbar ariaLabel="Filtros de facturacion">
           <form
             action="/billing"
-            className="grid w-full items-end gap-3 md:grid-cols-2 xl:grid-cols-6"
+            className="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-12 xl:items-end"
           >
-            <Field className="min-w-0" htmlFor="billing-customer" label="Cliente">
-              <SearchInput
-                id="billing-customer"
-                name="cliente"
-                defaultValue={params.cliente ?? ""}
-                placeholder="Nombre o razon social"
+            <Field className="xl:col-span-4" htmlFor="billing-query" label="Buscar">
+              <LiveBillingSearch
+                defaultValue={params.q ?? params.cliente ?? params.nro_id ?? params.nro_factura ?? ""}
+                key={params.q ?? params.cliente ?? params.nro_id ?? params.nro_factura ?? ""}
               />
             </Field>
-            <Field className="min-w-0" htmlFor="billing-tax-id" label="CUIT/DNI">
-              <Input id="billing-tax-id" name="nro_id" defaultValue={params.nro_id ?? ""} placeholder="CUIT/DNI" />
-            </Field>
-            <Field className="min-w-0" htmlFor="billing-receipt" label="Comprobante">
-              <Input id="billing-receipt" name="nro_factura" defaultValue={params.nro_factura ?? ""} placeholder="N° comprobante" />
-            </Field>
-            <Field className="min-w-0" htmlFor="billing-type" label="Tipo">
+            <Field className="xl:col-span-2" htmlFor="billing-type" label="Tipo">
               <Select id="billing-type" name="tipo_factura" defaultValue={params.tipo_factura ?? ""}>
                 <option value="">Todos</option>
                 <option value="a">Factura A</option>
@@ -167,14 +157,14 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 <option value="nd">Nota debito</option>
               </Select>
             </Field>
-            <Field className="min-w-0" htmlFor="billing-tracking" label="Seguimiento">
+            <Field className="xl:col-span-2" htmlFor="billing-tracking" label="Seguimiento">
               <Select id="billing-tracking" name="seguimiento" defaultValue={params.seguimiento ?? ""}>
                 <option value="">Todos</option>
                 <option value="facturada">Facturada</option>
                 <option value="no_facturada">No facturada</option>
               </Select>
             </Field>
-            <Field className="min-w-0" htmlFor="billing-fiscal-status" label="Estado">
+            <Field className="xl:col-span-2" htmlFor="billing-fiscal-status" label="Estado">
               <Select id="billing-fiscal-status" name="estado_fiscal" defaultValue={params.estado_fiscal ?? ""}>
                 <option value="">Todos</option>
                 <option value="no_enviado">No enviado</option>
@@ -183,16 +173,9 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 <option value="aprobado">Aprobado</option>
               </Select>
             </Field>
-            <div className="flex flex-col gap-3 md:col-span-2 md:flex-row md:justify-end xl:col-span-6">
-              <Button className="w-full md:w-[144px]" leadingIcon={<AppIcon name="filter" />} type="submit">
-                Filtrar
-              </Button>
-              <ButtonLink
-                className="w-full md:w-[144px]"
-                href="/billing"
-                leadingIcon={<AppIcon name="refresh" />}
-                variant="outline"
-              >
+            <div className="grid gap-2 xl:col-span-2 xl:grid-cols-2">
+              <Button className="w-full" type="submit">Filtrar</Button>
+              <ButtonLink className="w-full" href="/billing" variant="secondary">
                 Limpiar
               </ButtonLink>
             </div>
@@ -279,78 +262,102 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                       </StatusBadge>
                     </DataTableCell>
                     <DataTableCell className="px-2 py-2">
-                      <TableActionMenu>
-                        {item.saleId && item.hasFiscalIdentity ? (
-                          <a
-                            className={tableActionItemClass}
-                            href={`/api/pdfs/fiscal/sales/${item.saleId}`}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            Factura PDF
-                          </a>
-                        ) : null}
-                        {item.saleId && ["no_enviado", "error", "rechazado"].includes(item.fiscalStatus) ? (
-                          <form action={authorizeFiscalInvoiceAction}>
-                            <input name="saleId" type="hidden" value={item.saleId} />
-                            <button className={tableActionItemClass} type="submit">
-                              Autorizar ARCA
-                            </button>
-                          </form>
-                        ) : null}
-                        {item.saleId && ["no_enviado", "error"].includes(item.fiscalStatus) ? (
-                          <form action={rejectFiscalInvoiceAction}>
-                            <input name="saleId" type="hidden" value={item.saleId} />
-                            <input name="reason" type="hidden" value="Rechazado desde Fiscal" />
-                            <button
-                              className={`${tableActionItemClass} text-[color:var(--danger)] hover:bg-[color:var(--danger-subtle)] hover:text-[color:var(--danger)]`}
-                              type="submit"
+                      <details className="erp-action-menu">
+                        <summary>
+                          Acciones
+                        </summary>
+                        <div className="grid gap-1.5">
+                          {item.saleId && item.hasFiscalIdentity ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/api/pdfs/fiscal/sales/${item.saleId}`}
+                              prefetch={false}
+                              rel="noreferrer"
+                              size="sm"
+                              target="_blank"
+                              variant="secondary"
                             >
-                              Rechazar
-                            </button>
-                          </form>
-                        ) : null}
-                        {item.saleId && item.hasFiscalIdentity && !item.creditNoteCae ? (
-                          <a className={tableActionItemClass} href={`/billing/credit-note/${item.saleId}`}>
-                            Nota credito
-                          </a>
-                        ) : null}
-                        {item.creditNoteId && item.creditNoteCae ? (
-                          <a
-                            className={tableActionItemClass}
-                            href={`/api/pdfs/fiscal/notes/${item.creditNoteId}`}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            NC PDF
-                          </a>
-                        ) : null}
-                        {item.saleId && item.hasFiscalIdentity && !item.debitNoteCae ? (
-                          <a className={tableActionItemClass} href={`/billing/debit-note/${item.saleId}`}>
-                            Nota debito
-                          </a>
-                        ) : null}
-                        {item.debitNoteId && item.debitNoteCae ? (
-                          <a
-                            className={tableActionItemClass}
-                            href={`/api/pdfs/fiscal/notes/${item.debitNoteId}`}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            ND PDF
-                          </a>
-                        ) : null}
-                        {item.deliveryId ? (
-                          <a
-                            className={tableActionItemClass}
-                            href={`/api/pdfs/deliveries/${item.deliveryId}?prices=1`}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            Remito PDF
-                          </a>
-                        ) : null}
-                      </TableActionMenu>
+                              Factura PDF
+                            </ButtonLink>
+                          ) : null}
+                          {item.saleId && ["no_enviado", "error", "rechazado"].includes(item.fiscalStatus) ? (
+                            <form action={authorizeFiscalInvoiceAction}>
+                              <input name="saleId" type="hidden" value={item.saleId} />
+                              <Button className="w-full" size="sm" type="submit">
+                                Autorizar ARCA
+                              </Button>
+                            </form>
+                          ) : null}
+                          {item.saleId && ["no_enviado", "error"].includes(item.fiscalStatus) ? (
+                            <form action={rejectFiscalInvoiceAction}>
+                              <input name="saleId" type="hidden" value={item.saleId} />
+                              <input name="reason" type="hidden" value="Rechazado desde Fiscal" />
+                              <Button className="w-full" size="sm" type="submit" variant="outline">
+                                Rechazar
+                              </Button>
+                            </form>
+                          ) : null}
+                          {item.saleId && item.hasFiscalIdentity && !item.creditNoteCae ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/billing/credit-note/${item.saleId}`}
+                              size="sm"
+                              variant="secondary"
+                            >
+                              Nota credito
+                            </ButtonLink>
+                          ) : null}
+                          {item.creditNoteId && item.creditNoteCae ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/api/pdfs/fiscal/notes/${item.creditNoteId}`}
+                              prefetch={false}
+                              rel="noreferrer"
+                              size="sm"
+                              target="_blank"
+                              variant="secondary"
+                            >
+                              NC PDF
+                            </ButtonLink>
+                          ) : null}
+                          {item.saleId && item.hasFiscalIdentity && !item.debitNoteCae ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/billing/debit-note/${item.saleId}`}
+                              size="sm"
+                              variant="secondary"
+                            >
+                              Nota debito
+                            </ButtonLink>
+                          ) : null}
+                          {item.debitNoteId && item.debitNoteCae ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/api/pdfs/fiscal/notes/${item.debitNoteId}`}
+                              prefetch={false}
+                              rel="noreferrer"
+                              size="sm"
+                              target="_blank"
+                              variant="secondary"
+                            >
+                              ND PDF
+                            </ButtonLink>
+                          ) : null}
+                          {item.deliveryId ? (
+                            <ButtonLink
+                              className="w-full"
+                              href={`/api/pdfs/deliveries/${item.deliveryId}?prices=1`}
+                              prefetch={false}
+                              rel="noreferrer"
+                              size="sm"
+                              target="_blank"
+                              variant="secondary"
+                            >
+                              Remito PDF
+                            </ButtonLink>
+                          ) : null}
+                        </div>
+                      </details>
                     </DataTableCell>
                   </DataTableRow>
                 ))
@@ -363,9 +370,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
             query=""
             totalPages={ledger.meta.totalPages}
             extraParams={{
-              cliente: params.cliente,
-              nro_id: params.nro_id,
-              nro_factura: params.nro_factura,
+              q: params.q,
               tipo_factura: params.tipo_factura,
               cobro: params.cobro,
               seguimiento: params.seguimiento,

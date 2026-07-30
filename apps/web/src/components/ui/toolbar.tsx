@@ -10,7 +10,7 @@ export function Toolbar({ ariaLabel = "Herramientas", className, ...props }: Too
     <div
       aria-label={ariaLabel}
       className={cn(
-        "flex flex-col gap-4 rounded-[14px] border border-[#dbe4ef] bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03),0_10px_24px_rgba(15,23,42,0.045)] sm:p-5 md:flex-row md:flex-wrap md:items-center md:justify-between",
+        "flex min-h-[4.25rem] flex-col gap-3 rounded-[var(--radius-lg)] border border-[color:var(--border)] bg-[color:var(--panel)] p-3 shadow-[var(--shadow-xs)] md:flex-row md:flex-wrap md:items-center md:justify-between",
         className,
       )}
       role="region"

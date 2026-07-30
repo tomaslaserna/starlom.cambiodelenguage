@@ -1,9 +1,8 @@
 import { ModulePage } from "@/components/module-page";
+import { MetricIcon } from "@/components/metric-icon";
 import { redirect } from "next/navigation";
 import { formatCurrency, formatDate } from "@/lib/format";
 import {
-  listPurchaseFormProducts,
-  listPurchaseFormSuppliers,
   listPurchaseItemsByPurchaseIds,
   listPurchases,
 } from "@/lib/purchases";
@@ -49,7 +48,6 @@ import {
 import { PurchaseEntryFields } from "@/app/purchases/purchase-entry-fields";
 import { PurchaseReceiptUpload } from "@/app/purchases/purchase-receipt-upload";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
-import { getReplenishmentSuggestions } from "@/lib/replenishment";
 
 type PurchasesPageProps = {
   searchParams: Promise<{
@@ -57,7 +55,8 @@ type PurchasesPageProps = {
     status?: string;
     type?: string;
     view?: string;
-    mrpSupplier?: string;
+    error?: string;
+    message?: string;
   }>;
 };
 
@@ -141,6 +140,9 @@ function packageStatusTone(value: string): StatusBadgeTone {
   return "neutral";
 }
 
+const purchaseActionItemClass =
+  "block min-h-9 w-full appearance-none rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold leading-5 text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--hover)] hover:text-[color:var(--accent-strong)]";
+
 export default async function PurchasesPage({ searchParams }: PurchasesPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [PURCHASES_READ_PERMISSION]);
@@ -151,33 +153,16 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   const viewParam = params.view?.trim() ?? "";
   const view = viewForParams(type, viewParam);
   const today = localDateIso();
+  const showCreateForm = view === purchaseViews.nueva;
+  const showRegistry = !showCreateForm;
   const [canCreatePurchases, canEditPurchases, canDeleteRecords] = await Promise.all([
     sessionAllows(session, [PURCHASES_CREATE_PERMISSION]),
     sessionAllows(session, [PURCHASES_EDIT_PERMISSION]),
-    sessionCanDeleteOperationalRecords(session),
+    showRegistry ? sessionCanDeleteOperationalRecords(session) : Promise.resolve(false),
   ]);
-  const showCreateForm = view === purchaseViews.nueva && canCreatePurchases;
-  const showRegistry = view !== purchaseViews.nueva;
-  const [allPurchases, suppliers, products] = await Promise.all([
-    listPurchases(session.companyId),
-    showCreateForm ? listPurchaseFormSuppliers(session.companyId) : Promise.resolve([]),
-    showCreateForm ? listPurchaseFormProducts(session.companyId) : Promise.resolve([]),
+  const [allPurchases] = await Promise.all([
+    showRegistry ? listPurchases(session.companyId) : Promise.resolve([]),
   ]);
-
-  // Precarga desde Recompra MRP: el detalle sugerido del proveedor entra al form editable.
-  const mrpSupplierId = params.mrpSupplier?.trim() ?? "";
-  let initialSupplierId = "";
-  let initialLines: { productId: string; quantity: number }[] = [];
-  if (showCreateForm && mrpSupplierId) {
-    const suggestions = await getReplenishmentSuggestions(session.companyId);
-    const supplierItems = suggestions.items.filter(
-      (item) => item.supplierId === mrpSupplierId && item.suggestedQuantity > 0,
-    );
-    if (supplierItems.length) {
-      initialSupplierId = mrpSupplierId;
-      initialLines = supplierItems.map((item) => ({ productId: item.productId, quantity: item.suggestedQuantity }));
-    }
-  }
   const purchases = showRegistry
     ? allPurchases.filter(
         (item) =>
@@ -209,37 +194,40 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
           title={view.title}
         />
 
-        {showCreateForm ? (
+        {params.error === "1" ? (
+          <div
+            className="rounded-lg border border-[color:var(--danger)] bg-[color:var(--danger-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--danger)]"
+            role="alert"
+          >
+            {params.message ?? "No se pudo borrar la compra."}
+          </div>
+        ) : null}
+
+        {showCreateForm && canCreatePurchases ? (
           <Card className="p-4">
             <form action={createPurchaseAction} className="grid gap-4">
-              <PurchaseEntryFields
-                defaultDate={today}
-                initialLines={initialLines}
-                initialSupplierId={initialSupplierId}
-                products={products}
-                suppliers={suppliers}
-              />
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,180px)_minmax(0,160px)_minmax(0,180px)_minmax(260px,1fr)_auto] lg:items-end">
-                <Field className="min-w-0" htmlFor="purchase-total" label="Total">
-                  <Input id="purchase-total" min="0" name="total" required step="0.01" type="number" />
+              <PurchaseEntryFields defaultDate={today} />
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12 xl:items-end">
+                <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-total" label="Total">
+                  <Input className="w-full min-w-0" id="purchase-total" min="0" name="total" required step="0.01" type="number" />
                 </Field>
-                <Field className="min-w-0" htmlFor="purchase-tax-mode" label="IVA">
-                  <Select id="purchase-tax-mode" name="taxMode" defaultValue="con_iva">
+                <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-tax-mode" label="IVA">
+                  <Select className="w-full min-w-0" id="purchase-tax-mode" name="taxMode" defaultValue="con_iva">
                     <option value="con_iva">Con IVA</option>
                     <option value="sin_iva">Sin IVA</option>
                   </Select>
                 </Field>
-                <Field className="min-w-0" htmlFor="purchase-vat-rate" label="Alicuota">
-                  <Select id="purchase-vat-rate" name="vatRate" defaultValue="21">
+                <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-vat-rate" label="Alicuota">
+                  <Select className="w-full min-w-0" id="purchase-vat-rate" name="vatRate" defaultValue="21">
                     <option value="21">21%</option>
                     <option value="10.5">10,5%</option>
                     <option value="0">0%</option>
                   </Select>
                 </Field>
-                <Field className="min-w-0" htmlFor="purchase-description" label="Descripcion">
-                  <Input id="purchase-description" name="description" placeholder="Detalle o referencia interna" />
+                <Field className="min-w-0 md:col-span-2 xl:col-span-4" htmlFor="purchase-description" label="Descripcion">
+                  <Input className="w-full min-w-0" id="purchase-description" name="description" placeholder="Detalle o referencia interna" />
                 </Field>
-                <Button type="submit">Crear compra</Button>
+                <Button className="w-full xl:col-span-2" type="submit">Crear compra</Button>
               </div>
             </form>
           </Card>
@@ -256,6 +244,12 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
 
         {showRegistry ? (
           <>
+            <div className="grid gap-3 md:grid-cols-3">
+              <StatCard icon={<MetricIcon name="purchase" />} label="Compras filtradas" tone="accent" value={purchases.length} />
+              <StatCard icon={<MetricIcon name="money" />} label="Total filtrado" tone="success" value={formatCurrency(total)} />
+              <StatCard icon={<MetricIcon name="wallet" />} label="Saldo abierto" tone={openBalance > 0 ? "warning" : "success"} value={formatCurrency(openBalance)} />
+            </div>
+
             <Toolbar ariaLabel="Filtros de compras">
               <form
                 action="/purchases"
@@ -287,12 +281,6 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
               </form>
             </Toolbar>
 
-            <div className="grid gap-3 md:grid-cols-3">
-              <StatCard className="p-3" label="Compras filtradas" value={purchases.length} />
-              <StatCard className="p-3" label="Total filtrado" value={formatCurrency(total)} />
-              <StatCard className="p-3" label="Saldo abierto" value={formatCurrency(openBalance)} />
-            </div>
-
             <Card className="overflow-hidden">
               <DataTable
                 caption="Listado de compras filtradas"
@@ -303,15 +291,15 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
               >
                 <DataTableHeader>
                   <DataTableRow className="hover:bg-transparent">
-                    <DataTableHead className="w-[14%]">Compra</DataTableHead>
-                    <DataTableHead className="w-[16%]">Proveedor</DataTableHead>
-                    <DataTableHead className="w-[9%]">Fecha</DataTableHead>
-                    <DataTableHead className="w-[10%]">Estado</DataTableHead>
-                    <DataTableHead className="w-[10%]">Paquete</DataTableHead>
-                    <DataTableHead align="right" className="w-[9%]">Total</DataTableHead>
-                    <DataTableHead align="right" className="w-[9%]">Pagado</DataTableHead>
-                    <DataTableHead align="right" className="w-[9%]">Saldo</DataTableHead>
-                    <DataTableHead className="w-[14%]">Acciones</DataTableHead>
+                    <DataTableHead className="w-[12%] px-2">Compra</DataTableHead>
+                    <DataTableHead className="w-[19%] px-2">Proveedor</DataTableHead>
+                    <DataTableHead className="w-[9%] px-2">Fecha</DataTableHead>
+                    <DataTableHead className="w-[10%] px-2">Estado</DataTableHead>
+                    <DataTableHead className="w-[10%] px-2">Paquete</DataTableHead>
+                    <DataTableHead align="right" className="w-[9%] px-2">Total</DataTableHead>
+                    <DataTableHead align="right" className="w-[9%] px-2">Pagado</DataTableHead>
+                    <DataTableHead align="right" className="w-[9%] px-2">Saldo</DataTableHead>
+                    <DataTableHead className="w-[13%] px-2">Acciones</DataTableHead>
                   </DataTableRow>
                 </DataTableHeader>
                 <DataTableBody>
@@ -326,6 +314,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                     </DataTableRow>
                   ) : (
                     purchases.map((purchase) => {
+                      const purchaseCode = purchase.id.slice(0, 8).toUpperCase();
                       const statusSelectId = `purchase-${purchase.id}-status`;
                       const paymentDateInputId = `purchase-${purchase.id}-payment-date`;
                       const paymentAmountInputId = `purchase-${purchase.id}-payment-amount`;
@@ -333,69 +322,76 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
 
                       return (
                         <DataTableRow key={purchase.id}>
-                          <DataTableCell>
-                            <div className="break-all font-mono text-xs">#{purchase.id}</div>
-                            <div className="mt-1 text-xs text-[color:var(--muted)]">
+                          <DataTableCell className="px-2 py-2">
+                            <div className="truncate font-mono text-xs font-black">#{purchaseCode}</div>
+                            <div className="mt-1 truncate text-xs text-[color:var(--muted)]" title={purchase.description || ""}>
                               {purchase.description || "-"}
                             </div>
                             <div className="mt-1 text-xs font-semibold text-[color:var(--muted)]">
                               {purchase.taxMode === "sin_iva" ? "Sin IVA" : `IVA ${purchase.vatRate}% incluido`}
                             </div>
                           </DataTableCell>
-                          <DataTableCell>
-                            <div className="font-medium">{purchase.supplierName || "Sin proveedor"}</div>
+                          <DataTableCell className="px-2 py-2">
+                            <div className="truncate font-medium" title={purchase.supplierName || "Sin proveedor"}>
+                              {purchase.supplierName || "Sin proveedor"}
+                            </div>
                           </DataTableCell>
-                          <DataTableCell className="whitespace-nowrap">{formatDate(purchase.date)}</DataTableCell>
-                          <DataTableCell>
+                          <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">{formatDate(purchase.date)}</DataTableCell>
+                          <DataTableCell className="px-2 py-2">
                             <StatusBadge tone={purchaseStatusTone(purchase.status)}>
                               {statusLabel(purchase.status)}
                             </StatusBadge>
                           </DataTableCell>
-                          <DataTableCell>
+                          <DataTableCell className="px-2 py-2">
                             <StatusBadge tone={packageStatusTone(purchase.packageStatus)}>
                               {statusLabel(purchase.packageStatus)}
                             </StatusBadge>
                           </DataTableCell>
-                          <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                          <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
                             {formatCurrency(purchase.total)}
                           </DataTableCell>
-                          <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                          <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
                             {formatCurrency(purchase.paidAmount)}
                           </DataTableCell>
-                          <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
+                          <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
                             {formatCurrency(purchase.balance)}
                           </DataTableCell>
-                          <DataTableCell>
-                            <details className="rounded-[8px] border border-[color:var(--border)] bg-[color:var(--panel)] p-2">
-                              <summary className="flex min-h-[var(--control-height-md)] cursor-pointer list-none select-none items-center justify-center rounded-[var(--radius-md)] bg-[color:var(--accent)] px-4 font-black text-white shadow-sm [&::-webkit-details-marker]:hidden">
+                          <DataTableCell className="px-2 py-2">
+                            <details className="erp-action-menu">
+                              <summary>
                                 Acciones
                               </summary>
-                              <div className="mt-2 grid min-w-0 gap-2">
-                              <div className="grid gap-2">
-                                <ButtonLink
+                              <div className="grid min-w-0 gap-1">
+                              <div className="grid gap-0.5">
+                                <a
                                   aria-label={`Abrir orden de compra PDF ${purchase.id}`}
-                                  className="w-full"
+                                  className={purchaseActionItemClass}
                                   href={`/api/pdfs/purchases/${purchase.id}/order`}
-                                  prefetch={false}
                                   rel="noreferrer"
-                                  size="sm"
                                   target="_blank"
-                                  variant="secondary"
                                 >
-                                  OC PDF
-                                </ButtonLink>
-                                <ButtonLink
+                                  Orden de compra PDF
+                                </a>
+                                <a
                                   aria-label={`Abrir solicitud de devolucion PDF ${purchase.id}`}
-                                  className="w-full"
+                                  className={purchaseActionItemClass}
                                   href={`/api/pdfs/purchases/${purchase.id}/return-request`}
-                                  prefetch={false}
                                   rel="noreferrer"
-                                  size="sm"
                                   target="_blank"
-                                  variant="secondary"
                                 >
-                                  Devol.
-                                </ButtonLink>
+                                  Solicitud de devolucion
+                                </a>
+                                {purchase.receiptPhoto ? (
+                                  <a
+                                    aria-label={`Abrir recibo de compra ${purchase.id}`}
+                                    className={purchaseActionItemClass}
+                                    href={purchase.receiptPhoto}
+                                    rel="noreferrer"
+                                    target="_blank"
+                                  >
+                                    Ver recibo
+                                  </a>
+                                ) : null}
                               </div>
                               {canDeleteRecords ? (
                                 <form action={deletePurchaseAction}>

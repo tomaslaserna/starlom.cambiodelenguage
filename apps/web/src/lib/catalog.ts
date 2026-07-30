@@ -1,4 +1,5 @@
 import { queryWithCompanyContext } from "@/lib/db";
+import { saleReservesStockSql } from "@/lib/order-status";
 import { parsePagination } from "@/lib/pagination";
 import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
 import { calculateProductProfit } from "@/lib/product-profit";
@@ -41,28 +42,6 @@ export type Product = {
   prices: ProductPrice[];
 };
 
-export type ProductSalePrice = {
-  id: string;
-  code: string;
-  category: string;
-  name: string;
-  cost: number;
-  prices: Record<string, number>;
-};
-
-export type SalePricesResult = {
-  lists: string[];
-  data: ProductSalePrice[];
-  meta: {
-    companyId: number;
-    query: string;
-    page: number;
-    pageSize: number;
-    total: number;
-    totalPages: number;
-  };
-};
-
 type ListInput = {
   companyId?: number;
   query?: string | null;
@@ -82,32 +61,7 @@ type ListResult<T> = {
   };
 };
 
-export type ProductStockTotals = {
-  outOfStock: number;
-  negativeStock: number;
-  inventoryValue: number;
-};
-
-export type ProductsResult = ListResult<Product> & {
-  stockTotals: ProductStockTotals;
-};
-
 const DEFAULT_COMPANY_ID = 1;
-
-// Stock real por producto, derivado de los movimientos. Se reutiliza en la
-// consulta paginada y en el agregado de totales para que no diverjan.
-const STOCK_MOVEMENTS_LATERAL = `
-      LEFT JOIN LATERAL (
-        SELECT SUM(
-          CASE
-            WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
-            ELSE -sm.quantity
-          END
-        ) AS stock_real
-        FROM stock_movements sm
-        WHERE sm.empresa_id = p.empresa_id
-          AND sm.product_id = p.id
-      ) stock ON true`;
 
 function searchPattern(query: string) {
   return `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
@@ -213,106 +167,7 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
   };
 }
 
-export async function listSalePrices(input: ListInput = {}): Promise<SalePricesResult> {
-  const companyId = input.companyId ?? DEFAULT_COMPANY_ID;
-  const query = input.query?.trim() ?? "";
-  const pagination = parsePagination(input);
-
-  const listsResult = await queryWithCompanyContext<{ nombre: string }>(
-    companyId,
-    `SELECT nombre FROM listas_precio WHERE empresa_id = $1 AND activa = 1 ORDER BY id ASC`,
-    [companyId],
-  );
-  const lists = listsResult.rows.map((row) => row.nombre);
-
-  const params: unknown[] = [companyId];
-  const filters = ["p.empresa_id = $1", "p.active = true"];
-  if (query) {
-    params.push(searchPattern(query));
-    filters.push(
-      `(p.name ILIKE $${params.length} ESCAPE '\\' OR p.sku ILIKE $${params.length} ESCAPE '\\' OR p.category ILIKE $${params.length} ESCAPE '\\' OR p.category_code ILIKE $${params.length} ESCAPE '\\')`,
-    );
-  }
-  const where = filters.join(" AND ");
-
-  const countResult = await queryWithCompanyContext<{ total: string }>(
-    companyId,
-    `SELECT COUNT(*)::text AS total FROM products p WHERE ${where}`,
-    params,
-  );
-
-  params.push(pagination.pageSize, pagination.offset);
-  const rows = await queryWithCompanyContext<{
-    id: string;
-    code: string;
-    category: string | null;
-    name: string;
-    cost: string | null;
-    list_prices: Record<string, string | number> | null;
-  }>(
-    companyId,
-    `
-      SELECT p.id::text AS id,
-             COALESCE(p.sku, p.category_code, '') AS code,
-             p.category,
-             p.name,
-             p.cost,
-             COALESCE(price_map.list_prices, '{}'::jsonb) AS list_prices
-      FROM products p
-      LEFT JOIN margenes m
-        ON m.empresa_id = p.empresa_id
-       AND m.codigo = ${productMarginCodeExpression("p")}
-      LEFT JOIN LATERAL (
-        SELECT jsonb_object_agg(
-          lp.nombre,
-          COALESCE(
-            NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(ml.multiplicador, 1), 2), 0),
-            NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
-            p.sale_price,
-            p.cost,
-            0
-          )
-        ) AS list_prices
-        FROM listas_precio lp
-        LEFT JOIN margenes_listas ml
-          ON ml.empresa_id = lp.empresa_id
-         AND ml.lista_id = lp.id
-         AND ml.codigo = ${productMarginCodeExpression("p")}
-        WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1
-      ) price_map ON true
-      WHERE ${where}
-      ORDER BY p.name ASC, p.id ASC
-      LIMIT $${params.length - 1} OFFSET $${params.length}
-    `,
-    params,
-  );
-
-  const total = Number.parseInt(countResult.rows[0]?.total ?? "0", 10);
-
-  return {
-    lists,
-    data: rows.rows.map((row) => ({
-      id: row.id,
-      code: row.code,
-      category: row.category ?? "",
-      name: row.name,
-      cost: Number(row.cost ?? 0),
-      prices: Object.fromEntries(
-        Object.entries(row.list_prices ?? {}).map(([name, value]) => [name, Number(value)]),
-      ),
-    })),
-    meta: {
-      companyId,
-      query,
-      page: pagination.page,
-      pageSize: pagination.pageSize,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / pagination.pageSize)),
-    },
-  };
-}
-
-export async function listProducts(input: ListInput = {}): Promise<ProductsResult> {
+export async function listProducts(input: ListInput = {}): Promise<ListResult<Product>> {
   const companyId = input.companyId ?? DEFAULT_COMPANY_ID;
   const query = input.query?.trim() ?? "";
   const pagination = parsePagination(input);
@@ -327,21 +182,12 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
   }
 
   const where = filters.join(" AND ");
-  const countResult = await queryWithCompanyContext<{
-    total: string;
-    out_of_stock: string;
-    negative_stock: string;
-    inventory_value: string;
-  }>(
+  const countResult = await queryWithCompanyContext<{ total: string }>(
     companyId,
     `
-      SELECT
-        COUNT(*)::text AS total,
-        COUNT(*) FILTER (WHERE COALESCE(stock.stock_real, 0) = 0)::text AS out_of_stock,
-        COUNT(*) FILTER (WHERE COALESCE(stock.stock_real, 0) < 0)::text AS negative_stock,
-        COALESCE(SUM(GREATEST(COALESCE(stock.stock_real, 0), 0) * COALESCE(p.cost, 0)), 0)::text AS inventory_value
+      SELECT COUNT(*)::text AS total
       FROM products p
-      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id${STOCK_MOVEMENTS_LATERAL}
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
       WHERE ${where}
     `,
     params,
@@ -371,8 +217,8 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
         p.name,
         p.cost,
         COALESCE(stock.stock_real, 0)::text AS stock_real,
-        0::text AS reserved,
-        COALESCE(stock.stock_real, 0)::text AS available,
+        COALESCE(reserved.reserved, 0)::text AS reserved,
+        (COALESCE(stock.stock_real, 0) - COALESCE(reserved.reserved, 0))::text AS available,
         COALESCE(price_map.list_prices, '[]'::jsonb) AS list_prices,
         COALESCE(
           NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
@@ -405,7 +251,28 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
          AND ml.lista_id = lp.id
          AND ml.codigo = ${productMarginCodeExpression("p")}
         WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1
-      ) price_map ON true${STOCK_MOVEMENTS_LATERAL}
+      ) price_map ON true
+      LEFT JOIN LATERAL (
+        SELECT SUM(
+          CASE
+            WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
+            ELSE -sm.quantity
+          END
+        ) AS stock_real
+        FROM stock_movements sm
+        WHERE sm.empresa_id = p.empresa_id
+          AND sm.product_id = p.id
+      ) stock ON true
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(si.quantity), 0) AS reserved
+        FROM sale_items si
+        JOIN sales sale
+          ON sale.id = si.sale_id
+         AND sale.empresa_id = si.empresa_id
+        WHERE si.empresa_id = p.empresa_id
+          AND si.product_id = p.id
+          AND ${saleReservesStockSql("sale")}
+      ) reserved ON true
       WHERE ${where}
       ORDER BY p.name ASC, p.id ASC
       LIMIT $${params.length - 1} OFFSET $${params.length}
@@ -413,13 +280,7 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
     params,
   );
 
-  const totalsRow = countResult.rows[0];
-  const total = Number.parseInt(totalsRow?.total ?? "0", 10);
-  const stockTotals: ProductStockTotals = {
-    outOfStock: Number.parseInt(totalsRow?.out_of_stock ?? "0", 10),
-    negativeStock: Number.parseInt(totalsRow?.negative_stock ?? "0", 10),
-    inventoryValue: Number(totalsRow?.inventory_value ?? "0"),
-  };
+  const total = Number.parseInt(countResult.rows[0]?.total ?? "0", 10);
 
   return {
     data: rows.rows.map((row) => ({
@@ -443,6 +304,5 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
       total,
       totalPages: Math.max(1, Math.ceil(total / pagination.pageSize)),
     },
-    stockTotals,
   };
 }

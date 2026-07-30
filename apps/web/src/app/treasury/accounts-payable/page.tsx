@@ -77,7 +77,7 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
           <DataTable
             caption="Cuentas pendientes de pago"
             className="rounded-none border-0 shadow-none"
-            minWidth="1080px"
+            minWidth="1120px"
             tableLabel="Cuentas por pagar"
             tableProps={{ className: "table-fixed" }}
           >
@@ -85,11 +85,11 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
                 <DataTableRow className="hover:bg-transparent">
                   <DataTableHead className="w-[11%]">Fecha</DataTableHead>
                   <DataTableHead className="w-[16%]">Origen</DataTableHead>
-                  <DataTableHead className="w-[25%]">Concepto</DataTableHead>
+                  <DataTableHead className="w-[23%]">Concepto</DataTableHead>
                   <DataTableHead className="w-[10%]">Estado</DataTableHead>
                   <DataTableHead align="right" className="w-[12%]">Saldo</DataTableHead>
-                  <DataTableHead align="right" className="w-[14%]">Programado</DataTableHead>
-                  <DataTableHead className="w-[12%]">Acciones</DataTableHead>
+                  <DataTableHead align="right" className="w-[13%]">Programado</DataTableHead>
+                  <DataTableHead align="center" className="w-[15%] px-2">Acciones</DataTableHead>
                 </DataTableRow>
               </DataTableHeader>
               <DataTableBody>
@@ -126,28 +126,30 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
                           "-"
                         )}
                       </DataTableCell>
-                      <DataTableCell>
+                      <DataTableCell align="center" className="min-w-[10rem] px-2 py-2">
                         {item.source === "compra" && item.balance > item.scheduledAmount ? (
-                          <details className="rounded-[8px] border border-[color:var(--border)] bg-[color:var(--panel)] p-2">
-                            <summary className="flex min-h-[var(--control-height-md)] cursor-pointer list-none select-none items-center justify-center rounded-[var(--radius-md)] bg-[color:var(--accent)] px-4 font-black text-white shadow-sm [&::-webkit-details-marker]:hidden">
+                          <details className="erp-action-menu w-full">
+                            <summary>
                               Programar
                             </summary>
-                            <form action={programSupplierPaymentAction} className="mt-2 grid gap-2">
+                            <form action={programSupplierPaymentAction} className="grid min-w-0 gap-2">
                               <input name="id" type="hidden" value={item.id} />
                               <input name="notes" type="hidden" value="Programado desde cuentas por pagar" />
                               <Field className="gap-1" htmlFor={`payable-${item.id}-amount`} label="Monto">
                                 <Input
-                                  defaultValue={(item.balance - item.scheduledAmount).toFixed(2)}
+                                  className="min-w-0 px-2 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                  defaultValue={Math.round(item.balance - item.scheduledAmount)}
                                   id={`payable-${item.id}-amount`}
                                   min="0"
                                   name="amount"
                                   required
-                                  step="0.01"
+                                  step="1"
                                   type="number"
                                 />
                               </Field>
                               <Field className="gap-1" htmlFor={`payable-${item.id}-date`} label="Fecha">
                                 <Input
+                                  className="min-w-0 px-2"
                                   defaultValue={item.scheduledDate ?? today}
                                   id={`payable-${item.id}-date`}
                                   name="date"

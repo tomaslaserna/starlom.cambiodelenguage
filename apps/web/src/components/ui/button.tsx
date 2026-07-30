@@ -40,7 +40,7 @@ export function buttonClassName({
   variant?: ButtonVariant;
 }) {
   return cn(
-    "inline-flex max-w-full items-center justify-center gap-2 rounded-[8px] font-semibold leading-none transition-[background-color,border-color,box-shadow,color] active:shadow-none disabled:opacity-55",
+    "inline-flex max-w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] font-bold leading-none transition-[background-color,border-color,box-shadow,color,transform] active:translate-y-px active:shadow-none disabled:translate-y-0 disabled:opacity-55",
     buttonVariantClasses[variant],
     buttonSizeClasses[size],
     className,

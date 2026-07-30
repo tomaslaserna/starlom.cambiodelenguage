@@ -234,11 +234,11 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                             </div>
                           </div>
                         ) : (
-                          <details className="relative rounded-[8px] border border-[color:var(--border)] bg-white">
-                            <summary className="cursor-pointer select-none rounded-[8px] px-2.5 py-1.5 text-xs font-black text-[color:var(--accent-strong)]">
+                          <details className="erp-action-menu">
+                            <summary>
                               Acciones
                             </summary>
-                            <div className="grid gap-0.5 border-t border-[color:var(--border)] p-1">
+                            <div className="grid gap-0.5">
                               {showRegister ? (
                                 <RegisterCollectionDialog
                                   action={registerCollectionAction}

@@ -1,8 +1,8 @@
 # Analisis de tests por flujo - Star_lim
 
-Fecha: 2026-07-09
-Repo: `C:\Users\tomil\Desktop\Star_lim (1)\Star_lim`
-App evaluada: `apps/web`
+Fecha: 2026-07-09  
+Repo: `C:\Users\tomil\Desktop\Star_lim (1)\Star_lim`  
+App evaluada: `apps/web`  
 Base de flujo usada: `docs/project-flow.md`
 
 ## 1. Objetivo
@@ -324,3 +324,4 @@ Estado tecnico actual:
 Veredicto:
 
 El sistema esta sano a nivel build, reglas estaticas, hardening y acceso DB. Todavia no se puede afirmar que "todos los flujos funcionan eficientemente" en runtime porque la matriz admin queda bloqueada por autenticacion `401`. La infraestructura de test para comprobarlo ya quedo implementada.
+

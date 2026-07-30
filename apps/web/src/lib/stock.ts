@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/api-response";
-import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { saleReservesStockSql } from "@/lib/order-status";
 import type { PoolClient } from "pg";
 
 type SaleStockLine = {
@@ -109,8 +109,7 @@ export async function assertSaleStockAvailableForConfirmation(
                WHERE si.empresa_id = p.empresa_id
                  AND si.product_id = p.id
                  AND s.id <> $3::uuid
-                 AND ${normalizedOrderStatusSql("s")} = 'confirmado'
-                 AND COALESCE(s.stock_discounted, false) = false
+                 AND ${saleReservesStockSql("s")}
              ), 0)::text AS reserved_stock
       FROM products p
       LEFT JOIN stock_movements sm ON sm.product_id = p.id AND sm.empresa_id = p.empresa_id
@@ -178,54 +177,6 @@ export async function discountSaleStockOnDelivery(
 
   await client.query(
     "UPDATE sales SET stock_discounted = true, updated_at = now() WHERE id = $1::uuid AND empresa_id = $2",
-    [saleId, companyId],
-  );
-  return true;
-}
-
-export async function restoreSaleStock(
-  client: PoolClient,
-  companyId: number,
-  saleId: string,
-  notes: string,
-) {
-  const sale = await client.query<{ stock_discounted: boolean }>(
-    `
-      SELECT stock_discounted
-      FROM sales
-      WHERE id = $1::uuid AND empresa_id = $2
-      FOR UPDATE
-    `,
-    [saleId, companyId],
-  );
-  if (!sale.rows[0]) throw new ApiError(404, "Venta no encontrada");
-  if (!sale.rows[0].stock_discounted) return false;
-
-  const lines = await client.query<{ product_id: string; quantity: string }>(
-    `
-      SELECT si.product_id::text, SUM(si.quantity)::text AS quantity
-      FROM sale_items si
-      WHERE si.sale_id = $1::uuid
-        AND si.empresa_id = $2
-        AND si.product_id IS NOT NULL
-      GROUP BY si.product_id
-      HAVING SUM(si.quantity) > 0
-    `,
-    [saleId, companyId],
-  );
-
-  for (const line of lines.rows) {
-    await client.query(
-      `
-        INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
-        VALUES ($1::uuid, 'ajuste_positivo', $2, $3, $4)
-      `,
-      [line.product_id, Number(line.quantity), notes, companyId],
-    );
-  }
-
-  await client.query(
-    "UPDATE sales SET stock_discounted = false, updated_at = now() WHERE id = $1::uuid AND empresa_id = $2",
     [saleId, companyId],
   );
   return true;
