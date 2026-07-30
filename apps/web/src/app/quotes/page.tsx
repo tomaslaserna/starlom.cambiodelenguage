@@ -33,6 +33,7 @@ import {
 } from "@/lib/route-auth";
 import { acceptQuoteAction, acceptQuoteAndRemitAction, createQuoteAction } from "@/app/quotes/actions";
 import { QuoteEntryFields } from "@/app/quotes/quote-entry-fields";
+import { QuoteEntryForm } from "@/app/quotes/quote-entry-form";
 
 type QuotesPageProps = {
   searchParams: Promise<{
@@ -127,13 +128,13 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
 
         {canCreateQuotes ? (
         <Card>
-          <form action={createQuoteAction} className="grid gap-4 p-4">
+          <QuoteEntryForm action={createQuoteAction} className="grid gap-4 p-4">
             <QuoteEntryFields
               clients={quoteFormData.clients}
               priceLists={quoteFormData.priceLists}
               products={quoteFormData.products}
             />
-          </form>
+          </QuoteEntryForm>
         </Card>
         ) : null}
 

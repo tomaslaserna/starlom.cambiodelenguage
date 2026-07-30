@@ -212,6 +212,24 @@ test("collections screen lists delivered sales to collect with due dates", () =>
   assert.match(registerDialog, /action=\{action\}/);
 });
 
+test("quote creation uses an action-state form compatible with server-action results", () => {
+  const quotesPage = read("apps/web/src/app/quotes/page.tsx");
+  const quoteEntryForm = read("apps/web/src/app/quotes/quote-entry-form.tsx");
+
+  assert.match(quotesPage, /<QuoteEntryForm action=\{createQuoteAction\}/);
+  assert.doesNotMatch(quotesPage, /<form action=\{createQuoteAction\}/);
+  assert.match(quoteEntryForm, /useActionState\(action, initialCreateQuoteState\)/);
+  assert.match(quoteEntryForm, /previousState: CreateQuoteState, formData: FormData/);
+});
+
+test("table action menu is available through the shared UI entry point", () => {
+  const uiIndex = read("apps/web/src/components/ui/index.ts");
+  const saleRowActions = read("apps/web/src/app/sales/sale-row-actions.tsx");
+
+  assert.match(uiIndex, /export \{ TableActionMenu, tableActionItemClass \} from "\.\/table-action-menu"/);
+  assert.match(saleRowActions, /TableActionMenu, tableActionItemClass/);
+});
+
 test("orders lifecycle delivers loaded orders directly and opens collection only on delivery", () => {
   const orderStatus = read("apps/web/src/lib/order-status.ts");
   assert.match(orderStatus, /"cargado"/);

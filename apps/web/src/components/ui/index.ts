@@ -11,6 +11,7 @@ export { SearchableSelect, type SearchableSelectOption } from "./searchable-sele
 export { SearchableSelectInput } from "./searchable-select-input";
 export { StatCard, type StatCardTone } from "./stat-card";
 export { StatusBadge, type StatusBadgeTone } from "./status-badge";
+export { TableActionMenu, tableActionItemClass } from "./table-action-menu";
 export { Textarea } from "./textarea";
 export { Toolbar } from "./toolbar";
 export { cn } from "./utils";
