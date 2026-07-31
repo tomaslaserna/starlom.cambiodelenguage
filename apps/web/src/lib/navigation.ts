@@ -1,3 +1,4 @@
+import type { AppIconName } from "@/components/ui/app-icon";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
@@ -238,6 +239,7 @@ export const navigationGroups: NavigationGroup[] = [
 
 export type NavigationSection = {
   label: string;
+  icon?: AppIconName;
   groups: NavigationGroup[];
 };
 
@@ -250,10 +252,12 @@ function groupByLabel(label: string) {
 export const navigationSections: NavigationSection[] = [
   {
     label: "Inicio",
+    icon: "chart",
     groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes"), groupByLabel("Banco")],
   },
   {
     label: "Operaciones",
+    icon: "cart",
     groups: [
       groupByLabel("Pedidos"),
       groupByLabel("Registro de ventas"),
@@ -263,14 +267,17 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     label: "Datos",
+    icon: "package",
     groups: [groupByLabel("Precios"), groupByLabel("Base de datos"), groupByLabel("Stock")],
   },
   {
     label: "Compras",
+    icon: "receipt",
     groups: [groupByLabel("Compras")],
   },
   {
     label: "Administracion",
+    icon: "trend",
     groups: [
       groupByLabel("Balance"),
       groupByLabel("RR.HH"),
@@ -282,6 +289,7 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     label: "Finanzas",
+    icon: "money",
     groups: [
       groupByLabel("Sueldos y dividendos"),
       groupByLabel("Caja"),
@@ -291,6 +299,7 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     label: "Cobros y pagos",
+    icon: "wallet",
     groups: [groupByLabel("Cobros y pagos")],
   },
 ];

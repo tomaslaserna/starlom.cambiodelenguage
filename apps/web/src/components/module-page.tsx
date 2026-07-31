@@ -39,15 +39,27 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: 
 }
 
 function BrandBlock({ title }: { title?: string }) {
+  // Con título = header mobile (compacto, alineado a la izquierda junto al menú).
+  if (title) {
+    return (
+      <Link className="flex min-w-0 flex-1 items-center gap-3" href="/">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[#d9e2ef] bg-white p-2 shadow-[0_8px_18px_rgba(15,23,42,0.07)]">
+          <Image src="/starlim-logo.png" alt="Starlim" width={30} height={30} />
+        </span>
+        <span className="min-w-0">
+          <span className="erp-text-caption block font-semibold uppercase text-white">Starlim</span>
+          <span className="erp-text-title-sm block truncate font-medium text-white/82">{title}</span>
+        </span>
+      </Link>
+    );
+  }
+  // Sin título = marca del sidebar: logo + nombre grande, centrado en el cuadro.
   return (
-    <Link className="flex min-w-0 flex-1 items-center gap-3" href="/">
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[#d9e2ef] bg-white p-2 shadow-[0_8px_18px_rgba(15,23,42,0.07)]">
-        <Image src="/starlim-logo.png" alt="Starlim" width={30} height={30} />
+    <Link className="flex items-center justify-center gap-3 py-1" href="/">
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] border border-[#d9e2ef] bg-white p-2 shadow-[0_8px_18px_rgba(15,23,42,0.07)]">
+        <Image src="/starlim-logo.png" alt="Starlim" width={34} height={34} />
       </span>
-      <span className="min-w-0">
-        <span className="erp-text-caption block font-semibold uppercase text-white">Starlim</span>
-        {title ? <span className="erp-text-title-sm block truncate font-medium text-white/82">{title}</span> : null}
-      </span>
+      <span className="text-2xl font-black uppercase tracking-wide text-white">Starlim</span>
     </Link>
   );
 }

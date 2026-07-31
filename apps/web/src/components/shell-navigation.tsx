@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { cn } from "@/components/ui";
+import { AppIcon, cn } from "@/components/ui";
 import type {
   NavigationBadgeKey,
   NavigationGroup,
@@ -245,6 +245,7 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
               <span aria-hidden="true" className="erp-text-caption w-3 shrink-0 text-center transition-transform group-open/section:rotate-90">
                 &gt;
               </span>
+              {section.icon ? <AppIcon aria-hidden="true" className="h-4 w-4 shrink-0" name={section.icon} /> : null}
               <span className="min-w-0 flex-1 truncate">{section.label}</span>
               <Badge active={activeSection} value={sectionBadge} />
             </summary>
