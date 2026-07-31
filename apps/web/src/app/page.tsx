@@ -10,11 +10,21 @@ import {
   StatusBadge,
   type StatusBadgeTone,
 } from "@/components/ui";
+import type { AppIconName } from "@/components/ui/app-icon";
 import { completeCalendarTaskAction } from "@/app/calendar/actions";
 import { InicioTabs } from "@/app/inicio-tabs";
 import { requireStaffSession } from "@/lib/auth";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { listMessageCenter, listTasks } from "@/lib/messages";
+import {
+  ORDERS_CREATE_PERMISSION,
+  PRODUCTS_READ_PERMISSION,
+  QUOTES_READ_PERMISSION,
+  sessionAllows,
+  sessionCanReadCollections,
+} from "@/lib/route-auth";
+
+type Shortcut = { href: string; label: string; icon: AppIconName };
 
 type TaskList = Awaited<ReturnType<typeof listTasks>>;
 type PendingTask = TaskList["personal"][number] | TaskList["received"][number];
@@ -162,6 +172,21 @@ export default async function Home() {
   const unreadMessages = allUnread.slice(0, 5);
   const overdueCount = pendingTasks.filter((task) => task.status.toLowerCase().includes("venc")).length;
 
+  const [canCreateOrders, canReadQuotes, canReadProducts, canReadCollections] = await Promise.all([
+    sessionAllows(session, [ORDERS_CREATE_PERMISSION]),
+    sessionAllows(session, [QUOTES_READ_PERMISSION]),
+    sessionAllows(session, [PRODUCTS_READ_PERMISSION]),
+    sessionCanReadCollections(session),
+  ]);
+  const shortcuts: Shortcut[] = [
+    canCreateOrders ? { href: "/orders/new", label: "Cargar pedido", icon: "cart" } : null,
+    canReadQuotes ? { href: "/quotes", label: "Presupuestos", icon: "quote" } : null,
+    canReadProducts ? { href: "/prices", label: "Lista de precios", icon: "package" } : null,
+    canReadCollections ? { href: "/collections", label: "Cobranzas", icon: "wallet" } : null,
+    { href: "/messages", label: "Mensajes", icon: "receipt" },
+    { href: "/calendar", label: "Calendario", icon: "calendar" },
+  ].filter((item): item is Shortcut => item !== null);
+
   return (
     <ModulePage
       active="home"
@@ -175,6 +200,22 @@ export default async function Home() {
           <StatCard icon={<AppIcon className="h-5 w-5" name="clock" />} label="Pendientes para vos" tone="accent" value={pendingTasks.length} />
           <StatCard icon={<AppIcon className="h-5 w-5" name="units" />} label="Delegadas abiertas" tone="info" value={openAssignedTasks.length} />
           <StatCard icon={<AppIcon className="h-5 w-5" name="receipt" />} label="Mensajes sin leer" tone="warning" value={allUnread.length} />
+        </section>
+
+        <section>
+          <h2 className="erp-text-caption font-bold uppercase tracking-wide text-[#64748b]">Accesos rápidos</h2>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {shortcuts.map((shortcut) => (
+              <ButtonLink
+                href={shortcut.href}
+                key={shortcut.href}
+                leadingIcon={<AppIcon className="h-4 w-4" name={shortcut.icon} />}
+                variant="secondary"
+              >
+                {shortcut.label}
+              </ButtonLink>
+            ))}
+          </div>
         </section>
 
         <InicioTabs
