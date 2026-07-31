@@ -5,15 +5,13 @@ import {
   ButtonLink,
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   EmptyState,
   StatCard,
   StatusBadge,
   type StatusBadgeTone,
 } from "@/components/ui";
 import { completeCalendarTaskAction } from "@/app/calendar/actions";
+import { InicioTabs } from "@/app/inicio-tabs";
 import { requireStaffSession } from "@/lib/auth";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { listMessageCenter, listTasks } from "@/lib/messages";
@@ -179,75 +177,68 @@ export default async function Home() {
           <StatCard icon={<AppIcon className="h-5 w-5" name="receipt" />} label="Mensajes sin leer" tone="warning" value={allUnread.length} />
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Pendientes para vos</CardTitle>
-              <CardDescription>Recordatorios propios y tareas asignadas que todavia no estan cerradas.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid max-h-[680px] gap-3 overflow-y-auto overscroll-contain">
-              {pendingTasks.length === 0 ? (
-                <EmptyState title="Sin pendientes" description="No hay recordatorios ni tareas abiertas para tu usuario." />
-              ) : (
-                pendingTasks.map((task) => (
-                  <PendingTaskCard
-                    key={`${"assignedBy" in task ? "tarea" : "recordatorio"}-${task.id}`}
-                    task={task}
-                    type={"assignedBy" in task ? "tarea" : "recordatorio"}
-                  />
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle>Tareas delegadas</CardTitle>
-                <StatusBadge tone={openAssignedTasks.length ? "info" : "neutral"}>
-                  {openAssignedTasks.length} abierta(s)
-                </StatusBadge>
-              </div>
-              <CardDescription>Seguimiento claro de destinatario, vencimiento, prioridad y estado.</CardDescription>
-            </CardHeader>
-            {openAssignedTasks.length === 0 ? (
-              <CardContent>
-                <EmptyState title="Sin tareas delegadas abiertas" description="No hay tareas pendientes asignadas por tu usuario." />
-              </CardContent>
-            ) : (
-              <ul className="max-h-[680px] overflow-y-auto overscroll-contain">
-                {openAssignedTasks.map((task) => (
-                  <AssignedTaskRow key={`delegada-${task.id}`} task={task} />
-                ))}
-              </ul>
-            )}
-          </Card>
-
-          <Card className="xl:col-span-2">
-            <CardHeader>
-              <CardTitle>Mensajes sin leer</CardTitle>
-              <CardDescription>Mensajes internos que todavia no abriste.</CardDescription>
-            </CardHeader>
-            {unreadMessages.length === 0 ? (
-              <CardContent>
-                <EmptyState title="Sin mensajes sin leer" description="No tenes mensajes internos pendientes de leer." />
-              </CardContent>
-            ) : (
-              <>
-                <ul className="grid lg:grid-cols-2">
-                  {unreadMessages.map((message) => (
-                    <UnreadMessageRow key={`mensaje-${message.id}`} message={message} />
-                  ))}
-                </ul>
-                <CardContent>
-                  <ButtonLink href="/messages" size="sm" variant="secondary">
-                    Ver todos los mensajes
-                  </ButtonLink>
-                </CardContent>
-              </>
-            )}
-          </Card>
-        </section>
+        <InicioTabs
+          tabs={[
+            {
+              key: "vos",
+              label: "Para vos",
+              count: pendingTasks.length,
+              content:
+                pendingTasks.length === 0 ? (
+                  <EmptyState title="Sin pendientes" description="No hay recordatorios ni tareas abiertas para tu usuario." />
+                ) : (
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {pendingTasks.map((task) => (
+                      <PendingTaskCard
+                        key={`${"assignedBy" in task ? "tarea" : "recordatorio"}-${task.id}`}
+                        task={task}
+                        type={"assignedBy" in task ? "tarea" : "recordatorio"}
+                      />
+                    ))}
+                  </div>
+                ),
+            },
+            {
+              key: "delegadas",
+              label: "Delegadas",
+              count: openAssignedTasks.length,
+              content:
+                openAssignedTasks.length === 0 ? (
+                  <EmptyState title="Sin tareas delegadas abiertas" description="No hay tareas pendientes asignadas por tu usuario." />
+                ) : (
+                  <Card className="overflow-hidden">
+                    <ul>
+                      {openAssignedTasks.map((task) => (
+                        <AssignedTaskRow key={`delegada-${task.id}`} task={task} />
+                      ))}
+                    </ul>
+                  </Card>
+                ),
+            },
+            {
+              key: "mensajes",
+              label: "Mensajes",
+              count: allUnread.length,
+              content:
+                unreadMessages.length === 0 ? (
+                  <EmptyState title="Sin mensajes sin leer" description="No tenes mensajes internos pendientes de leer." />
+                ) : (
+                  <Card className="overflow-hidden">
+                    <ul className="grid lg:grid-cols-2">
+                      {unreadMessages.map((message) => (
+                        <UnreadMessageRow key={`mensaje-${message.id}`} message={message} />
+                      ))}
+                    </ul>
+                    <CardContent>
+                      <ButtonLink href="/messages" size="sm" variant="secondary">
+                        Ver todos los mensajes
+                      </ButtonLink>
+                    </CardContent>
+                  </Card>
+                ),
+            },
+          ]}
+        />
       </div>
     </ModulePage>
   );
