@@ -1804,4 +1804,10 @@ test("order comprobante flow separates the commercial remito from stock", () => 
   assert.match(documents, /includePrices \? "remito_con_precios" : "remito_sin_precios"/);
   assert.match(documents, /copia \? "COPIA" : "ORIGINAL"/);
   assert.doesNotMatch(documents, /buildOrderRemitoPdf[\s\S]*INSERT INTO/, "the commercial remito must not write to the database");
+
+  const remitoRoute = read("apps/web/src/app/api/pdfs/orders/[id]/remito/route.ts");
+  assert.match(remitoRoute, /requireApiSession\(\[\{ resource: "pedidos", action: "ver" \}\]\)/);
+  assert.match(remitoRoute, /buildOrderRemitoPdf/);
+  assert.match(remitoRoute, /searchParams\.get\("precios"\) === "si"/);
+  assert.match(remitoRoute, /searchParams\.get\("copia"\) === "1"/);
 });
