@@ -12,7 +12,13 @@ const trackedFiles = execFileSync("git", ["ls-files", "--cached", "--others", "-
   .split(/\r?\n/)
   .map((path) => path.trim())
   .filter(Boolean)
-  .filter((path) => path.startsWith("apps/web/") || path.startsWith(".github/") || path.startsWith("migrations/"))
+  .filter(
+    (path) =>
+      path.startsWith("apps/web/") ||
+      path.startsWith(".github/") ||
+      path.startsWith("migrations/") ||
+      path.startsWith("supabase/migrations/"),
+  )
   .filter((path) => !path.includes("/node_modules/") && !path.includes("/.next/") && !path.endsWith("package-lock.json"));
 
 const checks = [

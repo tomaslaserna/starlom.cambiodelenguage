@@ -54,13 +54,19 @@ El esquema activo combina tablas nuevas en ingles con tablas administrativas her
    - `npm run env:check` valida el set local.
    - Falta correr la misma validacion contra variables reales de Vercel/deploy.
 
+   Corte de seguridad aplicado el 2026-08-02:
+   - La migracion `20260801200352_harden_node_runtime_tenant_isolation.sql` quedo registrada en Supabase. El runtime de produccion usa `starlim_app`, un rol sin superusuario ni `BYPASSRLS`.
+   - `SUPABASE_DB_USER` y `SUPABASE_DB_PASS` fueron rotadas como secretos de produccion de Vercel, sin incluir claves en Git. Se redeployo el ultimo artefacto productivo, sin publicar cambios locales de producto.
+   - Se verificaron disponibilidad de login y ausencia de errores de runtime. Queda pendiente la auditoria funcional manual por empresa (lectura y escritura con cada rol).
+
 2. Tests de flujo
    - Existe smoke HTTP base y ya hay usuarios de prueba locales en `.env.smoke`.
    - Falta ampliar smoke a empleados/permisos, cobros, compras, stock y presupuestos.
 
 3. RLS y Data API
-   - La app no depende de Data API para operar.
-   - Si luego se expone acceso directo desde cliente, hay que definir policies por tabla y rol antes de abrir permisos a `anon` o `authenticated`.
+   - La app no depende de Data API para operar y las tablas publicas deben permanecer revocadas para `anon`, `authenticated` y `service_role`.
+   - La politica de runtime queda centralizada en la migracion canonica de `supabase/migrations/`; toda tabla con `empresa_id` o `company_id` se limita a `app.current_empresa_id` y las tablas de identidad solo se habilitan para el rol de servidor.
+   - No habilitar acceso directo desde cliente sin un diseno de policies por usuario/rol distinto del modelo de runtime del servidor.
 
 4. Facturacion fiscal
    - El punto de integracion existe, pero ARCA/CAE esta intencionalmente deshabilitado hasta implementar WSFEv1 real, manejo de errores, reintentos, auditoria y estados fiscales.

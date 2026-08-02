@@ -4,6 +4,7 @@ import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
+import type { PoolClient } from "pg";
 
 function normalizePhoneForWhatsapp(phone: string) {
   const digits = phone.replace(/\D/g, "");
@@ -248,8 +249,19 @@ export function deliveryFromSaleInputFromBody(body: RequestBody) {
   return { saleId };
 }
 
-export async function createDeliveryDocumentFromSale(session: AuthSession, saleId: string) {
-  return withCompanyContext(session.companyId, async (client) => {
+type CreateDeliveryDocumentOptions = {
+  onExisting?: "error" | "return";
+  requireDelivered?: boolean;
+  orderStatus?: string;
+  eventType?: "remito.creado" | "remito_comercial.creado";
+};
+
+export async function createDeliveryDocumentForSale(
+  client: PoolClient,
+  session: AuthSession,
+  saleId: string,
+  options: CreateDeliveryDocumentOptions = {},
+) {
     const sale = await client.query<{
       nombre_cliente: string;
       dni_cliente: string;
@@ -258,6 +270,7 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
       condicion_pago: string;
       vendedor: string;
       lista_precios: string;
+      estado_pedido: string;
     }>(
       `
         SELECT COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
@@ -266,7 +279,8 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
                COALESCE(s.total_amount, 0)::text AS monto,
                COALESCE(s.payment_condition, '') AS condicion_pago,
                COALESCE(s.seller_name, c.seller_name, '') AS vendedor,
-               COALESCE(s.price_list_name, c.price_list_name, '') AS lista_precios
+               COALESCE(s.price_list_name, c.price_list_name, '') AS lista_precios,
+               ${normalizedOrderStatusSql("s")} AS estado_pedido
         FROM sales s
         LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
         WHERE s.id = $1::uuid AND s.empresa_id = $2
@@ -276,12 +290,23 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
     );
     const current = sale.rows[0];
     if (!current) throw new ApiError(404, "Venta no encontrada");
+    if (options.requireDelivered !== false && current.estado_pedido !== "entregado") {
+      throw new ApiError(400, "El remito se emite automaticamente al entregar la venta.");
+    }
 
-    const existing = await client.query<{ id: string }>(
-      "SELECT id::text AS id FROM delivery_documents WHERE sale_id = $1::uuid AND empresa_id = $2 LIMIT 1",
+    // Protege tanto el numero correlativo como la creacion idempotente de un remito por venta.
+    await client.query("SELECT pg_advisory_xact_lock(83011, $1::int)", [session.companyId]);
+
+    const existing = await client.query<{ id: string; delivery_number: string }>(
+      "SELECT id::text AS id, delivery_number::text FROM delivery_documents WHERE sale_id = $1::uuid AND empresa_id = $2 LIMIT 1",
       [saleId, session.companyId],
     );
-    if (existing.rows[0]) throw new ApiError(409, "Esta venta ya tiene un remito");
+    if (existing.rows[0]) {
+      if (options.onExisting === "return") {
+        return { id: existing.rows[0].id, number: Number(existing.rows[0].delivery_number), saleId, created: false };
+      }
+      throw new ApiError(409, "Esta venta ya tiene un remito");
+    }
 
     const lines = await client.query<{
       id: string;
@@ -320,7 +345,7 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
           delivery_date, payment_condition, total_amount, seller_name, order_status,
           created_by, empresa_id
         )
-        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, 'confirmado', $10::uuid, $11)
+        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::uuid, $12)
         RETURNING id::text AS id
       `,
       [
@@ -333,6 +358,7 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
         current.condicion_pago,
         current.monto,
         current.vendedor,
+        options.orderStatus ?? "entregado",
         session.userId,
         session.companyId,
       ],
@@ -363,8 +389,9 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
     }
 
     await client.query(
-      "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ('remito.creado', $1, $2)",
+      "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
       [
+        options.eventType ?? "remito.creado",
         JSON.stringify({
           id: deliveryId,
           nro_remito: deliveryNumber,
@@ -378,9 +405,28 @@ export async function createDeliveryDocumentFromSale(session: AuthSession, saleI
       ],
     );
 
-    clearReadQueryCache();
-    return { id: deliveryId, number: deliveryNumber, saleId };
+    return { id: deliveryId, number: deliveryNumber, saleId, created: true };
+}
+
+export async function createCommercialRemittanceForSale(
+  client: PoolClient,
+  session: AuthSession,
+  saleId: string,
+) {
+  return createDeliveryDocumentForSale(client, session, saleId, {
+    onExisting: "return",
+    requireDelivered: false,
+    orderStatus: "cargado",
+    eventType: "remito_comercial.creado",
   });
+}
+
+export async function createDeliveryDocumentFromSale(session: AuthSession, saleId: string) {
+  const delivery = await withCompanyContext(session.companyId, (client) =>
+    createDeliveryDocumentForSale(client, session, saleId),
+  );
+  clearReadQueryCache();
+  return delivery;
 }
 
 export async function getDeliveryItems(companyId: number, deliveryId: string) {

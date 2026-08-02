@@ -153,6 +153,10 @@ function compactPdfCode(value: string | number | null | undefined) {
   return text || "-";
 }
 
+function deliveryPdfProductName(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLocaleUpperCase("es-AR") || "-";
+}
+
 export async function buildQuotePdf(companyId: number, quoteId: string) {
   const quote = await getQuote(companyId, quoteId);
   const products = asQuoteProducts(quote.products);
@@ -204,6 +208,7 @@ export async function buildQuotePdf(companyId: number, quoteId: string) {
           pdfMoney(subtotal),
         ];
       }),
+      { density: "compact" },
     );
 
     const totals: [string, string][] = [["Subtotal productos", pdfMoney(quote.netAmount)]];
@@ -214,11 +219,12 @@ export async function buildQuotePdf(companyId: number, quoteId: string) {
         [`IVA ${String(quote.vatRate).replace(".", ",")}%`, pdfMoney(quote.vatAmount)],
       );
     }
-    pdf.totals(totals, "Total", pdfMoney(quote.total));
+    pdf.totals(totals, "Total", pdfMoney(quote.total), { density: "compact" });
     pdf.note(
       `Documento no fiscal. ${quote.includeVat ? `IVA ${String(quote.vatRate).replace(".", ",")}% discriminado.` : "IVA no discriminado."} Presupuesto valido hasta la fecha indicada, sujeto a disponibilidad de stock y confirmacion comercial.`,
+      { density: "compact" },
     );
-    pdf.signatures("Por Starlim S.A.S.", "Conformidad del cliente");
+    pdf.signatures("Por Starlim S.A.S.", "Conformidad del cliente", { density: "compact" });
   });
 }
 
@@ -312,8 +318,9 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
     });
 
     pdf.section("Destinatario");
-    pdf.title(remito.nombre_cliente || "Sin cliente", 11);
-    pdf.muted(
+    pdf.title(remito.nombre_cliente || "Sin cliente", 10);
+    pdf.doc.font("Helvetica").fontSize(7.6).fillColor("#5b6661");
+    pdf.doc.text(
       [
         remito.domicilio,
         [remito.ciudad, remito.cliente_provincia].filter(Boolean).join(", "),
@@ -321,21 +328,25 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
       ]
         .filter(Boolean)
         .join(" - "),
+      54,
+      pdf.y,
+      { width: 504, lineGap: 0.6 },
     );
-    const infoY = pdf.y + 16;
+    pdf.doc.fillColor("#1f2421");
+    const infoY = pdf.y + 8;
     pdf.keyValue("Cond. vta.", remito.condicion_pago || "-", 54, infoY, 74, 165);
     pdf.keyValue("Vendedor", remito.vendedor || remito.vendedor_cliente || "-", 318, infoY, 64, 150);
-    pdf.keyValue("Provincia", remito.provincia || "-", 54, infoY + 18, 74, 165);
-    pdf.keyValue("Sucursal", remito.sucursal_cliente || "-", 318, infoY + 18, 64, 150);
-    pdf.setY(infoY + 42);
+    pdf.keyValue("Provincia", remito.provincia || "-", 54, infoY + 15, 74, 165);
+    pdf.keyValue("Sucursal", remito.sucursal_cliente || "-", 318, infoY + 15, 64, 150);
+    pdf.setY(infoY + 31);
 
     const columns = includePrices
       ? [
-          { label: "Cant.", width: 54 },
-          { label: "Codigo", width: 70 },
-          { label: "Descripcion", width: 211 },
+          { label: "Cant.", width: 48 },
+          { label: "Codigo", width: 60 },
+          { label: "Descripcion", width: 218 },
           { label: "P. unit.", width: 84, align: "right" as const },
-          { label: "Importe", width: 85, align: "right" as const },
+          { label: "Importe", width: 94, align: "right" as const },
         ]
       : [
           { label: "Cant.", width: 54 },
@@ -349,13 +360,22 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
       columns,
       detail.rows.map((row) =>
         includePrices
-          ? [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, pdfMoney(Number(row.precio_unit)), pdfMoney(Number(row.subtotal))]
-          : [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, "[ ]"],
+          ? [
+              pdfNumber(Number(row.cantidad)),
+              row.product_code,
+              deliveryPdfProductName(row.nombre),
+              pdfMoney(Number(row.precio_unit)),
+              pdfMoney(Number(row.subtotal)),
+            ]
+          : [pdfNumber(Number(row.cantidad)), row.product_code, deliveryPdfProductName(row.nombre), "[ ]"],
       ),
+      { density: "compact" },
     );
     pdf.totals([["Total de unidades", pdfNumber(totalUnits)]], includePrices ? "Total" : "Control", includePrices ? pdfMoney(totalAmount) : "");
-    pdf.note(remito.observacion || remito.observacion_cliente || "Verificar cantidades y estado de la mercaderia al momento de la recepcion.");
-    pdf.signatures("Preparo / despacho", "Controlo / recibio");
+    pdf.note(remito.observacion || remito.observacion_cliente || "Verificar cantidades y estado de la mercaderia al momento de la recepcion.", {
+      density: "compact",
+    });
+    pdf.signatures("Preparo / despacho", "Controlo / recibio", { density: "compact" });
   });
 }
 
@@ -459,6 +479,7 @@ export async function buildAccountStatementPdf(companyId: number, input: {
         { label: "Saldo", width: 66, align: "right" },
       ],
       rows,
+      { density: "compact" },
     );
     pdf.totals(
       [
@@ -472,8 +493,9 @@ export async function buildAccountStatementPdf(companyId: number, input: {
           ? "Saldo pendiente"
           : "Saldo a favor",
       pdfMoney(balance),
+      { density: "compact" },
     );
-    pdf.note("Este estado refleja los movimientos registrados en Starlim para la entidad y el periodo indicados.");
+    pdf.note("Este estado refleja los movimientos registrados en Starlim para la entidad y el periodo indicados.", { density: "compact" });
   });
 }
 
@@ -531,11 +553,11 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: string
     pdf.infoBox(isCollection ? "Importe recibido" : "Importe pagado", [
       record.concepto || (isCollection ? "Cobro aprobado" : "Pago registrado"),
       pdfMoney(Number(record.monto)),
-    ]);
+    ], 70, { density: "compact" });
     pdf.section("Medio de pago");
     pdf.keyValue("Origen", record.tipo_origen || "-", 54, pdf.y + 2, 70, 160);
     pdf.keyValue("Registro", String(record.id), 318, pdf.y + 2, 70, 130);
-    pdf.setY(pdf.y + 34);
+    pdf.setY(pdf.y + 24);
     pdf.table(
       [
         { label: "Comprobante", width: 207 },
@@ -544,11 +566,12 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: string
         { label: "Aplicado", width: 104, align: "right" },
       ],
       [[record.concepto || `Registro #${record.id}`, pdfDate(record.fecha), pdfMoney(Number(record.monto)), pdfMoney(Number(record.monto))]],
+      { density: "compact" },
     );
     if (record.notas || record.comprobante_nombre) {
-      pdf.note([record.notas, record.comprobante_nombre ? "Comprobante adjunto: si" : ""].filter(Boolean).join(" "));
+      pdf.note([record.notas, record.comprobante_nombre ? "Comprobante adjunto: si" : ""].filter(Boolean).join(" "), { density: "compact" });
     }
-    pdf.signatures(isCollection ? "Recibi conforme - Starlim" : "Autorizo pago - Starlim", "Aclaracion y firma");
+    pdf.signatures(isCollection ? "Recibi conforme - Starlim" : "Autorizo pago - Starlim", "Aclaracion y firma", { density: "compact" });
   });
 }
 
@@ -836,7 +859,7 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
           ["Importe Otros Tributos", pdfMoney(0)],
         ]
       : [["Importe", pdfMoney(amounts.total)], ["Importe Otros Tributos", pdfMoney(0)]];
-    pdf.note(note.reason || `Comprobante asociado a factura ${associated}.`);
+    pdf.note(note.reason || `Comprobante asociado a factura ${associated}.`, { density: "compact" });
     pdf.fiscalSummary(fiscalRows, "Importe Total", pdfMoney(amounts.total));
     pdf.fiscalAuthorizationBox(note.cae, note.cae_expires_at ? pdfDate(note.cae_expires_at) : "-", qrImage);
   });
@@ -868,10 +891,11 @@ export async function buildPurchaseOrderPdf(companyId: number, purchaseId: strin
         { label: "Costo ref.", width: 115, align: "right" },
       ],
       purchase.items.map((item) => [compactPdfCode(item.productId), item.name, pdfNumber(item.quantity), "-"]),
+      { density: "compact" },
     );
-    pdf.totals([["Items", String(purchase.items.length)]], "Total", pdfMoney(purchase.total));
-    pdf.note("Orden emitida desde Starlim. Verificar cantidades, condiciones comerciales y recepcion de mercaderia.");
-    pdf.signatures("Autorizo compra - Starlim", "Proveedor / recepcion");
+    pdf.totals([["Items", String(purchase.items.length)]], "Total", pdfMoney(purchase.total), { density: "compact" });
+    pdf.note("Orden emitida desde Starlim. Verificar cantidades, condiciones comerciales y recepcion de mercaderia.", { density: "compact" });
+    pdf.signatures("Autorizo compra - Starlim", "Proveedor / recepcion", { density: "compact" });
   });
 }
 
@@ -901,9 +925,10 @@ export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseI
         { label: "Motivo", width: 75 },
       ],
       purchase.items.map((item) => [compactPdfCode(item.productId), item.name, pdfNumber(item.quantity), reason || "A revisar"]),
+      { density: "compact" },
     );
-    pdf.note(reason || "Solicitud operativa de devolucion. Confirmar productos y cantidades antes del despacho.");
-    pdf.signatures("Solicita Starlim", "Recibe proveedor");
+    pdf.note(reason || "Solicitud operativa de devolucion. Confirmar productos y cantidades antes del despacho.", { density: "compact" });
+    pdf.signatures("Solicita Starlim", "Recibe proveedor", { density: "compact" });
   });
 }
 
@@ -949,9 +974,9 @@ export async function buildPriceListPdf(companyId: number, list: number) {
         { label: "Precio", width: 125, align: "right" },
       ],
       result.rows.map((row) => [row.codigo || "-", row.nombre, pdfMoney(Number(row.precio))]),
-      { minRowHeight: 20 },
+      { minRowHeight: 14, density: "compact" },
     );
-    pdf.note("Documento informativo no fiscal. Verificar condiciones particulares, descuentos y disponibilidad antes de confirmar una operacion.");
+    pdf.note("Documento informativo no fiscal. Verificar condiciones particulares, descuentos y disponibilidad antes de confirmar una operacion.", { density: "compact" });
   });
 }
 
@@ -1055,8 +1080,9 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
         const available = Number(row.disponible);
         return [row.product_code, row.nombre, pdfNumber(requested), pdfNumber(available), pdfNumber(Math.max(0, requested - available))];
       }),
+      { density: "compact" },
     );
-    pdf.note("Documento operativo para control interno de stock y despacho. Marcar faltantes antes de avanzar el pedido.");
-    pdf.signatures("Preparo deposito", "Controlo administracion");
+    pdf.note("Documento operativo para control interno de stock y despacho. Marcar faltantes antes de avanzar el pedido.", { density: "compact" });
+    pdf.signatures("Preparo deposito", "Controlo administracion", { density: "compact" });
   });
 }

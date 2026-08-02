@@ -30,6 +30,7 @@ import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { calculateQuoteTotals, type QuoteVatRate } from "@/lib/quote-totals";
 import { assertSaleStockAvailableForConfirmation, discountSaleStockOnDelivery } from "@/lib/stock";
+import { createDeliveryDocumentForSale } from "@/lib/deliveries";
 import { localDateIso } from "@/lib/timezone";
 import type { AuthSession } from "@/lib/auth";
 import type { PoolClient } from "pg";
@@ -1077,6 +1078,11 @@ export async function updateOrderStatus(
       updateParams,
     );
 
+    const delivery =
+      nextStatus === "entregado"
+        ? await createDeliveryDocumentForSale(client, session, id, { onExisting: "return" })
+        : null;
+
     await client.query(
       "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
       [
@@ -1090,6 +1096,8 @@ export async function updateOrderStatus(
           estado_anterior: currentStatus,
           estado_nuevo: nextStatus,
           comprobante: confirmationDocument || order.desired_document,
+          remito_id: delivery?.id ?? null,
+          nro_remito: delivery?.number ?? null,
           stock_pendiente_impresion: nextStatus === "confirmado",
           cobro_habilitado: nextStatus === "entregado",
           usuario: session.username,
@@ -1098,7 +1106,7 @@ export async function updateOrderStatus(
       ],
     );
 
-    return { status: nextStatus, stockDiscounted };
+    return { status: nextStatus, stockDiscounted, delivery };
   });
 
   clearReadQueryCache();

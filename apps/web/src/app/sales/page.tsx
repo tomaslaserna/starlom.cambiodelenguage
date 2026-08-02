@@ -70,6 +70,14 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
             {params.message ?? "No se pudo borrar la venta."}
           </div>
         ) : null}
+        {params.message && !params.error ? (
+          <div
+            className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]"
+            role="status"
+          >
+            {params.message}
+          </div>
+        ) : null}
 
         <div className="grid gap-3 md:grid-cols-4">
           <StatCard icon={<MetricIcon name="document" />} label="Comprobantes" tone="accent" value={summary.totalInvoices} />
@@ -103,7 +111,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
           <DataTable
             caption="Listado de ventas entregadas"
             className="rounded-none border-0 shadow-none"
-            minWidth="1040px"
+            minWidth="1140px"
             tableLabel="Ventas"
             tableProps={{ className: "table-fixed" }}
           >
@@ -114,8 +122,8 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                 <DataTableHead className="w-[16%] px-2">Vendedor</DataTableHead>
                 <DataTableHead className="w-[13%] px-2">Fecha</DataTableHead>
                 <DataTableHead className="w-[13%] px-2">Monto</DataTableHead>
-                <DataTableHead align="center" className="w-[10%] px-2">Comprobante</DataTableHead>
-                {canDeleteRecords ? <DataTableHead className="w-[10%] px-2">Acciones</DataTableHead> : null}
+                <DataTableHead align="center" className="w-[14%] px-2">Comprobante</DataTableHead>
+                {canDeleteRecords ? <DataTableHead className="w-[12%] px-2">Acciones</DataTableHead> : null}
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
@@ -154,27 +162,33 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                         {formatCurrency(sale.amount)}
                       </DataTableCell>
                       <DataTableCell align="center" className="px-2 py-2">
-                        <a
-                          aria-label={`Ver PDF de solicitud de la venta ${saleNumberLabel}`}
-                          className="text-xs font-black text-[color:var(--accent-strong)] hover:underline"
-                          href={`/api/pdfs/orders/${sale.id}/request`}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          Ver PDF
-                        </a>
+                        {sale.deliveryNumber ? (
+                          <a
+                            aria-label={`Ver PDF del remito ${sale.deliveryNumber}`}
+                            className="text-xs font-black text-[color:var(--accent-strong)] hover:underline"
+                            href={`/api/pdfs/orders/${sale.id}/document`}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Remito #{String(sale.deliveryNumber).padStart(4, "0")}
+                          </a>
+                        ) : (
+                          <span className="text-xs font-semibold text-[color:var(--muted)]">Sin remito</span>
+                        )}
                       </DataTableCell>
                       {canDeleteRecords ? (
                         <DataTableCell className="px-2 py-2">
-                          <form action={deleteSaleAction}>
-                            <input name="id" type="hidden" value={sale.id} />
-                            <ConfirmDeleteButton
-                              aria-label={`Borrar venta ${saleNumberLabel}`}
-                              className="w-full px-2"
-                              confirmation={`¿Borrar definitivamente la venta #${saleNumberLabel}? Esta acción también elimina sus movimientos relacionados.`}
-                              size="sm"
-                            />
-                          </form>
+                          <div className="grid gap-2">
+                            <form action={deleteSaleAction}>
+                              <input name="id" type="hidden" value={sale.id} />
+                              <ConfirmDeleteButton
+                                aria-label={`Borrar venta ${saleNumberLabel}`}
+                                className="w-full px-2"
+                                confirmation={`¿Borrar definitivamente la venta #${saleNumberLabel}? Esta acción también elimina sus movimientos relacionados.`}
+                                size="sm"
+                              />
+                            </form>
+                          </div>
                         </DataTableCell>
                       ) : null}
                     </DataTableRow>

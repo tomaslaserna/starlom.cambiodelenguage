@@ -692,6 +692,7 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
            v.sale_date::text AS fecha, COALESCE(v.total_amount, 0)::text AS monto, COALESCE(v.payment_condition, '') AS condicion_pago,
            COALESCE(v.collection_status, 'pendiente') AS estado_cobro,
            COALESCE(v.tracking_status, 'no_facturada') AS seguimiento,
+           COALESCE(v.desired_document, 'remito') AS documento_deseado,
            ${normalizedOrderStatusSql("v")} AS estado_pedido,
            COALESCE(v.client_name, '') AS nombre_cliente, COALESCE(v.client_document, '') AS dni_cliente,
            rj.id::text AS id_remito, rj.delivery_number AS nro_remito
@@ -776,6 +777,7 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
              '' AS nota_debito_estado, NULL AS nota_debito_id, '' AS nota_debito_cae, NULL AS nota_debito_pto_vta, NULL AS nota_debito_numero,
              r.delivery_date::text AS fecha, r.total_amount::text AS monto, r.payment_condition AS condicion_pago,
              NULL AS estado_cobro, NULL AS seguimiento,
+             'remito' AS documento_deseado,
              COALESCE(r.order_status, 'entregado') AS estado_pedido,
              r.client_name AS nombre_cliente, r.client_document AS dni_cliente,
              r.id::text AS id_remito, r.delivery_number AS nro_remito
@@ -816,6 +818,7 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
     condicion_pago: string;
     estado_cobro: string | null;
     seguimiento: string | null;
+    documento_deseado: string;
     estado_pedido: string;
     nombre_cliente: string;
     dni_cliente: string;
@@ -872,6 +875,7 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
       paymentCondition: row.condicion_pago,
       collectionStatus: row.estado_cobro || "pendiente",
       trackingStatus: row.seguimiento || "no_facturada",
+      fiscalRequested: row.documento_deseado === "factura",
       orderStatus: row.estado_pedido,
       customerName: row.nombre_cliente,
       customerDocument: row.dni_cliente,
