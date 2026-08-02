@@ -13,6 +13,8 @@ import {
 import type { AppIconName } from "@/components/ui/app-icon";
 import { completeCalendarTaskAction } from "@/app/calendar/actions";
 import { InicioTabs } from "@/app/inicio-tabs";
+import { PizarronBoard } from "@/app/pizarron-board";
+import { boardCoworkers, listBoardNotes } from "@/lib/board";
 import { requireStaffSession } from "@/lib/auth";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { listMessageCenter, listTasks } from "@/lib/messages";
@@ -165,7 +167,12 @@ function UnreadMessageRow({ message }: { message: MessagePreview }) {
 
 export default async function Home() {
   const session = await requireStaffSession();
-  const [tasks, center] = await Promise.all([listTasks(session), listMessageCenter(session)]);
+  const [tasks, center, boardNotes, coworkers] = await Promise.all([
+    listTasks(session),
+    listMessageCenter(session),
+    listBoardNotes(session),
+    boardCoworkers(session),
+  ]);
   const pendingTasks = [...tasks.personal, ...tasks.received].sort((a, b) => urgencyRank(a) - urgencyRank(b));
   const openAssignedTasks = tasks.assigned.filter((task) => !task.completed);
   const allUnread = center.inbox.filter((message) => !message.read);
@@ -277,6 +284,12 @@ export default async function Home() {
                     </CardContent>
                   </Card>
                 ),
+            },
+            {
+              key: "pizarron",
+              label: "Pizarrón",
+              count: boardNotes.length,
+              content: <PizarronBoard coworkers={coworkers} initialNotes={boardNotes} />,
             },
           ]}
         />
