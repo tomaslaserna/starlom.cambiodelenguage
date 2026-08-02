@@ -1796,3 +1796,12 @@ test("local products preview is development-only and isolated from real data", (
   assert.doesNotMatch(previewClient, /\/api\//);
   assert.doesNotMatch(previewClient, /<form|action=/);
 });
+
+test("order comprobante flow separates the commercial remito from stock", () => {
+  const documents = read("apps/web/src/lib/pdf/documents.ts");
+  assert.match(documents, /export async function buildOrderRemitoPdf/);
+  assert.match(documents, /FROM sale_items si/, "the commercial remito reads sale_items, not delivery_document_items");
+  assert.match(documents, /includePrices \? "remito_con_precios" : "remito_sin_precios"/);
+  assert.match(documents, /copia \? "COPIA" : "ORIGINAL"/);
+  assert.doesNotMatch(documents, /buildOrderRemitoPdf[\s\S]*INSERT INTO/, "the commercial remito must not write to the database");
+});

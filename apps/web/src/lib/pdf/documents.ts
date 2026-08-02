@@ -1155,3 +1155,148 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
     pdf.signatures("Preparo deposito", "Controlo administracion");
   });
 }
+
+export async function buildOrderRemitoPdf(
+  companyId: number,
+  orderId: string,
+  options: { includePrices?: boolean; copia?: boolean } = {},
+) {
+  const includePrices = options.includePrices ?? false;
+  const copia = options.copia ?? false;
+
+  const header = await queryWithCompanyContext<{
+    commercial_number: string | null;
+    sale_number: string;
+    receipt_number: number | null;
+    delivery_number: number | null;
+    nombre_cliente: string;
+    dni_cliente: string;
+    fecha: string | null;
+    condicion_pago: string;
+    monto: string;
+    vendedor: string;
+    domicilio: string;
+    ciudad: string;
+    provincia: string;
+    nro_id: string;
+    observacion: string;
+  }>(
+    companyId,
+    `
+      SELECT s.commercial_number::text AS commercial_number,
+             COALESCE(s.sale_number, '') AS sale_number,
+             s.receipt_number,
+             dd.delivery_number,
+             COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
+             COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
+             s.sale_date::text AS fecha,
+             COALESCE(s.payment_condition, '') AS condicion_pago,
+             COALESCE(s.total_amount, 0)::text AS monto,
+             COALESCE(s.seller_name, '') AS vendedor,
+             COALESCE(c.delivery_address, c.address, '') AS domicilio,
+             COALESCE(c.locality, '') AS ciudad,
+             COALESCE(c.province, '') AS provincia,
+             COALESCE(c.tax_id, s.client_document, '') AS nro_id,
+             COALESCE(s.notes, '') AS observacion
+      FROM sales s
+      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
+      WHERE s.id = $1::uuid AND s.empresa_id = $2
+      LIMIT 1
+    `,
+    [orderId, companyId],
+  );
+  const order = header.rows[0];
+  if (!order) throw new ApiError(404, "Pedido no encontrado");
+
+  const detail = await queryWithCompanyContext<{
+    product_code: string;
+    nombre: string;
+    cantidad: string;
+    precio_unit: string;
+    subtotal: string;
+  }>(
+    companyId,
+    `
+      SELECT COALESCE(p.sku, p.category_code, '') AS product_code,
+             COALESCE(si.description, p.name, '(producto eliminado)') AS nombre,
+             si.quantity::text AS cantidad,
+             COALESCE(si.unit_price, 0)::text AS precio_unit,
+             COALESCE(si.total_amount, 0)::text AS subtotal
+      FROM sale_items si
+      LEFT JOIN products p ON p.id = si.product_id AND p.empresa_id = si.empresa_id
+      WHERE si.sale_id = $1::uuid AND si.empresa_id = $2
+      ORDER BY si.id ASC
+    `,
+    [orderId, companyId],
+  );
+
+  const commercialCode = formatSaleCommercialCode({
+    commercialNumber: order.commercial_number,
+    saleNumber: order.sale_number,
+    deliveryNumber: order.delivery_number,
+    legacyRemittanceNumber: order.receipt_number,
+  });
+  const number = commercialCode === "Sin número" ? "Sin número" : commercialCode;
+  const filenamePrefix = includePrices ? "remito_con_precios" : "remito_sin_precios";
+
+  return createPdfFile(`${filenamePrefix}_${safeFilename(number)}.pdf`, ({ pdf }) => {
+    pdf.drawHeader({
+      title: "Remito",
+      code: "R",
+      number,
+      date: pdfDate(order.fecha),
+      extra: [includePrices ? "Documento valorizado" : "Control de mercaderia", copia ? "COPIA" : "ORIGINAL"],
+      footerLeft: includePrices ? "Documento no valido como factura" : "Control de mercaderia - sin valores",
+      footerRight: includePrices ? `Total ${pdfMoney(Number(order.monto))}` : "Deposito",
+    });
+
+    pdf.section("Destinatario");
+    pdf.title(order.nombre_cliente || "Sin cliente", 11);
+    pdf.muted(
+      [
+        order.domicilio,
+        [order.ciudad, order.provincia].filter(Boolean).join(", "),
+        `DNI/CUIT: ${order.nro_id || order.dni_cliente || "-"}`,
+      ]
+        .filter(Boolean)
+        .join(" - "),
+    );
+    const infoY = pdf.y + 16;
+    pdf.keyValue("Cond. vta.", order.condicion_pago || "-", 54, infoY, 74, 165);
+    pdf.keyValue("Vendedor", order.vendedor || "-", 318, infoY, 64, 150);
+    pdf.setY(infoY + 30);
+
+    const columns = includePrices
+      ? [
+          { label: "Cant.", width: 54 },
+          { label: "Codigo", width: 70 },
+          { label: "Descripcion", width: 211 },
+          { label: "P. unit.", width: 84, align: "right" as const },
+          { label: "Importe", width: 85, align: "right" as const },
+        ]
+      : [
+          { label: "Cant.", width: 54 },
+          { label: "Codigo", width: 78 },
+          { label: "Descripcion", width: 312 },
+          { label: "Control", width: 60, align: "center" as const },
+        ];
+    const totalUnits = detail.rows.reduce((sum, row) => sum + Number(row.cantidad), 0);
+    const totalAmount = detail.rows.reduce((sum, row) => sum + Number(row.subtotal), 0);
+    pdf.table(
+      columns,
+      detail.rows.map((row) =>
+        includePrices
+          ? [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, pdfMoney(Number(row.precio_unit)), pdfMoney(Number(row.subtotal))]
+          : [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, "[ ]"],
+      ),
+    );
+    pdf.totals(
+      [["Total de unidades", pdfNumber(totalUnits)]],
+      includePrices ? "Total" : "Control",
+      includePrices ? pdfMoney(totalAmount) : "",
+    );
+    pdf.note(order.observacion || "Verificar cantidades y estado de la mercaderia al momento de la recepcion.");
+    pdf.signatures("Preparo / despacho", "Controlo / recibio");
+  });
+}
