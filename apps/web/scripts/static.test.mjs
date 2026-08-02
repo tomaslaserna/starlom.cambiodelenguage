@@ -1825,3 +1825,11 @@ test("orders register exposes the comprobante sequence with fiscal gating", () =
   assert.match(ordersPage, /copia=1/);
   assert.match(ordersPage, /canInvoice \? /, "the fiscal invoice link must be gated by canInvoice");
 });
+
+test("approving a quote leaves the order loaded with its commercial remito, not a priced delivery", () => {
+  const quoteActions = read("apps/web/src/app/quotes/actions.ts");
+  assert.match(quoteActions, /export async function acceptQuoteAndRemitAction/);
+  assert.doesNotMatch(quoteActions, /createDeliveryDocumentFromSale/, "approval must not create a priced delivery document");
+  assert.doesNotMatch(quoteActions, /redirect\("\/billing/, "approval must not jump to billing to build a remito by hand");
+  assert.match(quoteActions, /redirect\("\/orders\?status=cargado"\)/);
+});
