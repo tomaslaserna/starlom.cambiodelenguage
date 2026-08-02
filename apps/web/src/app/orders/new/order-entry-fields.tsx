@@ -18,6 +18,8 @@ import {
 } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, priceForList, resolvePriceListName } from "@/lib/order-pricing";
+import { offerLineDiscount } from "@/lib/offer-status";
+import type { PriceOffer } from "@/lib/price-offers";
 import { localDateIso } from "@/lib/timezone";
 import { ORDER_CREATION_RECEIPT_OPTIONS, normalizeOrderCreationDocument } from "@/lib/receipt-types";
 import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
@@ -51,6 +53,8 @@ type OrderEntryFieldsProps = {
   offers?: { id: string; title: string; description: string }[];
   offersEnabled?: boolean;
   offersRemaining?: number;
+  comboOffers?: PriceOffer[];
+  offerListNames?: string[];
   submitLabel: string;
 };
 
@@ -73,6 +77,8 @@ export function OrderEntryFields({
   offers = [],
   offersEnabled = true,
   offersRemaining = 0,
+  comboOffers = [],
+  offerListNames = [],
   submitLabel,
 }: OrderEntryFieldsProps) {
   const [customerId, setCustomerId] = useState(initialValue?.customerId ?? "");
@@ -191,6 +197,33 @@ export function OrderEntryFields({
       },
     ]);
     setDraftLine(emptyLine());
+    setDraftError("");
+  }
+
+  function applyOffer(offer: PriceOffer) {
+    const items = offer.items
+      .map((item) => {
+        const product = products.find((candidate) => candidate.id === item.productId);
+        if (!product) return null;
+        const price = priceForList(product.prices, activePriceList);
+        return price > 0 ? { productId: product.id, quantity: item.quantity, price } : null;
+      })
+      .filter((item): item is { productId: string; quantity: number; price: number } => item !== null);
+    if (items.length === 0) {
+      setDraftError(`Los productos de la oferta "${offer.name}" no tienen precio en la lista ${activePriceList}.`);
+      return;
+    }
+    const baseTotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const discount = offerLineDiscount(offer, baseTotal);
+    setLines((current) => [
+      ...current,
+      ...items.map((item) => ({
+        id: `order-line-${lineIdRef.current++}`,
+        productId: item.productId,
+        quantity: String(item.quantity),
+        discount: String(discount),
+      })),
+    ]);
     setDraftError("");
   }
 
@@ -351,6 +384,37 @@ export function OrderEntryFields({
               <span>Lista: {activePriceList}</span>
               <span>Enter en cantidad o descuento agrega el producto.</span>
             </div>
+
+            {comboOffers.length > 0 ? (
+              <div className="border-t border-[color:var(--border)] pt-3">
+                {offerListNames.includes(activePriceList) ? (
+                  <details className="relative">
+                    <summary className="inline-flex h-9 cursor-pointer list-none items-center rounded-[9px] border border-[#d9e2ef] bg-white px-3 text-sm font-bold text-[#2563eb] hover:border-[#2563eb]">
+                      ＋ Agregar oferta
+                    </summary>
+                    <div className="absolute z-20 mt-2 grid max-h-72 w-80 gap-1 overflow-y-auto rounded-[10px] border border-[#d9e2ef] bg-white p-2 shadow-[var(--shadow-lg)]">
+                      {comboOffers.map((offer) => (
+                        <button
+                          className="rounded-md px-3 py-2 text-left text-sm hover:bg-[#f1f5f9]"
+                          key={offer.id}
+                          onClick={() => applyOffer(offer)}
+                          type="button"
+                        >
+                          <div className="font-bold text-[#0f172a]">{offer.name}</div>
+                          <div className="text-xs text-[color:var(--muted)]">
+                            {offer.items.map((item) => `${formatNumber(item.quantity)}× ${item.productName}`).join(", ")}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </details>
+                ) : (
+                  <p className="erp-text-caption text-[color:var(--muted)]">
+                    La lista <b>{activePriceList}</b> no admite ofertas.
+                  </p>
+                )}
+              </div>
+            ) : null}
             {draftError || missingDraftPrice ? (
               <div className="text-sm font-semibold text-[color:var(--danger)]" role="alert">
                 {draftError || `El producto no tiene precio para la lista ${activePriceList}.`}

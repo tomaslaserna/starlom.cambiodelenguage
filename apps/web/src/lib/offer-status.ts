@@ -32,3 +32,16 @@ export function computeOfferPrice(
   const floor = Number(offer.minPrice ?? 0);
   return round2(Math.max(floor, discounted));
 }
+
+// Descuento uniforme por línea (0–100) que lleva el combo desde su precio de
+// lista (baseTotal) al precio de la oferta. Las ofertas no generan recargo.
+export function offerLineDiscount(
+  offer: { priceMode: OfferPriceMode; fixedPrice?: number | null; discountPercent?: number | null; minPrice?: number | null },
+  baseTotal: number,
+): number {
+  const base = Number(baseTotal) || 0;
+  if (base <= 0) return 0;
+  const target = Math.min(base, Math.max(0, computeOfferPrice(base, offer)));
+  const discount = (1 - target / base) * 100;
+  return Math.min(100, Math.max(0, Math.round((discount + Number.EPSILON) * 100) / 100));
+}

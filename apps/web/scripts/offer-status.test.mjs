@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { computeOfferPrice, computeOfferStatus } from "../src/lib/offer-status.ts";
+import { computeOfferPrice, computeOfferStatus, offerLineDiscount } from "../src/lib/offer-status.ts";
 
 const today = "2026-07-28";
 
@@ -36,4 +36,24 @@ test("el mínimo pisa el descuento", () => {
 
 test("sin mínimo, el descuento manda", () => {
   assert.equal(computeOfferPrice(1000, { priceMode: "descuento", discountPercent: 50 }), 500);
+});
+
+test("offerLineDiscount: precio fijo → descuento equivalente", () => {
+  assert.equal(offerLineDiscount({ priceMode: "fijo", fixedPrice: 800 }, 1000), 20);
+});
+
+test("offerLineDiscount: descuento % pasa directo", () => {
+  assert.equal(offerLineDiscount({ priceMode: "descuento", discountPercent: 20 }, 1000), 20);
+});
+
+test("offerLineDiscount: el mínimo reduce el descuento", () => {
+  assert.equal(offerLineDiscount({ priceMode: "descuento", discountPercent: 50, minPrice: 700 }, 1000), 30);
+});
+
+test("offerLineDiscount: base 0 → 0", () => {
+  assert.equal(offerLineDiscount({ priceMode: "fijo", fixedPrice: 800 }, 0), 0);
+});
+
+test("offerLineDiscount: precio fijo mayor a la base no genera recargo", () => {
+  assert.equal(offerLineDiscount({ priceMode: "fijo", fixedPrice: 2000 }, 1000), 0);
 });
