@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createDeliveryDocumentFromSale } from "@/lib/deliveries";
 import { acceptQuote, createQuote, quoteInputFromBody } from "@/lib/quotes";
 import type { CreateQuoteState } from "@/lib/quote-form-state";
 import { requireApiSession } from "@/lib/route-auth";
@@ -10,23 +9,13 @@ import { requireApiSession } from "@/lib/route-auth";
 export async function acceptQuoteAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "presupuestos", action: "aprobar" }]);
   const id = String(formData.get("id") ?? "").trim();
-  await acceptQuote(session, id);
-  revalidatePath("/quotes");
-  revalidatePath("/orders");
-}
-
-export async function acceptQuoteAndRemitAction(formData: FormData) {
-  const session = await requireApiSession([
-    { resource: "presupuestos", action: "aprobar" },
-    { resource: "ventas", action: "editar" },
-  ]);
-  const id = String(formData.get("id") ?? "").trim();
-  const result = await acceptQuote(session, id);
-  await createDeliveryDocumentFromSale(session, result.orderId);
+  const requestFiscalInvoice = String(formData.get("requestFiscalInvoice") ?? "") === "true";
+  const result = await acceptQuote(session, id, { requestFiscalInvoice });
   revalidatePath("/quotes");
   revalidatePath("/orders");
   revalidatePath("/billing");
-  redirect("/billing?tipo_factura=remito&created=remito");
+  const fiscal = result.fiscalRequested ? "&fiscal=solicitada" : "";
+  redirect(`/orders?status=cargado&created=remito${fiscal}`);
 }
 
 export async function createQuoteAction(

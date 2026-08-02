@@ -35,6 +35,8 @@ type OrdersPageProps = {
     page?: string;
     error?: string;
     message?: string;
+    created?: string;
+    fiscal?: string;
   }>;
 };
 
@@ -93,6 +95,16 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                 Revisar stock
               </ButtonLink>
             ) : null}
+          </div>
+        ) : null}
+
+        {params.created === "remito" ? (
+          <div
+            className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]"
+            role="status"
+          >
+            Pedido aprobado y remito con precios generado.
+            {params.fiscal === "solicitada" ? " La factura fiscal quedó solicitada." : ""}
           </div>
         ) : null}
 

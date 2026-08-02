@@ -22,7 +22,7 @@ import {
 } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getOrderFormData } from "@/lib/orders";
-import { listQuotes } from "@/lib/quotes";
+import { hasFiscalCustomerData, listQuotes } from "@/lib/quotes";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import {
@@ -31,7 +31,7 @@ import {
   QUOTES_READ_PERMISSION,
   sessionAllows,
 } from "@/lib/route-auth";
-import { acceptQuoteAction, acceptQuoteAndRemitAction, createQuoteAction } from "@/app/quotes/actions";
+import { acceptQuoteAction, createQuoteAction } from "@/app/quotes/actions";
 import { QuoteEntryFields } from "@/app/quotes/quote-entry-fields";
 import { QuoteEntryForm } from "@/app/quotes/quote-entry-form";
 
@@ -264,25 +264,19 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                             <>
                               <form action={acceptQuoteAction}>
                                 <input name="id" type="hidden" value={quote.id} />
+                                {hasFiscalCustomerData(quote.customer.taxId, quote.customer.vatCondition) ? (
+                                  <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-[color:var(--border)] px-2 py-1.5 text-xs font-semibold text-[color:var(--text)]">
+                                    <input name="requestFiscalInvoice" type="checkbox" value="true" />
+                                    Solicitar factura fiscal
+                                  </label>
+                                ) : null}
                                 <Button
-                                  aria-label={`Aceptar presupuesto ${quote.quoteNumber}`}
+                                  aria-label={`Aprobar presupuesto ${quote.quoteNumber} y generar remito con precios`}
                                   className={quoteActionClassName}
                                   size="sm"
                                   type="submit"
                                 >
-                                  Aceptar
-                                </Button>
-                              </form>
-                              <form action={acceptQuoteAndRemitAction}>
-                                <input name="id" type="hidden" value={quote.id} />
-                                <Button
-                                  aria-label={`Aprobar y remitar presupuesto ${quote.quoteNumber}`}
-                                  className={quoteActionClassName}
-                                  size="sm"
-                                  type="submit"
-                                  variant="secondary"
-                                >
-                                  Aprobar y remitar
+                                  Aprobar y generar remito
                                 </Button>
                               </form>
                             </>

@@ -6,6 +6,7 @@ import { dynamicPriceSqlExpression, productMarginCodeExpression } from "@/lib/pr
 import { receiptTypeCode } from "@/lib/receipt-types";
 import { intField, numberField, textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { calculateQuoteTotals, type QuoteVatRate } from "@/lib/quote-totals";
+import { createCommercialRemittanceForSale } from "@/lib/deliveries";
 import type { AuthSession } from "@/lib/auth";
 
 type QuoteCustomer = {
@@ -113,6 +114,10 @@ function priceListNameFromNumber(value: number) {
   if (value === 3) return "L3 - caro";
   if (value === 4 || value === 5) return "Minorista";
   return "";
+}
+
+export function hasFiscalCustomerData(taxId: string, fiscalCondition: string) {
+  return taxId.replace(/\D/g, "").length === 11 && Boolean(fiscalCondition.trim());
 }
 
 async function getActivePriceListNames(client: PoolClient, companyId: number) {
@@ -644,7 +649,11 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
   return getQuote(session.companyId, quoteId);
 }
 
-export async function acceptQuote(session: AuthSession, id: string) {
+export async function acceptQuote(
+  session: AuthSession,
+  id: string,
+  options: { requestFiscalInvoice?: boolean } = {},
+) {
   const result = await withCompanyContext(session.companyId, async (client) => {
     const quoteResult = await client.query<{
       id: string;
@@ -697,7 +706,13 @@ export async function acceptQuote(session: AuthSession, id: string) {
     if (!quote) throw new ApiError(404, "Presupuesto no encontrado");
 
     if (quote.converted_order_id) {
-      return { quoteId: quote.id, orderId: quote.converted_order_id };
+      return {
+        quoteId: quote.id,
+        orderId: quote.converted_order_id,
+        remittanceId: null,
+        remittanceNumber: null,
+        fiscalRequested: false,
+      };
     }
     if (quote.status !== "pendiente") {
       throw new ApiError(409, "El presupuesto ya no esta pendiente o no puede aceptarse");
@@ -738,7 +753,11 @@ export async function acceptQuote(session: AuthSession, id: string) {
     const commercialNumber = Number(sequence.rows[0]?.value ?? 1);
     const receiptNumber = commercialNumber;
     const saleNumber = `P-${String(commercialNumber).padStart(4, "0")}`;
-    const desiredDocument = "remito";
+    const fiscalRequested = Boolean(options.requestFiscalInvoice) && hasFiscalCustomerData(
+      quote.client_document ?? "",
+      quote.client_fiscal_condition ?? "",
+    );
+    const desiredDocument = fiscalRequested ? "factura" : "remito";
     const priceList = quote.price_list_name || priceListNameFromNumber(quote.active_price_list);
     const receiptType = receiptTypeCode(desiredDocument);
 
@@ -845,6 +864,8 @@ export async function acceptQuote(session: AuthSession, id: string) {
       );
     }
 
+    const commercialRemittance = await createCommercialRemittanceForSale(client, session, orderId);
+
     await client.query(
       `
         UPDATE quotes
@@ -862,16 +883,36 @@ export async function acceptQuote(session: AuthSession, id: string) {
       "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
       [
         "presupuesto.convertido",
-        JSON.stringify({ quoteId: id, orderId, usuario: session.username }),
+        JSON.stringify({
+          quoteId: id,
+          orderId,
+          remittanceId: commercialRemittance.id,
+          remittanceNumber: commercialRemittance.number,
+          fiscalRequested,
+          usuario: session.username,
+        }),
         session.companyId,
       ],
     );
 
-    return { quoteId: id, orderId };
+    return {
+      quoteId: id,
+      orderId,
+      remittanceId: commercialRemittance.id,
+      remittanceNumber: commercialRemittance.number,
+      fiscalRequested,
+    };
   });
 
   clearReadQueryCache();
-  return { id: result.quoteId, orderId: result.orderId, redirect: `/orders?status=cargado` };
+  return {
+    id: result.quoteId,
+    orderId: result.orderId,
+    remittanceId: result.remittanceId,
+    remittanceNumber: result.remittanceNumber,
+    fiscalRequested: result.fiscalRequested,
+    redirect: `/orders?status=cargado`,
+  };
 }
 
 export async function deleteQuote(companyId: number, id: string) {

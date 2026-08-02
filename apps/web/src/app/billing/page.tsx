@@ -280,7 +280,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                               Factura PDF
                             </ButtonLink>
                           ) : null}
-                          {item.saleId && ["no_enviado", "error", "rechazado"].includes(item.fiscalStatus) ? (
+                          {item.saleId && item.fiscalRequested && ["no_enviado", "error", "rechazado"].includes(item.fiscalStatus) ? (
                             <form action={authorizeFiscalInvoiceAction}>
                               <input name="saleId" type="hidden" value={item.saleId} />
                               <Button className="w-full" size="sm" type="submit">
@@ -288,7 +288,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                               </Button>
                             </form>
                           ) : null}
-                          {item.saleId && ["no_enviado", "error"].includes(item.fiscalStatus) ? (
+                          {item.saleId && item.fiscalRequested && ["no_enviado", "error"].includes(item.fiscalStatus) ? (
                             <form action={rejectFiscalInvoiceAction}>
                               <input name="saleId" type="hidden" value={item.saleId} />
                               <input name="reason" type="hidden" value="Rechazado desde Fiscal" />

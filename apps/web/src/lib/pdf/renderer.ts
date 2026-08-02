@@ -12,6 +12,8 @@ export type PdfTableColumn = {
 
 export type PdfTableCell = string | number | null | undefined;
 
+type PdfTableDensity = "standard" | "compact";
+
 type HeaderVariant = "standard" | "fiscal" | "internal";
 
 type FiscalHeaderInput = {
@@ -222,22 +224,25 @@ export class StarlimPdf {
       const rightX = PAGE.width - PAGE.marginX - 218;
       const boxedTitle = !["Presupuesto", "Lista de precios", "Cuenta corriente"].includes(input.title);
       if (boxedTitle) {
+        const longTitle = input.title.length > 18;
         const boxWidth = Math.min(176, Math.max(128, input.title.length * 7.3));
         const boxX = PAGE.width - PAGE.marginX - boxWidth;
-        this.doc.roundedRect(boxX, top + 3, boxWidth, 48, 6).strokeColor(COLORS.body).lineWidth(1.3).stroke();
-        this.doc.font("Helvetica-Bold").fontSize(input.title.length > 18 ? 14 : 18).fillColor(COLORS.body);
+        const boxHeight = longTitle ? 60 : 48;
+        this.doc.roundedRect(boxX, top + 3, boxWidth, boxHeight, 6).strokeColor(COLORS.body).lineWidth(1.3).stroke();
+        this.doc.font("Helvetica-Bold").fontSize(longTitle ? 14 : 18).fillColor(COLORS.body);
         this.doc.text(headerTitle(input.title), boxX + 10, top + 12, { width: boxWidth - 20, align: "center", lineGap: 1 });
         this.doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.soft);
-        this.doc.text(input.code, boxX + 10, top + 34, { width: boxWidth - 20, align: "center" });
+        this.doc.text(input.code, boxX + 10, top + (longTitle ? 47 : 34), { width: boxWidth - 20, align: "center" });
       } else {
         this.doc.font("Helvetica-Bold").fontSize(23).fillColor(COLORS.body);
         this.doc.text(input.title, rightX, top + 4, { width: 218, align: "right" });
       }
       this.doc.font("Helvetica").fontSize(8.5).fillColor(COLORS.muted);
-      this.doc.text(`Nro. ${input.number}`, rightX, top + 60, { width: 218, align: "right" });
-      this.doc.text(`Fecha ${input.date}`, rightX, top + 74, { width: 218, align: "right" });
+      const detailTop = boxedTitle && input.title.length > 18 ? 70 : 60;
+      this.doc.text(`Nro. ${input.number}`, rightX, top + detailTop, { width: 218, align: "right" });
+      this.doc.text(`Fecha ${input.date}`, rightX, top + detailTop + 14, { width: 218, align: "right" });
       input.extra?.slice(0, 2).forEach((line, index) => {
-        this.doc.text(line, rightX, top + 88 + index * 12, { width: 218, align: "right" });
+        this.doc.text(line, rightX, top + detailTop + 28 + index * 12, { width: 218, align: "right" });
       });
     }
 
@@ -248,10 +253,14 @@ export class StarlimPdf {
 
   private drawFiscalHeader(input: FiscalHeaderInput) {
     const top = PAGE.marginTop;
-    const height = 206;
-    const topBandHeight = 30;
+    // Fiscal documents reserve the lower part of the page for the legally
+    // required tax summary and CAE/QR. Keep this header as compact as the
+    // delivery-note layout so ordinary invoices do not spill those blocks to
+    // an otherwise empty second page.
+    const height = 170;
+    const topBandHeight = 26;
     const mainTop = top + topBandHeight;
-    const mainHeight = 146;
+    const mainHeight = 120;
     const periodTop = mainTop + mainHeight;
     const leftWidth = PAGE.contentWidth / 2;
     const letterWidth = 50;
@@ -264,81 +273,85 @@ export class StarlimPdf {
     this.doc.moveTo(PAGE.marginX + leftWidth, mainTop).lineTo(PAGE.marginX + leftWidth, periodTop).stroke();
     this.doc.moveTo(PAGE.marginX, periodTop).lineTo(PAGE.width - PAGE.marginX, periodTop).stroke();
 
-    this.doc.font("Helvetica-Bold").fontSize(13).fillColor(COLORS.body);
-    this.doc.text("ORIGINAL", PAGE.marginX, top + 9, { width: PAGE.contentWidth, align: "center" });
+    this.doc.font("Helvetica-Bold").fontSize(11).fillColor(COLORS.body);
+    this.doc.text("ORIGINAL", PAGE.marginX, top + 8, { width: PAGE.contentWidth, align: "center" });
 
-    this.doc.rect(letterX, mainTop, letterWidth, 54).fillAndStroke(COLORS.white, COLORS.fiscalLine);
-    this.doc.font("Helvetica-Bold").fontSize(28).fillColor(COLORS.body).text(letter, letterX, mainTop + 7, { width: letterWidth, align: "center" });
-    this.doc.font("Helvetica").fontSize(7.2).fillColor(COLORS.body).text(`COD. ${input.fiscalCode || "-"}`, letterX, mainTop + 38, {
+    this.doc.rect(letterX, mainTop, letterWidth, 46).fillAndStroke(COLORS.white, COLORS.fiscalLine);
+    this.doc.font("Helvetica-Bold").fontSize(24).fillColor(COLORS.body).text(letter, letterX, mainTop + 5, { width: letterWidth, align: "center" });
+    this.doc.font("Helvetica").fontSize(6.6).fillColor(COLORS.body).text(`COD. ${input.fiscalCode || "-"}`, letterX, mainTop + 32, {
       width: letterWidth,
       align: "center",
     });
 
     this.doc.save();
     this.doc.rect(PAGE.marginX + 1, mainTop + 1, leftWidth - 3, mainHeight - 2).clip();
-    this.drawLogo(PAGE.marginX + 14, mainTop + 16, 34);
-    this.doc.font("Helvetica-Bold").fontSize(8.7).fillColor(COLORS.body);
-    this.doc.text(`Razon Social: ${companyInfo.name}`, PAGE.marginX + 14, mainTop + 62, { width: leftWidth - 28 });
-    this.doc.font("Helvetica-Bold").fontSize(8.3).fillColor(COLORS.body);
-    this.doc.text("Domicilio Comercial:", PAGE.marginX + 14, mainTop + 80, { width: 84 });
-    this.doc.font("Helvetica").fontSize(8.3).fillColor(COLORS.body);
-    this.doc.text(companyInfo.address, PAGE.marginX + 102, mainTop + 80, { width: leftWidth - 116 });
-    this.doc.font("Helvetica-Bold").fontSize(8.3).fillColor(COLORS.body);
-    this.doc.text("Condicion frente al IVA:", PAGE.marginX + 14, mainTop + 99, { width: 102 });
-    this.doc.font("Helvetica").fontSize(8.3).fillColor(COLORS.body);
-    this.doc.text(companyInfo.iva, PAGE.marginX + 118, mainTop + 99, { width: leftWidth - 132 });
+    this.drawLogo(PAGE.marginX + 14, mainTop + 12, 28);
+    this.doc.font("Helvetica-Bold").fontSize(7.8).fillColor(COLORS.body);
+    this.doc.text(`Razon Social: ${companyInfo.name}`, PAGE.marginX + 14, mainTop + 49, { width: leftWidth - 28 });
+    this.doc.font("Helvetica-Bold").fontSize(7.4).fillColor(COLORS.body);
+    this.doc.text("Domicilio Comercial:", PAGE.marginX + 14, mainTop + 65, { width: 76 });
+    this.doc.font("Helvetica").fontSize(7.4).fillColor(COLORS.body);
+    this.doc.text(companyInfo.address, PAGE.marginX + 92, mainTop + 65, { width: leftWidth - 106 });
+    this.doc.font("Helvetica-Bold").fontSize(7.4).fillColor(COLORS.body);
+    this.doc.text("Condicion frente al IVA:", PAGE.marginX + 14, mainTop + 88, { width: 90 });
+    this.doc.font("Helvetica").fontSize(7.4).fillColor(COLORS.body);
+    this.doc.text(companyInfo.iva, PAGE.marginX + 106, mainTop + 88, { width: leftWidth - 120 });
     this.doc.restore();
 
-    this.doc.font("Helvetica-Bold").fontSize(19).fillColor(COLORS.body);
-    this.doc.text(fiscalDocumentName(input.title), rightX + 62, mainTop + 18, { width: leftWidth - 76 });
-    this.fiscalHeaderPair("Punto de Venta:", fiscalPointOfSale(input.number), rightX + 62, mainTop + 50);
-    this.fiscalHeaderPair("Comp. Nro:", fiscalReceiptOnly(input.number), rightX + 62, mainTop + 66);
-    this.fiscalHeaderPair("Fecha de Emision:", input.date, rightX + 62, mainTop + 82);
-    this.fiscalHeaderPair("CUIT:", companyInfo.cuit, rightX + 62, mainTop + 99);
+    this.doc.font("Helvetica-Bold").fontSize(17).fillColor(COLORS.body);
+    this.doc.text(fiscalDocumentName(input.title), rightX + 62, mainTop + 14, { width: leftWidth - 76 });
+    this.fiscalHeaderPair("Punto de Venta:", fiscalPointOfSale(input.number), rightX + 62, mainTop + 42);
+    this.fiscalHeaderPair("Comp. Nro:", fiscalReceiptOnly(input.number), rightX + 62, mainTop + 56);
+    this.fiscalHeaderPair("Fecha de Emision:", input.date, rightX + 62, mainTop + 70);
+    this.fiscalHeaderPair("CUIT:", companyInfo.cuit, rightX + 62, mainTop + 84);
 
-    this.fiscalHeaderPair("Ingresos Brutos:", companyInfo.grossIncome, rightX + 62, mainTop + 114);
-    this.fiscalHeaderPair("Inicio Actividades:", companyInfo.activityStart, rightX + 62, mainTop + 129);
+    this.fiscalHeaderPair("Ingresos Brutos:", companyInfo.grossIncome, rightX + 62, mainTop + 98);
+    this.fiscalHeaderPair("Inicio Actividades:", companyInfo.activityStart, rightX + 62, mainTop + 112);
 
     const period = input.extra?.find((line) => line.toLowerCase().includes("periodo"))?.split(":").slice(1).join(":").trim();
     const paymentDue = input.extra?.find((line) => line.toLowerCase().includes("vto"))?.split(":").slice(1).join(":").trim();
-    this.doc.font("Helvetica-Bold").fontSize(8.6).fillColor(COLORS.body);
-    this.doc.text("Periodo Facturado Desde:", PAGE.marginX + 8, periodTop + 9, { width: 116 });
-    this.doc.font("Helvetica").fontSize(8.6).text(period || input.date, PAGE.marginX + 126, periodTop + 9, { width: 96 });
-    this.doc.font("Helvetica-Bold").fontSize(8.6).text("Hasta:", PAGE.marginX + 220, periodTop + 9, { width: 48 });
-    this.doc.font("Helvetica").fontSize(8.6).text(period || input.date, PAGE.marginX + 268, periodTop + 9, { width: 96 });
-    this.doc.font("Helvetica-Bold").fontSize(8.6).text("Fecha de Vto. para el pago:", PAGE.marginX + 332, periodTop + 9, { width: 116 });
-    this.doc.font("Helvetica").fontSize(8.6).text(paymentDue || input.date, PAGE.marginX + 450, periodTop + 9, { width: 48 });
+    this.doc.font("Helvetica-Bold").fontSize(7.4).fillColor(COLORS.body);
+    this.doc.text("Periodo Facturado Desde:", PAGE.marginX + 8, periodTop + 8, { width: 108 });
+    this.doc.font("Helvetica").fontSize(7.4).text(period || input.date, PAGE.marginX + 116, periodTop + 8, { width: 88 });
+    this.doc.font("Helvetica-Bold").fontSize(7.4).text("Hasta:", PAGE.marginX + 208, periodTop + 8, { width: 40 });
+    this.doc.font("Helvetica").fontSize(7.4).text(period || input.date, PAGE.marginX + 248, periodTop + 8, { width: 80 });
+    this.doc.font("Helvetica-Bold").fontSize(7.4).text("Fecha de Vto. para el pago:", PAGE.marginX + 334, periodTop + 8, { width: 108 });
+    this.doc.font("Helvetica").fontSize(7.4).text(paymentDue || input.date, PAGE.marginX + 444, periodTop + 8, { width: 54 });
 
     this.doc.y = top + height + 12;
   }
 
   private fiscalHeaderPair(label: string, value: string, x: number, y: number) {
-    this.doc.font("Helvetica-Bold").fontSize(8.3).fillColor(COLORS.body);
-    this.doc.text(label, x, y, { width: 86 });
-    this.doc.font("Helvetica").fontSize(8.3).fillColor(COLORS.body);
-    this.doc.text(value || "-", x + 88, y, { width: 112 });
+    this.doc.font("Helvetica-Bold").fontSize(7.5).fillColor(COLORS.body);
+    this.doc.text(label, x, y, { width: 82 });
+    this.doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.body);
+    this.doc.text(value || "-", x + 84, y, { width: 116 });
   }
 
-  section(title: string) {
-    this.ensureSpace(22);
-    this.doc.font("Helvetica-Bold").fontSize(8).fillColor(COLORS.soft);
+  section(title: string, options: { density?: PdfTableDensity } = {}) {
+    const compact = options.density === "compact";
+    this.ensureSpace(compact ? 16 : 22);
+    this.doc.font("Helvetica-Bold").fontSize(compact ? 7.2 : 8).fillColor(COLORS.soft);
     this.doc.text(headerTitle(title), PAGE.marginX, this.doc.y, { width: PAGE.contentWidth });
-    this.doc.y += 8;
+    this.doc.y += compact ? 5 : 8;
     this.doc.fillColor(COLORS.body);
   }
 
-  title(text: string, size = 12) {
-    this.ensureSpace(size + 8);
-    this.doc.font("Helvetica-Bold").fontSize(size).fillColor(COLORS.body);
-    this.doc.text(text, PAGE.marginX, this.doc.y, { width: PAGE.contentWidth, lineGap: 1 });
+  title(text: string, size = 12, options: { density?: PdfTableDensity } = {}) {
+    const compact = options.density === "compact";
+    const fontSize = compact ? Math.min(size, 10) : size;
+    this.ensureSpace(fontSize + (compact ? 5 : 8));
+    this.doc.font("Helvetica-Bold").fontSize(fontSize).fillColor(COLORS.body);
+    this.doc.text(text, PAGE.marginX, this.doc.y, { width: PAGE.contentWidth, lineGap: compact ? 0.6 : 1 });
   }
 
-  muted(text: string, options: { width?: number; align?: Align } = {}) {
-    this.doc.font("Helvetica").fontSize(9).fillColor(COLORS.muted);
+  muted(text: string, options: { width?: number; align?: Align; density?: PdfTableDensity } = {}) {
+    const compact = options.density === "compact";
+    this.doc.font("Helvetica").fontSize(compact ? 7.6 : 9).fillColor(COLORS.muted);
     this.doc.text(text, PAGE.marginX, this.doc.y, {
       width: options.width ?? PAGE.contentWidth,
       align: options.align ?? "left",
-      lineGap: 1.4,
+      lineGap: compact ? 0.6 : 1.4,
     });
     this.doc.fillColor(COLORS.body);
   }
@@ -358,19 +371,19 @@ export class StarlimPdf {
     saleCondition?: string;
     associatedDocument?: string;
   }) {
-    this.ensureSpace(82);
+    const height = input.associatedDocument ? 66 : 54;
+    this.ensureSpace(height + 12);
     const y = this.doc.y;
-    const height = input.associatedDocument ? 78 : 64;
     this.doc.rect(PAGE.marginX, y, PAGE.contentWidth, height).strokeColor(COLORS.fiscalLine).lineWidth(0.9).stroke();
-    this.fiscalBoxPair("CUIT:", input.document || "-", PAGE.marginX + 8, y + 10, 58, 150);
-    this.fiscalBoxPair("Apellido y Nombre / Razon Social:", input.name || "-", PAGE.marginX + 222, y + 10, 138, 138);
-    this.fiscalBoxPair("Condicion frente al IVA:", input.ivaCondition || "-", PAGE.marginX + 8, y + 30, 96, 132);
-    this.fiscalBoxPair("Domicilio Comercial:", input.address || "-", PAGE.marginX + 222, y + 30, 88, 188);
-    this.fiscalBoxPair("Condicion de venta:", input.saleCondition || "-", PAGE.marginX + 8, y + 50, 84, 132);
+    this.fiscalBoxPair("CUIT:", input.document || "-", PAGE.marginX + 8, y + 8, 50, 154);
+    this.fiscalBoxPair("Apellido y Nombre / Razon Social:", input.name || "-", PAGE.marginX + 222, y + 8, 132, 144);
+    this.fiscalBoxPair("Condicion frente al IVA:", input.ivaCondition || "-", PAGE.marginX + 8, y + 24, 90, 138);
+    this.fiscalBoxPair("Domicilio Comercial:", input.address || "-", PAGE.marginX + 222, y + 24, 82, 192);
+    this.fiscalBoxPair("Condicion de venta:", input.saleCondition || "-", PAGE.marginX + 8, y + 40, 78, 138);
     if (input.associatedDocument) {
-      this.fiscalBoxPair("Comprobante asociado:", input.associatedDocument, PAGE.marginX + 222, y + 50, 102, 174);
+      this.fiscalBoxPair("Comprobante asociado:", input.associatedDocument, PAGE.marginX + 222, y + 40, 96, 180);
     }
-    this.doc.y = y + height + 10;
+    this.doc.y = y + height + 8;
   }
 
   fiscalItemsTable(rows: Array<{
@@ -394,24 +407,24 @@ export class StarlimPdf {
       { label: "Subtotal c/IVA", width: 62, align: "right" as const },
     ];
     const drawHeader = () => {
-      this.ensureSpace(32);
+      this.ensureSpace(25);
       const y = this.doc.y;
-      this.doc.rect(PAGE.marginX, y, PAGE.contentWidth, 24).fillAndStroke(COLORS.fiscalHeader, COLORS.fiscalLine);
+      this.doc.rect(PAGE.marginX, y, PAGE.contentWidth, 18).fillAndStroke(COLORS.fiscalHeader, COLORS.fiscalLine);
       let x = PAGE.marginX;
-      this.doc.font("Helvetica-Bold").fontSize(6.6).fillColor(COLORS.body);
+      this.doc.font("Helvetica-Bold").fontSize(6.1).fillColor(COLORS.body);
       for (const column of columns) {
-        this.doc.text(column.label, x + 3, y + 8, { width: column.width - 6, align: column.align });
-        this.doc.moveTo(x + column.width, y).lineTo(x + column.width, y + 24).strokeColor(COLORS.fiscalLine).lineWidth(0.45).stroke();
+        this.doc.text(column.label, x + 3, y + 5, { width: column.width - 6, align: column.align });
+        this.doc.moveTo(x + column.width, y).lineTo(x + column.width, y + 18).strokeColor(COLORS.fiscalLine).lineWidth(0.45).stroke();
         x += column.width;
       }
-      this.doc.y = y + 24;
+      this.doc.y = y + 18;
     };
 
     drawHeader();
     const data = rows.length
       ? rows
       : [{ description: "Sin items", quantity: "-", unit: "-", unitPrice: "-", subtotal: "-", code: "-", discount: "-", vatRate: "-" }];
-    this.doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.body);
+    this.doc.font("Helvetica").fontSize(6.8).fillColor(COLORS.body);
     for (const row of data) {
       const values = [
         row.code || "-",
@@ -424,9 +437,9 @@ export class StarlimPdf {
         row.subtotal,
       ];
       const heights = values.map((value, index) =>
-        this.doc.heightOfString(value, { width: columns[index].width - 6, align: columns[index].align, lineGap: 1 }),
+        this.doc.heightOfString(value, { width: columns[index].width - 6, align: columns[index].align, lineGap: 0.6 }),
       );
-      const rowHeight = Math.max(26, Math.max(...heights) + 12);
+      const rowHeight = Math.max(18, Math.max(...heights) + 7);
       if (this.doc.y + rowHeight > CONTENT_BOTTOM) {
         this.doc.addPage();
         drawHeader();
@@ -436,17 +449,17 @@ export class StarlimPdf {
       let x = PAGE.marginX;
       values.forEach((value, index) => {
         const column = columns[index];
-        this.doc.text(value, x + 3, y + 7, { width: column.width - 6, align: column.align, lineGap: 1 });
+        this.doc.text(value, x + 3, y + 4, { width: column.width - 6, align: column.align, lineGap: 0.6 });
         x += column.width;
       });
       this.doc.moveTo(PAGE.marginX, y + rowHeight).lineTo(PAGE.width - PAGE.marginX, y + rowHeight).strokeColor(COLORS.line).lineWidth(0.7).stroke();
       this.doc.y = y + rowHeight;
     }
-    this.doc.y += 12;
+    this.doc.y += 6;
   }
 
   fiscalSummary(rows: [string, string][], finalLabel: string, finalValue: string): void {
-    const height = 150;
+    const height = 110;
     this.ensureSpace(height + 8);
     const y = this.doc.y + 8;
     if (y + height > CONTENT_BOTTOM) {
@@ -457,103 +470,122 @@ export class StarlimPdf {
     }
 
     this.doc.rect(PAGE.marginX, y, PAGE.contentWidth, height).strokeColor(COLORS.fiscalLine).lineWidth(1).stroke();
-    this.doc.rect(PAGE.marginX, y + 18, 288, 18).fillAndStroke(COLORS.fiscalHeader, COLORS.fiscalLine);
-    this.doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.body);
+    this.doc.rect(PAGE.marginX, y + 15, 288, 15).fillAndStroke(COLORS.fiscalHeader, COLORS.fiscalLine);
+    this.doc.font("Helvetica").fontSize(6.5).fillColor(COLORS.body);
     this.doc.text("Otros Tributos", PAGE.marginX + 6, y + 6, { width: 120 });
-    this.doc.text("Descripcion", PAGE.marginX + 6, y + 24, { width: 120 });
-    this.doc.text("Detalle", PAGE.marginX + 126, y + 24, { width: 82 });
-    this.doc.text("Alic. %", PAGE.marginX + 210, y + 24, { width: 36, align: "right" });
-    this.doc.text("Importe", PAGE.marginX + 248, y + 24, { width: 40, align: "right" });
+    this.doc.text("Descripcion", PAGE.marginX + 6, y + 20, { width: 120 });
+    this.doc.text("Detalle", PAGE.marginX + 126, y + 20, { width: 82 });
+    this.doc.text("Alic. %", PAGE.marginX + 210, y + 20, { width: 36, align: "right" });
+    this.doc.text("Importe", PAGE.marginX + 248, y + 20, { width: 40, align: "right" });
     const tributes = ["Per./Ret. de Impuesto a las Ganancias", "Per./Ret. de IVA", "Per./Ret. Ingresos Brutos", "Impuestos Internos", "Impuestos Municipales"];
     tributes.forEach((label, index) => {
-      const rowY = y + 42 + index * 12;
+      const rowY = y + 34 + index * 9;
       this.doc.text(label, PAGE.marginX + 6, rowY, { width: 194 });
       this.doc.text("0,00", PAGE.marginX + 248, rowY, { width: 40, align: "right" });
     });
-    this.doc.text("Importe Otros Tributos: $", PAGE.marginX + 150, y + 106, { width: 100, align: "right" });
-    this.doc.text("0,00", PAGE.marginX + 248, y + 106, { width: 40, align: "right" });
+    this.doc.text("Importe Otros Tributos: $", PAGE.marginX + 150, y + 84, { width: 100, align: "right" });
+    this.doc.text("0,00", PAGE.marginX + 248, y + 84, { width: 40, align: "right" });
 
     const totalsX = PAGE.marginX + 292;
-    let totalY = y + 42;
-    this.doc.font("Helvetica-Bold").fontSize(7.6).fillColor(COLORS.body);
+    let totalY = y + 31;
+    this.doc.font("Helvetica-Bold").fontSize(6.6).fillColor(COLORS.body);
     for (const [label, value] of rows) {
       this.doc.text(`${label}:`, totalsX, totalY, { width: 126, align: "right" });
       this.doc.text(value, totalsX + 132, totalY, { width: 78, align: "right" });
-      totalY += 11;
+      totalY += 7.3;
     }
-    this.doc.font("Helvetica-Bold").fontSize(10.5);
-    this.doc.text(`${finalLabel}:`, totalsX, y + 132, { width: 126, align: "right" });
-    this.doc.text(finalValue, totalsX + 132, y + 132, { width: 78, align: "right" });
-    this.doc.y = y + height + 14;
+    this.doc.font("Helvetica-Bold").fontSize(9);
+    this.doc.text(`${finalLabel}:`, totalsX, y + 92, { width: 126, align: "right" });
+    this.doc.text(finalValue, totalsX + 132, y + 92, { width: 78, align: "right" });
+    this.doc.y = y + height + 8;
   }
 
   fiscalAuthorizationBox(cae: string, caeExpiresAt: string, qrImage?: ArrayBuffer) {
-    this.ensureSpace(74);
+    this.ensureSpace(62);
     const y = this.doc.y;
     this.doc.moveTo(PAGE.marginX, y).lineTo(PAGE.width - PAGE.marginX, y).strokeColor(COLORS.line).lineWidth(0.8).stroke();
-    const qrSize = 58;
+    const qrSize = 48;
     const qrX = PAGE.marginX;
-    const qrY = y + 14;
+    const qrY = y + 9;
     if (qrImage) {
       this.doc.image(qrImage as unknown as Buffer, qrX, qrY, { width: qrSize, height: qrSize });
     } else {
       this.doc.rect(qrX, qrY, qrSize, qrSize).strokeColor(COLORS.fiscalLine).lineWidth(0.8).stroke();
-      this.doc.font("Helvetica-Bold").fontSize(16).fillColor(COLORS.body).text("QR", qrX, qrY + 20, { width: qrSize, align: "center" });
+      this.doc.font("Helvetica-Bold").fontSize(14).fillColor(COLORS.body).text("QR", qrX, qrY + 16, { width: qrSize, align: "center" });
     }
-    this.doc.font("Helvetica-Bold").fontSize(9).fillColor(COLORS.body);
-    this.doc.text("COMPROBANTE AUTORIZADO", qrX + qrSize + 16, qrY + 4, { width: 240 });
-    this.doc.font("Helvetica").fontSize(8.6).fillColor(COLORS.muted);
-    this.doc.text(`CAE Nro.: ${cae || "-"}`, qrX + qrSize + 16, qrY + 20, { width: 260 });
-    this.doc.text(`Fecha de vto. del CAE: ${caeExpiresAt || "-"}`, qrX + qrSize + 16, qrY + 34, { width: 260 });
-    this.doc.text("Agencia de Recaudacion y Control Aduanero (ARCA)", qrX + qrSize + 16, qrY + 48, { width: 300 });
-    this.doc.y = y + 86;
+    this.doc.font("Helvetica-Bold").fontSize(8).fillColor(COLORS.body);
+    this.doc.text("COMPROBANTE AUTORIZADO", qrX + qrSize + 12, qrY + 2, { width: 240 });
+    this.doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.muted);
+    this.doc.text(`CAE Nro.: ${cae || "-"}`, qrX + qrSize + 12, qrY + 15, { width: 260 });
+    this.doc.text(`Fecha de vto. del CAE: ${caeExpiresAt || "-"}`, qrX + qrSize + 12, qrY + 27, { width: 260 });
+    this.doc.text("Agencia de Recaudacion y Control Aduanero (ARCA)", qrX + qrSize + 12, qrY + 39, { width: 300 });
+    this.doc.y = y + 66;
   }
 
   private fiscalBoxPair(label: string, value: string, x: number, y: number, labelWidth: number, valueWidth: number) {
-    this.doc.font("Helvetica-Bold").fontSize(8.1).fillColor(COLORS.body);
+    this.doc.font("Helvetica-Bold").fontSize(7.3).fillColor(COLORS.body);
     this.doc.text(label, x, y, { width: labelWidth });
-    this.doc.font("Helvetica").fontSize(8.1).fillColor(COLORS.body);
+    this.doc.font("Helvetica").fontSize(7.3).fillColor(COLORS.body);
     this.doc.text(value || "-", x + labelWidth, y, { width: valueWidth });
   }
 
-  infoBox(title: string, lines: string[], height = 70) {
-    this.ensureSpace(height + 10);
+  infoBox(title: string, lines: string[], height = 70, options: { density?: PdfTableDensity } = {}) {
+    const compact = options.density === "compact";
+    const boxHeight = compact ? Math.min(height, 52) : height;
+    this.ensureSpace(boxHeight + (compact ? 6 : 10));
     const y = this.doc.y;
     this.doc.moveTo(PAGE.marginX, y).lineTo(PAGE.width - PAGE.marginX, y).strokeColor(COLORS.body).lineWidth(0.9).stroke();
-    this.doc.y = y + 12;
-    this.section(title);
-    this.doc.font("Helvetica").fontSize(9).fillColor(COLORS.muted);
+    this.doc.y = y + (compact ? 8 : 12);
+    this.section(title, options);
+    this.doc.font("Helvetica").fontSize(compact ? 7.6 : 9).fillColor(COLORS.muted);
     this.doc.text(lines.filter(Boolean).join(" - ") || "-", PAGE.marginX, this.doc.y, {
       width: PAGE.contentWidth,
-      lineGap: 2,
+      lineGap: compact ? 0.8 : 2,
     });
-    this.doc.y = y + height + 12;
+    this.doc.y = y + boxHeight + (compact ? 8 : 12);
   }
 
-  table(columns: PdfTableColumn[], rows: PdfTableCell[][], options: { minRowHeight?: number; accentHeader?: boolean } = {}) {
-    const minRowHeight = options.minRowHeight ?? 24;
+  table(
+    columns: PdfTableColumn[],
+    rows: PdfTableCell[][],
+    options: { minRowHeight?: number; accentHeader?: boolean; density?: PdfTableDensity } = {},
+  ) {
+    const compact = options.density === "compact";
+    const minRowHeight = options.minRowHeight ?? (compact ? 14 : 24);
+    const headerHeight = compact ? 18 : 25;
+    const headerFontSize = compact ? 6.6 : 7.5;
+    const bodyFontSize = compact ? 7.2 : 8.7;
+    const horizontalPadding = compact ? 3 : 5;
+    const verticalPadding = compact ? 3 : 8;
+    const lineGap = compact ? 0.6 : 1.3;
+    const rowPadding = compact ? 6 : 15;
+    const tableBottomSpace = compact ? 6 : 14;
     const drawHeader = () => {
-      this.ensureSpace(32);
+      this.ensureSpace(headerHeight + 7);
       let x = PAGE.marginX;
       const y = this.doc.y;
 
       if (options.accentHeader) {
-        this.doc.rect(PAGE.marginX, y, PAGE.contentWidth, 25).fill(COLORS.accent);
+        this.doc.rect(PAGE.marginX, y, PAGE.contentWidth, headerHeight).fill(COLORS.accent);
         this.doc.fillColor(COLORS.white);
       } else {
-        this.doc.moveTo(PAGE.marginX, y + 24).lineTo(PAGE.width - PAGE.marginX, y + 24).strokeColor(COLORS.body).lineWidth(1.3).stroke();
+        this.doc.moveTo(PAGE.marginX, y + headerHeight)
+          .lineTo(PAGE.width - PAGE.marginX, y + headerHeight)
+          .strokeColor(COLORS.body)
+          .lineWidth(1.3)
+          .stroke();
         this.doc.fillColor(COLORS.muted);
       }
 
-      this.doc.font("Helvetica-Bold").fontSize(7.5);
+      this.doc.font("Helvetica-Bold").fontSize(headerFontSize);
       for (const column of columns) {
-        this.doc.text(headerTitle(column.label), x + 5, y + 8, {
-          width: column.width - 10,
+        this.doc.text(headerTitle(column.label), x + horizontalPadding, y + (compact ? 5 : 8), {
+          width: column.width - horizontalPadding * 2,
           align: column.align ?? "left",
         });
         x += column.width;
       }
-      this.doc.y = y + 25;
+      this.doc.y = y + headerHeight;
       this.doc.fillColor(COLORS.body);
     };
 
@@ -569,17 +601,17 @@ export class StarlimPdf {
       return;
     }
 
-    this.doc.font("Helvetica").fontSize(8.8).fillColor(COLORS.body);
+    this.doc.font("Helvetica").fontSize(bodyFontSize).fillColor(COLORS.body);
     for (const row of rows) {
       const heights = row.map((cell, index) => {
         const column = columns[index];
         return this.doc.heightOfString(safeText(cell), {
-          width: column.width - 10,
+          width: column.width - horizontalPadding * 2,
           align: column.align ?? "left",
-          lineGap: 1.3,
+          lineGap,
         });
       });
-      const rowHeight = Math.max(minRowHeight, Math.max(...heights) + 15);
+      const rowHeight = Math.max(minRowHeight, Math.max(...heights) + rowPadding);
       if (this.doc.y + rowHeight > CONTENT_BOTTOM) {
         this.doc.addPage();
         drawHeader();
@@ -587,13 +619,13 @@ export class StarlimPdf {
 
       let x = PAGE.marginX;
       const y = this.doc.y;
-      this.doc.font("Helvetica").fontSize(8.7).fillColor(COLORS.body);
+      this.doc.font("Helvetica").fontSize(bodyFontSize).fillColor(COLORS.body);
       for (const [index, cell] of row.entries()) {
         const column = columns[index];
-        this.doc.text(safeText(cell), x + 5, y + 8, {
-          width: column.width - 10,
+        this.doc.text(safeText(cell), x + horizontalPadding, y + verticalPadding, {
+          width: column.width - horizontalPadding * 2,
           align: column.align ?? "left",
-          lineGap: 1.3,
+          lineGap,
         });
         x += column.width;
       }
@@ -604,49 +636,58 @@ export class StarlimPdf {
         .stroke();
       this.doc.y = y + rowHeight;
     }
-    this.doc.y += 14;
+    this.doc.y += tableBottomSpace;
   }
 
-  totals(rows: [string, string][], finalLabel: string, finalValue: string) {
+  totals(rows: [string, string][], finalLabel: string, finalValue: string, options: { density?: PdfTableDensity } = {}) {
+    const compact = options.density === "compact";
     const width = 238;
     const x = PAGE.width - PAGE.marginX - width;
-    this.ensureSpace(rows.length * 18 + 42);
+    const rowHeight = compact ? 12 : 18;
+    const totalHeight = compact ? 34 : 42;
+    this.ensureSpace(rows.length * rowHeight + totalHeight);
     let y = this.doc.y;
-    this.doc.font("Helvetica").fontSize(9).fillColor(COLORS.muted);
+    this.doc.font("Helvetica").fontSize(compact ? 7.2 : 9).fillColor(COLORS.muted);
     for (const [label, value] of rows) {
       this.doc.text(label, x, y, { width: 132 });
       this.doc.fillColor(COLORS.body).text(value, x + 132, y, { width: width - 132, align: "right" });
       this.doc.fillColor(COLORS.muted);
-      y += 17;
+      y += rowHeight;
     }
-    this.doc.moveTo(x, y + 4).lineTo(x + width, y + 4).strokeColor(COLORS.body).lineWidth(1.4).stroke();
-    this.doc.font("Helvetica-Bold").fontSize(13).fillColor(COLORS.body);
-    this.doc.text(finalLabel, x, y + 12, { width: 118 });
-    this.doc.text(finalValue, x + 118, y + 12, { width: width - 118, align: "right" });
-    this.doc.y = y + 46;
+    this.doc.moveTo(x, y + (compact ? 2 : 4)).lineTo(x + width, y + (compact ? 2 : 4)).strokeColor(COLORS.body).lineWidth(1.4).stroke();
+    this.doc.font("Helvetica-Bold").fontSize(compact ? 10 : 13).fillColor(COLORS.body);
+    this.doc.text(finalLabel, x, y + (compact ? 8 : 12), { width: 118 });
+    this.doc.text(finalValue, x + 118, y + (compact ? 8 : 12), { width: width - 118, align: "right" });
+    this.doc.y = y + totalHeight;
   }
 
-  note(text: string) {
-    this.ensureSpace(62);
+  note(text: string, options: { density?: PdfTableDensity } = {}) {
+    const compact = options.density === "compact";
+    const height = compact ? 36 : 58;
+    this.ensureSpace(height + 4);
     const y = this.doc.y;
     this.doc.moveTo(PAGE.marginX, y).lineTo(PAGE.width - PAGE.marginX, y).strokeColor(COLORS.line).lineWidth(0.8).stroke();
-    this.doc.font("Helvetica").fontSize(8.6).fillColor(COLORS.muted);
-    this.doc.text(text, PAGE.marginX, y + 12, { width: PAGE.contentWidth, lineGap: 2 });
-    this.doc.y = y + 58;
+    this.doc.font("Helvetica").fontSize(compact ? 7.5 : 8.6).fillColor(COLORS.muted);
+    this.doc.text(text, PAGE.marginX, y + (compact ? 8 : 12), { width: PAGE.contentWidth, lineGap: compact ? 0.8 : 2 });
+    this.doc.y = y + height;
   }
 
-  signatures(left: string, right: string) {
-    const y = Math.max(this.doc.y + 26, PAGE.height - 128);
-    if (y > PAGE.height - 90) {
+  signatures(left: string, right: string, options: { density?: PdfTableDensity } = {}) {
+    const compact = options.density === "compact";
+    const signatureBaseline = compact ? PAGE.height - 100 : PAGE.height - 128;
+    const signatureLimit = compact ? PAGE.height - 76 : PAGE.height - 90;
+    const labelOffset = compact ? 6 : 8;
+    const y = Math.max(this.doc.y + (compact ? 14 : 26), signatureBaseline);
+    if (y > signatureLimit) {
       this.doc.addPage();
       this.doc.y = 88;
     }
-    const finalY = Math.min(y, PAGE.height - 112);
+    const finalY = Math.min(y, compact ? PAGE.height - 88 : PAGE.height - 112);
     this.doc.moveTo(PAGE.marginX, finalY).lineTo(PAGE.marginX + 210, finalY).strokeColor(COLORS.body).lineWidth(0.7).stroke();
     this.doc.moveTo(PAGE.width - PAGE.marginX - 210, finalY).lineTo(PAGE.width - PAGE.marginX, finalY).stroke();
-    this.doc.font("Helvetica").fontSize(8).fillColor(COLORS.muted);
-    this.doc.text(left, PAGE.marginX, finalY + 8, { width: 210, align: "center" });
-    this.doc.text(right, PAGE.width - PAGE.marginX - 210, finalY + 8, { width: 210, align: "center" });
+    this.doc.font("Helvetica").fontSize(compact ? 7 : 8).fillColor(COLORS.muted);
+    this.doc.text(left, PAGE.marginX, finalY + labelOffset, { width: 210, align: "center" });
+    this.doc.text(right, PAGE.width - PAGE.marginX - 210, finalY + labelOffset, { width: 210, align: "center" });
     this.doc.fillColor(COLORS.body);
   }
 

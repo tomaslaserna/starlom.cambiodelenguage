@@ -584,10 +584,23 @@ test("order creation exposes the full legacy receipt type set", () => {
 
   const quotesPage = read("apps/web/src/app/quotes/page.tsx");
   assert.match(quotesPage, /QuoteEntryFields/);
-  assert.match(quotesPage, /acceptQuoteAndRemitAction/);
+  assert.match(quotesPage, /acceptQuoteAction/);
+  assert.doesNotMatch(quotesPage, /acceptQuoteAndRemitAction|Aprobar y remitar/);
+  assert.match(quotesPage, /hasFiscalCustomerData\(quote\.customer\.taxId, quote\.customer\.vatCondition\)/);
+  assert.match(quotesPage, /name="requestFiscalInvoice"/);
+  assert.match(quotesPage, /Aprobar y generar remito/);
   assert.match(quotesPage, /quoteWhatsappHref/);
   assert.equal(/name="customerName"/.test(quotesPage), false);
   assert.equal(/name="unitPrice"/.test(quotesPage), false);
+
+  const quoteWorkflow = read("apps/web/src/lib/quotes.ts");
+  assert.match(quoteWorkflow, /export function hasFiscalCustomerData[\s\S]*length === 11/);
+  assert.match(quoteWorkflow, /createCommercialRemittanceForSale\(client, session, orderId\)/);
+  assert.match(quoteWorkflow, /const desiredDocument = fiscalRequested \? "factura" : "remito"/);
+
+  const quoteActions = read("apps/web/src/app/quotes/actions.ts");
+  assert.match(quoteActions, /requestFiscalInvoice/);
+  assert.match(quoteActions, /created=remito/);
 
   const quoteEntryFields = read("apps/web/src/app/quotes/quote-entry-fields.tsx");
   assert.match(quoteEntryFields, /name="customerId"/);
@@ -683,7 +696,8 @@ test("orders keep final prices while quotes can add optional VAT", () => {
   assert.doesNotMatch(quotesPage, />#\{quote\.id\}</);
   assert.doesNotMatch(quotesPage, /DataTableHead align="right">IVA/);
   assert.doesNotMatch(quotesPage, /DataTableHead align="right">Subtotal/);
-  assert.match(quotesPage, /<details[\s\S]*Acciones[\s\S]*PDF[\s\S]*WhatsApp[\s\S]*Aceptar[\s\S]*Aprobar y remitar/);
+  assert.match(quotesPage, /<details[\s\S]*Acciones[\s\S]*PDF[\s\S]*WhatsApp[\s\S]*Aprobar y generar remito/);
+  assert.doesNotMatch(quotesPage, /Aprobar y remitar/);
 
   const orders = read("apps/web/src/lib/orders.ts");
   assert.doesNotMatch(orders, /receiptAddsVat|money\(netAmount \* 0\.21\)|money\(subtotal \* 0\.21\)/);
@@ -1351,6 +1365,97 @@ test("Registro de ventas shows only the delivered-sales listing, without duplica
   assert.match(salesPage, /status:\s*"entregado"/, "listing must be filtered to delivered orders only");
 });
 
+test("La entrega emite el remito dentro de la misma transaccion y Ventas lo abre desde Comprobante", () => {
+  const salesPage = read("apps/web/src/app/sales/page.tsx");
+  const salesActions = read("apps/web/src/app/sales/actions.ts");
+  const deliveries = read("apps/web/src/lib/deliveries.ts");
+  const orders = read("apps/web/src/lib/orders.ts");
+
+  assert.match(salesPage, /sale\.deliveryNumber/);
+  assert.match(salesPage, /Remito #/);
+  assert.doesNotMatch(salesPage, /issueDeliveryNoteAction|Emitir remito/);
+  assert.doesNotMatch(salesActions, /createDeliveryDocumentFromSale|issueDeliveryNoteAction/);
+  assert.match(orders, /nextStatus === "entregado"[\s\S]*createDeliveryDocumentForSale/);
+  assert.match(orders, /createDeliveryDocumentForSale\(client, session, id, \{ onExisting: "return" \}\)/);
+  assert.match(deliveries, /pg_advisory_xact_lock\(83011/);
+  assert.match(deliveries, /onExisting === "return"/);
+  assert.match(deliveries, /Esta venta ya tiene un remito/);
+  assert.match(deliveries, /export async function createCommercialRemittanceForSale/);
+  assert.match(deliveries, /requireDelivered: false/);
+  assert.match(deliveries, /orderStatus: "cargado"/);
+  assert.match(deliveries, /eventType: "remito_comercial\.creado"/);
+});
+
+test("los presupuestos aprobados crean siempre el remito comercial y solo solicitan factura con datos fiscales", () => {
+  const fiscal = read("apps/web/src/lib/fiscal.ts");
+  const billingPage = read("apps/web/src/app/billing/page.tsx");
+  const ordersPage = read("apps/web/src/app/orders/page.tsx");
+
+  assert.match(fiscal, /La factura fiscal debe solicitarse al aprobar el presupuesto/);
+  assert.match(billingPage, /item\.fiscalRequested && \["no_enviado", "error", "rechazado"\]/);
+  assert.match(ordersPage, /Pedido aprobado y remito con precios generado/);
+  assert.match(ordersPage, /fiscal === "solicitada"/);
+});
+
+test("remitos use the compact table density so product-heavy deliveries fit on each page", () => {
+  const documents = read("apps/web/src/lib/pdf/documents.ts");
+  const renderer = read("apps/web/src/lib/pdf/renderer.ts");
+
+  assert.match(documents, /pdf\.table\([\s\S]*\{ density: "compact" \}/);
+  assert.match(documents, /function deliveryPdfProductName[\s\S]*toLocaleUpperCase\("es-AR"\)/);
+  assert.match(documents, /deliveryPdfProductName\(row\.nombre\)/);
+  assert.match(documents, /pdf\.note\([\s\S]*density: "compact"/);
+  assert.match(documents, /pdf\.signatures\([\s\S]*density: "compact"/);
+  assert.match(renderer, /type PdfTableDensity = "standard" \| "compact"/);
+  assert.match(renderer, /const minRowHeight = options\.minRowHeight \?\? \(compact \? 14 : 24\)/);
+  assert.match(renderer, /const headerHeight = compact \? 18 : 25/);
+});
+
+test("facturas fiscales compactan sus bloques para no separar resumen y CAE en una hoja casi vacia", () => {
+  const renderer = read("apps/web/src/lib/pdf/renderer.ts");
+
+  assert.match(renderer, /Fiscal documents reserve the lower part[\s\S]*const height = 170;/);
+  assert.match(renderer, /const rowHeight = Math\.max\(18, Math\.max\(\.\.\.heights\) \+ 7\)/);
+  assert.match(renderer, /const height = 110;[\s\S]*fiscalSummary/);
+  assert.match(renderer, /this\.ensureSpace\(62\)/);
+  assert.match(renderer, /const qrSize = 48/);
+});
+
+test("todos los comprobantes operativos reutilizan la densidad compacta de remitos y facturas", () => {
+  const documents = read("apps/web/src/lib/pdf/documents.ts");
+  const renderer = read("apps/web/src/lib/pdf/renderer.ts");
+
+  for (const documentName of [
+    "buildQuotePdf",
+    "buildAccountStatementPdf",
+    "buildPaymentRecordPdf",
+    "buildPurchaseOrderPdf",
+    "buildPurchaseReturnRequestPdf",
+    "buildPriceListPdf",
+    "buildOrderRequestPdf",
+  ]) {
+    assert.match(documents, new RegExp(`export async function ${documentName}[\\s\\S]*?density: "compact"`));
+  }
+  assert.match(renderer, /totals\([\s\S]*options: \{ density\?: PdfTableDensity \}/);
+  assert.match(renderer, /infoBox\([\s\S]*options: \{ density\?: PdfTableDensity \}/);
+  assert.match(renderer, /const longTitle = input\.title\.length > 18/);
+  assert.match(renderer, /const detailTop = boxedTitle && input\.title\.length > 18 \? 70 : 60/);
+});
+
+test("every visible remito PDF route uses the shared compact delivery generator", () => {
+  const deliveryPdfRoute = read("apps/web/src/app/api/pdfs/deliveries/[id]/route.ts");
+  const orderDocumentRoute = read("apps/web/src/app/api/pdfs/orders/[id]/document/route.ts");
+  const collectionsPage = read("apps/web/src/app/collections/page.tsx");
+  const billingPage = read("apps/web/src/app/billing/page.tsx");
+  const salesPage = read("apps/web/src/app/sales/page.tsx");
+
+  assert.match(deliveryPdfRoute, /buildDeliveryPdf/);
+  assert.match(orderDocumentRoute, /buildDeliveryPdf/);
+  assert.match(collectionsPage, /\/api\/pdfs\/deliveries\/\$\{item\.deliveryDocumentId\}/);
+  assert.match(billingPage, /\/api\/pdfs\/deliveries\/\$\{item\.deliveryId\}\?prices=1/);
+  assert.match(salesPage, /\/api\/pdfs\/orders\/\$\{sale\.id\}\/document/);
+});
+
 test("security hardening stays enabled at the HTTP edge", () => {
   const nextConfig = read("apps/web/next.config.ts");
   assert.match(nextConfig, /Content-Security-Policy/);
@@ -1452,6 +1557,14 @@ test("postgres runtime role stays least-privilege and RLS-bound", () => {
   assert.match(appPrivateAccess, /REVOKE ALL ON FUNCTION %s FROM anon, authenticated, PUBLIC/);
   assert.match(appPrivateAccess, /GRANT EXECUTE ON FUNCTION %s TO starlim_app/);
   assert.match(appPrivateAccess, /ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA app_private/);
+
+  const canonicalRuntimeMigration = read("supabase/migrations/20260801200352_harden_node_runtime_tenant_isolation.sql");
+  assert.match(canonicalRuntimeMigration, /CREATE ROLE starlim_app/);
+  assert.match(canonicalRuntimeMigration, /NOBYPASSRLS/);
+  assert.match(canonicalRuntimeMigration, /FOR ALL TO starlim_app/);
+  assert.match(canonicalRuntimeMigration, /current_setting\(''app\.current_empresa_id'', true\)/);
+  assert.match(canonicalRuntimeMigration, /REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated, service_role/);
+  assert.doesNotMatch(canonicalRuntimeMigration, /WITH PASSWORD|PASSWORD '/);
 });
 
 test("request parsing, sessions and CI keep security guardrails", () => {
