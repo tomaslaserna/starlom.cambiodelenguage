@@ -49,7 +49,7 @@ const quoteStates = [
   { value: "all", label: "Todas" },
 ];
 
-const quoteActionClassName = "w-full justify-start";
+const quoteActionClassName = "w-full justify-center text-center";
 
 function matchesQuery(item: Awaited<ReturnType<typeof listQuotes>>[number], query: string) {
   if (!query) return true;
@@ -271,12 +271,12 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                                   </label>
                                 ) : null}
                                 <Button
-                                  aria-label={`Aprobar presupuesto ${quote.quoteNumber} y generar remito con precios`}
+                                  aria-label={`Aprobar presupuesto ${quote.quoteNumber}`}
                                   className={quoteActionClassName}
                                   size="sm"
                                   type="submit"
                                 >
-                                  Aprobar y generar remito
+                                  Aprobar
                                 </Button>
                               </form>
                             </>

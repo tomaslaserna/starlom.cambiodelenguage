@@ -588,7 +588,8 @@ test("order creation exposes the full legacy receipt type set", () => {
   assert.doesNotMatch(quotesPage, /acceptQuoteAndRemitAction|Aprobar y remitar/);
   assert.match(quotesPage, /hasFiscalCustomerData\(quote\.customer\.taxId, quote\.customer\.vatCondition\)/);
   assert.match(quotesPage, /name="requestFiscalInvoice"/);
-  assert.match(quotesPage, /Aprobar y generar remito/);
+  assert.match(quotesPage, /Aprobar/);
+  assert.match(quotesPage, /const quoteActionClassName = "w-full justify-center text-center"/);
   assert.match(quotesPage, /quoteWhatsappHref/);
   assert.equal(/name="customerName"/.test(quotesPage), false);
   assert.equal(/name="unitPrice"/.test(quotesPage), false);
@@ -696,7 +697,7 @@ test("orders keep final prices while quotes can add optional VAT", () => {
   assert.doesNotMatch(quotesPage, />#\{quote\.id\}</);
   assert.doesNotMatch(quotesPage, /DataTableHead align="right">IVA/);
   assert.doesNotMatch(quotesPage, /DataTableHead align="right">Subtotal/);
-  assert.match(quotesPage, /<details[\s\S]*Acciones[\s\S]*PDF[\s\S]*WhatsApp[\s\S]*Aprobar y generar remito/);
+  assert.match(quotesPage, /<details[\s\S]*Acciones[\s\S]*PDF[\s\S]*WhatsApp[\s\S]*Aprobar/);
   assert.doesNotMatch(quotesPage, /Aprobar y remitar/);
 
   const orders = read("apps/web/src/lib/orders.ts");
