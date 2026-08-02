@@ -22,6 +22,7 @@ import {
   tableActionItemClass,
   type StatusBadgeTone,
 } from "@/components/ui";
+import { hasCompleteFiscalData } from "@/lib/client-fiscal";
 import { formatDate } from "@/lib/format";
 import { ORDER_STATUS_OPTIONS, orderStatusLabel } from "@/lib/order-status";
 import { listOrders } from "@/lib/orders";
@@ -176,6 +177,10 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                     legacyRemittanceNumber: order.receiptNumber,
                   });
                   const isOpenOrder = order.orderStatus === "cargado" || order.orderStatus === "confirmado";
+                  const canInvoice = hasCompleteFiscalData({
+                    taxId: order.customerDocument,
+                    fiscalCondition: order.customerFiscalCondition,
+                  });
 
                   return (
                     <DataTableRow key={order.id}>
@@ -235,14 +240,43 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                             </>
                           ) : null}
                           <a
-                            aria-label={`Ver PDF del pedido ${orderNumberLabel}`}
+                            aria-label={`Remito sin precios del pedido ${orderNumberLabel}`}
                             className={tableActionItemClass}
-                            href={`/api/pdfs/orders/${order.id}/document`}
+                            href={`/api/pdfs/orders/${order.id}/remito`}
                             rel="noreferrer"
                             target="_blank"
                           >
-                            Ver PDF
+                            Remito sin precios
                           </a>
+                          <a
+                            aria-label={`Copia del remito para el chofer del pedido ${orderNumberLabel}`}
+                            className={tableActionItemClass}
+                            href={`/api/pdfs/orders/${order.id}/remito?copia=1`}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Copia (chofer)
+                          </a>
+                          <a
+                            aria-label={`Remito con precios del pedido ${orderNumberLabel}`}
+                            className={tableActionItemClass}
+                            href={`/api/pdfs/orders/${order.id}/remito?precios=si`}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Remito con precios
+                          </a>
+                          {canInvoice ? (
+                            <a
+                              aria-label={`Factura fiscal del pedido ${orderNumberLabel}`}
+                              className={tableActionItemClass}
+                              href={`/api/pdfs/orders/${order.id}/document`}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              Factura
+                            </a>
+                          ) : null}
                         </TableActionMenu>
                       </DataTableCell>
                     </DataTableRow>

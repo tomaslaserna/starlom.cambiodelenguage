@@ -303,7 +303,7 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
   assert.match(orderStatusPage, /value="entregado"[\s\S]*Entregado/);
   assert.match(orderStatusPage, />\s*Cancelar\s*</);
   assert.match(orderStatusPage, />\s*Modificar\s*</);
-  assert.match(orderStatusPage, />\s*Ver PDF\s*</);
+  assert.match(orderStatusPage, />\s*Remito sin precios\s*</);
   assert.doesNotMatch(orderStatusPage, /value="confirmado"|Confirmar stock|ConfirmDeleteButton|Borrar pedido/);
   assert.match(orderStatusPage, /key=\{`orders-status-\$\{result\.meta\.status \|\| "all"\}`\}/);
 
@@ -442,12 +442,14 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
   assert.doesNotMatch(databasePage, /EMPLOYEES_READ_PERMISSION|label: "Empleados"|href: "\/employees"|Empleados/);
 
   const ordersPage = read("apps/web/src/app/orders/page.tsx");
-  assert.match(ordersPage, /Ver PDF/);
+  assert.match(ordersPage, /Remito sin precios/);
   assert.match(ordersPage, /\/api\/pdfs\/orders\/\$\{order\.id\}\/document/);
   assert.match(ordersPage, /Modificar/);
   assert.match(ordersPage, /value="entregado"/);
   assert.match(ordersPage, /value="cancelado"/);
-  assert.doesNotMatch(ordersPage, /Factura|Remito sin factura|name="confirmationDocument"/);
+  // El registro ofrece un link de impresión "Factura" (gateado por datos fiscales), pero
+  // no los viejos controles inline de confirmación de comprobante.
+  assert.doesNotMatch(ordersPage, /Remito sin factura|name="confirmationDocument"/);
   assert.doesNotMatch(ordersPage, /StatCard|getOrdersDashboard|Cargar pedido/);
 
   const homePage = read("apps/web/src/app/page.tsx");
@@ -1810,4 +1812,16 @@ test("order comprobante flow separates the commercial remito from stock", () => 
   assert.match(remitoRoute, /buildOrderRemitoPdf/);
   assert.match(remitoRoute, /searchParams\.get\("precios"\) === "si"/);
   assert.match(remitoRoute, /searchParams\.get\("copia"\) === "1"/);
+});
+
+test("orders register exposes the comprobante sequence with fiscal gating", () => {
+  const ordersPage = read("apps/web/src/app/orders/page.tsx");
+  assert.match(ordersPage, /hasCompleteFiscalData/);
+  assert.match(ordersPage, /\/api\/pdfs\/orders\/\$\{order\.id\}\/remito/);
+  assert.match(ordersPage, /Remito sin precios/);
+  assert.match(ordersPage, /Copia \(chofer\)/);
+  assert.match(ordersPage, /Remito con precios/);
+  assert.match(ordersPage, /precios=si/);
+  assert.match(ordersPage, /copia=1/);
+  assert.match(ordersPage, /canInvoice \? /, "the fiscal invoice link must be gated by canInvoice");
 });
