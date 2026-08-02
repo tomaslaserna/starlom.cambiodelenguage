@@ -65,13 +65,22 @@ test("removed UI routes and warmup component stay removed", () => {
   assertNoPattern(sourcePaths, /RouteWarmup|route-warmup|income-statement|Estado de resultados/, "removed UI residue found");
 });
 
-test("product image upload residue is not present in active source", () => {
-  const sourcePaths = filesUnder("apps/web/src", (path) => path.endsWith(".ts") || path.endsWith(".tsx"));
-  assertNoPattern(
-    sourcePaths,
-    /folder:\s*"productos"|productos.*foto|foto.*producto|imagen.*producto|product.*image|product.*photo|image_url|photo_url/i,
-    "product image residue found",
-  );
+test("product images live on their own catalog path with a bucket-scoped public URL", () => {
+  const storage = read("apps/web/src/lib/storage.ts");
+  assert.match(storage, /PRODUCT_IMAGES_BUCKET = "product-images"/);
+  assert.match(storage, /export function publicProductImageUrl/);
+
+  const imageStore = read("apps/web/src/lib/product-image-store.ts");
+  assert.match(imageStore, /PRODUCT_IMAGES_BUCKET/);
+
+  const imageSignRoute = read("apps/web/src/app/api/products/image/sign/route.ts");
+  assert.match(imageSignRoute, /requireApiSession/);
+
+  const imageRoute = read("apps/web/src/app/api/products/[id]/image/route.ts");
+  assert.match(imageRoute, /requireApiSession/);
+
+  const imports = read("apps/web/src/lib/imports.ts");
+  assert.match(imports, /image_path/, "catalog creation must persist the uploaded image path");
 });
 
 test("jefe is a full-access role while legacy employee shortcuts stay removed", () => {
@@ -661,8 +670,8 @@ test("pricing lists use the L0-L3 normalized names and L2 as default anchor", ()
   assert.match(pricing, /margen_minorista: "Minorista"/);
   assert.match(pricing, /value < 0\.01 \|\| value > 9\.99/);
 
-  const pricingPage = read("apps/web/src/app/pricing/page.tsx");
-  assert.match(pricingPage, /price-list\?list=2/);
+  // La ruta /pricing quedó como redirección al submenú /prices; el ancla L2 se
+  // garantiza arriba en order-pricing.ts (DEFAULT_PRICE_LIST_NAME / PRICE_LIST_DEFAULT).
 
   const productPricingSql = read("apps/web/src/lib/product-pricing-sql.ts");
   assert.doesNotMatch(productPricingSql, /NULLIF\(\$\{selectedMarginAlias\}\.multiplicador, 1\)/);
@@ -675,8 +684,10 @@ test("pricing lists use the L0-L3 normalized names and L2 as default anchor", ()
   assert.match(quotes, /value === 5\) return "Minorista"/);
 
   const pdfDocuments = read("apps/web/src/lib/pdf/documents.ts");
-  assert.match(pdfDocuments, /label: "L0 - agresivo"/);
-  assert.match(pdfDocuments, /label: "L2 - ANCLA"/);
+  // El PDF de listas ahora toma los nombres desde la tabla listas_precio (que pricing.ts
+  // siembra con L0-L3), en vez de hardcodearlos. La vieja "Lista 4 (+10%)" no debe reaparecer.
+  assert.match(pdfDocuments, /export async function buildPriceListPdf/);
+  assert.match(pdfDocuments, /FROM listas_precio WHERE empresa_id/);
   assert.doesNotMatch(pdfDocuments, /Lista 4 \(\+10%\)/);
 });
 
@@ -728,7 +739,7 @@ test("Escritorio is listed first in the Inicio menu and links to the home page",
   assert.match(navigation, /href: "\/",\s*label: "Escritorio",\s*active: "home",/);
   assert.match(
     navigation,
-    /label: "Inicio"[\s\S]*groups: \[groupByLabel\("Escritorio"\), groupByLabel\("Calendario"\), groupByLabel\("Mensajes"\)\]/,
+    /label: "Inicio"[\s\S]*groups: \[groupByLabel\("Escritorio"\), groupByLabel\("Calendario"\), groupByLabel\("Mensajes"\), groupByLabel\("Banco"\)\]/,
   );
 });
 
@@ -828,9 +839,11 @@ test("Escritorio previews up to 5 unread messages alongside pending tasks", () =
   assert.match(home, /\.slice\(0, 5\)/);
   assert.match(home, /Mensajes sin leer/);
   assert.match(home, /href=\{`\/messages\?message=\$\{message\.id\}`\}/);
-  assert.match(home, /Tareas delegadas/);
+  // El inbox del Escritorio se organiza en pestañas (Para vos / Delegadas / Mensajes / Pizarrón).
+  assert.match(home, /InicioTabs/);
+  assert.match(home, /label: "Delegadas"/);
+  assert.match(home, /label: "Mensajes"/);
   assert.match(home, /Delegada a \$\{task\.assignedTo\}/);
-  assert.match(home, /max-h-\[680px\].*overflow-y-auto/);
 });
 
 test("Mensajes is a single navigation entry without obsolete inbox or sent menus", () => {
@@ -1224,7 +1237,10 @@ test("private storage references replace public receipt URLs", () => {
   assert.match(storage, /storageDownloadUrl/);
   assert.match(storage, /assertCompanyStoragePath/);
   assert.match(storage, /createSignedStorageUrl/);
-  assert.doesNotMatch(storage, /\/storage\/v1\/object\/public/);
+  // Los recibos siguen siendo privados: la única URL pública permitida es la del
+  // bucket de imágenes de producto (miniaturas de catálogo, no sensibles).
+  assert.doesNotMatch(storage, /\/storage\/v1\/object\/public\/(?!\$\{PRODUCT_IMAGES_BUCKET\})/);
+  assert.match(storage, /storage\/v1\/object\/public\/\$\{PRODUCT_IMAGES_BUCKET\}/);
 
   const purchases = read("apps/web/src/lib/purchases.ts");
   assert.match(purchases, /storageDownloadUrl\(row\.receipt_photo\)/);
@@ -1343,7 +1359,11 @@ test("request parsing, sessions and CI keep security guardrails", () => {
 
 test("Precios menu opens a real per-product sale-price screen, not the stock catalog", () => {
   const navigation = read("apps/web/src/lib/navigation.ts");
-  assert.match(navigation, /href: "\/prices",\s*label: "Precios"/, "the Precios menu entry must open /prices");
+  assert.match(
+    navigation,
+    /label: "Precios",\s*active: "prices",\s*items: \[\s*\{ href: "\/prices", label: "Lista de precios"/,
+    "the Precios menu group must open /prices",
+  );
   assert.doesNotMatch(navigation, /href: "\/products", label: "Precios"/, "Precios must no longer point at the stock catalog");
 
   const catalog = read("apps/web/src/lib/catalog.ts");
@@ -1353,7 +1373,7 @@ test("Precios menu opens a real per-product sale-price screen, not the stock cat
 
   const pricesPage = read("apps/web/src/app/prices/page.tsx");
   assert.match(pricesPage, /listSalePrices/);
-  assert.match(pricesPage, /result\.lists\.map/, "the screen must render one column per active price list");
+  assert.match(pricesPage, /lists\.map\(\(list\)/, "the screen must render one column per active price list");
 });
 
 test("Sueldos y dividendos page allows adding employees and partners", () => {
@@ -1548,7 +1568,7 @@ test("password recovery is visible, generic and backed by Supabase recovery toke
 
 test("catalog creation and stock operations stay on separate audited paths", () => {
   const productsPage = read("apps/web/src/app/products/page.tsx");
-  const pricingPage = read("apps/web/src/app/pricing/page.tsx");
+  const pricesPage = read("apps/web/src/app/prices/page.tsx");
   const inventory = read("apps/web/src/lib/inventory.ts");
   const quoteMigration = read("supabase/migrations/20260722123457_quote_customers_vat_and_commercial_numbers.sql");
   assert.match(quoteMigration, /client_legal_name text not null default ''/);
@@ -1571,8 +1591,9 @@ test("catalog creation and stock operations stay on separate audited paths", () 
   const catalogManagement = read("apps/web/src/lib/catalog-management.ts");
 
   assert.doesNotMatch(productsPage, /createProductAction|Crear producto|Stock inicial/);
-  assert.match(pricingPage, /Nuevo producto/);
-  assert.match(pricingPage, /La existencia se administra por separado/);
+  // El alta de catálogo vive en su propia ruta auditada (/prices/new), separada del stock.
+  assert.match(pricesPage, /Nuevo producto/);
+  assert.match(pricesPage, /href="\/prices\/new"/);
   assert.match(inventory, /INSERT INTO stock_movements/);
   assert.match(inventory, /idempotency_key/);
   assert.match(catalogManagement, /se modifica desde Entradas y salidas/);
