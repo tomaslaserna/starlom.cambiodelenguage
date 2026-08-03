@@ -66,6 +66,7 @@ export type OrderSummary = {
   desiredDocument: string;
   stockDiscounted: boolean;
   observation: string;
+  vatRate: number;
   fiscalStatus: string;
   hasPendingFiscalRequest: boolean;
 };
@@ -151,6 +152,7 @@ function mapOrder(row: {
   desired_document: string;
   stock_discounted: boolean;
   notes: string;
+  vat_rate: string;
   fiscal_status: string;
   has_pending_fiscal_request: boolean;
 }): OrderSummary {
@@ -178,6 +180,7 @@ function mapOrder(row: {
     desiredDocument: row.desired_document,
     stockDiscounted: row.stock_discounted,
     observation: row.notes,
+    vatRate: normalizeStoredVatRate(Number(row.vat_rate)),
     fiscalStatus: row.fiscal_status,
     hasPendingFiscalRequest: row.has_pending_fiscal_request,
   };
@@ -251,6 +254,7 @@ export async function listOrders(input: ListInput = {}) {
              GREATEST(COALESCE(s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
              COALESCE(s.total_amount, 0)::text AS monto_neto,
              0::text AS monto_iva,
+             COALESCE(s.vat_rate, 0)::text AS vat_rate,
              s.receipt_number,
              dd.delivery_number,
              COALESCE(s.payment_condition, '') AS payment_condition,
@@ -316,6 +320,7 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
              GREATEST(COALESCE(s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
              COALESCE(s.total_amount, 0)::text AS monto_neto,
              0::text AS monto_iva,
+             COALESCE(s.vat_rate, 0)::text AS vat_rate,
              s.receipt_number,
              dd.delivery_number,
              COALESCE(s.payment_condition, '') AS payment_condition,

@@ -1870,3 +1870,16 @@ test("Solicitar Factura requests a fiscal invoice that ARCA emits on approval", 
   assert.match(ordersPage, /name="clock"/);
   assert.match(ordersPage, /name="download"/);
 });
+
+test("editing an order loads its saved IVA rate instead of resetting it", () => {
+  const entryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
+  assert.match(entryFields, /vatRate\?: number/, "OrderEntryInitialValue must carry the saved vatRate");
+  assert.match(entryFields, /initialValue\?\.vatRate \?\? 10\.5/, "the form must seed the rate from the loaded order");
+
+  const editPage = read("apps/web/src/app/orders/[id]/edit/page.tsx");
+  assert.match(editPage, /vatRate: order\.vatRate/);
+
+  const orders = read("apps/web/src/lib/orders.ts");
+  assert.match(orders, /vatRate: normalizeStoredVatRate\(Number\(row\.vat_rate\)\)/);
+  assert.match(orders, /COALESCE\(s\.vat_rate, 0\)::text AS vat_rate/);
+});

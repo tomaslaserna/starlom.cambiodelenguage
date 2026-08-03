@@ -37,6 +37,7 @@ export default async function EditOrderPage({ params, searchParams }: EditOrderP
     observation: order.observation,
     priceListOverride: order.priceList,
     desiredDocumentOverride: order.desiredDocument,
+    vatRate: order.vatRate,
     lines: order.lines
       .filter((line) => Boolean(line.productId))
       .map((line) => ({

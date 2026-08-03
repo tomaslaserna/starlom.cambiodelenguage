@@ -42,6 +42,7 @@ export type OrderEntryInitialValue = {
   observation: string;
   priceListOverride: string;
   desiredDocumentOverride: string;
+  vatRate?: number;
   lines: OrderLineDraft[];
 };
 
@@ -93,7 +94,7 @@ export function OrderEntryFields({
   const [observation, setObservation] = useState(initialValue?.observation ?? "");
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
   const [documentOverride, setDocumentOverride] = useState(initialValue?.desiredDocumentOverride ?? "");
-  const [vatRate, setVatRate] = useState<IvaRate>(10.5);
+  const [vatRate, setVatRate] = useState<IvaRate>((initialValue?.vatRate ?? 10.5) as IvaRate);
   const [draftError, setDraftError] = useState("");
   const lineIdRef = useRef(initialValue?.lines.length ?? 0);
 
