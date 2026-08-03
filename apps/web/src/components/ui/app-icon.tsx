@@ -6,6 +6,7 @@ export type AppIconName =
   | "cart"
   | "chart"
   | "clock"
+  | "download"
   | "filter"
   | "invoice"
   | "money"
@@ -48,6 +49,13 @@ export function AppIcon({ className, name, ...props }: AppIconProps) {
       <>
         <circle cx="12" cy="12" r="9" />
         <path d="M12 7v5l3.5 2" />
+      </>
+    ),
+    download: (
+      <>
+        <path d="M12 3v11" />
+        <path d="m7 10 5 5 5-5" />
+        <path d="M5 20h14" />
       </>
     ),
     filter: <path d="M4 5h16l-6.2 7.1v5.7l-3.6 1.8v-7.5L4 5Z" />,

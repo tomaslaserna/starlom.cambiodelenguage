@@ -30,7 +30,7 @@ import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { ORDERS_READ_PERMISSION, sessionAllows } from "@/lib/route-auth";
-import { updateOrderStatusAction } from "@/app/orders/actions";
+import { requestFiscalInvoiceAction, updateOrderStatusAction } from "@/app/orders/actions";
 
 type OrdersPageProps = {
   searchParams: Promise<{
@@ -181,6 +181,9 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                     taxId: order.customerDocument,
                     fiscalCondition: order.customerFiscalCondition,
                   });
+                  const fiscalApproved = order.fiscalStatus === "aprobado";
+                  const canRequestInvoice =
+                    order.orderStatus === "entregado" && canInvoice && !fiscalApproved && !order.hasPendingFiscalRequest;
 
                   return (
                     <DataTableRow key={order.id}>
@@ -257,16 +260,38 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                           >
                             Remito con precios
                           </a>
-                          {canInvoice ? (
+                          {fiscalApproved ? (
                             <a
                               aria-label={`Factura fiscal del pedido ${orderNumberLabel}`}
-                              className={tableActionItemClass}
+                              className={`${tableActionItemClass} gap-2`}
                               href={`/api/pdfs/orders/${order.id}/document`}
                               rel="noreferrer"
                               target="_blank"
                             >
+                              <AppIcon className="h-4 w-4" name="download" />
                               Factura
                             </a>
+                          ) : order.hasPendingFiscalRequest ? (
+                            <span
+                              aria-label={`Factura solicitada del pedido ${orderNumberLabel}`}
+                              className={`${tableActionItemClass} gap-2 cursor-default text-[color:var(--muted)] hover:bg-transparent hover:text-[color:var(--muted)]`}
+                            >
+                              <AppIcon className="h-4 w-4" name="clock" />
+                              Factura Solicitada
+                            </span>
+                          ) : canRequestInvoice ? (
+                            <form action={requestFiscalInvoiceAction}>
+                              <input name="id" type="hidden" value={order.id} />
+                              <button
+                                aria-label={`Solicitar factura del pedido ${orderNumberLabel}`}
+                                className={`${tableActionItemClass} gap-2`}
+                                suppressHydrationWarning
+                                type="submit"
+                              >
+                                <AppIcon className="h-4 w-4" name="invoice" />
+                                Solicitar Factura
+                              </button>
+                            </form>
                           ) : null}
                         </TableActionMenu>
                       </DataTableCell>

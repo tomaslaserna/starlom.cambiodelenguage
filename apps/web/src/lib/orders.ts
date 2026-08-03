@@ -66,6 +66,8 @@ export type OrderSummary = {
   desiredDocument: string;
   stockDiscounted: boolean;
   observation: string;
+  fiscalStatus: string;
+  hasPendingFiscalRequest: boolean;
 };
 
 export type OrderDetailLine = {
@@ -149,6 +151,8 @@ function mapOrder(row: {
   desired_document: string;
   stock_discounted: boolean;
   notes: string;
+  fiscal_status: string;
+  has_pending_fiscal_request: boolean;
 }): OrderSummary {
   return {
     id: row.id,
@@ -174,6 +178,8 @@ function mapOrder(row: {
     desiredDocument: row.desired_document,
     stockDiscounted: row.stock_discounted,
     observation: row.notes,
+    fiscalStatus: row.fiscal_status,
+    hasPendingFiscalRequest: row.has_pending_fiscal_request,
   };
 }
 
@@ -254,7 +260,15 @@ export async function listOrders(input: ListInput = {}) {
              ${normalizedOrderStatusSql("s")} AS order_status,
              COALESCE(s.desired_document, 'remito') AS desired_document,
              s.stock_discounted,
-             COALESCE(s.notes, '') AS notes
+             COALESCE(s.notes, '') AS notes,
+             COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
+             EXISTS (
+               SELECT 1 FROM app_solicitudes sol
+               WHERE sol.empresa_id = s.empresa_id
+                 AND sol.estado = 'pendiente'
+                 AND sol.metadata->>'action' = 'fiscal_invoice'
+                 AND sol.metadata->>'saleId' = s.id::text
+             ) AS has_pending_fiscal_request
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
       LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
@@ -311,7 +325,15 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
              ${normalizedOrderStatusSql("s")} AS order_status,
              COALESCE(s.desired_document, 'remito') AS desired_document,
              s.stock_discounted,
-             COALESCE(s.notes, '') AS notes
+             COALESCE(s.notes, '') AS notes,
+             COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
+             EXISTS (
+               SELECT 1 FROM app_solicitudes sol
+               WHERE sol.empresa_id = s.empresa_id
+                 AND sol.estado = 'pendiente'
+                 AND sol.metadata->>'action' = 'fiscal_invoice'
+                 AND sol.metadata->>'saleId' = s.id::text
+             ) AS has_pending_fiscal_request
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
       LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
