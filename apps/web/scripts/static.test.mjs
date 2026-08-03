@@ -1184,8 +1184,11 @@ test("cargar pedido exposes price message toggle with iva in the confirmation pa
   assert.match(preview, /Mostrar precios/);
   assert.match(preview, /showPrices/);
   assert.match(preview, /ivaRate/);
-  assert.match(preview, /Sin IVA/);
+  // El IVA se define con el toggle "¿Lleva factura?" (Sí = 21%, No = 10,5%); ya no hay "Sin IVA".
+  assert.match(preview, /¿Lleva factura\?/);
+  assert.match(preview, /value="21"/);
   assert.match(preview, /value="10.5"/);
+  assert.doesNotMatch(preview, /Sin IVA/);
 });
 
 test("the sale's VAT rate can be picked regardless of whether prices are shown to the client", () => {
@@ -1806,6 +1809,10 @@ test("order comprobante flow separates the commercial remito from stock", () => 
   assert.match(documents, /includePrices \? "remito_con_precios" : "remito_sin_precios"/);
   assert.match(documents, /copia \? "COPIA" : "ORIGINAL"/);
   assert.doesNotMatch(documents, /buildOrderRemitoPdf[\s\S]*INSERT INTO/, "the commercial remito must not write to the database");
+  // El remito con precios discrimina IVA (neto + 21%/10,5% encima) desde vat_rate.
+  assert.match(documents, /COALESCE\(s\.vat_rate, 0\)::text AS vat_rate/);
+  assert.match(documents, /subtotalNeto \* \(vatRate \/ 100\)/);
+  assert.match(documents, /vatRate === 21 \? "IVA 21%" : "IVA 10,5%"/);
 
   const remitoRoute = read("apps/web/src/app/api/pdfs/orders/[id]/remito/route.ts");
   assert.match(remitoRoute, /requireApiSession\(\[\{ resource: "pedidos", action: "ver" \}\]\)/);
@@ -1819,10 +1826,9 @@ test("orders register exposes the comprobante sequence with fiscal gating", () =
   assert.match(ordersPage, /hasCompleteFiscalData/);
   assert.match(ordersPage, /\/api\/pdfs\/orders\/\$\{order\.id\}\/remito/);
   assert.match(ordersPage, /Remito sin precios/);
-  assert.match(ordersPage, /Copia \(chofer\)/);
+  assert.doesNotMatch(ordersPage, /Copia \(chofer\)/, "the chofer copy is redundant with the remito sin precios");
   assert.match(ordersPage, /Remito con precios/);
   assert.match(ordersPage, /precios=si/);
-  assert.match(ordersPage, /copia=1/);
   assert.match(ordersPage, /canInvoice \? /, "the fiscal invoice link must be gated by canInvoice");
 });
 

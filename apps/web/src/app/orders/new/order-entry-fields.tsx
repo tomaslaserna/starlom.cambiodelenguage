@@ -93,7 +93,7 @@ export function OrderEntryFields({
   const [observation, setObservation] = useState(initialValue?.observation ?? "");
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
   const [documentOverride, setDocumentOverride] = useState(initialValue?.desiredDocumentOverride ?? "");
-  const [vatRate, setVatRate] = useState<IvaRate>(0);
+  const [vatRate, setVatRate] = useState<IvaRate>(10.5);
   const [draftError, setDraftError] = useState("");
   const lineIdRef = useRef(initialValue?.lines.length ?? 0);
 

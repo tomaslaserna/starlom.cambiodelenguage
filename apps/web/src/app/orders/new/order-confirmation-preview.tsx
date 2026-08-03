@@ -116,15 +116,14 @@ export function OrderConfirmationPreview({
         </p>
       )}
 
-      <Field htmlFor="confirmation-iva" label="IVA de la venta">
+      <Field htmlFor="confirmation-iva" label="¿Lleva factura?">
         <Select
           id="confirmation-iva"
           value={String(ivaRate)}
           onChange={(event) => onIvaRateChange(Number(event.target.value) as IvaRate)}
         >
-          <option value="0">Sin IVA</option>
-          <option value="21">21%</option>
-          <option value="10.5">10.5%</option>
+          <option value="21">Sí — IVA 21%</option>
+          <option value="10.5">No — IVA 10,5%</option>
         </Select>
       </Field>
 

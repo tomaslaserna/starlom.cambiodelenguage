@@ -249,15 +249,6 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                             Remito sin precios
                           </a>
                           <a
-                            aria-label={`Copia del remito para el chofer del pedido ${orderNumberLabel}`}
-                            className={tableActionItemClass}
-                            href={`/api/pdfs/orders/${order.id}/remito?copia=1`}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            Copia (chofer)
-                          </a>
-                          <a
                             aria-label={`Remito con precios del pedido ${orderNumberLabel}`}
                             className={tableActionItemClass}
                             href={`/api/pdfs/orders/${order.id}/remito?precios=si`}

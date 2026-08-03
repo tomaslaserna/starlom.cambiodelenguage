@@ -1180,6 +1180,7 @@ export async function buildOrderRemitoPdf(
     provincia: string;
     nro_id: string;
     observacion: string;
+    vat_rate: string;
   }>(
     companyId,
     `
@@ -1192,6 +1193,7 @@ export async function buildOrderRemitoPdf(
              s.sale_date::text AS fecha,
              COALESCE(s.payment_condition, '') AS condicion_pago,
              COALESCE(s.total_amount, 0)::text AS monto,
+             COALESCE(s.vat_rate, 0)::text AS vat_rate,
              COALESCE(s.seller_name, '') AS vendedor,
              COALESCE(c.delivery_address, c.address, '') AS domicilio,
              COALESCE(c.locality, '') AS ciudad,
@@ -1240,6 +1242,21 @@ export async function buildOrderRemitoPdf(
   const number = commercialCode === "Sin número" ? "Sin número" : commercialCode;
   const filenamePrefix = includePrices ? "remito_con_precios" : "remito_sin_precios";
 
+  // Los precios del listado son netos; el IVA (21% o 10,5%) se suma encima, igual que
+  // el mensaje de confirmación. Con vat_rate 0 (ventas históricas) el IVA queda en 0.
+  const vatRate = Number(order.vat_rate) || 0;
+  const totalUnits = detail.rows.reduce((sum, row) => sum + Number(row.cantidad), 0);
+  const subtotalNeto = detail.rows.reduce((sum, row) => sum + Number(row.subtotal), 0);
+  const ivaMonto = Math.round((subtotalNeto * (vatRate / 100) + Number.EPSILON) * 100) / 100;
+  const totalConIva = subtotalNeto + ivaMonto;
+  const priceSummaryRows: [string, string][] = [
+    ["Total de unidades", pdfNumber(totalUnits)],
+    ["Subtotal", pdfMoney(subtotalNeto)],
+  ];
+  if (vatRate > 0) {
+    priceSummaryRows.push([vatRate === 21 ? "IVA 21%" : "IVA 10,5%", pdfMoney(ivaMonto)]);
+  }
+
   return createPdfFile(`${filenamePrefix}_${safeFilename(number)}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Remito",
@@ -1248,7 +1265,7 @@ export async function buildOrderRemitoPdf(
       date: pdfDate(order.fecha),
       extra: [includePrices ? "Documento valorizado" : "Control de mercaderia", copia ? "COPIA" : "ORIGINAL"],
       footerLeft: includePrices ? "Documento no valido como factura" : "Control de mercaderia - sin valores",
-      footerRight: includePrices ? `Total ${pdfMoney(Number(order.monto))}` : "Deposito",
+      footerRight: includePrices ? `Total ${pdfMoney(totalConIva)}` : "Deposito",
     });
 
     pdf.section("Destinatario");
@@ -1281,8 +1298,6 @@ export async function buildOrderRemitoPdf(
           { label: "Descripcion", width: 312 },
           { label: "Control", width: 60, align: "center" as const },
         ];
-    const totalUnits = detail.rows.reduce((sum, row) => sum + Number(row.cantidad), 0);
-    const totalAmount = detail.rows.reduce((sum, row) => sum + Number(row.subtotal), 0);
     pdf.table(
       columns,
       detail.rows.map((row) =>
@@ -1292,9 +1307,9 @@ export async function buildOrderRemitoPdf(
       ),
     );
     pdf.totals(
-      [["Total de unidades", pdfNumber(totalUnits)]],
+      includePrices ? priceSummaryRows : [["Total de unidades", pdfNumber(totalUnits)]],
       includePrices ? "Total" : "Control",
-      includePrices ? pdfMoney(totalAmount) : "",
+      includePrices ? pdfMoney(totalConIva) : "",
     );
     pdf.note(order.observacion || "Verificar cantidades y estado de la mercaderia al momento de la recepcion.");
     pdf.signatures("Preparo / despacho", "Controlo / recibio");
