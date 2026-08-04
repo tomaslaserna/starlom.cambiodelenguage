@@ -218,6 +218,47 @@ function NavigationGroupBlock({
   );
 }
 
+const sectionSummaryClass = (activeSection: boolean) =>
+  cn(
+    "erp-text-body-sm flex min-h-11 items-center gap-2 rounded-[10px] border px-3 py-2 font-medium uppercase tracking-normal transition-[background-color,border-color,color,box-shadow]",
+    activeSection
+      ? "border-white/26 bg-white/16 text-white shadow-[0_10px_22px_rgba(5,32,85,0.14)]"
+      : "border-white/10 bg-white/6 text-white/82 hover:border-white/18 hover:bg-white/10 hover:text-white",
+  );
+
+// Segundo mundo del CRM: barra propia con boton de retorno y los items planos.
+function CrmWorldNavigation({
+  active,
+  current,
+  crmSection,
+  indicators,
+}: {
+  active: string;
+  current: CurrentLocation;
+  crmSection: NavigationSection;
+  indicators: NavigationIndicators;
+}) {
+  return (
+    <nav aria-label="Navegacion CRM" className="grid gap-2">
+      <Link className={cn(navigationRowClass(false), "text-[#93b4ff]")} href="/">
+        <span aria-hidden="true" className="erp-text-caption w-3 shrink-0 text-center">
+          &lt;
+        </span>
+        <span className="min-w-0 flex-1 truncate">Volver al sistema</span>
+      </Link>
+      <div className="erp-text-caption mt-1 flex items-center gap-2 rounded-[999px] border border-white/16 bg-white/10 px-3 py-1.5 font-semibold uppercase tracking-[0.08em] text-white/72">
+        {crmSection.icon ? <AppIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" name={crmSection.icon} /> : null}
+        Modo CRM
+      </div>
+      <div className="mt-1 grid gap-1">
+        {crmSection.groups.map((group) => (
+          <NavigationGroupBlock active={active} current={current} group={group} indicators={indicators} key={group.label} />
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 export function ShellNavigation({ active, indicators, sections }: ShellNavigationProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -226,16 +267,27 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
     searchParams: new URLSearchParams(searchParams.toString()),
   };
 
-  // Segundo mundo: dentro del CRM solo se ven Inicio (compartido) y CRM; el resto
-  // del sistema administrativo queda oculto para el vendedor.
+  // Segundo mundo: dentro del CRM se muestra su propia barra (retorno + items).
   const inCrmWorld = pathname.startsWith("/crm");
-  const visibleSections = inCrmWorld
-    ? sections.filter((section) => section.label === "Inicio" || section.label === "CRM")
-    : sections;
+  const crmSection = sections.find((section) => section.label === "CRM");
+  if (inCrmWorld && crmSection) {
+    return <CrmWorldNavigation active={active} current={current} crmSection={crmSection} indicators={indicators} />;
+  }
 
   return (
     <nav aria-label="Navegacion principal" className="grid gap-2">
-      {visibleSections.map((section) => {
+      {sections.map((section) => {
+        // La seccion CRM es una puerta de entrada: un link directo al segundo mundo.
+        if (section.label === "CRM") {
+          return (
+            <Link className={sectionSummaryClass(false)} href="/crm/perfil" key={section.label}>
+              {section.icon ? <AppIcon aria-hidden="true" className="h-4 w-4 shrink-0" name={section.icon} /> : null}
+              <span className="min-w-0 flex-1 truncate">{section.label}</span>
+              <span aria-hidden="true" className="erp-text-caption shrink-0 text-white/50">&gt;</span>
+            </Link>
+          );
+        }
+
         const activeSection = sectionIsActive(section, active);
         const sectionBadge = sectionBadgeValue(section, indicators);
 

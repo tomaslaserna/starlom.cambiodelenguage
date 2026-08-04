@@ -39,16 +39,19 @@ export function ClientesDashboard({ groups, counts, zonas, agendar }: Props) {
               key={state.key}
               type="button"
               onClick={() => setSelected(state.key)}
-              className="rounded-[14px] border bg-[color:var(--panel)] p-4 text-left transition-[box-shadow,transform,border-color] hover:-translate-y-0.5 hover:shadow-[var(--shadow-sm)]"
+              className="rounded-[14px] border bg-[color:var(--panel)] p-4 text-left shadow-[var(--shadow-xs)] transition-[box-shadow,transform,border-color] hover:-translate-y-0.5 hover:shadow-[var(--shadow-sm)]"
               style={{ borderColor: active ? "var(--accent)" : "var(--border)", boxShadow: active ? "0 0 0 3px var(--focus-soft)" : undefined }}
             >
               <div
-                className="mb-2 grid h-11 w-11 place-items-center rounded-full"
+                className="mb-2.5 grid h-12 w-12 place-items-center rounded-full"
                 style={{ background: state.bg, color: state.color }}
               >
-                <span className="text-lg font-bold">{counts[state.key] ?? 0}</span>
+                <StateIcon name={state.key} />
               </div>
-              <div className="erp-text-body font-semibold text-[color:var(--foreground)]">{state.label}</div>
+              <div className="text-[1.75rem] font-bold leading-none tabular-nums" style={{ color: state.color }}>
+                {counts[state.key] ?? 0}
+              </div>
+              <div className="erp-text-body mt-1 font-semibold text-[color:var(--foreground)]">{state.label}</div>
               <div className="erp-text-caption text-[color:var(--muted)]">{state.sub}</div>
             </button>
           );
@@ -128,6 +131,15 @@ export function ClientesDashboard({ groups, counts, zonas, agendar }: Props) {
       </div>
     </div>
   );
+}
+
+function StateIcon({ name }: { name: string }) {
+  const common = { width: 24, height: 24, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  if (name === "al_dia") return <svg {...common}><path d="M20 6 9 17l-5-5" /></svg>;
+  if (name === "contactar") return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>;
+  if (name === "riesgo") return <svg {...common}><path d="M12 3 1.5 21h21z" /><path d="M12 9v5M12 17.5h.01" /></svg>;
+  if (name === "perdido") return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="m15 9-6 6M9 9l6 6" /></svg>;
+  return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></svg>;
 }
 
 function ZoneChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
