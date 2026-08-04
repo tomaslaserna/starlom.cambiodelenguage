@@ -334,7 +334,7 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
         // La seccion CRM es una puerta de entrada: un link directo al segundo mundo.
         if (section.label === "CRM") {
           return (
-            <Link className={sectionSummaryClass(false)} href="/crm/perfil" key={section.label}>
+            <Link className={sectionSummaryClass(false)} href="/crm/clientes" key={section.label}>
               {section.icon ? <AppIcon aria-hidden="true" className="h-4 w-4 shrink-0" name={section.icon} /> : null}
               <span className="min-w-0 flex-1 truncate">{section.label}</span>
               <span aria-hidden="true" className="erp-text-caption shrink-0 text-white/50">&gt;</span>
