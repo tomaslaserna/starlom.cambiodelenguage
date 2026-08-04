@@ -218,6 +218,92 @@ function NavigationGroupBlock({
   );
 }
 
+const sectionSummaryClass = (activeSection: boolean) =>
+  cn(
+    "erp-text-body-sm flex min-h-11 items-center gap-2 rounded-[10px] border px-3 py-2 font-medium uppercase tracking-normal transition-[background-color,border-color,color,box-shadow]",
+    activeSection
+      ? "border-white/26 bg-white/16 text-white shadow-[0_10px_22px_rgba(5,32,85,0.14)]"
+      : "border-white/10 bg-white/6 text-white/82 hover:border-white/18 hover:bg-white/10 hover:text-white",
+  );
+
+function SectionAccordion({
+  active,
+  current,
+  indicators,
+  section,
+}: {
+  active: string;
+  current: CurrentLocation;
+  indicators: NavigationIndicators;
+  section: NavigationSection;
+}) {
+  const activeSection = sectionIsActive(section, active);
+  const sectionBadge = sectionBadgeValue(section, indicators);
+
+  return (
+    <details className="group/section" open={activeSection || undefined}>
+      <summary className={cn("cursor-pointer list-none", sectionSummaryClass(activeSection))}>
+        <span aria-hidden="true" className="erp-text-caption w-3 shrink-0 text-center transition-transform group-open/section:rotate-90">
+          &gt;
+        </span>
+        {section.icon ? <AppIcon aria-hidden="true" className="h-4 w-4 shrink-0" name={section.icon} /> : null}
+        <span className="min-w-0 flex-1 truncate">{section.label}</span>
+        <Badge active={activeSection} value={sectionBadge} />
+      </summary>
+      <div className="mt-1.5 grid gap-1 pb-2 pl-2">
+        {isRedundantSoleGroup(section) ? (
+          <GroupItemsList activeGroup={activeSection} current={current} group={section.groups[0]} indicators={indicators} />
+        ) : (
+          section.groups.map((group) => (
+            <NavigationGroupBlock active={active} current={current} group={group} indicators={indicators} key={group.label} />
+          ))
+        )}
+      </div>
+    </details>
+  );
+}
+
+// Segundo mundo del CRM: retorno al sistema + Modo CRM (items planos) + Inicio
+// (menu incondicional compartido: escritorio, calendario, mensajes, banco).
+function CrmWorldNavigation({
+  active,
+  current,
+  crmSection,
+  inicioSection,
+  indicators,
+}: {
+  active: string;
+  current: CurrentLocation;
+  crmSection: NavigationSection;
+  inicioSection?: NavigationSection;
+  indicators: NavigationIndicators;
+}) {
+  return (
+    <nav aria-label="Navegacion CRM" className="grid gap-2">
+      <Link className={cn(navigationRowClass(false), "text-[#93b4ff]")} href="/">
+        <span aria-hidden="true" className="erp-text-caption w-3 shrink-0 text-center">
+          &lt;
+        </span>
+        <span className="min-w-0 flex-1 truncate">Volver al sistema</span>
+      </Link>
+      <div className="erp-text-caption mt-1 flex items-center gap-2 rounded-[999px] border border-white/16 bg-white/10 px-3 py-1.5 font-semibold uppercase tracking-[0.08em] text-white/72">
+        {crmSection.icon ? <AppIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" name={crmSection.icon} /> : null}
+        Modo CRM
+      </div>
+      <div className="mt-1 grid gap-1">
+        {crmSection.groups.map((group) => (
+          <NavigationGroupBlock active={active} current={current} group={group} indicators={indicators} key={group.label} />
+        ))}
+      </div>
+      {inicioSection ? (
+        <div className="mt-2">
+          <SectionAccordion active={active} current={current} indicators={indicators} section={inicioSection} />
+        </div>
+      ) : null}
+    </nav>
+  );
+}
+
 export function ShellNavigation({ active, indicators, sections }: ShellNavigationProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -226,50 +312,38 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
     searchParams: new URLSearchParams(searchParams.toString()),
   };
 
+  // Segundo mundo: dentro del CRM se muestra su propia barra (retorno + items).
+  const inCrmWorld = pathname.startsWith("/crm");
+  const crmSection = sections.find((section) => section.label === "CRM");
+  const inicioSection = sections.find((section) => section.label === "Inicio");
+  if (inCrmWorld && crmSection) {
+    return (
+      <CrmWorldNavigation
+        active={active}
+        current={current}
+        crmSection={crmSection}
+        inicioSection={inicioSection}
+        indicators={indicators}
+      />
+    );
+  }
+
   return (
     <nav aria-label="Navegacion principal" className="grid gap-2">
       {sections.map((section) => {
-        const activeSection = sectionIsActive(section, active);
-        const sectionBadge = sectionBadgeValue(section, indicators);
-
-        return (
-          <details className="group/section" key={section.label} open={activeSection || undefined}>
-            <summary
-              className={cn(
-                "erp-text-body-sm flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-[10px] border px-3 py-2 font-medium uppercase tracking-normal transition-[background-color,border-color,color,box-shadow]",
-                activeSection
-                  ? "border-white/26 bg-white/16 text-white shadow-[0_10px_22px_rgba(5,32,85,0.14)]"
-                  : "border-white/10 bg-white/6 text-white/82 hover:border-white/18 hover:bg-white/10 hover:text-white",
-              )}
-            >
-              <span aria-hidden="true" className="erp-text-caption w-3 shrink-0 text-center transition-transform group-open/section:rotate-90">
-                &gt;
-              </span>
+        // La seccion CRM es una puerta de entrada: un link directo al segundo mundo.
+        if (section.label === "CRM") {
+          return (
+            <Link className={sectionSummaryClass(false)} href="/crm/clientes" key={section.label}>
               {section.icon ? <AppIcon aria-hidden="true" className="h-4 w-4 shrink-0" name={section.icon} /> : null}
               <span className="min-w-0 flex-1 truncate">{section.label}</span>
-              <Badge active={activeSection} value={sectionBadge} />
-            </summary>
-            <div className="mt-1.5 grid gap-1 pb-2 pl-2">
-              {isRedundantSoleGroup(section) ? (
-                <GroupItemsList
-                  activeGroup={activeSection}
-                  current={current}
-                  group={section.groups[0]}
-                  indicators={indicators}
-                />
-              ) : (
-                section.groups.map((group) => (
-                  <NavigationGroupBlock
-                    active={active}
-                    current={current}
-                    group={group}
-                    indicators={indicators}
-                    key={group.label}
-                  />
-                ))
-              )}
-            </div>
-          </details>
+              <span aria-hidden="true" className="erp-text-caption shrink-0 text-white/50">&gt;</span>
+            </Link>
+          );
+        }
+
+        return (
+          <SectionAccordion active={active} current={current} indicators={indicators} key={section.label} section={section} />
         );
       })}
     </nav>
