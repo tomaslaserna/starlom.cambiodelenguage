@@ -11,6 +11,7 @@ import {
   ADMIN_TREASURY_READ_PERMISSION,
   COLLECTIONS_APPROVE_PERMISSION,
   COLLECTIONS_READ_PERMISSION,
+  CRM_READ_PERMISSION,
   CUSTOMERS_READ_PERMISSION,
   EMPLOYEES_READ_PERMISSION,
   ORDERS_CREATE_PERMISSION,
@@ -235,6 +236,11 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "messages",
   },
   { href: "/bank", label: "Banco", active: "bank" },
+  // CRM (segundo mundo para vendedores). active: "crm" agrupa estos en la seccion CRM.
+  { href: "/crm/perfil", label: "Perfil", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/crm/clientes", label: "Clientes", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/crm/presupuestos", label: "Presupuestos", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/crm/listas", label: "Listas de precios", active: "crm", permission: CRM_READ_PERMISSION },
 ];
 
 export type NavigationSection = {
@@ -254,6 +260,11 @@ export const navigationSections: NavigationSection[] = [
     label: "Inicio",
     icon: "chart",
     groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes"), groupByLabel("Banco")],
+  },
+  {
+    label: "CRM",
+    icon: "clock",
+    groups: navigationGroups.filter((group) => group.active === "crm"),
   },
   {
     label: "Operaciones",

@@ -226,9 +226,16 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
     searchParams: new URLSearchParams(searchParams.toString()),
   };
 
+  // Segundo mundo: dentro del CRM solo se ven Inicio (compartido) y CRM; el resto
+  // del sistema administrativo queda oculto para el vendedor.
+  const inCrmWorld = pathname.startsWith("/crm");
+  const visibleSections = inCrmWorld
+    ? sections.filter((section) => section.label === "Inicio" || section.label === "CRM")
+    : sections;
+
   return (
     <nav aria-label="Navegacion principal" className="grid gap-2">
-      {sections.map((section) => {
+      {visibleSections.map((section) => {
         const activeSection = sectionIsActive(section, active);
         const sectionBadge = sectionBadgeValue(section, indicators);
 

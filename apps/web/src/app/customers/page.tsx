@@ -128,6 +128,9 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                 <Field htmlFor="customer-seller" label="Vendedor">
                   <Input id="customer-seller" name="seller" />
                 </Field>
+                <Field htmlFor="customer-assigned-seller" label="Vendedor asignado (a cargo)">
+                  <Input id="customer-assigned-seller" name="assignedSeller" />
+                </Field>
                 <Field htmlFor="customer-city" label="Ciudad">
                   <Input id="customer-city" name="city" />
                 </Field>

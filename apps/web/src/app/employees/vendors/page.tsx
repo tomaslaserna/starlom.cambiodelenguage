@@ -17,7 +17,7 @@ import { formatCurrency } from "@/lib/format";
 import { getVendorManagement } from "@/lib/vendors-management";
 import { requireStaffSession } from "@/lib/auth";
 import { sessionCanReadEmployees } from "@/lib/route-auth";
-import { saveVendorGoalAction } from "@/app/employees/vendors/actions";
+import { saveVendorCommissionAction, saveVendorGoalAction } from "@/app/employees/vendors/actions";
 import { redirect } from "next/navigation";
 
 export default async function VendorsManagementPage() {
@@ -56,6 +56,7 @@ export default async function VendorsManagementPage() {
               <DataTableRow>
                 <DataTableHead>Vendedor</DataTableHead>
                 <DataTableHead>Metas</DataTableHead>
+                <DataTableHead>Comision</DataTableHead>
                 <DataTableHead align="right">Venta mes</DataTableHead>
                 <DataTableHead align="right">Clientes</DataTableHead>
                 <DataTableHead align="right">Presupuestos</DataTableHead>
@@ -65,7 +66,7 @@ export default async function VendorsManagementPage() {
             <DataTableBody>
               {data.vendors.length === 0 ? (
                 <DataTableRow>
-                  <DataTableCell colSpan={6} className="py-10">
+                  <DataTableCell colSpan={7} className="py-10">
                     <EmptyState
                       title="No hay vendedores configurados"
                       description="Cuando existan vendedores asociados a empleados, clientes, ventas o presupuestos, apareceran en este listado."
@@ -97,6 +98,24 @@ export default async function VendorsManagementPage() {
                           name="goalClients"
                           type="number"
                         />
+                        <Button size="sm" type="submit" variant="secondary">
+                          Guardar
+                        </Button>
+                      </form>
+                    </DataTableCell>
+                    <DataTableCell className="min-w-[180px]">
+                      <form action={saveVendorCommissionAction} className="flex flex-wrap items-center gap-2">
+                        <input name="vendor" type="hidden" value={vendor.vendor} />
+                        <Input
+                          aria-label="Comision (%)"
+                          className="w-24"
+                          defaultValue={vendor.commissionRate}
+                          min="0"
+                          step="0.1"
+                          name="commissionRate"
+                          type="number"
+                        />
+                        <span className="erp-text-body-sm text-[color:var(--muted)]">%</span>
                         <Button size="sm" type="submit" variant="secondary">
                           Guardar
                         </Button>

@@ -30,6 +30,7 @@ export type CustomerDetail = {
   name: string;
   businessName: string;
   seller: string;
+  assignedSeller: string;
   taxIdType: string;
   taxId: string;
   vatCondition: string;
@@ -55,6 +56,7 @@ export type CustomerInput = {
   priceList: string;
   status: string;
   seller: string;
+  assignedSeller: string;
   observation: string;
 };
 
@@ -138,6 +140,7 @@ function mapCustomer(row: {
   display_name: string;
   legal_name: string | null;
   seller_name: string | null;
+  assigned_seller: string | null;
   tax_id: string | null;
   fiscal_condition: string | null;
   phone: string | null;
@@ -154,6 +157,7 @@ function mapCustomer(row: {
     name: row.display_name,
     businessName: row.legal_name ?? "",
     seller: row.seller_name ?? "",
+    assignedSeller: row.assigned_seller ?? "",
     taxIdType: row.tax_id ? "CUIT" : "",
     taxId: row.tax_id ?? "",
     vatCondition: row.fiscal_condition ?? "",
@@ -242,6 +246,7 @@ export function customerInputFromBody(
     priceList: firstText(body, ["priceList", "lista_precios"], defaults.priceList),
     status: firstText(body, ["status", "estado"], defaults.status ?? "activo"),
     seller: firstText(body, ["seller", "vendedor_cl"], defaults.seller),
+    assignedSeller: firstText(body, ["assignedSeller", "vendedor_asignado"], defaults.assignedSeller),
     observation: firstText(body, ["observation", "observacion"], defaults.observation),
   };
 
@@ -294,7 +299,7 @@ export async function getCustomer(companyId: number, id: string) {
   const result = await queryWithCompanyContext<Parameters<typeof mapCustomer>[0]>(
     companyId,
     `
-      SELECT id, external_code, display_name, legal_name, seller_name, tax_id,
+      SELECT id, external_code, display_name, legal_name, seller_name, assigned_seller, tax_id,
              fiscal_condition, phone, active, address, price_list_name,
              province, locality, notes
       FROM clients
@@ -335,9 +340,9 @@ export async function createCustomer(companyId: number, input: CustomerInput) {
       INSERT INTO clients (
         display_name, legal_name, tax_id, fiscal_condition, phone,
         address, locality, province, price_list_name, active, seller_name,
-        notes, empresa_id
+        notes, empresa_id, assigned_seller
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10 <> 'inactivo', $11, $12, $13)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10 <> 'inactivo', $11, $12, $13, $14)
       RETURNING id::text AS id
     `,
     [
@@ -354,6 +359,7 @@ export async function createCustomer(companyId: number, input: CustomerInput) {
       input.seller,
       input.observation,
       companyId,
+      input.assignedSeller,
     ],
   );
 
@@ -378,6 +384,7 @@ export async function updateCustomer(companyId: number, id: string, input: Custo
           active = $10 <> 'inactivo',
           seller_name = $11,
           notes = $12,
+          assigned_seller = $15,
           updated_at = now()
       WHERE id = $13::uuid AND empresa_id = $14
       RETURNING id::text AS id
@@ -397,6 +404,7 @@ export async function updateCustomer(companyId: number, id: string, input: Custo
       input.observation,
       id,
       companyId,
+      input.assignedSeller,
     ],
   );
 
