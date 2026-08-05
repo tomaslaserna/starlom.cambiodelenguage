@@ -8,7 +8,10 @@ export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await requireApiSession([{ resource: "productos", action: "ver" }]);
+    const session = await requireApiSession([
+      { resource: "productos", action: "ver" },
+      { resource: "crm", action: "ver" },
+    ]);
     const params = request.nextUrl.searchParams;
     const list = Number(params.get("list") ?? params.get("lista") ?? 0);
     const file = await buildPriceListPdf(session.companyId, {
