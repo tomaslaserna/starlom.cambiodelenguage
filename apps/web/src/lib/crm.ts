@@ -1,7 +1,15 @@
 import type { AuthSession } from "@/lib/auth";
+import {
+  classifyQuote,
+  topQuoteClients,
+  type QuoteBucket,
+  type TopQuoteClient,
+  type VendorQuote,
+} from "@/lib/crm-quotes";
 import { queryWithCompanyContext } from "@/lib/db";
 import { getCustomerFollowUp } from "@/lib/messages";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { listPriceListParameters } from "@/lib/pricing";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 
 // El vínculo vendedor <-> ventas/clientes es por texto (seller_name), igual que
@@ -162,6 +170,102 @@ export async function getVendorClients(session: AuthSession): Promise<CrmClients
 
   const counts = Object.fromEntries(STATE_KEYS.map((key) => [key, groups[key]!.length]));
   return { groups, counts, zonas: [...zonas].sort((a, b) => a.localeCompare(b)) };
+}
+
+export type VendorQuotesResult = {
+  buckets: Record<QuoteBucket, VendorQuote[]>;
+  counts: Record<QuoteBucket, number>;
+  topClients: TopQuoteClient[];
+};
+
+const QUOTE_BUCKETS: QuoteBucket[] = ["vigentes", "por_vencer", "vencidos", "aceptados"];
+
+// Presupuestos del vendedor (quotes filtradas por seller_id -> profiles), agrupados
+// por vencimiento con classifyQuote y con el top de clientes que mas piden.
+export async function getVendorQuotes(session: AuthSession): Promise<VendorQuotesResult> {
+  const names = sellerCandidates(session);
+  const rows = (
+    await queryWithCompanyContext<{
+      id: string;
+      quote_number: string;
+      client_name: string;
+      total: string;
+      issue_date: string | null;
+      expiration_date: string | null;
+      days_remaining: string | null;
+      status: string;
+      approved_this_month: boolean;
+    }>(
+      session.companyId,
+      `
+        SELECT q.id::text AS id,
+               COALESCE(NULLIF(q.quote_number, ''), 'Sin numero') AS quote_number,
+               COALESCE(NULLIF(q.client_name, ''), c.display_name, c.legal_name, '') AS client_name,
+               q.total_amount::text AS total,
+               q.created_at::date::text AS issue_date,
+               (q.created_at::date + (q.validity_days || ' days')::interval)::date::text AS expiration_date,
+               ((q.created_at::date + (q.validity_days || ' days')::interval)::date - CURRENT_DATE)::text AS days_remaining,
+               q.status,
+               (q.status = 'aceptada' AND q.approved_at >= date_trunc('month', CURRENT_DATE)) AS approved_this_month
+        FROM quotes q
+        LEFT JOIN clients c ON c.id = q.client_id AND c.empresa_id = q.empresa_id
+        LEFT JOIN profiles p ON p.id = q.seller_id
+        WHERE q.empresa_id = $1
+          AND UPPER(BTRIM(COALESCE(p.username, p.full_name, ''))) = ANY($2::text[])
+        ORDER BY q.created_at DESC, q.id DESC
+      `,
+      [session.companyId, names],
+    )
+  ).rows;
+
+  const quotes: VendorQuote[] = rows.map((row) => ({
+    id: row.id,
+    quoteNumber: row.quote_number,
+    clientName: row.client_name,
+    total: Number(row.total),
+    issueDate: row.issue_date,
+    expirationDate: row.expiration_date,
+    daysRemaining: row.days_remaining == null ? null : Number(row.days_remaining),
+    status: row.status,
+    approvedThisMonth: Boolean(row.approved_this_month),
+  }));
+
+  const buckets: Record<QuoteBucket, VendorQuote[]> = {
+    vigentes: [],
+    por_vencer: [],
+    vencidos: [],
+    aceptados: [],
+  };
+  for (const quote of quotes) {
+    const bucket = classifyQuote(quote.status, quote.daysRemaining, quote.approvedThisMonth);
+    if (bucket) buckets[bucket].push(quote);
+  }
+
+  const counts = Object.fromEntries(
+    QUOTE_BUCKETS.map((bucket) => [bucket, buckets[bucket].length]),
+  ) as Record<QuoteBucket, number>;
+
+  return { buckets, counts, topClients: topQuoteClients(quotes) };
+}
+
+export type PublishedPriceList = {
+  id: number;
+  name: string;
+  validFrom: string | null;
+  validTo: string | null;
+};
+
+// Listas de precios activas que publica Administracion, con su vigencia.
+export async function getPublishedPriceLists(companyId: number): Promise<PublishedPriceList[]> {
+  const lists = await listPriceListParameters(companyId);
+  return lists
+    .filter((list) => list.active)
+    .map((list) => ({
+      id: list.id,
+      name: list.name,
+      validFrom: list.validFrom,
+      validTo: list.validTo,
+    }));
 }
 
 // Crea un recordatorio para el vendedor de contactar a un cliente (boton Agendar).
