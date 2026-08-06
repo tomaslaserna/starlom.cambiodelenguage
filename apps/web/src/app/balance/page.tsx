@@ -1,12 +1,13 @@
 import { ModulePage } from "@/components/module-page";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { getBalanceDashboard } from "@/lib/finance";
-import { getEarliestSalesMonth } from "@/lib/admin-metrics";
+import { getEarliestSalesMonth, getMonthlySeries } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
 import { currentMonth } from "@/lib/month-range";
 import { requirePagePermission } from "@/lib/page-auth";
 import { availablePeriods, parsePeriod, periodLabel } from "@/lib/period-range";
 import { ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION } from "@/lib/route-auth";
+import { Evolucion } from "./evolucion";
 import { PeriodPicker } from "./period-picker";
 import {
   Card,
@@ -34,6 +35,8 @@ export default async function BalancePage({
   const periods = availablePeriods(earliest, fallbackMonth);
 
   const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId, period);
+  const year = period.key.slice(0, 4);
+  const series = await getMonthlySeries(session.companyId, year);
   const incomeRows = [
     { label: "Ventas entregadas (neto, sin IVA facturado)", amount: metrics.sales.current },
     { label: "Costo de mercaderia vendida", amount: -metrics.margin.grossCost },
@@ -155,6 +158,8 @@ export default async function BalancePage({
             </div>
           </section>
         </div>
+
+        <Evolucion year={year} points={series} />
       </div>
     </ModulePage>
   );
