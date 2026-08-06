@@ -1,9 +1,13 @@
 import { ModulePage } from "@/components/module-page";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { getBalanceDashboard } from "@/lib/finance";
+import { getEarliestSalesMonth } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
+import { currentMonth } from "@/lib/month-range";
 import { requirePagePermission } from "@/lib/page-auth";
+import { availablePeriods, parsePeriod, periodLabel } from "@/lib/period-range";
 import { ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION } from "@/lib/route-auth";
+import { PeriodPicker } from "./period-picker";
 import {
   Card,
   CardHeader,
@@ -15,10 +19,21 @@ import {
   StatCard,
 } from "@/components/ui";
 
-export default async function BalancePage() {
+export default async function BalancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>;
+}) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION]);
-  const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId);
+
+  const { period: periodParam } = await searchParams;
+  const fallbackMonth = currentMonth(new Date());
+  const period = parsePeriod(periodParam, fallbackMonth);
+  const earliest = await getEarliestSalesMonth(session.companyId);
+  const periods = availablePeriods(earliest, fallbackMonth);
+
+  const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId, period);
   const incomeRows = [
     { label: "Ventas entregadas (neto, sin IVA facturado)", amount: metrics.sales.current },
     { label: "Costo de mercaderia vendida", amount: -metrics.margin.grossCost },
@@ -35,6 +50,17 @@ export default async function BalancePage() {
       title="Balance"
     >
       <div className="grid gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="erp-text-title-md font-semibold text-[color:var(--foreground)]">
+              Balance · {periodLabel(period)}
+            </h2>
+            <p className="erp-text-caption text-[color:var(--muted)]">
+              Por cobrar y por pagar son saldos a la fecha.
+            </p>
+          </div>
+          <PeriodPicker periods={periods} selectedKey={period.key} />
+        </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <StatCard
