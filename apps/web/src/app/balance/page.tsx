@@ -5,12 +5,14 @@ import { getEarliestSalesMonth, getMonthlySeries } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
 import { getCustomerChurn } from "@/lib/messages";
 import { currentMonth } from "@/lib/month-range";
+import { getDeliveryTimes } from "@/lib/orders";
 import { requirePagePermission } from "@/lib/page-auth";
 import { availablePeriods, parsePeriod, periodBounds, periodLabel } from "@/lib/period-range";
 import { ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION } from "@/lib/route-auth";
 import { ChurnClientes } from "./churn-clientes";
 import { Evolucion } from "./evolucion";
 import { PeriodPicker } from "./period-picker";
+import { TiemposEntrega } from "./tiempos-entrega";
 import {
   Card,
   CardHeader,
@@ -40,6 +42,7 @@ export default async function BalancePage({
   const year = period.key.slice(0, 4);
   const series = await getMonthlySeries(session.companyId, year);
   const churn = await getCustomerChurn(session.companyId, periodBounds(period));
+  const entregas = await getDeliveryTimes(session.companyId, periodBounds(period));
   const incomeRows = [
     { label: "Ventas entregadas (neto, sin IVA facturado)", amount: metrics.sales.current },
     { label: "Costo de mercaderia vendida", amount: -metrics.margin.grossCost },
@@ -165,6 +168,8 @@ export default async function BalancePage({
         <Evolucion year={year} points={series} />
 
         <ChurnClientes churn={churn} />
+
+        <TiemposEntrega data={entregas} />
       </div>
     </ModulePage>
   );
