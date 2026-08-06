@@ -3,10 +3,12 @@ import { formatCurrency, formatNumber } from "@/lib/format";
 import { getBalanceDashboard } from "@/lib/finance";
 import { getEarliestSalesMonth, getMonthlySeries } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
+import { getCustomerChurn } from "@/lib/messages";
 import { currentMonth } from "@/lib/month-range";
 import { requirePagePermission } from "@/lib/page-auth";
-import { availablePeriods, parsePeriod, periodLabel } from "@/lib/period-range";
+import { availablePeriods, parsePeriod, periodBounds, periodLabel } from "@/lib/period-range";
 import { ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION } from "@/lib/route-auth";
+import { ChurnClientes } from "./churn-clientes";
 import { Evolucion } from "./evolucion";
 import { PeriodPicker } from "./period-picker";
 import {
@@ -37,6 +39,7 @@ export default async function BalancePage({
   const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId, period);
   const year = period.key.slice(0, 4);
   const series = await getMonthlySeries(session.companyId, year);
+  const churn = await getCustomerChurn(session.companyId, periodBounds(period));
   const incomeRows = [
     { label: "Ventas entregadas (neto, sin IVA facturado)", amount: metrics.sales.current },
     { label: "Costo de mercaderia vendida", amount: -metrics.margin.grossCost },
@@ -160,6 +163,8 @@ export default async function BalancePage({
         </div>
 
         <Evolucion year={year} points={series} />
+
+        <ChurnClientes churn={churn} />
       </div>
     </ModulePage>
   );
