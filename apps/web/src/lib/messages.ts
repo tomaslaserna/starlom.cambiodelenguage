@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
+import { customerMetrics } from "@/lib/customer-rhythm";
 import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import {
   attachPreparedMessageUploads,
@@ -595,36 +596,6 @@ export async function completeTask(
 
 function dayStart(date: Date) {
   return Date.parse(`${localDateIso(date)}T00:00:00-03:00`);
-}
-
-function median(values: number[]) {
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
-}
-
-function customerMetrics(timestamps: number[]) {
-  const gaps: number[] = [];
-  for (let index = 1; index < timestamps.length; index++) {
-    gaps.push(Math.round((timestamps[index] - timestamps[index - 1]) / 86_400_000));
-  }
-  if (!gaps.length) return { average: 1, deviation: 0, intervals: 0 };
-
-  const med = Math.max(1, median(gaps));
-  const processed = gaps.map((gap) =>
-    gaps.length >= 3 ? Math.max(med * 0.3, Math.min(med * 3, gap)) : gap,
-  );
-  let numerator = 0;
-  let denominator = 0;
-  for (const [index, gap] of processed.entries()) {
-    const weight = index + 1;
-    numerator += weight * gap;
-    denominator += weight;
-  }
-  const average = Math.max(1, Math.round(numerator / denominator));
-  const mean = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
-  const variance = gaps.reduce((sum, gap) => sum + (gap - mean) ** 2, 0) / gaps.length;
-  return { average, deviation: Math.round(Math.sqrt(variance)), intervals: gaps.length };
 }
 
 export async function getCustomerFollowUp(companyId: number) {

@@ -134,7 +134,7 @@ export function classifyChurn(
   let lostMs: number | null = null;
   if (purchases >= 2) {
     const { average } = customerMetrics(sorted);
-    lostMs = lastMs + average * 86_400_000;
+    lostMs = lastMs + 2 * average * 86_400_000;
     baja = lostMs >= periodStartMs && lostMs < periodNextMs;
   }
   return { alta, baja, firstMs, lostMs };
