@@ -21,3 +21,10 @@ test("getOrderFormData: la lista de clientes del formulario no filtra por active
 test("createQuote: la validación de cliente no filtra por active", () => {
   assert.doesNotMatch(quotesSource, /id = \$1::uuid AND empresa_id = \$2 AND active = true/);
 });
+
+test("acceptQuote: el match por CUIT no filtra por active y reactiva el cliente resultante", () => {
+  // El lookup por CUIT (regexp_replace) ya no exige active = true
+  assert.doesNotMatch(quotesSource, /active = true\s+AND regexp_replace/);
+  // La conversión reactiva al cliente resultante
+  assert.match(quotesSource, /reactivateClientIfInactive\(/);
+});

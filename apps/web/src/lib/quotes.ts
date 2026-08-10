@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { ApiError } from "@/lib/api-response";
+import { reactivateClientIfInactive } from "@/lib/client-reactivation";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { lineSubtotal, money, normalizePriceListKey, resolvePriceListName, type PriceListKey } from "@/lib/order-pricing";
 import { dynamicPriceSqlExpression, productMarginCodeExpression } from "@/lib/product-pricing-sql";
@@ -769,7 +770,6 @@ export async function acceptQuote(
             SELECT id::text
             FROM clients
             WHERE empresa_id = $1
-              AND active = true
               AND regexp_replace(COALESCE(tax_id, ''), '[^0-9]', '', 'g') =
                   regexp_replace($2, '[^0-9]', '', 'g')
             ORDER BY created_at
@@ -805,6 +805,10 @@ export async function acceptQuote(
         );
         clientId = createdClient.rows[0].id;
       }
+    }
+
+    if (clientId) {
+      await reactivateClientIfInactive(client, session.companyId, clientId);
     }
 
     const saleResult = await client.query<{ id: string }>(
