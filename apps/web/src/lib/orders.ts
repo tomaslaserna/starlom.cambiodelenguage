@@ -671,7 +671,7 @@ export async function getOrderFormData(
       SELECT id::text, display_name, legal_name, tax_id, fiscal_condition,
              phone, address, price_list_name, receipt_type, seller_name, payment_term_days
       FROM clients
-      WHERE empresa_id = $1 AND active = true
+      WHERE empresa_id = $1
       ORDER BY display_name ASC, id ASC
     `,
     [companyId],

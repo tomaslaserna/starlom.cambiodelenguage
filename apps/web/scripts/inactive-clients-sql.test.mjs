@@ -10,3 +10,9 @@ test("getOrderCustomer: la búsqueda de cliente no filtra por active y reactiva"
   // Y se reactiva al cliente al crear el pedido
   assert.match(ordersSource, /reactivateClientIfInactive\(/);
 });
+
+test("getOrderFormData: la lista de clientes del formulario no filtra por active", () => {
+  // La query de clientes del selector (WHERE empresa_id = $1) ya no exige active.
+  // El filtro de productos usa el prefijo `p.` y no matchea este patrón.
+  assert.doesNotMatch(ordersSource, /empresa_id = \$1 AND active = true/);
+});
