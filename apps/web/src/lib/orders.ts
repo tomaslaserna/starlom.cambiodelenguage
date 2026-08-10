@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api-response";
+import { reactivateClientIfInactive } from "@/lib/client-reactivation";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { summarizeDurations } from "@/lib/delivery-times";
 import {
@@ -488,13 +489,14 @@ async function getOrderCustomer(client: PoolClient, companyId: number, customerI
       SELECT id::text, display_name, legal_name, tax_id, fiscal_condition,
              price_list_name, receipt_type, seller_name, payment_term_days
       FROM clients
-      WHERE id = $1::uuid AND empresa_id = $2 AND active = true
+      WHERE id = $1::uuid AND empresa_id = $2
       LIMIT 1
     `,
     [customerId, companyId],
   );
   const customer = customerResult.rows[0];
   if (!customer) throw new ApiError(404, "Cliente no encontrado");
+  await reactivateClientIfInactive(client, companyId, customerId);
   return customer;
 }
 
