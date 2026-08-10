@@ -190,6 +190,7 @@ test("collections screen lists delivered sales to collect with due dates", () =>
   assert.match(collectionsPage, /\/api\/pdfs\/fiscal\/sales\/\$\{item\.id\}/);
   assert.match(collectionsPage, /\/api\/pdfs\/deliveries\/\$\{item\.deliveryDocumentId\}/);
   assert.match(collectionsPage, /\/api\/pdfs\/orders\/\$\{item\.id\}\/request/);
+  assert.match(collectionsPage, /grid justify-items-start gap-1\.5/);
   assert.doesNotMatch(collectionsPage, /listPendingCollections|approveCollectionAction|rejectCollectionAction/);
 
   assert.match(collections, /tiene_pdf_fiscal/);

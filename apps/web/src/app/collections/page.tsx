@@ -209,7 +209,7 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                         ) : null}
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="grid justify-items-start gap-1.5">
                           <span className="truncate text-xs">{desiredDocumentLabel(item.desiredDocument)}</span>
                           <ButtonLink
                             aria-label={`Descargar PDF de ${receiptLabel}`}
