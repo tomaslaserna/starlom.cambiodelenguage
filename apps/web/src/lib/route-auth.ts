@@ -91,6 +91,11 @@ export const QUOTES_APPROVE_PERMISSION = {
   action: "aprobar",
 } satisfies Permission;
 
+export const CRM_READ_PERMISSION = {
+  resource: "crm",
+  action: "ver",
+} satisfies Permission;
+
 export const PURCHASES_READ_PERMISSION = {
   resource: "compras",
   action: "ver",
@@ -371,6 +376,10 @@ export async function sessionCanReadProducts(session: AuthSession) {
 
 export async function sessionCanReadEmployees(session: AuthSession) {
   return sessionAllows(session, [EMPLOYEES_READ_PERMISSION]);
+}
+
+export async function sessionCanUseCrm(session: AuthSession) {
+  return sessionAllows(session, [CRM_READ_PERMISSION]);
 }
 
 export async function sessionCanReadCollections(session: AuthSession) {

@@ -1,3 +1,4 @@
+import type { AppIconName } from "@/components/ui/app-icon";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
@@ -10,18 +11,18 @@ import {
   ADMIN_TREASURY_READ_PERMISSION,
   COLLECTIONS_APPROVE_PERMISSION,
   COLLECTIONS_READ_PERMISSION,
+  CRM_READ_PERMISSION,
   CUSTOMERS_READ_PERMISSION,
   EMPLOYEES_READ_PERMISSION,
   ORDERS_CREATE_PERMISSION,
   ORDERS_READ_PERMISSION,
-  PRODUCTS_CREATE_PERMISSION,
   PRODUCTS_READ_PERMISSION,
   PURCHASES_READ_PERMISSION,
   QUOTES_READ_PERMISSION,
   SALES_READ_PERMISSION,
   STOCK_EDIT_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
-  sessionAllowedPermissionKeys,
+  sessionAllows,
   sessionCanApproveCollections,
   sessionCanReadCollections,
   type Permission,
@@ -131,12 +132,19 @@ export const navigationGroups: NavigationGroup[] = [
     permission: SALES_READ_PERMISSION,
   },
   {
+    label: "Precios",
+    active: "prices",
+    items: [
+      { href: "/prices", label: "Lista de precios", active: "prices", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/prices/margins", label: "Margenes", active: "prices", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/prices/parameters", label: "Parametros", active: "prices", permission: PRODUCTS_READ_PERMISSION },
+      { href: "/prices/offers", label: "Ofertas", active: "prices", permission: PRODUCTS_READ_PERMISSION },
+    ],
+  },
+  {
     label: "Base de datos",
     active: "database",
     items: [
-      { href: "/pricing", label: "Precios", active: "pricing", permission: PRODUCTS_READ_PERMISSION },
-      { href: "/pricing?mode=new-product", label: "Nuevo producto", active: "pricing", permission: PRODUCTS_CREATE_PERMISSION },
-      { href: "/pricing?mode=bulk", label: "Importar catalogo", active: "pricing", permission: PRODUCTS_CREATE_PERMISSION },
       { href: "/customers", label: "Clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/customers/follow-up", label: "Seguimiento clientes", active: "database", permission: CUSTOMERS_READ_PERMISSION },
       { href: "/suppliers", label: "Proveedores", active: "database", permission: SUPPLIERS_READ_PERMISSION },
@@ -214,6 +222,12 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "approvals",
     permission: COLLECTIONS_APPROVE_PERMISSION,
   },
+  {
+    href: "/admin/audit",
+    label: "Auditoria",
+    active: "audit",
+    permission: ADMIN_MOVEMENTS_READ_PERMISSION,
+  },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   {
     href: "/messages",
@@ -222,10 +236,16 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "messages",
   },
   { href: "/bank", label: "Banco", active: "bank" },
+  // CRM (segundo mundo para vendedores). active: "crm" agrupa estos en la seccion CRM.
+  { href: "/crm/perfil", label: "Perfil", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/crm/clientes", label: "Clientes", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/crm/presupuestos", label: "Presupuestos", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/crm/listas", label: "Listas de precios", active: "crm", permission: CRM_READ_PERMISSION },
 ];
 
 export type NavigationSection = {
   label: string;
+  icon?: AppIconName;
   groups: NavigationGroup[];
 };
 
@@ -238,10 +258,17 @@ function groupByLabel(label: string) {
 export const navigationSections: NavigationSection[] = [
   {
     label: "Inicio",
+    icon: "chart",
     groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes"), groupByLabel("Banco")],
   },
   {
+    label: "CRM",
+    icon: "clock",
+    groups: navigationGroups.filter((group) => group.active === "crm"),
+  },
+  {
     label: "Operaciones",
+    icon: "cart",
     groups: [
       groupByLabel("Pedidos"),
       groupByLabel("Registro de ventas"),
@@ -251,25 +278,30 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     label: "Datos",
-    groups: [groupByLabel("Base de datos"), groupByLabel("Stock")],
+    icon: "package",
+    groups: [groupByLabel("Precios"), groupByLabel("Base de datos"), groupByLabel("Stock")],
   },
   {
     label: "Compras",
+    icon: "receipt",
     groups: [groupByLabel("Compras")],
   },
   {
     label: "Administracion",
+    icon: "trend",
     groups: [
+      groupByLabel("Balance"),
       groupByLabel("RR.HH"),
       groupByLabel("Metricas"),
       groupByLabel("Rentabilidad"),
       groupByLabel("Solicitudes y aprobaciones"),
+      groupByLabel("Auditoria"),
     ],
   },
   {
     label: "Finanzas",
+    icon: "money",
     groups: [
-      groupByLabel("Balance"),
       groupByLabel("Sueldos y dividendos"),
       groupByLabel("Caja"),
       groupByLabel("Cash Flow"),
@@ -278,6 +310,7 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     label: "Cobros y pagos",
+    icon: "wallet",
     groups: [groupByLabel("Cobros y pagos")],
   },
 ];
@@ -328,7 +361,14 @@ export async function getNavigationAuthorization(session: AuthSession): Promise<
   const cached = authorizationCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const allowedPermissionKeys = await sessionAllowedPermissionKeys(session, collectRequiredNavigationPermissions());
+  const allowedPermissionKeys = new Set<string>();
+  await Promise.all(
+    collectRequiredNavigationPermissions().map(async (permission) => {
+      if (await sessionAllows(session, [permission])) {
+        allowedPermissionKeys.add(navigationPermissionKey(permission));
+      }
+    }),
+  );
 
   const authorization = { allowedPermissionKeys };
   authorizationCache.set(cacheKey, {

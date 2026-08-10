@@ -1,5 +1,6 @@
 export { Button, buttonClassName, type ButtonProps, type ButtonSize, type ButtonVariant } from "./button";
 export { ButtonLink } from "./button-link";
+export { AppIcon, type AppIconName } from "./app-icon";
 export { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./card";
 export { DataTable, DataTableBody, DataTableCell, DataTableHead, DataTableHeader, DataTableRow } from "./data-table";
 export { EmptyState } from "./empty-state";
@@ -9,6 +10,7 @@ export { PageHeader } from "./page-header";
 export { Select } from "./select";
 export { SearchableSelect, type SearchableSelectOption } from "./searchable-select";
 export { SearchableSelectInput } from "./searchable-select-input";
+export { SearchInput } from "./search-input";
 export { StatCard, type StatCardTone } from "./stat-card";
 export { StatusBadge, type StatusBadgeTone } from "./status-badge";
 export { TableActionMenu, tableActionItemClass } from "./table-action-menu";

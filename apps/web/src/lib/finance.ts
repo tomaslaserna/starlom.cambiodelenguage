@@ -12,12 +12,13 @@ import {
   type SalaryPlanInput,
 } from "@/lib/finance-inputs";
 import { parsePagination } from "@/lib/pagination";
+import type { Period } from "@/lib/period-range";
 
 export type { CashMovementInput, PartnerInput, SalaryPlanInput };
 
-export async function getBalanceDashboard(companyId: number) {
+export async function getBalanceDashboard(companyId: number, period?: Period) {
   const [metrics, payables, cashflow] = await Promise.all([
-    getAdminMetrics(companyId),
+    getAdminMetrics(companyId, period),
     getAccountsPayable(companyId),
     getCashflow(companyId),
   ]);

@@ -2,6 +2,7 @@ import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { ApiError } from "@/lib/api-response";
 import { listPendingCollections } from "@/lib/collections";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { authorizeSaleFiscalDocument } from "@/lib/fiscal";
 import { executeSupplierPayment, purchaseIdFromParam } from "@/lib/purchases";
 import { COLLECTIONS_APPROVE_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
@@ -313,6 +314,13 @@ export async function resolveGenericApproval(
       date: String(metadata.date || localDateIso()),
       notes: String(metadata.notes || ""),
     });
+  }
+
+  // Al aprobar una solicitud de factura se emite el comprobante fiscal real en ARCA (CAE).
+  // authorizeSaleFiscalDocument es idempotente: no reemite si la venta ya tiene CAE. Si ARCA
+  // falla, lanza y la solicitud queda pendiente para reintentar.
+  if (nextState === "aprobada" && metadata.action === "fiscal_invoice") {
+    await authorizeSaleFiscalDocument(session, String(metadata.saleId ?? ""));
   }
 
   await withCompanyContext(session.companyId, async (client) => {

@@ -1,6 +1,8 @@
 import { queryWithCompanyContext } from "@/lib/db";
+import { fillYearMonths, type MonthlyPoint } from "@/lib/metrics-series";
 import { currentMonth, monthRange, shiftMonthKey } from "@/lib/month-range";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { periodBounds, type Period } from "@/lib/period-range";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { netSalesAmountSql } from "@/lib/sales-vat";
 
@@ -50,25 +52,26 @@ type AdminMetrics = {
 };
 
 const ADMIN_METRICS_CACHE_TTL_MS = 120_000;
-const adminMetricsCache = new Map<number, { expiresAt: number; value: AdminMetrics }>();
+const adminMetricsCache = new Map<string, { expiresAt: number; value: AdminMetrics }>();
 
-export async function getAdminMetrics(companyId: number): Promise<AdminMetrics> {
-  const cached = adminMetricsCache.get(companyId);
+export async function getAdminMetrics(companyId: number, period?: Period): Promise<AdminMetrics> {
+  const bounds = period ? periodBounds(period) : monthBounds();
+  const cacheKey = `${companyId}:${period ? period.key : "__current__"}`;
+  const cached = adminMetricsCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const value = await loadAdminMetrics(companyId).catch((error) => {
+  const value = await loadAdminMetrics(companyId, bounds).catch((error) => {
     if (cached) return cached.value;
     throw error;
   });
-  adminMetricsCache.set(companyId, {
+  adminMetricsCache.set(cacheKey, {
     expiresAt: Date.now() + ADMIN_METRICS_CACHE_TTL_MS,
     value,
   });
   return value;
 }
 
-async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
-  const bounds = monthBounds();
+async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Promise<AdminMetrics> {
   const result = await queryWithCompanyContext<{
     sales_current: string;
     sales_previous: string;
@@ -242,6 +245,60 @@ async function loadAdminMetrics(companyId: number): Promise<AdminMetrics> {
       openTotal: Number(row.open_sales_total),
     },
   };
+}
+
+export async function getEarliestSalesMonth(companyId: number): Promise<string> {
+  const result = await queryWithCompanyContext<{ month_key: string | null }>(
+    companyId,
+    `SELECT to_char(MIN(sale_date), 'YYYY-MM') AS month_key
+       FROM sales s
+      WHERE s.empresa_id = $1 AND ${canonicalSalesSourceSql("s")}`,
+    [companyId],
+  );
+  return result.rows[0]?.month_key ?? currentMonth(new Date());
+}
+
+export async function getMonthlySeries(companyId: number, year: string): Promise<MonthlyPoint[]> {
+  const start = `${year}-01-01`;
+  const nextYearStart = `${Number(year) + 1}-01-01`;
+  const result = await queryWithCompanyContext<{
+    month_key: string;
+    facturacion: string;
+    ganancia_bruta: string;
+  }>(
+    companyId,
+    `
+      WITH ventas AS (
+        SELECT to_char(s.sale_date, 'YYYY-MM') AS month_key,
+               ${netSalesAmountSql("s.total_amount", "s")} AS neto,
+               COALESCE(s.source_cost_amount, line_totals.item_cost, 0) AS costo
+        FROM sales s
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(dv.quantity * COALESCE(p.cost, 0)), 0) AS item_cost
+          FROM sale_items dv
+          LEFT JOIN products p ON p.id = dv.product_id AND p.empresa_id = dv.empresa_id
+          WHERE dv.sale_id = s.id AND dv.empresa_id = s.empresa_id
+        ) line_totals ON true
+        WHERE s.empresa_id = $1
+          AND ${canonicalSalesSourceSql("s")}
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
+          AND s.sale_date >= $2 AND s.sale_date < $3
+      )
+      SELECT month_key,
+             COALESCE(SUM(neto), 0)::text AS facturacion,
+             COALESCE(SUM(neto - costo), 0)::text AS ganancia_bruta
+      FROM ventas
+      GROUP BY month_key
+    `,
+    [companyId, start, nextYearStart],
+  );
+  const byKey = new Map(
+    result.rows.map((row) => [
+      row.month_key,
+      { facturacion: Number(row.facturacion), gananciaBruta: Number(row.ganancia_bruta) },
+    ]),
+  );
+  return fillYearMonths(year, byKey);
 }
 
 export async function getAccountsPayable(companyId: number) {

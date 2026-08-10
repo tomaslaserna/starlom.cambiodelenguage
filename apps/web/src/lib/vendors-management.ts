@@ -12,6 +12,7 @@ export async function getVendorManagement(companyId: number) {
     accepted_quotes: string;
     goal_sales: string;
     goal_clients: string;
+    commission_rate: string;
   }>(
     companyId,
     `
@@ -65,6 +66,11 @@ export async function getVendorManagement(companyId: number) {
         FROM vendor_goals
         WHERE empresa_id = $1
           AND period = date_trunc('month', CURRENT_DATE)::date
+      ),
+      commissions AS (
+        SELECT vendor, commission_rate
+        FROM vendor_commissions
+        WHERE empresa_id = $1
       )
       SELECT v.vendor,
              COALESCE(c.clients, 0)::text AS clients,
@@ -73,12 +79,14 @@ export async function getVendorManagement(companyId: number) {
              COALESCE(q.quotes_count, 0)::text AS quotes_count,
              COALESCE(q.accepted_quotes, 0)::text AS accepted_quotes,
              COALESCE(g.goal_sales, 0)::text AS goal_sales,
-             COALESCE(g.goal_clients, 0)::text AS goal_clients
+             COALESCE(g.goal_clients, 0)::text AS goal_clients,
+             COALESCE(cm.commission_rate, 0)::text AS commission_rate
       FROM vendors v
       LEFT JOIN clients c ON c.vendor = v.vendor
       LEFT JOIN sales s ON s.vendor = v.vendor
       LEFT JOIN quotes q ON q.vendor = v.vendor
       LEFT JOIN goals g ON g.vendor = v.vendor
+      LEFT JOIN commissions cm ON cm.vendor = v.vendor
       WHERE COALESCE(v.vendor, '') <> ''
       ORDER BY v.vendor ASC
     `,
@@ -98,6 +106,7 @@ export async function getVendorManagement(companyId: number) {
       closeRate: quotes > 0 ? (accepted / quotes) * 100 : 0,
       goalSales: Number(row.goal_sales),
       goalClients: Number(row.goal_clients),
+      commissionRate: Number(row.commission_rate),
     };
   });
 

@@ -29,3 +29,25 @@ export async function saveVendorGoalAction(formData: FormData) {
 
   revalidatePath("/employees/vendors");
 }
+
+export async function saveVendorCommissionAction(formData: FormData) {
+  const session = await requireApiSession([{ resource: "empleados", action: "editar" }]);
+  const vendor = String(formData.get("vendor") ?? "").trim();
+  const commissionRate = Number(formData.get("commissionRate") ?? 0);
+  if (!vendor) return;
+
+  await queryWithCompanyContext(
+    session.companyId,
+    `
+      INSERT INTO vendor_commissions (empresa_id, vendor, commission_rate, updated_by, updated_at)
+      VALUES ($1, $2, $3, $4, NOW())
+      ON CONFLICT (empresa_id, vendor) DO UPDATE
+      SET commission_rate = EXCLUDED.commission_rate,
+          updated_by = EXCLUDED.updated_by,
+          updated_at = NOW()
+    `,
+    [session.companyId, vendor, Number.isFinite(commissionRate) ? commissionRate : 0, session.username],
+  );
+
+  revalidatePath("/employees/vendors");
+}

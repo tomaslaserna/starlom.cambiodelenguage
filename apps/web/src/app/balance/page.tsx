@@ -1,10 +1,18 @@
 import { ModulePage } from "@/components/module-page";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { getBalanceDashboard } from "@/lib/finance";
+import { getEarliestSalesMonth, getMonthlySeries } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
+import { getCustomerChurn } from "@/lib/messages";
+import { currentMonth } from "@/lib/month-range";
+import { getDeliveryTimes } from "@/lib/orders";
 import { requirePagePermission } from "@/lib/page-auth";
+import { availablePeriods, parsePeriod, periodBounds, periodLabel } from "@/lib/period-range";
 import { ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION } from "@/lib/route-auth";
-import { MetricIcon } from "@/components/metric-icon";
+import { ChurnClientes } from "./churn-clientes";
+import { Evolucion } from "./evolucion";
+import { PeriodPicker } from "./period-picker";
+import { TiemposEntrega } from "./tiempos-entrega";
 import {
   Card,
   CardHeader,
@@ -16,12 +24,27 @@ import {
   StatCard,
 } from "@/components/ui";
 
-export default async function BalancePage() {
+export default async function BalancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string }>;
+}) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [ADMIN_BALANCE_READ_PERMISSION, REPORTS_READ_PERMISSION]);
-  const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId);
+
+  const { period: periodParam } = await searchParams;
+  const fallbackMonth = currentMonth(new Date());
+  const period = parsePeriod(periodParam, fallbackMonth);
+  const earliest = await getEarliestSalesMonth(session.companyId);
+  const periods = availablePeriods(earliest, fallbackMonth);
+
+  const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId, period);
+  const year = period.key.slice(0, 4);
+  const series = await getMonthlySeries(session.companyId, year);
+  const churn = await getCustomerChurn(session.companyId, periodBounds(period));
+  const entregas = await getDeliveryTimes(session.companyId, periodBounds(period));
   const incomeRows = [
-    { label: "Ventas entregadas", amount: metrics.sales.current },
+    { label: "Ventas entregadas (neto, sin IVA facturado)", amount: metrics.sales.current },
     { label: "Costo de mercaderia vendida", amount: -metrics.margin.grossCost },
     { label: "Ganancia bruta", amount: metrics.margin.grossProfit, strong: true },
     { label: "Costos fijos operativos y sueldos vigentes", amount: -metrics.margin.operatingCosts },
@@ -36,29 +59,35 @@ export default async function BalancePage() {
       title="Balance"
     >
       <div className="grid gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="erp-text-title-md font-semibold text-[color:var(--foreground)]">
+              Balance · {periodLabel(period)}
+            </h2>
+            <p className="erp-text-caption text-[color:var(--muted)]">
+              Por cobrar y por pagar son saldos a la fecha.
+            </p>
+          </div>
+          <PeriodPicker periods={periods} selectedKey={period.key} />
+        </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <StatCard
-            icon={<MetricIcon name="sales" />}
-            label="Ventas del mes"
+            detail="Monto total cobrado, IVA incluido"
+            label="Ventas brutas"
             tone="accent"
+            value={formatCurrency(metrics.sales.grossCurrent)}
+          />
+          <StatCard
+            detail="Sin el IVA de lo ya facturado"
+            label="Ventas netas"
+            tone="info"
             value={formatCurrency(metrics.sales.current)}
           />
-          <StatCard
-            icon={<MetricIcon name="result" />}
-            label="Resultado operativo"
-            tone="success"
-            value={formatCurrency(metrics.margin.operatingResult)}
-          />
-          <StatCard
-            icon={<MetricIcon name="costs" />}
-            label="Costos operativos"
-            tone="warning"
-            value={formatCurrency(metrics.margin.operatingCosts)}
-          />
+          <StatCard label="Resultado operativo" tone="success" value={formatCurrency(metrics.margin.operatingResult)} />
+          <StatCard label="Costos operativos" tone="warning" value={formatCurrency(metrics.margin.operatingCosts)} />
           <StatCard
             detail={`${formatNumber(metrics.stock.units)} unidades`}
-            icon={<MetricIcon name="stock" />}
             label="Stock valorizado"
             value={formatCurrency(metrics.stock.value)}
           />
@@ -135,6 +164,12 @@ export default async function BalancePage() {
             </div>
           </section>
         </div>
+
+        <Evolucion year={year} points={series} />
+
+        <ChurnClientes churn={churn} />
+
+        <TiemposEntrega data={entregas} />
       </div>
     </ModulePage>
   );

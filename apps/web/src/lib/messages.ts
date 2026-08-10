@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
+import { classifyChurn, customerMetrics } from "@/lib/customer-rhythm";
 import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import {
   attachPreparedMessageUploads,
@@ -688,36 +689,6 @@ function dayStart(date: Date) {
   return Date.parse(`${localDateIso(date)}T00:00:00-03:00`);
 }
 
-function median(values: number[]) {
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
-}
-
-function customerMetrics(timestamps: number[]) {
-  const gaps: number[] = [];
-  for (let index = 1; index < timestamps.length; index++) {
-    gaps.push(Math.round((timestamps[index] - timestamps[index - 1]) / 86_400_000));
-  }
-  if (!gaps.length) return { average: 1, deviation: 0, intervals: 0 };
-
-  const med = Math.max(1, median(gaps));
-  const processed = gaps.map((gap) =>
-    gaps.length >= 3 ? Math.max(med * 0.3, Math.min(med * 3, gap)) : gap,
-  );
-  let numerator = 0;
-  let denominator = 0;
-  for (const [index, gap] of processed.entries()) {
-    const weight = index + 1;
-    numerator += weight * gap;
-    denominator += weight;
-  }
-  const average = Math.max(1, Math.round(numerator / denominator));
-  const mean = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
-  const variance = gaps.reduce((sum, gap) => sum + (gap - mean) ** 2, 0) / gaps.length;
-  return { average, deviation: Math.round(Math.sqrt(variance)), intervals: gaps.length };
-}
-
 export async function getCustomerFollowUp(companyId: number) {
   const result = await queryWithCompanyContext<{
     id: string;
@@ -827,4 +798,62 @@ export async function getCustomerFollowUp(companyId: number) {
     sellers: [...sellers].sort((a, b) => a.localeCompare(b)),
     counts: Object.fromEntries(Object.entries(groups).map(([key, rows]) => [key, rows.length])),
   };
+}
+
+export type ChurnEntry = { customerId: string; customerName: string; seller: string; date: string };
+
+// Altas (primera compra en el período) y bajas (última + 2×ritmo cae en el período)
+// de clientes, sobre ventas canónicas entregadas. Reusa la clasificación de ritmo.
+export async function getCustomerChurn(
+  companyId: number,
+  bounds: { currentStart: string; nextStart: string },
+): Promise<{ altas: ChurnEntry[]; bajas: ChurnEntry[]; counts: { altas: number; bajas: number; net: number } }> {
+  const result = await queryWithCompanyContext<{
+    id: string;
+    nombre_cliente: string;
+    vendedor: string;
+    fecha: string | null;
+  }>(
+    companyId,
+    `
+      SELECT c.id::text AS id, c.display_name AS nombre_cliente,
+             COALESCE(c.seller_name,'') AS vendedor, d.fecha::text
+      FROM clients c
+      LEFT JOIN (
+        SELECT DISTINCT empresa_id, client_id, sale_date AS fecha
+        FROM sales
+        WHERE empresa_id = $1
+          AND ${normalizedOrderStatusSql("sales")} = 'entregado'
+      ) d ON d.empresa_id = c.empresa_id AND d.client_id = c.id
+      WHERE c.empresa_id = $1
+    `,
+    [companyId],
+  );
+
+  const customers = new Map<string, { name: string; seller: string; timestamps: number[] }>();
+  for (const row of result.rows) {
+    const current = customers.get(row.id) ?? { name: row.nombre_cliente, seller: row.vendedor, timestamps: [] };
+    if (row.fecha) current.timestamps.push(dayStart(new Date(row.fecha)));
+    customers.set(row.id, current);
+  }
+
+  const startMs = Date.parse(`${bounds.currentStart}T00:00:00-03:00`);
+  const nextMs = Date.parse(`${bounds.nextStart}T00:00:00-03:00`);
+  const toIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+  const altas: ChurnEntry[] = [];
+  const bajas: ChurnEntry[] = [];
+  for (const [id, customer] of customers) {
+    const { alta, baja, firstMs, lostMs } = classifyChurn(customer.timestamps, startMs, nextMs);
+    if (alta && firstMs != null) {
+      altas.push({ customerId: id, customerName: customer.name, seller: customer.seller, date: toIso(firstMs) });
+    }
+    if (baja && lostMs != null) {
+      bajas.push({ customerId: id, customerName: customer.name, seller: customer.seller, date: toIso(lostMs) });
+    }
+  }
+  altas.sort((a, b) => a.date.localeCompare(b.date));
+  bajas.sort((a, b) => a.date.localeCompare(b.date));
+
+  return { altas, bajas, counts: { altas: altas.length, bajas: bajas.length, net: altas.length - bajas.length } };
 }

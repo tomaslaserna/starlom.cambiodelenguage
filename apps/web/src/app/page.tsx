@@ -1,20 +1,32 @@
 import { ModulePage } from "@/components/module-page";
 import {
+  AppIcon,
   Button,
   ButtonLink,
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
   EmptyState,
+  StatCard,
   StatusBadge,
   type StatusBadgeTone,
 } from "@/components/ui";
+import type { AppIconName } from "@/components/ui/app-icon";
 import { completeCalendarTaskAction } from "@/app/calendar/actions";
+import { InicioTabs } from "@/app/inicio-tabs";
+import { PizarronBoard } from "@/app/pizarron-board";
+import { boardCoworkers, listBoardNotes } from "@/lib/board";
 import { requireStaffSession } from "@/lib/auth";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { listMessageCenter, listTasks } from "@/lib/messages";
+import {
+  ORDERS_CREATE_PERMISSION,
+  PRODUCTS_READ_PERMISSION,
+  QUOTES_READ_PERMISSION,
+  sessionAllows,
+  sessionCanReadCollections,
+} from "@/lib/route-auth";
+
+type Shortcut = { href: string; label: string; icon: AppIconName };
 
 type TaskList = Awaited<ReturnType<typeof listTasks>>;
 type PendingTask = TaskList["personal"][number] | TaskList["received"][number];
@@ -36,6 +48,15 @@ function priorityTone(priority: string): StatusBadgeTone {
   if (normalized === "urgente") return "danger";
   if (normalized === "alta") return "warning";
   return "neutral";
+}
+
+// Vencidos primero, luego urgente, alta y el resto.
+function urgencyRank(task: PendingTask): number {
+  if (task.status.toLowerCase().includes("venc")) return 0;
+  const priority = task.priority.toLowerCase();
+  if (priority === "urgente") return 1;
+  if (priority === "alta") return 2;
+  return 3;
 }
 
 function TaskCompletionForm({ id }: { id: number }) {
@@ -84,7 +105,12 @@ function PendingTaskCard({ task, type }: { task: PendingTask; type: "recordatori
         <p className="erp-text-caption mt-3 font-semibold text-[#64748b]">Asignada por {assignedBy}</p>
       ) : null}
 
-      <TaskCompletionForm id={task.id} />
+      <details className="group/complete mt-3">
+        <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-bold text-[#2563eb] hover:underline">
+          <span className="transition-transform group-open/complete:rotate-90">›</span> Completar
+        </summary>
+        <TaskCompletionForm id={task.id} />
+      </details>
     </article>
   );
 }
@@ -141,10 +167,32 @@ function UnreadMessageRow({ message }: { message: MessagePreview }) {
 
 export default async function Home() {
   const session = await requireStaffSession();
-  const [tasks, center] = await Promise.all([listTasks(session), listMessageCenter(session)]);
-  const pendingTasks = [...tasks.personal, ...tasks.received];
+  const [tasks, center, boardNotes, coworkers] = await Promise.all([
+    listTasks(session),
+    listMessageCenter(session),
+    listBoardNotes(session),
+    boardCoworkers(session),
+  ]);
+  const pendingTasks = [...tasks.personal, ...tasks.received].sort((a, b) => urgencyRank(a) - urgencyRank(b));
   const openAssignedTasks = tasks.assigned.filter((task) => !task.completed);
-  const unreadMessages = center.inbox.filter((message) => !message.read).slice(0, 5);
+  const allUnread = center.inbox.filter((message) => !message.read);
+  const unreadMessages = allUnread.slice(0, 5);
+  const overdueCount = pendingTasks.filter((task) => task.status.toLowerCase().includes("venc")).length;
+
+  const [canCreateOrders, canReadQuotes, canReadProducts, canReadCollections] = await Promise.all([
+    sessionAllows(session, [ORDERS_CREATE_PERMISSION]),
+    sessionAllows(session, [QUOTES_READ_PERMISSION]),
+    sessionAllows(session, [PRODUCTS_READ_PERMISSION]),
+    sessionCanReadCollections(session),
+  ]);
+  const shortcuts: Shortcut[] = [
+    canCreateOrders ? { href: "/orders/new", label: "Cargar pedido", icon: "cart" } : null,
+    canReadQuotes ? { href: "/quotes", label: "Presupuestos", icon: "quote" } : null,
+    canReadProducts ? { href: "/prices", label: "Lista de precios", icon: "package" } : null,
+    canReadCollections ? { href: "/collections", label: "Cobranzas", icon: "wallet" } : null,
+    { href: "/messages", label: "Mensajes", icon: "receipt" },
+    { href: "/calendar", label: "Calendario", icon: "calendar" },
+  ].filter((item): item is Shortcut => item !== null);
 
   return (
     <ModulePage
@@ -153,76 +201,98 @@ export default async function Home() {
       session={session}
       title="Inicio"
     >
-      <div className="grid gap-5">
-        <section className="grid gap-4 xl:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Pendientes para vos</CardTitle>
-              <CardDescription>Recordatorios propios y tareas asignadas que todavia no estan cerradas.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid max-h-[680px] gap-3 overflow-y-auto overscroll-contain">
-              {pendingTasks.length === 0 ? (
-                <EmptyState title="Sin pendientes" description="No hay recordatorios ni tareas abiertas para tu usuario." />
-              ) : (
-                pendingTasks.map((task) => (
-                  <PendingTaskCard
-                    key={`${"assignedBy" in task ? "tarea" : "recordatorio"}-${task.id}`}
-                    task={task}
-                    type={"assignedBy" in task ? "tarea" : "recordatorio"}
-                  />
-                ))
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle>Tareas delegadas</CardTitle>
-                <StatusBadge tone={openAssignedTasks.length ? "info" : "neutral"}>
-                  {openAssignedTasks.length} abierta(s)
-                </StatusBadge>
-              </div>
-              <CardDescription>Seguimiento claro de destinatario, vencimiento, prioridad y estado.</CardDescription>
-            </CardHeader>
-            {openAssignedTasks.length === 0 ? (
-              <CardContent>
-                <EmptyState title="Sin tareas delegadas abiertas" description="No hay tareas pendientes asignadas por tu usuario." />
-              </CardContent>
-            ) : (
-              <ul className="max-h-[680px] overflow-y-auto overscroll-contain">
-                {openAssignedTasks.map((task) => (
-                  <AssignedTaskRow key={`delegada-${task.id}`} task={task} />
-                ))}
-              </ul>
-            )}
-          </Card>
-
-          <Card className="xl:col-span-2">
-            <CardHeader>
-              <CardTitle>Mensajes sin leer</CardTitle>
-              <CardDescription>Mensajes internos que todavia no abriste.</CardDescription>
-            </CardHeader>
-            {unreadMessages.length === 0 ? (
-              <CardContent>
-                <EmptyState title="Sin mensajes sin leer" description="No tenes mensajes internos pendientes de leer." />
-              </CardContent>
-            ) : (
-              <>
-                <ul className="grid lg:grid-cols-2">
-                  {unreadMessages.map((message) => (
-                    <UnreadMessageRow key={`mensaje-${message.id}`} message={message} />
-                  ))}
-                </ul>
-                <CardContent>
-                  <ButtonLink href="/messages" size="sm" variant="secondary">
-                    Ver todos los mensajes
-                  </ButtonLink>
-                </CardContent>
-              </>
-            )}
-          </Card>
+      <div className="grid gap-4">
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard icon={<AppIcon className="h-5 w-5" name="warning" />} label="Vencidos" tone="danger" value={overdueCount} />
+          <StatCard icon={<AppIcon className="h-5 w-5" name="clock" />} label="Pendientes para vos" tone="accent" value={pendingTasks.length} />
+          <StatCard icon={<AppIcon className="h-5 w-5" name="units" />} label="Delegadas abiertas" tone="info" value={openAssignedTasks.length} />
+          <StatCard icon={<AppIcon className="h-5 w-5" name="receipt" />} label="Mensajes sin leer" tone="warning" value={allUnread.length} />
         </section>
+
+        <section>
+          <h2 className="erp-text-caption font-bold uppercase tracking-wide text-[#64748b]">Accesos rápidos</h2>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {shortcuts.map((shortcut) => (
+              <ButtonLink
+                href={shortcut.href}
+                key={shortcut.href}
+                leadingIcon={<AppIcon className="h-4 w-4" name={shortcut.icon} />}
+                variant="secondary"
+              >
+                {shortcut.label}
+              </ButtonLink>
+            ))}
+          </div>
+        </section>
+
+        <InicioTabs
+          tabs={[
+            {
+              key: "vos",
+              label: "Para vos",
+              count: pendingTasks.length,
+              content:
+                pendingTasks.length === 0 ? (
+                  <EmptyState title="Sin pendientes" description="No hay recordatorios ni tareas abiertas para tu usuario." />
+                ) : (
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {pendingTasks.map((task) => (
+                      <PendingTaskCard
+                        key={`${"assignedBy" in task ? "tarea" : "recordatorio"}-${task.id}`}
+                        task={task}
+                        type={"assignedBy" in task ? "tarea" : "recordatorio"}
+                      />
+                    ))}
+                  </div>
+                ),
+            },
+            {
+              key: "delegadas",
+              label: "Delegadas",
+              count: openAssignedTasks.length,
+              content:
+                openAssignedTasks.length === 0 ? (
+                  <EmptyState title="Sin tareas delegadas abiertas" description="No hay tareas pendientes asignadas por tu usuario." />
+                ) : (
+                  <Card className="overflow-hidden">
+                    <ul>
+                      {openAssignedTasks.map((task) => (
+                        <AssignedTaskRow key={`delegada-${task.id}`} task={task} />
+                      ))}
+                    </ul>
+                  </Card>
+                ),
+            },
+            {
+              key: "mensajes",
+              label: "Mensajes",
+              count: allUnread.length,
+              content:
+                unreadMessages.length === 0 ? (
+                  <EmptyState title="Sin mensajes sin leer" description="No tenes mensajes internos pendientes de leer." />
+                ) : (
+                  <Card className="overflow-hidden">
+                    <ul className="grid lg:grid-cols-2">
+                      {unreadMessages.map((message) => (
+                        <UnreadMessageRow key={`mensaje-${message.id}`} message={message} />
+                      ))}
+                    </ul>
+                    <CardContent>
+                      <ButtonLink href="/messages" size="sm" variant="secondary">
+                        Ver todos los mensajes
+                      </ButtonLink>
+                    </CardContent>
+                  </Card>
+                ),
+            },
+            {
+              key: "pizarron",
+              label: "Pizarrón",
+              count: boardNotes.length,
+              content: <PizarronBoard coworkers={coworkers} initialNotes={boardNotes} />,
+            },
+          ]}
+        />
       </div>
     </ModulePage>
   );

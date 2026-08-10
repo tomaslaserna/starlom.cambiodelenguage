@@ -339,11 +339,14 @@ export function productCreateInputFromBody(body: RequestBody) {
   if (!name) throw new ApiError(400, "El nombre del producto es requerido");
   if (!code) throw new ApiError(400, "Debes seleccionar una categoria de precio");
   if (cost <= 0) throw new ApiError(400, "El costo debe ser mayor a 0");
+  const stock = Math.max(0, Math.trunc(numberField(body, "stock", 0)));
   return {
     name,
     code,
     sku,
     cost,
+    stock,
+    imagePath: textField(body, "imagePath"),
     provider: textField(body, "provider") || textField(body, "proveedor"),
   };
 }
@@ -377,12 +380,16 @@ export async function createCatalogProduct(
         )
       : { rows: [] };
 
+    // Solo aceptamos una imagen ya subida bajo el prefijo de la empresa.
+    const imagePath =
+      input.imagePath && input.imagePath.startsWith(`empresa_${session.companyId}/`) ? input.imagePath : null;
+
     const created = await client.query<{ id: string }>(
       `
         INSERT INTO products (
-          category, category_code, sku, supplier_id, name, cost, empresa_id
+          category, category_code, sku, supplier_id, name, cost, image_path, empresa_id
         )
-        VALUES ($1, $2, $3, $4::uuid, $5, $6, $7)
+        VALUES ($1, $2, $3, $4::uuid, $5, $6, $7, $8)
         RETURNING id::text AS id
       `,
       [
@@ -392,9 +399,21 @@ export async function createCatalogProduct(
         supplier.rows[0]?.id ?? null,
         input.name,
         input.cost,
+        imagePath,
         session.companyId,
       ],
     );
+
+    // Stock inicial como primera carga de stock del producto (ledger).
+    if (input.stock > 0) {
+      await client.query(
+        `
+          INSERT INTO stock_movements (product_id, movement_type, quantity, notes, created_by, empresa_id)
+          VALUES ($1::uuid, 'ajuste_positivo'::stock_movement_type, $2, 'Stock inicial', $3::uuid, $4)
+        `,
+        [created.rows[0].id, input.stock, session.userId, session.companyId],
+      );
+    }
 
     return { id: created.rows[0].id };
   });

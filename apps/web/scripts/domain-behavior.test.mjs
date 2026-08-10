@@ -32,6 +32,7 @@ const searchOptions = loadTypeScriptModule("../src/lib/search-options.ts");
 const format = loadTypeScriptModule("../src/lib/format.ts");
 const quoteTotals = loadTypeScriptModule("../src/lib/quote-totals.ts");
 const saleCommercialCode = loadTypeScriptModule("../src/lib/sale-commercial-code.ts");
+const clientFiscal = loadTypeScriptModule("../src/lib/client-fiscal.ts");
 const orderStatus = loadTypeScriptModule("../src/lib/order-status.ts");
 const stock = loadTypeScriptModule("../src/lib/stock.ts", {
   "@/lib/api-response": { ApiError },
@@ -299,4 +300,17 @@ test("stock imports reject unbounded quantities before reaching Postgres", () =>
 
   assert.equal(stockImport.MAX_STOCK_IMPORT_QUANTITY, 1_000_000_000);
   assert.match(row.errors.join(" "), /supera el limite permitido/);
+});
+
+test("hasCompleteFiscalData gates fiscal invoices on CUIT + condición fiscal", () => {
+  const { hasCompleteFiscalData } = clientFiscal;
+  assert.equal(
+    hasCompleteFiscalData({ taxId: "20-12345678-3", fiscalCondition: "Responsable Inscripto" }),
+    true,
+  );
+  assert.equal(hasCompleteFiscalData({ taxId: "20123456783", fiscalCondition: "Monotributo" }), true);
+  assert.equal(hasCompleteFiscalData({ taxId: "", fiscalCondition: "Responsable Inscripto" }), false);
+  assert.equal(hasCompleteFiscalData({ taxId: "20-12345678-3", fiscalCondition: "" }), false);
+  assert.equal(hasCompleteFiscalData({ taxId: "123", fiscalCondition: "Monotributo" }), false);
+  assert.equal(hasCompleteFiscalData({ taxId: null, fiscalCondition: null }), false);
 });

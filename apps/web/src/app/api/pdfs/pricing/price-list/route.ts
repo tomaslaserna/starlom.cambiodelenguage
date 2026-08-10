@@ -8,10 +8,21 @@ export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await requireApiSession([{ resource: "productos", action: "ver" }]);
-    const list = Number(request.nextUrl.searchParams.get("list") ?? request.nextUrl.searchParams.get("lista") ?? 0);
-    const file = await buildPriceListPdf(session.companyId, Number.isInteger(list) ? list : 0);
-    return pdfResponse(file, request.nextUrl.searchParams.get("download") !== "1");
+    const session = await requireApiSession([
+      { resource: "productos", action: "ver" },
+      { resource: "crm", action: "ver" },
+    ]);
+    const params = request.nextUrl.searchParams;
+    const list = Number(params.get("list") ?? params.get("lista") ?? 0);
+    const file = await buildPriceListPdf(session.companyId, {
+      listId: Number.isInteger(list) ? list : 0,
+      vigencia: params.get("vigencia") ?? undefined,
+      stock: params.get("stock") === "con" ? "con" : "todos",
+      groupBy: params.get("groupBy") === "proveedor" ? "proveedor" : "categoria",
+      filter: params.get("filter") ?? undefined,
+      iva: params.get("iva") === "10.5" ? 10.5 : 21,
+    });
+    return pdfResponse(file, params.get("download") !== "1");
   } catch (error) {
     return handleApiError(error);
   }

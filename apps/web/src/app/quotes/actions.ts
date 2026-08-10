@@ -18,6 +18,18 @@ export async function acceptQuoteAction(formData: FormData) {
   redirect(`/orders?status=cargado&created=remito${fiscal}`);
 }
 
+export async function acceptQuoteAndRemitAction(formData: FormData) {
+  const session = await requireApiSession([
+    { resource: "presupuestos", action: "aprobar" },
+    { resource: "ventas", action: "editar" },
+  ]);
+  const id = String(formData.get("id") ?? "").trim();
+  await acceptQuote(session, id);
+  revalidatePath("/quotes");
+  revalidatePath("/orders");
+  redirect("/orders?status=cargado");
+}
+
 export async function createQuoteAction(
   _prev: CreateQuoteState,
   formData: FormData,

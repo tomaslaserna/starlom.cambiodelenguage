@@ -3,6 +3,17 @@ import QRCode from "qrcode";
 import { accountBalanceExpressionSql, activeAccountMovementWhereSql } from "@/lib/accounts";
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
+import {
+  applyVat,
+  normalizeGroupBy,
+  normalizeStock,
+  normalizeVat,
+  vatLegend,
+  type PriceListGroupBy,
+  type PriceListStock,
+  type PriceListVat,
+} from "@/lib/price-list-export";
 import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { getPurchase } from "@/lib/purchases";
 import { getQuote } from "@/lib/quotes";
@@ -153,10 +164,6 @@ function compactPdfCode(value: string | number | null | undefined) {
   return text || "-";
 }
 
-function deliveryPdfProductName(value: string) {
-  return value.replace(/\s+/g, " ").trim().toLocaleUpperCase("es-AR") || "-";
-}
-
 export async function buildQuotePdf(companyId: number, quoteId: string) {
   const quote = await getQuote(companyId, quoteId);
   const products = asQuoteProducts(quote.products);
@@ -208,7 +215,6 @@ export async function buildQuotePdf(companyId: number, quoteId: string) {
           pdfMoney(subtotal),
         ];
       }),
-      { density: "compact" },
     );
 
     const totals: [string, string][] = [["Subtotal productos", pdfMoney(quote.netAmount)]];
@@ -219,12 +225,11 @@ export async function buildQuotePdf(companyId: number, quoteId: string) {
         [`IVA ${String(quote.vatRate).replace(".", ",")}%`, pdfMoney(quote.vatAmount)],
       );
     }
-    pdf.totals(totals, "Total", pdfMoney(quote.total), { density: "compact" });
+    pdf.totals(totals, "Total", pdfMoney(quote.total));
     pdf.note(
       `Documento no fiscal. ${quote.includeVat ? `IVA ${String(quote.vatRate).replace(".", ",")}% discriminado.` : "IVA no discriminado."} Presupuesto valido hasta la fecha indicada, sujeto a disponibilidad de stock y confirmacion comercial.`,
-      { density: "compact" },
     );
-    pdf.signatures("Por Starlim S.A.S.", "Conformidad del cliente", { density: "compact" });
+    pdf.signatures("Por Starlim S.A.S.", "Conformidad del cliente");
   });
 }
 
@@ -318,9 +323,8 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
     });
 
     pdf.section("Destinatario");
-    pdf.title(remito.nombre_cliente || "Sin cliente", 10);
-    pdf.doc.font("Helvetica").fontSize(7.6).fillColor("#5b6661");
-    pdf.doc.text(
+    pdf.title(remito.nombre_cliente || "Sin cliente", 11);
+    pdf.muted(
       [
         remito.domicilio,
         [remito.ciudad, remito.cliente_provincia].filter(Boolean).join(", "),
@@ -328,25 +332,21 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
       ]
         .filter(Boolean)
         .join(" - "),
-      54,
-      pdf.y,
-      { width: 504, lineGap: 0.6 },
     );
-    pdf.doc.fillColor("#1f2421");
-    const infoY = pdf.y + 8;
+    const infoY = pdf.y + 16;
     pdf.keyValue("Cond. vta.", remito.condicion_pago || "-", 54, infoY, 74, 165);
     pdf.keyValue("Vendedor", remito.vendedor || remito.vendedor_cliente || "-", 318, infoY, 64, 150);
-    pdf.keyValue("Provincia", remito.provincia || "-", 54, infoY + 15, 74, 165);
-    pdf.keyValue("Sucursal", remito.sucursal_cliente || "-", 318, infoY + 15, 64, 150);
-    pdf.setY(infoY + 31);
+    pdf.keyValue("Provincia", remito.provincia || "-", 54, infoY + 18, 74, 165);
+    pdf.keyValue("Sucursal", remito.sucursal_cliente || "-", 318, infoY + 18, 64, 150);
+    pdf.setY(infoY + 42);
 
     const columns = includePrices
       ? [
-          { label: "Cant.", width: 48 },
-          { label: "Codigo", width: 60 },
-          { label: "Descripcion", width: 218 },
+          { label: "Cant.", width: 54 },
+          { label: "Codigo", width: 70 },
+          { label: "Descripcion", width: 211 },
           { label: "P. unit.", width: 84, align: "right" as const },
-          { label: "Importe", width: 94, align: "right" as const },
+          { label: "Importe", width: 85, align: "right" as const },
         ]
       : [
           { label: "Cant.", width: 54 },
@@ -360,22 +360,13 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
       columns,
       detail.rows.map((row) =>
         includePrices
-          ? [
-              pdfNumber(Number(row.cantidad)),
-              row.product_code,
-              deliveryPdfProductName(row.nombre),
-              pdfMoney(Number(row.precio_unit)),
-              pdfMoney(Number(row.subtotal)),
-            ]
-          : [pdfNumber(Number(row.cantidad)), row.product_code, deliveryPdfProductName(row.nombre), "[ ]"],
+          ? [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, pdfMoney(Number(row.precio_unit)), pdfMoney(Number(row.subtotal))]
+          : [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, "[ ]"],
       ),
-      { density: "compact" },
     );
     pdf.totals([["Total de unidades", pdfNumber(totalUnits)]], includePrices ? "Total" : "Control", includePrices ? pdfMoney(totalAmount) : "");
-    pdf.note(remito.observacion || remito.observacion_cliente || "Verificar cantidades y estado de la mercaderia al momento de la recepcion.", {
-      density: "compact",
-    });
-    pdf.signatures("Preparo / despacho", "Controlo / recibio", { density: "compact" });
+    pdf.note(remito.observacion || remito.observacion_cliente || "Verificar cantidades y estado de la mercaderia al momento de la recepcion.");
+    pdf.signatures("Preparo / despacho", "Controlo / recibio");
   });
 }
 
@@ -479,7 +470,6 @@ export async function buildAccountStatementPdf(companyId: number, input: {
         { label: "Saldo", width: 66, align: "right" },
       ],
       rows,
-      { density: "compact" },
     );
     pdf.totals(
       [
@@ -493,9 +483,8 @@ export async function buildAccountStatementPdf(companyId: number, input: {
           ? "Saldo pendiente"
           : "Saldo a favor",
       pdfMoney(balance),
-      { density: "compact" },
     );
-    pdf.note("Este estado refleja los movimientos registrados en Starlim para la entidad y el periodo indicados.", { density: "compact" });
+    pdf.note("Este estado refleja los movimientos registrados en Starlim para la entidad y el periodo indicados.");
   });
 }
 
@@ -553,11 +542,11 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: string
     pdf.infoBox(isCollection ? "Importe recibido" : "Importe pagado", [
       record.concepto || (isCollection ? "Cobro aprobado" : "Pago registrado"),
       pdfMoney(Number(record.monto)),
-    ], 70, { density: "compact" });
+    ]);
     pdf.section("Medio de pago");
     pdf.keyValue("Origen", record.tipo_origen || "-", 54, pdf.y + 2, 70, 160);
     pdf.keyValue("Registro", String(record.id), 318, pdf.y + 2, 70, 130);
-    pdf.setY(pdf.y + 24);
+    pdf.setY(pdf.y + 34);
     pdf.table(
       [
         { label: "Comprobante", width: 207 },
@@ -566,12 +555,11 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: string
         { label: "Aplicado", width: 104, align: "right" },
       ],
       [[record.concepto || `Registro #${record.id}`, pdfDate(record.fecha), pdfMoney(Number(record.monto)), pdfMoney(Number(record.monto))]],
-      { density: "compact" },
     );
     if (record.notas || record.comprobante_nombre) {
-      pdf.note([record.notas, record.comprobante_nombre ? "Comprobante adjunto: si" : ""].filter(Boolean).join(" "), { density: "compact" });
+      pdf.note([record.notas, record.comprobante_nombre ? "Comprobante adjunto: si" : ""].filter(Boolean).join(" "));
     }
-    pdf.signatures(isCollection ? "Recibi conforme - Starlim" : "Autorizo pago - Starlim", "Aclaracion y firma", { density: "compact" });
+    pdf.signatures(isCollection ? "Recibi conforme - Starlim" : "Autorizo pago - Starlim", "Aclaracion y firma");
   });
 }
 
@@ -859,7 +847,7 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
           ["Importe Otros Tributos", pdfMoney(0)],
         ]
       : [["Importe", pdfMoney(amounts.total)], ["Importe Otros Tributos", pdfMoney(0)]];
-    pdf.note(note.reason || `Comprobante asociado a factura ${associated}.`, { density: "compact" });
+    pdf.note(note.reason || `Comprobante asociado a factura ${associated}.`);
     pdf.fiscalSummary(fiscalRows, "Importe Total", pdfMoney(amounts.total));
     pdf.fiscalAuthorizationBox(note.cae, note.cae_expires_at ? pdfDate(note.cae_expires_at) : "-", qrImage);
   });
@@ -891,11 +879,10 @@ export async function buildPurchaseOrderPdf(companyId: number, purchaseId: strin
         { label: "Costo ref.", width: 115, align: "right" },
       ],
       purchase.items.map((item) => [compactPdfCode(item.productId), item.name, pdfNumber(item.quantity), "-"]),
-      { density: "compact" },
     );
-    pdf.totals([["Items", String(purchase.items.length)]], "Total", pdfMoney(purchase.total), { density: "compact" });
-    pdf.note("Orden emitida desde Starlim. Verificar cantidades, condiciones comerciales y recepcion de mercaderia.", { density: "compact" });
-    pdf.signatures("Autorizo compra - Starlim", "Proveedor / recepcion", { density: "compact" });
+    pdf.totals([["Items", String(purchase.items.length)]], "Total", pdfMoney(purchase.total));
+    pdf.note("Orden emitida desde Starlim. Verificar cantidades, condiciones comerciales y recepcion de mercaderia.");
+    pdf.signatures("Autorizo compra - Starlim", "Proveedor / recepcion");
   });
 }
 
@@ -925,58 +912,141 @@ export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseI
         { label: "Motivo", width: 75 },
       ],
       purchase.items.map((item) => [compactPdfCode(item.productId), item.name, pdfNumber(item.quantity), reason || "A revisar"]),
-      { density: "compact" },
     );
-    pdf.note(reason || "Solicitud operativa de devolucion. Confirmar productos y cantidades antes del despacho.", { density: "compact" });
-    pdf.signatures("Solicita Starlim", "Recibe proveedor", { density: "compact" });
+    pdf.note(reason || "Solicitud operativa de devolucion. Confirmar productos y cantidades antes del despacho.");
+    pdf.signatures("Solicita Starlim", "Recibe proveedor");
   });
 }
 
-export async function buildPriceListPdf(companyId: number, list: number) {
-  const cols = {
-    0: { expr: "precio_0", label: "L0 - agresivo" },
-    1: { expr: "precio_1", label: "L1 - suave" },
-    2: { expr: "precio_2", label: "L2 - ANCLA" },
-    3: { expr: "precio_3", label: "L3 - caro" },
-    4: { expr: "precio_minorista", label: "Minorista" },
-    5: { expr: "precio_minorista", label: "Minorista" },
-  } as const;
-  const selected = cols[(list in cols ? list : 0) as keyof typeof cols];
-  const result = await queryWithCompanyContext<{ codigo: string; nombre: string; precio: string }>(
+export type PriceListPdfOptions = {
+  listId: number;
+  vigencia?: string;
+  stock?: PriceListStock;
+  groupBy?: PriceListGroupBy;
+  filter?: string;
+  iva?: PriceListVat;
+};
+
+export async function buildPriceListPdf(companyId: number, options: PriceListPdfOptions) {
+  const stock = normalizeStock(options.stock);
+  const groupBy = normalizeGroupBy(options.groupBy);
+  const iva = normalizeVat(options.iva == null ? undefined : String(options.iva));
+  const filter = (options.filter ?? "").trim().toLocaleLowerCase("es");
+  const vigencia = options.vigencia && /^\d{4}-\d{2}-\d{2}$/.test(options.vigencia) ? options.vigencia : localDateIso();
+
+  const listRow = await queryWithCompanyContext<{ id: number; nombre: string }>(
+    companyId,
+    `SELECT id, nombre FROM listas_precio WHERE empresa_id = $1 AND activa = 1 AND ($2 <= 0 OR id = $2) ORDER BY orden ASC, nombre ASC LIMIT 1`,
+    [companyId, Number.isInteger(options.listId) ? options.listId : 0],
+  );
+  const selectedList = listRow.rows[0];
+  if (!selectedList) throw new ApiError(404, "La lista de precios no existe");
+  const listName = selectedList.nombre;
+
+  const marginCode = productMarginCodeExpression("p");
+  const result = await queryWithCompanyContext<{
+    codigo: string;
+    nombre: string;
+    presentacion: string;
+    categoria: string;
+    proveedor: string;
+    precio: string;
+    stock_real: string;
+  }>(
     companyId,
     `
-      SELECT COALESCE(codigo, '') AS codigo, nombre, ${selected.expr} AS precio
-      FROM vista_precios
-      WHERE empresa_id = $1 AND precio_1 IS NOT NULL AND ${selected.expr} > 0
-      ORDER BY nombre ASC
+      SELECT COALESCE(p.sku, p.category_code, '') AS codigo,
+             p.name AS nombre,
+             COALESCE(p.unit, '') AS presentacion,
+             COALESCE(NULLIF(p.category, ''), 'Sin categoría') AS categoria,
+             COALESCE(NULLIF(s.display_name, ''), 'Sin proveedor') AS proveedor,
+             COALESCE(
+               NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(ml.multiplicador, 1), 2), 0),
+               NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
+               p.sale_price,
+               p.cost,
+               0
+             ) AS precio,
+             COALESCE(stock.stock_real, 0)::text AS stock_real
+      FROM products p
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      LEFT JOIN margenes m
+        ON m.empresa_id = p.empresa_id AND m.codigo = ${marginCode}
+      LEFT JOIN margenes_listas ml
+        ON ml.empresa_id = p.empresa_id AND ml.lista_id = $2 AND ml.codigo = ${marginCode}
+      LEFT JOIN LATERAL (
+        SELECT SUM(
+          CASE WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity ELSE -sm.quantity END
+        ) AS stock_real
+        FROM stock_movements sm
+        WHERE sm.empresa_id = p.empresa_id AND sm.product_id = p.id
+      ) stock ON true
+      WHERE p.empresa_id = $1 AND p.active = true
+      ORDER BY p.name ASC
     `,
-    [companyId],
+    [companyId, selectedList.id],
   );
 
-  return createPdfFile(`lista_precios_${safeFilename(selected.label)}.pdf`, ({ pdf }) => {
+  const rows = result.rows.filter((row) => {
+    if (Number(row.precio) <= 0) return false;
+    if (stock === "con" && Number(row.stock_real) <= 0) return false;
+    if (filter) {
+      const groupValue = (groupBy === "proveedor" ? row.proveedor : row.categoria).toLocaleLowerCase("es");
+      if (!groupValue.includes(filter)) return false;
+    }
+    return true;
+  });
+
+  // Agrupa preservando el orden alfabetico de los grupos.
+  const groups = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = groupBy === "proveedor" ? row.proveedor : row.categoria;
+    const bucket = groups.get(key) ?? [];
+    bucket.push(row);
+    groups.set(key, bucket);
+  }
+  const orderedGroups = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0], "es"));
+
+  const ivaTag = iva === 10.5 ? "IVA 10,5%" : "IVA 21% incluido";
+
+  return createPdfFile(`lista_precios_${safeFilename(listName)}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Lista de precios",
       code: "LP",
-      number: selected.label,
-      date: pdfDate(localDateIso()),
-      extra: [`Productos: ${result.rows.length}`],
+      number: listName,
+      date: pdfDate(vigencia),
+      extra: [ivaTag, `Productos: ${rows.length}`],
       footerLeft: "Lista de precios",
-      footerRight: selected.label,
+      footerRight: listName,
     });
     pdf.section("Lista vigente");
-    pdf.title(selected.label, 13);
-    pdf.muted("Precios expresados en pesos argentinos. La lista se emite desde el catalogo vigente de Starlim y puede actualizarse segun condiciones comerciales.");
+    pdf.title(listName, 13);
+    pdf.muted(`Vigencia desde ${pdfDate(vigencia)}. ${vatLegend(iva)}`);
     pdf.doc.y += 12;
-    pdf.table(
-      [
-        { label: "Codigo", width: 82 },
-        { label: "Producto", width: 297 },
-        { label: "Precio", width: 125, align: "right" },
-      ],
-      result.rows.map((row) => [row.codigo || "-", row.nombre, pdfMoney(Number(row.precio))]),
-      { minRowHeight: 14, density: "compact" },
-    );
-    pdf.note("Documento informativo no fiscal. Verificar condiciones particulares, descuentos y disponibilidad antes de confirmar una operacion.", { density: "compact" });
+
+    if (orderedGroups.length === 0) {
+      pdf.muted("No hay productos para los filtros seleccionados.");
+    }
+
+    for (const [groupName, groupRows] of orderedGroups) {
+      pdf.section(groupName);
+      pdf.table(
+        [
+          { label: "Codigo", width: 74 },
+          { label: "Producto", width: 208 },
+          { label: "Presentacion", width: 96 },
+          { label: "Precio unit.", width: 126, align: "right" },
+        ],
+        groupRows.map((row) => [
+          row.codigo || "-",
+          row.nombre,
+          row.presentacion || "-",
+          pdfMoney(applyVat(Number(row.precio), iva)),
+        ]),
+        { minRowHeight: 20 },
+      );
+    }
+    pdf.note("Documento informativo no fiscal. Verificar condiciones particulares, descuentos y disponibilidad antes de confirmar una operacion.");
   });
 }
 
@@ -1080,9 +1150,168 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
         const available = Number(row.disponible);
         return [row.product_code, row.nombre, pdfNumber(requested), pdfNumber(available), pdfNumber(Math.max(0, requested - available))];
       }),
-      { density: "compact" },
     );
-    pdf.note("Documento operativo para control interno de stock y despacho. Marcar faltantes antes de avanzar el pedido.", { density: "compact" });
-    pdf.signatures("Preparo deposito", "Controlo administracion", { density: "compact" });
+    pdf.note("Documento operativo para control interno de stock y despacho. Marcar faltantes antes de avanzar el pedido.");
+    pdf.signatures("Preparo deposito", "Controlo administracion");
+  });
+}
+
+export async function buildOrderRemitoPdf(
+  companyId: number,
+  orderId: string,
+  options: { includePrices?: boolean; copia?: boolean } = {},
+) {
+  const includePrices = options.includePrices ?? false;
+  const copia = options.copia ?? false;
+
+  const header = await queryWithCompanyContext<{
+    commercial_number: string | null;
+    sale_number: string;
+    receipt_number: number | null;
+    delivery_number: number | null;
+    nombre_cliente: string;
+    dni_cliente: string;
+    fecha: string | null;
+    condicion_pago: string;
+    monto: string;
+    vendedor: string;
+    domicilio: string;
+    ciudad: string;
+    provincia: string;
+    nro_id: string;
+    observacion: string;
+    vat_rate: string;
+  }>(
+    companyId,
+    `
+      SELECT s.commercial_number::text AS commercial_number,
+             COALESCE(s.sale_number, '') AS sale_number,
+             s.receipt_number,
+             dd.delivery_number,
+             COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
+             COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
+             s.sale_date::text AS fecha,
+             COALESCE(s.payment_condition, '') AS condicion_pago,
+             COALESCE(s.total_amount, 0)::text AS monto,
+             COALESCE(s.vat_rate, 0)::text AS vat_rate,
+             COALESCE(s.seller_name, '') AS vendedor,
+             COALESCE(c.delivery_address, c.address, '') AS domicilio,
+             COALESCE(c.locality, '') AS ciudad,
+             COALESCE(c.province, '') AS provincia,
+             COALESCE(c.tax_id, s.client_document, '') AS nro_id,
+             COALESCE(s.notes, '') AS observacion
+      FROM sales s
+      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
+      WHERE s.id = $1::uuid AND s.empresa_id = $2
+      LIMIT 1
+    `,
+    [orderId, companyId],
+  );
+  const order = header.rows[0];
+  if (!order) throw new ApiError(404, "Pedido no encontrado");
+
+  const detail = await queryWithCompanyContext<{
+    product_code: string;
+    nombre: string;
+    cantidad: string;
+    precio_unit: string;
+    subtotal: string;
+  }>(
+    companyId,
+    `
+      SELECT COALESCE(p.sku, p.category_code, '') AS product_code,
+             COALESCE(si.description, p.name, '(producto eliminado)') AS nombre,
+             si.quantity::text AS cantidad,
+             COALESCE(si.unit_price, 0)::text AS precio_unit,
+             COALESCE(si.total_amount, 0)::text AS subtotal
+      FROM sale_items si
+      LEFT JOIN products p ON p.id = si.product_id AND p.empresa_id = si.empresa_id
+      WHERE si.sale_id = $1::uuid AND si.empresa_id = $2
+      ORDER BY si.id ASC
+    `,
+    [orderId, companyId],
+  );
+
+  const commercialCode = formatSaleCommercialCode({
+    commercialNumber: order.commercial_number,
+    saleNumber: order.sale_number,
+    deliveryNumber: order.delivery_number,
+    legacyRemittanceNumber: order.receipt_number,
+  });
+  const number = commercialCode === "Sin número" ? "Sin número" : commercialCode;
+  const filenamePrefix = includePrices ? "remito_con_precios" : "remito_sin_precios";
+
+  // Los precios del listado son netos; el IVA (21% o 10,5%) se suma encima, igual que
+  // el mensaje de confirmación. Con vat_rate 0 (ventas históricas) el IVA queda en 0.
+  const vatRate = Number(order.vat_rate) || 0;
+  const totalUnits = detail.rows.reduce((sum, row) => sum + Number(row.cantidad), 0);
+  const subtotalNeto = detail.rows.reduce((sum, row) => sum + Number(row.subtotal), 0);
+  const ivaMonto = Math.round((subtotalNeto * (vatRate / 100) + Number.EPSILON) * 100) / 100;
+  const totalConIva = subtotalNeto + ivaMonto;
+  const priceSummaryRows: [string, string][] = [
+    ["Total de unidades", pdfNumber(totalUnits)],
+    ["Subtotal", pdfMoney(subtotalNeto)],
+  ];
+  if (vatRate > 0) {
+    priceSummaryRows.push([vatRate === 21 ? "IVA 21%" : "IVA 10,5%", pdfMoney(ivaMonto)]);
+  }
+
+  return createPdfFile(`${filenamePrefix}_${safeFilename(number)}.pdf`, ({ pdf }) => {
+    pdf.drawHeader({
+      title: "Remito",
+      code: "R",
+      number,
+      date: pdfDate(order.fecha),
+      extra: [includePrices ? "Documento valorizado" : "Control de mercaderia", copia ? "COPIA" : "ORIGINAL"],
+      footerLeft: includePrices ? "Documento no valido como factura" : "Control de mercaderia - sin valores",
+      footerRight: includePrices ? `Total ${pdfMoney(totalConIva)}` : "Deposito",
+    });
+
+    pdf.section("Destinatario");
+    pdf.title(order.nombre_cliente || "Sin cliente", 11);
+    pdf.muted(
+      [
+        order.domicilio,
+        [order.ciudad, order.provincia].filter(Boolean).join(", "),
+        `DNI/CUIT: ${order.nro_id || order.dni_cliente || "-"}`,
+      ]
+        .filter(Boolean)
+        .join(" - "),
+    );
+    const infoY = pdf.y + 16;
+    pdf.keyValue("Cond. vta.", order.condicion_pago || "-", 54, infoY, 74, 165);
+    pdf.keyValue("Vendedor", order.vendedor || "-", 318, infoY, 64, 150);
+    pdf.setY(infoY + 30);
+
+    const columns = includePrices
+      ? [
+          { label: "Cant.", width: 54 },
+          { label: "Codigo", width: 70 },
+          { label: "Descripcion", width: 211 },
+          { label: "P. unit.", width: 84, align: "right" as const },
+          { label: "Importe", width: 85, align: "right" as const },
+        ]
+      : [
+          { label: "Cant.", width: 54 },
+          { label: "Codigo", width: 78 },
+          { label: "Descripcion", width: 312 },
+          { label: "Control", width: 60, align: "center" as const },
+        ];
+    pdf.table(
+      columns,
+      detail.rows.map((row) =>
+        includePrices
+          ? [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, pdfMoney(Number(row.precio_unit)), pdfMoney(Number(row.subtotal))]
+          : [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, "[ ]"],
+      ),
+    );
+    pdf.totals(
+      includePrices ? priceSummaryRows : [["Total de unidades", pdfNumber(totalUnits)]],
+      includePrices ? "Total" : "Control",
+      includePrices ? pdfMoney(totalConIva) : "",
+    );
+    pdf.note(order.observacion || "Verificar cantidades y estado de la mercaderia al momento de la recepcion.");
+    pdf.signatures("Preparo / despacho", "Controlo / recibio");
   });
 }

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { AuthSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
 import { MessageNotifications } from "@/components/message-notifications";
-import { NavigationIndicatorsProvider } from "@/components/navigation-indicators-provider";
+import { MessageNotifier } from "@/components/message-notifier";
 import { PresenceIndicator } from "@/components/presence-indicator";
 import { SessionKeepAlive } from "@/components/session-keep-alive";
 import { ShellNavigation } from "@/components/shell-navigation";
@@ -13,6 +13,7 @@ import {
   emptyNavigationIndicators,
   authorizedNavigationSections,
   getNavigationAuthorization,
+  getNavigationIndicators,
   type NavigationAuthorization,
 } from "@/lib/navigation";
 
@@ -41,15 +42,27 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: 
 }
 
 function BrandBlock({ title }: { title?: string }) {
+  // Con título = header mobile (compacto, alineado a la izquierda junto al menú).
+  if (title) {
+    return (
+      <Link className="flex min-w-0 flex-1 items-center gap-3" href="/">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[#d9e2ef] bg-white p-2 shadow-[0_8px_18px_rgba(15,23,42,0.07)]">
+          <Image src="/starlim-logo.png" alt="Starlim" width={30} height={30} />
+        </span>
+        <span className="min-w-0">
+          <span className="erp-text-caption block font-semibold uppercase text-white">Starlim</span>
+          <span className="erp-text-title-sm block truncate font-medium text-white/82">{title}</span>
+        </span>
+      </Link>
+    );
+  }
+  // Sin título = marca del sidebar: logo + nombre grande, centrado en el cuadro.
   return (
-    <Link className="flex min-w-0 flex-1 items-center gap-3" href="/">
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[#d9e2ef] bg-white p-2 shadow-[0_8px_18px_rgba(15,23,42,0.07)]">
-        <Image src="/starlim-logo.png" alt="Starlim" width={30} height={30} />
+    <Link className="flex items-center justify-center gap-3 py-1" href="/">
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] border border-[#d9e2ef] bg-white p-2 shadow-[0_8px_18px_rgba(15,23,42,0.07)]">
+        <Image src="/starlim-logo.png" alt="Starlim" width={34} height={34} />
       </span>
-      <span className="min-w-0">
-        <span className="erp-text-caption block font-semibold uppercase text-white">Starlim</span>
-        {title ? <span className="erp-text-title-sm block truncate font-medium text-white/82">{title}</span> : null}
-      </span>
+      <span className="text-2xl font-black uppercase tracking-wide text-white">Starlim</span>
     </Link>
   );
 }
@@ -63,21 +76,23 @@ export async function ModulePage({
   navigationAuthorization,
   lockDesktopScroll = false,
 }: ModulePageProps) {
+  let indicators = emptyNavigationIndicators();
   const fallbackAuthorization: NavigationAuthorization = {
     allowedPermissionKeys: new Set<string>(),
   };
-  const authorization = navigationAuthorization
-    ? navigationAuthorization
-    : await withTimeout(getNavigationAuthorization(session), 60, fallbackAuthorization);
-  // Badges and the message preview are useful, but neither may hold the whole
-  // screen hostage. Both client components refresh them right after hydration.
-  const indicators = emptyNavigationIndicators();
+  const authorization =
+    navigationAuthorization ??
+    (await withTimeout(getNavigationAuthorization(session), 60, fallbackAuthorization));
   const sections = authorizedNavigationSections(authorization);
 
+  indicators = await withTimeout(getNavigationIndicators(session), 60, emptyNavigationIndicators()).catch(() =>
+    emptyNavigationIndicators(),
+  );
+
   return (
-    <NavigationIndicatorsProvider initialIndicators={indicators}>
-      <div className="min-h-screen overflow-visible bg-[color:var(--background)] text-foreground lg:grid lg:h-screen lg:grid-cols-[252px_minmax(0,1fr)] lg:overflow-hidden lg:overscroll-none">
+    <div className="min-h-screen overflow-visible bg-[#f5f7fb] text-foreground lg:grid lg:h-screen lg:grid-cols-[260px_minmax(0,1fr)] lg:overflow-hidden lg:overscroll-none">
       <SessionKeepAlive />
+      <MessageNotifier />
       <MessageNotifications
         currentUsername={session.username}
         initialLatestMessage={null}
@@ -103,19 +118,19 @@ export async function ModulePage({
       </aside>
 
       <main className={cn("min-h-screen min-w-0 overflow-visible lg:h-screen", lockDesktopScroll ? "lg:overflow-hidden" : "lg:overflow-y-auto lg:overscroll-contain")}>
-        <header className="sticky top-0 z-30 border-b border-[color:var(--border)] bg-white/95 shadow-[0_6px_20px_rgba(15,34,62,0.04)] backdrop-blur">
-          <div className="hidden min-h-[4.75rem] items-center justify-between gap-5 px-7 lg:flex">
+        <header className="sticky top-0 z-30 border-b border-[#d9e2ef] bg-white/95 shadow-[0_8px_24px_rgba(15,23,42,0.045)] backdrop-blur">
+          <div className="hidden min-h-[4.25rem] items-center justify-between gap-4 px-7 lg:flex">
             <div className="min-w-0">
-              <h1 className="truncate text-[1.625rem] font-extrabold leading-8 tracking-[-0.03em] text-[color:var(--foreground)]">{title}</h1>
-              <p className="erp-text-body-sm mt-0.5 truncate font-medium text-[color:var(--muted)]">{description}</p>
+              <h1 className="erp-text-title-md truncate font-extrabold tracking-normal text-[#0f172a]">{title}</h1>
+              <p className="erp-text-body-sm mt-0.5 truncate font-medium text-[#64748b]">{description}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <PresenceIndicator />
-              <div className="erp-text-caption flex h-[var(--control-height-md)] max-w-[360px] items-center truncate rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--panel-muted)] px-3 shadow-[var(--shadow-xs)]">
+              <div className="erp-text-caption flex h-10 max-w-[360px] items-center truncate rounded-[9px] border border-[#d9e2ef] bg-[#f8fafc] px-3 shadow-[var(--shadow-xs)]">
                 <span className="font-bold">{session.displayName}</span>
                 <span className="font-medium text-[#64748b]"> - {session.role} - {session.companyName}</span>
               </div>
-              <LogoutButton className="h-[var(--control-height-md)] min-h-[var(--control-height-md)] px-4" />
+              <LogoutButton className="h-10 min-h-10 px-4" />
             </div>
           </div>
 
@@ -146,11 +161,10 @@ export async function ModulePage({
           </div>
         </header>
 
-        <section className={cn("erp-shell-content mx-auto min-w-0 max-w-[1600px] px-4 pb-24 pt-4 sm:px-5 lg:px-6 lg:pt-5", lockDesktopScroll ? "lg:h-[calc(100vh-4.75rem)] lg:overflow-hidden lg:pb-5" : "lg:pb-28")}>
-          <div className={cn("erp-workspace-surface", lockDesktopScroll && "h-full overflow-hidden")}>{children}</div>
+        <section className="erp-shell-content mx-auto min-w-0 max-w-[1480px] px-4 pb-24 pt-5 sm:px-6 lg:px-7 lg:pb-28 lg:pt-6">
+          {children}
         </section>
       </main>
-      </div>
-    </NavigationIndicatorsProvider>
+    </div>
   );
 }

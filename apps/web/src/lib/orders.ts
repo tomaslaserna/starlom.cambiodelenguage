@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { summarizeDurations } from "@/lib/delivery-times";
 import {
   lineSubtotal,
   money,
@@ -68,6 +69,9 @@ export type OrderSummary = {
   desiredDocument: string;
   stockDiscounted: boolean;
   observation: string;
+  vatRate: number;
+  fiscalStatus: string;
+  hasPendingFiscalRequest: boolean;
 };
 
 export type OrderDetailLine = {
@@ -145,6 +149,9 @@ function mapOrder(row: {
   desired_document: string;
   stock_discounted: boolean;
   notes: string;
+  vat_rate: string;
+  fiscal_status: string;
+  has_pending_fiscal_request: boolean;
 }): OrderSummary {
   return {
     id: row.id,
@@ -170,6 +177,9 @@ function mapOrder(row: {
     desiredDocument: row.desired_document,
     stockDiscounted: row.stock_discounted,
     observation: row.notes,
+    vatRate: normalizeStoredVatRate(Number(row.vat_rate)),
+    fiscalStatus: row.fiscal_status,
+    hasPendingFiscalRequest: row.has_pending_fiscal_request,
   };
 }
 
@@ -241,6 +251,7 @@ export async function listOrders(input: ListInput = {}) {
              GREATEST(COALESCE(s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
              COALESCE(s.total_amount, 0)::text AS monto_neto,
              0::text AS monto_iva,
+             COALESCE(s.vat_rate, 0)::text AS vat_rate,
              s.receipt_number,
              dd.delivery_number,
              COALESCE(s.payment_condition, '') AS payment_condition,
@@ -250,7 +261,15 @@ export async function listOrders(input: ListInput = {}) {
              ${normalizedOrderStatusSql("s")} AS order_status,
              COALESCE(s.desired_document, 'remito') AS desired_document,
              s.stock_discounted,
-             COALESCE(s.notes, '') AS notes
+             COALESCE(s.notes, '') AS notes,
+             COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
+             EXISTS (
+               SELECT 1 FROM app_solicitudes sol
+               WHERE sol.empresa_id = s.empresa_id
+                 AND sol.estado = 'pendiente'
+                 AND sol.metadata->>'action' = 'fiscal_invoice'
+                 AND sol.metadata->>'saleId' = s.id::text
+             ) AS has_pending_fiscal_request
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
       LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
@@ -298,6 +317,7 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
              GREATEST(COALESCE(s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
              COALESCE(s.total_amount, 0)::text AS monto_neto,
              0::text AS monto_iva,
+             COALESCE(s.vat_rate, 0)::text AS vat_rate,
              s.receipt_number,
              dd.delivery_number,
              COALESCE(s.payment_condition, '') AS payment_condition,
@@ -307,7 +327,15 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
              ${normalizedOrderStatusSql("s")} AS order_status,
              COALESCE(s.desired_document, 'remito') AS desired_document,
              s.stock_discounted,
-             COALESCE(s.notes, '') AS notes
+             COALESCE(s.notes, '') AS notes,
+             COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
+             EXISTS (
+               SELECT 1 FROM app_solicitudes sol
+               WHERE sol.empresa_id = s.empresa_id
+                 AND sol.estado = 'pendiente'
+                 AND sol.metadata->>'action' = 'fiscal_invoice'
+                 AND sol.metadata->>'saleId' = s.id::text
+             ) AS has_pending_fiscal_request
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
       LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
@@ -1139,4 +1167,54 @@ export async function updateOrderCollectionStatus(
   });
 
   return getOrder(session.companyId, id);
+}
+
+export type Delivery = { saleId: string; pedido: string; cliente: string; deliveredAt: string; leadMs: number };
+
+// Tiempos de entrega del período a partir de los eventos pedido.entregado ya
+// registrados por updateOrderStatus. Lead time = entrega - creación del pedido.
+export async function getDeliveryTimes(
+  companyId: number,
+  bounds: { currentStart: string; nextStart: string },
+): Promise<{ deliveries: Delivery[]; summary: { count: number; avgMs: number | null; medianMs: number | null } }> {
+  const result = await queryWithCompanyContext<{
+    sale_id: string;
+    pedido: string;
+    cliente: string;
+    started_at: string;
+    delivered_at: string;
+  }>(
+    companyId,
+    `
+      SELECT (e.datos->>'id') AS sale_id,
+             COALESCE(NULLIF(s.sale_number, ''), '') AS pedido,
+             COALESCE(NULLIF(s.client_name, ''), c.display_name, c.legal_name, '') AS cliente,
+             s.created_at::text AS started_at,
+             e.created_at::text AS delivered_at
+      FROM eventos_integracion e
+      JOIN sales s ON s.id = (e.datos->>'id')::uuid AND s.empresa_id = e.empresa_id
+      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      WHERE e.empresa_id = $1
+        AND e.tipo = 'pedido.entregado'
+        AND e.created_at >= ($2 || 'T00:00:00-03:00')::timestamptz
+        AND e.created_at <  ($3 || 'T00:00:00-03:00')::timestamptz
+      ORDER BY e.created_at DESC
+    `,
+    [companyId, bounds.currentStart, bounds.nextStart],
+  );
+
+  const deliveries: Delivery[] = [];
+  for (const row of result.rows) {
+    const leadMs = Date.parse(row.delivered_at) - Date.parse(row.started_at);
+    if (!Number.isFinite(leadMs) || leadMs < 0) continue;
+    deliveries.push({
+      saleId: row.sale_id,
+      pedido: row.pedido,
+      cliente: row.cliente,
+      deliveredAt: row.delivered_at.slice(0, 10),
+      leadMs,
+    });
+  }
+  const summary = summarizeDurations(deliveries.map((delivery) => delivery.leadMs));
+  return { deliveries, summary };
 }

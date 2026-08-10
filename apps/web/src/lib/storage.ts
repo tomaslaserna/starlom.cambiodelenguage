@@ -7,12 +7,20 @@ const DEFAULT_BUCKET = "uploads";
 // Dedicated private bucket for the "Banco" file storage feature. Kept separate
 // from the message-uploads bucket so it has its own size/mime limits.
 export const BANK_BUCKET = "bank";
+// Public bucket for product images (catalog thumbnails).
+export const PRODUCT_IMAGES_BUCKET = "product-images";
 
 function assertAllowedBucket(bucket: string) {
   const config = storageConfig();
-  if (bucket !== config.bucket && bucket !== BANK_BUCKET) {
+  if (bucket !== config.bucket && bucket !== BANK_BUCKET && bucket !== PRODUCT_IMAGES_BUCKET) {
     throw new ApiError(403, "Bucket no permitido");
   }
+}
+
+// Public read URL for an object in the product-images bucket.
+export function publicProductImageUrl(path: string): string {
+  const config = storageConfig();
+  return `${config.url}/storage/v1/object/public/${PRODUCT_IMAGES_BUCKET}/${encodedObjectPath(path)}`;
 }
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   gif: "image/gif",
