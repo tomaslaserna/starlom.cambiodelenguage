@@ -493,7 +493,7 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
           SELECT id::text, display_name, legal_name, tax_id, fiscal_condition,
                  phone, address, price_list_name, seller_name
           FROM clients
-          WHERE id = $1::uuid AND empresa_id = $2 AND active = true
+          WHERE id = $1::uuid AND empresa_id = $2
           LIMIT 1
         `,
         [input.customerId, session.companyId],

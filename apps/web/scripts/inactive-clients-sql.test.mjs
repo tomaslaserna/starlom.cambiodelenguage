@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const ordersSource = readFileSync(new URL("../src/lib/orders.ts", import.meta.url), "utf8");
+const quotesSource = readFileSync(new URL("../src/lib/quotes.ts", import.meta.url), "utf8");
 
 test("getOrderCustomer: la búsqueda de cliente no filtra por active y reactiva", () => {
   // El lookup del cliente del pedido ya no exige active = true
@@ -15,4 +16,8 @@ test("getOrderFormData: la lista de clientes del formulario no filtra por active
   // La query de clientes del selector (WHERE empresa_id = $1) ya no exige active.
   // El filtro de productos usa el prefijo `p.` y no matchea este patrón.
   assert.doesNotMatch(ordersSource, /empresa_id = \$1 AND active = true/);
+});
+
+test("createQuote: la validación de cliente no filtra por active", () => {
+  assert.doesNotMatch(quotesSource, /id = \$1::uuid AND empresa_id = \$2 AND active = true/);
 });
