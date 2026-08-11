@@ -1235,9 +1235,6 @@ export async function authorizeSaleFiscalDocument(session: AuthSession, saleId: 
   if (sale.orderStatus !== "entregado") {
     throw new ApiError(400, "Solo se puede emitir factura fiscal de una venta entregada.");
   }
-  if (sale.desiredDocument !== "factura") {
-    throw new ApiError(400, "La factura fiscal debe solicitarse al aprobar el presupuesto.");
-  }
   if (!sale.customerDocument.trim()) {
     throw new ApiError(400, "La venta no tiene CUIT/DNI del cliente.");
   }
