@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const migration = readFileSync(
-  new URL("../../migrations/20260811000000_crm_leads.sql", import.meta.url),
+  new URL("../../../migrations/20260811000000_crm_leads.sql", import.meta.url),
   "utf8",
 );
 
