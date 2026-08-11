@@ -20,11 +20,14 @@ export type Customer = {
   taxId: string;
   vatCondition: string;
   phone: string;
+  address: string;
   province: string;
   city: string;
   priceList: string;
   status: string;
   seller: string;
+  observation: string;
+  salesCount: number;
   paymentTermDays: number | null;
 };
 
@@ -172,12 +175,16 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
     active: boolean;
     seller_name: string | null;
     payment_term_days: number | null;
+    address: string | null;
+    notes: string | null;
+    sales_count: string;
   }>(
     companyId,
     `
       SELECT id, external_code, display_name, legal_name, tax_id,
              fiscal_condition, phone, locality, province, price_list_name,
-             active, seller_name, payment_term_days
+             active, seller_name, payment_term_days, address, notes,
+             (SELECT count(*) FROM sales s WHERE s.empresa_id = clients.empresa_id AND s.client_id = clients.id)::text AS sales_count
       FROM clients
       WHERE ${where}
       ORDER BY display_name ASC, id ASC
@@ -198,11 +205,14 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
       taxId: row.tax_id ?? "",
       vatCondition: row.fiscal_condition ?? "",
       phone: row.phone ?? "",
+      address: row.address ?? "",
       province: row.province ?? "",
       city: row.locality ?? "",
       priceList: row.price_list_name ?? "",
       status: row.active ? "Activo" : "Inactivo",
       seller: row.seller_name ?? "",
+      observation: row.notes ?? "",
+      salesCount: Number(row.sales_count ?? 0),
       paymentTermDays: row.payment_term_days,
     })),
     meta: {
@@ -214,6 +224,16 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
       totalPages: Math.max(1, Math.ceil(total / pagination.pageSize)),
     },
   };
+}
+
+export async function listClientOptions(companyId: number): Promise<{ id: string; name: string }[]> {
+  const result = await queryWithCompanyContext<{ id: string; name: string }>(
+    companyId,
+    `SELECT id::text AS id, COALESCE(NULLIF(display_name, ''), legal_name, 'Sin nombre') AS name
+       FROM clients WHERE empresa_id = $1 ORDER BY display_name ASC, id ASC`,
+    [companyId],
+  );
+  return result.rows;
 }
 
 export async function listSalePrices(input: ListInput = {}): Promise<SalePricesResult> {
