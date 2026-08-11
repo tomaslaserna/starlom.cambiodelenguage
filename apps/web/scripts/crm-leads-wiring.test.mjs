@@ -24,3 +24,9 @@ test("leads.ts scopea por vendedor y la conversión reutiliza createCustomer", (
   assert.match(leadsSource, /stage='convertido'/);
   assert.match(leadsSource, /converted_client_id/);
 });
+
+const navSource = readFileSync(new URL("../src/lib/navigation.ts", import.meta.url), "utf8");
+
+test("navigation incluye el ítem de Leads del CRM", () => {
+  assert.match(navSource, /href: "\/crm\/leads", label: "Leads", active: "crm"/);
+});
