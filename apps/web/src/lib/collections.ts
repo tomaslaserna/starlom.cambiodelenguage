@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api-response";
+import { COLLECTION_METHODS, collectionMethodRequiresOperation } from "@/lib/collection-methods";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { normalizeOrderStatusValue, normalizedOrderStatusSql } from "@/lib/order-status";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
@@ -9,7 +10,7 @@ import type { PoolClient } from "pg";
 
 const APPROVAL_STATES = new Set(["pendiente_aprobacion", "en_proceso"]);
 const REGISTERABLE_STATES = new Set(["pendiente", "vencido"]);
-const PAYMENT_METHODS = new Set(["efectivo", "transferencia", "echeck"]);
+const PAYMENT_METHODS = new Set<string>(COLLECTION_METHODS);
 const MONEY_EPSILON = 0.005;
 const COLLECTION_RESOLUTION_CONFLICT =
   "El cobro ya no esta pendiente de resolucion o no puede procesarse";
@@ -142,7 +143,7 @@ export function collectionRegistrationFromBody(body: RequestBody): CollectionReg
   if (amount <= 0) throw new ApiError(400, "El monto debe ser mayor a cero");
   if (!PAYMENT_METHODS.has(method)) throw new ApiError(400, "Metodo de cobro invalido");
   if (!destination) throw new ApiError(400, "El destino es obligatorio");
-  if (method !== "efectivo" && !operation) throw new ApiError(400, "La operacion es obligatoria");
+  if (collectionMethodRequiresOperation(method) && !operation) throw new ApiError(400, "La operacion es obligatoria");
 
   return { amount, date, method, destination, operation, notes };
 }

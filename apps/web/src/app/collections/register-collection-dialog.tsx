@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button, Field, Input, Select } from "@/components/ui";
+import { collectionMethodRequiresOperation } from "@/lib/collection-methods";
 
 type RegisterCollectionDialogProps = {
   action: (formData: FormData) => Promise<void>;
@@ -23,6 +24,8 @@ export function RegisterCollectionDialog({
   triggerClassName,
 }: RegisterCollectionDialogProps) {
   const [open, setOpen] = useState(false);
+  const [method, setMethod] = useState("efectivo");
+  const operationRequired = collectionMethodRequiresOperation(method);
   const amountInputId = `dialog-${saleId}-amount`;
   const dateInputId = `dialog-${saleId}-date`;
   const methodSelectId = `dialog-${saleId}-method`;
@@ -88,7 +91,13 @@ export function RegisterCollectionDialog({
                 <Input className="min-h-10 px-2 text-sm" defaultValue={today} id={dateInputId} name="date" required type="date" />
               </Field>
               <Field htmlFor={methodSelectId} label="Metodo">
-                <Select className="min-h-10 px-2 text-sm" defaultValue="efectivo" id={methodSelectId} name="method">
+                <Select
+                  className="min-h-10 px-2 text-sm"
+                  id={methodSelectId}
+                  name="method"
+                  onChange={(event) => setMethod(event.target.value)}
+                  value={method}
+                >
                   <option value="efectivo">Efectivo</option>
                   <option value="transferencia">Transferencia</option>
                   <option value="echeck">E-check</option>
@@ -104,8 +113,14 @@ export function RegisterCollectionDialog({
                   required
                 />
               </Field>
-              <Field htmlFor={operationInputId} label="Operacion">
-                <Input className="min-h-10 px-2 text-sm" id={operationInputId} name="operation" placeholder="Nro. o referencia" />
+              <Field htmlFor={operationInputId} label="Operacion" required={operationRequired}>
+                <Input
+                  className="min-h-10 px-2 text-sm"
+                  id={operationInputId}
+                  name="operation"
+                  placeholder={operationRequired ? "Nro. o referencia (obligatorio)" : "Nro. o referencia"}
+                  required={operationRequired}
+                />
               </Field>
               <Field htmlFor={notesInputId} label="Notas">
                 <Input className="min-h-10 px-2 text-sm" id={notesInputId} name="notes" placeholder="Opcional" />
