@@ -14,3 +14,13 @@ test("la migración crea crm_leads con RLS y grants a starlim_app", () => {
   assert.match(migration, /GRANT SELECT, INSERT, UPDATE, DELETE ON public\.crm_leads TO starlim_app/);
   assert.match(migration, /stage text NOT NULL DEFAULT 'nuevo'/);
 });
+
+const leadsSource = readFileSync(new URL("../src/lib/leads.ts", import.meta.url), "utf8");
+
+test("leads.ts scopea por vendedor y la conversión reutiliza createCustomer", () => {
+  assert.match(leadsSource, /sellerCandidates\(/);
+  assert.match(leadsSource, /UPPER\(BTRIM\(COALESCE\(assigned_seller/);
+  assert.match(leadsSource, /createCustomer\(/);
+  assert.match(leadsSource, /stage='convertido'/);
+  assert.match(leadsSource, /converted_client_id/);
+});
