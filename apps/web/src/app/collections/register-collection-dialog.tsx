@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { Button, Field, Input, Select } from "@/components/ui";
-import { collectionMethodRequiresOperation } from "@/lib/collection-methods";
+import {
+  SUGGESTED_DESTINATIONS,
+  collectionMethodRequiresOperation,
+  suggestedCollectionDestination,
+} from "@/lib/collection-methods";
 
 type RegisterCollectionDialogProps = {
   action: (formData: FormData) => Promise<void>;
@@ -25,7 +29,16 @@ export function RegisterCollectionDialog({
 }: RegisterCollectionDialogProps) {
   const [open, setOpen] = useState(false);
   const [method, setMethod] = useState("efectivo");
+  const [destination, setDestination] = useState(() => suggestedCollectionDestination("efectivo"));
   const operationRequired = collectionMethodRequiresOperation(method);
+
+  function handleMethodChange(nextMethod: string) {
+    setMethod(nextMethod);
+    // Solo cambiamos el destino sugerido si el usuario no lo editó a mano.
+    setDestination((current) =>
+      SUGGESTED_DESTINATIONS.includes(current) ? suggestedCollectionDestination(nextMethod) : current,
+    );
+  }
   const amountInputId = `dialog-${saleId}-amount`;
   const dateInputId = `dialog-${saleId}-date`;
   const methodSelectId = `dialog-${saleId}-method`;
@@ -95,7 +108,7 @@ export function RegisterCollectionDialog({
                   className="min-h-10 px-2 text-sm"
                   id={methodSelectId}
                   name="method"
-                  onChange={(event) => setMethod(event.target.value)}
+                  onChange={(event) => handleMethodChange(event.target.value)}
                   value={method}
                 >
                   <option value="efectivo">Efectivo</option>
@@ -106,11 +119,12 @@ export function RegisterCollectionDialog({
               <Field htmlFor={destinationInputId} label="Destino">
                 <Input
                   className="min-h-10 px-2 text-sm"
-                  defaultValue="Caja"
                   id={destinationInputId}
                   name="destination"
+                  onChange={(event) => setDestination(event.target.value)}
                   placeholder="Cuenta o caja"
                   required
+                  value={destination}
                 />
               </Field>
               <Field htmlFor={operationInputId} label="Operacion" required={operationRequired}>

@@ -21,9 +21,8 @@ function loadTypeScriptModule(relativePath, aliases = {}) {
   return compiledModule.exports;
 }
 
-const { collectionMethodRequiresOperation, COLLECTION_METHODS } = loadTypeScriptModule(
-  "../src/lib/collection-methods.ts",
-);
+const { collectionMethodRequiresOperation, suggestedCollectionDestination, COLLECTION_METHODS } =
+  loadTypeScriptModule("../src/lib/collection-methods.ts");
 
 test("efectivo no requiere operación; transferencia y echeck sí", () => {
   assert.equal(collectionMethodRequiresOperation("efectivo"), false);
@@ -39,4 +38,11 @@ test("la regla es case-insensitive y tolera espacios", () => {
 
 test("COLLECTION_METHODS expone los tres métodos soportados", () => {
   assert.deepEqual([...COLLECTION_METHODS], ["efectivo", "transferencia", "echeck"]);
+});
+
+test("destino sugerido: Caja para efectivo, Cuenta bancaria para el resto", () => {
+  assert.equal(suggestedCollectionDestination("efectivo"), "Caja");
+  assert.equal(suggestedCollectionDestination("transferencia"), "Cuenta bancaria");
+  assert.equal(suggestedCollectionDestination("echeck"), "Cuenta bancaria");
+  assert.equal(suggestedCollectionDestination("EFECTIVO"), "Caja");
 });

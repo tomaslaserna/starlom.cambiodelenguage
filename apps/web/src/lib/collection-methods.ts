@@ -11,3 +11,18 @@ export type CollectionMethod = (typeof COLLECTION_METHODS)[number];
 export function collectionMethodRequiresOperation(method: string): boolean {
   return method.trim().toLowerCase() !== "efectivo";
 }
+
+/** Destinos por defecto que sugiere el formulario según el método. */
+export const CASH_DESTINATION = "Caja";
+export const BANK_DESTINATION = "Cuenta bancaria";
+
+/** Conjunto de destinos "sugeridos" (no editados a mano por el usuario). */
+export const SUGGESTED_DESTINATIONS = [CASH_DESTINATION, BANK_DESTINATION];
+
+/**
+ * Destino sugerido según el método: efectivo va a Caja; transferencia y e-check
+ * van a una cuenta bancaria. El campo sigue siendo editable.
+ */
+export function suggestedCollectionDestination(method: string): string {
+  return collectionMethodRequiresOperation(method) ? BANK_DESTINATION : CASH_DESTINATION;
+}
