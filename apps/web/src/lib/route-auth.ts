@@ -193,6 +193,7 @@ const LEGACY_ROLE_PERMISSIONS: Record<string, string[]> = {
     "clientes.ver",
     "clientes.crear",
     "clientes.editar",
+    "clientes.eliminar",
     "proveedores.ver",
     "presupuestos.ver",
     "presupuestos.crear",
