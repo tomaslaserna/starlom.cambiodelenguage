@@ -42,6 +42,7 @@ export async function updateCustomerAction(formData: FormData) {
       priceList: current.priceList,
       status: current.status,
       seller: current.seller,
+      assignedSeller: current.assignedSeller,
       observation: current.observation,
     }),
   );
