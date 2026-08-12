@@ -19,6 +19,7 @@ type EditableCustomer = {
   priceList: string;
   status: string;
   seller: string;
+  assignedSeller: string;
   observation: string;
   salesCount: number;
 };
@@ -29,6 +30,7 @@ type CustomerRowActionsProps = {
   customer: EditableCustomer;
   allClients: CustomerLite[];
   priceLists: string[];
+  vendors: { id: string; name: string }[];
   canDelete: boolean;
   updateAction: Action;
   deleteAction: Action;
@@ -39,6 +41,7 @@ export function CustomerRowActions({
   customer,
   allClients,
   priceLists,
+  vendors,
   canDelete,
   updateAction,
   deleteAction,
@@ -47,6 +50,13 @@ export function CustomerRowActions({
   const [dialog, setDialog] = useState<"none" | "edit" | "delete" | "merge">("none");
   const [keepId, setKeepId] = useState("");
   const mergeTargets = allClients.filter((client) => client.id !== customer.id);
+  const vendorNames = vendors.map((vendor) => vendor.name);
+  const sellerOptions =
+    vendorNames.includes(customer.seller) || !customer.seller ? vendorNames : [customer.seller, ...vendorNames];
+  const assignedOptions =
+    vendorNames.includes(customer.assignedSeller) || !customer.assignedSeller
+      ? vendorNames
+      : [customer.assignedSeller, ...vendorNames];
 
   return (
     <div className="flex flex-wrap gap-1">
@@ -107,8 +117,21 @@ export function CustomerRowActions({
                 <option value="inactivo">Inactivo</option>
               </Select>
             </Field>
-            <Field htmlFor={`edit-seller-${customer.id}`} label="Vendedor">
-              <Input defaultValue={customer.seller} id={`edit-seller-${customer.id}`} name="seller" />
+            <Field htmlFor={`edit-seller-${customer.id}`} label="Vendedor propio">
+              <Select defaultValue={customer.seller} id={`edit-seller-${customer.id}`} name="seller">
+                <option value="">Sin asignar</option>
+                {sellerOptions.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field htmlFor={`edit-assigned-${customer.id}`} label="Vendedor a cargo">
+              <Select defaultValue={customer.assignedSeller} id={`edit-assigned-${customer.id}`} name="assignedSeller">
+                <option value="">Sin asignar</option>
+                {assignedOptions.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </Select>
             </Field>
             <div className="sm:col-span-2">
               <Field htmlFor={`edit-obs-${customer.id}`} label="Observación">

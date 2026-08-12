@@ -16,3 +16,10 @@ test("la lista de clientes linkea al detalle y no usa acciones inline", () => {
   assert.match(listSource, /\/customers\/\$\{customer\.id\}/);
   assert.doesNotMatch(listSource, /CustomerRowActions/);
 });
+
+const actionsComp = readFileSync(new URL("../src/app/customers/customer-row-actions.tsx", import.meta.url), "utf8");
+
+test("el form de edición incluye el selector de vendedor a cargo", () => {
+  assert.match(actionsComp, /name="assignedSeller"/);
+  assert.match(actionsComp, /name="seller"/);
+});
