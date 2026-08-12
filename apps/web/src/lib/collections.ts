@@ -12,6 +12,7 @@ const APPROVAL_STATES = new Set(["pendiente_aprobacion", "en_proceso"]);
 const REGISTERABLE_STATES = new Set(["pendiente", "vencido"]);
 const PAYMENT_METHODS = new Set<string>(COLLECTION_METHODS);
 const MONEY_EPSILON = 0.005;
+const SALE_OPENING_DEBIT_DESCRIPTION_PREFIX = "Saldo pendiente - Remito ";
 const COLLECTION_RESOLUTION_CONFLICT =
   "El cobro ya no esta pendiente de resolucion o no puede procesarse";
 
@@ -60,6 +61,19 @@ function moneyValue(value: string | number | null | undefined) {
   return Math.round(Number(value ?? 0) * 100) / 100;
 }
 
+// sales.total_amount is persisted as the final amount, including the selected VAT.
+// Collection balances must never apply or remove VAT again.
+export function saleOutstandingAmount(
+  finalSaleTotal: string | number,
+  debitNotes: string | number = 0,
+  totalCredit: string | number = 0,
+) {
+  return Math.max(
+    0,
+    moneyValue(moneyValue(finalSaleTotal) + moneyValue(debitNotes) - moneyValue(totalCredit)),
+  );
+}
+
 function assertCollectionAmountWithinBalance(amount: number, outstanding: number) {
   if (amount > outstanding + MONEY_EPSILON) {
     throw new ApiError(
@@ -89,9 +103,11 @@ async function saleOutstandingBalance(
     `,
     [companyId, saleId],
   );
-  const collected = moneyValue(totalsResult.rows[0]?.total_credit);
-  const debitNotes = moneyValue(totalsResult.rows[0]?.debit_notes);
-  return Math.max(0, moneyValue(saleTotal) + debitNotes - collected);
+  return saleOutstandingAmount(
+    saleTotal,
+    totalsResult.rows[0]?.debit_notes ?? 0,
+    totalsResult.rows[0]?.total_credit ?? 0,
+  );
 }
 
 async function lockCollectionSaleForResolution(
@@ -167,9 +183,11 @@ async function ensureSaleDebit(
       WHERE empresa_id = $1
         AND sale_id = $2::uuid
         AND debit > 0
+        AND credit = 0
+        AND description LIKE $3
       LIMIT 1
     `,
-    [companyId, saleId],
+    [companyId, saleId, `${SALE_OPENING_DEBIT_DESCRIPTION_PREFIX}%`],
   );
   if (existing.rows[0] || Number(sale.monto) <= 0) return;
 
@@ -184,7 +202,7 @@ async function ensureSaleDebit(
       sale.client_id ?? null,
       saleId,
       Number(sale.monto),
-      `Saldo pendiente - Remito ${remittanceLabel(sale)} - ${sale.nombre_cliente}`,
+      `${SALE_OPENING_DEBIT_DESCRIPTION_PREFIX}${remittanceLabel(sale)} - ${sale.nombre_cliente}`,
       companyId,
     ],
   );
@@ -316,6 +334,7 @@ export async function registerCollection(
         LEFT JOIN clients c ON c.id = v.client_id AND c.empresa_id = v.empresa_id
         WHERE v.id = $1::uuid AND v.empresa_id = $2
         LIMIT 1
+        FOR UPDATE OF v
       `,
       [saleId, session.companyId],
     );

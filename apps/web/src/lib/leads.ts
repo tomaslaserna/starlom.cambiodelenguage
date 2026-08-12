@@ -146,12 +146,16 @@ export async function discardLead(session: AuthSession, id: string): Promise<voi
   await moveLeadStage(session, id, "descartado");
 }
 
-export async function convertLeadToClient(session: AuthSession, id: string): Promise<{ clientId: string }> {
+export async function convertLeadToClient(
+  session: AuthSession,
+  id: string,
+  receiptType: string,
+): Promise<{ clientId: string }> {
   const lead = await getScopedLead(session, id);
   if (lead.stage === "convertido" && lead.convertedClientId) {
     return { clientId: lead.convertedClientId };
   }
-  const client = await createCustomer(session.companyId, leadToCustomerInput(lead));
+  const client = await createCustomer(session.companyId, leadToCustomerInput(lead, receiptType));
   await queryWithCompanyContext(
     session.companyId,
     `UPDATE crm_leads

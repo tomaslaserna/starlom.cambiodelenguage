@@ -46,8 +46,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         city: current.city,
         province: current.province,
         priceList: current.priceList,
+        receiptType: current.receiptType,
         status: current.status,
         seller: current.seller,
+        assignedSeller: current.assignedSeller,
         observation: current.observation,
       }),
     );

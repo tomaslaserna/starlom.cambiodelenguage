@@ -4,6 +4,7 @@ import { parse } from "csv-parse/sync";
 import iconv from "iconv-lite";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
+import { normalizeCustomerReceiptType } from "@/lib/catalog-management";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { resolvePriceListName } from "@/lib/order-pricing";
 import { assertRequestSize, numberField, textField, type RequestBody } from "@/lib/request-body";
@@ -109,12 +110,8 @@ function parseCustomerStatus(raw: string) {
   return "Activo";
 }
 
-function parseReceiptType(raw: string) {
-  const normalized = raw.trim().toLowerCase();
-  if (normalized === "factura a" || normalized === "a") return "Factura A";
-  if (normalized === "factura c" || normalized === "c") return "Factura C";
-  if (normalized === "remito") return "Remito";
-  return "Factura B";
+export function parseReceiptType(raw: string) {
+  return normalizeCustomerReceiptType(raw);
 }
 
 export async function importProductsFromCsv(request: Request, companyId: number): Promise<CsvImportResult> {
@@ -220,7 +217,6 @@ export async function importCustomersFromCsv(request: Request, companyId: number
       const priceList = resolvePriceListName(value(row, 10), activePriceLists);
       const hours = value(row, 11);
       const notes = value(row, 12);
-      const receipt = parseReceiptType(value(row, 13));
       const observation = [notes, /^\d+$/.test(paymentDays) ? `Plazo de pago: ${paymentDays} dias` : ""]
         .filter(Boolean)
         .join(" | ");
@@ -228,6 +224,19 @@ export async function importCustomersFromCsv(request: Request, companyId: number
       if (!code && !name) {
         result.skipped++;
         result.errors.push(`Fila ${rowNumber}: sin codigo ni nombre, omitida`);
+        continue;
+      }
+
+      let receipt: ReturnType<typeof parseReceiptType>;
+      try {
+        receipt = parseReceiptType(value(row, 13));
+      } catch (error) {
+        result.skipped++;
+        const detail =
+          error instanceof ApiError
+            ? error.message
+            : "El comprobante asociado debe ser Remito, Factura A o Factura B";
+        result.errors.push(`Fila ${rowNumber}: ${detail}`);
         continue;
       }
 

@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api-response";
 import { getArcaConfig } from "@/lib/arca/config";
 import { getWsaaTicket } from "@/lib/arca/wsaa";
 import { escapeXml, postSoapXml, soapEnvelope, tagContent, tagContents } from "@/lib/arca/xml";
+import { arcaVatRateId, vatAmountsFromGross } from "@/lib/vat-calculation";
 
 type ArcaMessage = {
   code: string;
@@ -47,6 +48,7 @@ type AuthorizeArcaInvoiceInput = {
   customerVatCondition: string;
   receiptType: number;
   totalAmount: number;
+  vatRate: number;
   preserveReceiptType?: boolean;
   associatedReceipt?: {
     pointOfSale: number;
@@ -119,17 +121,36 @@ function documentForArca(value: string) {
   throw new ApiError(400, "El cliente necesita CUIT de 11 digitos o DNI de 7/8 digitos para emitir factura fiscal.");
 }
 
-function invoiceAmounts(receiptType: number, totalAmount: number) {
+export function invoiceAmounts(receiptType: number, totalAmount: number, vatRate: number) {
   const total = money(totalAmount);
   if (!Number.isFinite(total) || total <= 0) throw new ApiError(400, "El total fiscal debe ser mayor a cero.");
 
   if (IVA_RECEIPT_TYPES.has(receiptType)) {
-    const net = money(total / 1.21);
-    const vat = money(total - net);
-    return { net, vat, total };
+    if (vatRate !== 21) {
+      throw new ApiError(
+        409,
+        "La Factura o Nota A/B requiere la alicuota IVA 21% persistida. No se emitio el comprobante ni se reinterpretaron datos historicos.",
+      );
+    }
+    return { ...vatAmountsFromGross(total, 21), vatRate: 21 as const };
   }
 
-  return { net: total, vat: 0, total };
+  return { net: total, vat: 0, total, vatRate: 0 as const };
+}
+
+export function invoiceVatXml(receiptType: number, totalAmount: number, vatRate: number) {
+  const amounts = invoiceAmounts(receiptType, totalAmount, vatRate);
+  if (amounts.vat <= 0 || amounts.vatRate !== 21) return { amounts, xml: "" };
+  return {
+    amounts,
+    xml: `<Iva>
+          <AlicIva>
+            <Id>${arcaVatRateId(amounts.vatRate)}</Id>
+            <BaseImp>${amount(amounts.net)}</BaseImp>
+            <Importe>${amount(amounts.vat)}</Importe>
+          </AlicIva>
+        </Iva>`,
+  };
 }
 
 function normalizeVatCondition(value: string) {
@@ -430,22 +451,11 @@ export async function authorizeArcaInvoice(input: AuthorizeArcaInvoiceInput): Pr
     ? input.receiptType
     : receiptTypeForArcaVatCondition(input.customerVatCondition, input.receiptType);
   const { docTipo, docNro } = documentForArca(input.customerDocument);
-  const { net, vat, total } = invoiceAmounts(receiptType, input.totalAmount);
+  const { amounts: { net, vat, total }, xml: ivaXml } = invoiceVatXml(receiptType, input.totalAmount, input.vatRate);
   const vatConditionId = vatConditionIdForArca(input.customerVatCondition, receiptType);
   const receiptNumber = (await lastAuthorizedReceipt(receiptType)) + 1;
   const invoiceDate = argentinaDateYYYYMMDD();
   const cbtesAsocXml = associatedReceiptXml(receiptType, input.associatedReceipt);
-  const ivaXml =
-    vat > 0
-      ? `<Iva>
-          <AlicIva>
-            <Id>5</Id>
-            <BaseImp>${amount(net)}</BaseImp>
-            <Importe>${amount(vat)}</Importe>
-          </AlicIva>
-        </Iva>`
-      : "";
-
   const response = await wsfeSoap(
     "FECAESolicitar",
     `${await authXml()}

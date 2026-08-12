@@ -37,6 +37,22 @@ test("con offerText agrega la linea de oferta", () => {
   assert.ok(text.includes("💡 2da unidad 50% OFF"));
 });
 
+test("con precios discrimina unitarios netos, IVA y total final", () => {
+  const text = buildWhatsappConfirmation({
+    ...baseInput,
+    showPrices: true,
+    ivaRate: 10.5,
+    pricedLines: [
+      { quantity: 2, name: "Producto", unitPrice: 500, subtotal: 1000 },
+    ],
+  });
+
+  assert.match(text, /unitario neto \$500,00 \(subtotal neto \$1\.000,00\)/);
+  assert.match(text, /\*Subtotal neto:\* \$1\.000,00/);
+  assert.match(text, /\*IVA \(10\.5%\):\* \$105,00/);
+  assert.match(text, /\*Total:\* \$1\.105,00/);
+});
+
 test("formatDeliveryDate: DD.MM.YY con dia en espanol", () => {
   assert.equal(formatDeliveryDate("2026-06-30"), "30.06.26 (Martes)");
   assert.equal(formatDeliveryDate(""), "");

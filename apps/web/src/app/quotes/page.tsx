@@ -39,6 +39,7 @@ type QuotesPageProps = {
   searchParams: Promise<{
     q?: string;
     status?: string;
+    error?: string;
   }>;
 };
 
@@ -125,6 +126,12 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
           moduleIntro
           title="Presupuestos"
         />
+
+        {params.error ? (
+          <p className="rounded-lg border border-[color:var(--danger)]/30 bg-white p-3 text-sm font-semibold text-[color:var(--danger)]">
+            {params.error}
+          </p>
+        ) : null}
 
         {canCreateQuotes ? (
         <Card>
@@ -264,7 +271,8 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                             <>
                               <form action={acceptQuoteAction}>
                                 <input name="id" type="hidden" value={quote.id} />
-                                {hasFiscalCustomerData(quote.customer.taxId, quote.customer.vatCondition) ? (
+                                {(quote.desiredDocument === "factura_a" || quote.desiredDocument === "factura_b")
+                                  && hasFiscalCustomerData(quote.customer.taxId, quote.customer.vatCondition) ? (
                                   <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-[color:var(--border)] px-2 py-1.5 text-xs font-semibold text-[color:var(--text)]">
                                     <input name="requestFiscalInvoice" type="checkbox" value="true" />
                                     Solicitar factura fiscal

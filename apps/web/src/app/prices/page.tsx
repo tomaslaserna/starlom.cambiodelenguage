@@ -60,7 +60,7 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
     >
       <div className="grid gap-4">
         <PageHeader
-          description="Elegí una lista para ver sus precios finales. Buscá por producto o proveedor y exportá el PDF para el cliente."
+          description="Elegí una lista para ver sus precios netos, sin IVA. Buscá por producto o proveedor y exportá el PDF para el cliente."
           moduleIntro
           title="Lista de precios"
         />
@@ -151,10 +151,10 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
                     <Field htmlFor="pdf-filter" label="Filtrar (opcional)">
                       <Input id="pdf-filter" name="filter" placeholder="Categoría o proveedor" />
                     </Field>
-                    <Field htmlFor="pdf-iva" label="IVA">
+                    <Field htmlFor="pdf-iva" label="IVA a aplicar al exportar">
                       <Select defaultValue="21" id="pdf-iva" name="iva">
-                        <option value="21">Con IVA (21%)</option>
-                        <option value="10.5">Sin IVA (10,5%)</option>
+                        <option value="10.5">Sumar IVA 10,5%</option>
+                        <option value="21">Sumar IVA 21%</option>
                       </Select>
                     </Field>
                     <Button type="submit">Generar PDF</Button>
@@ -182,7 +182,7 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
                 <DataTableHead>Código</DataTableHead>
                 <DataTableHead>Categoría</DataTableHead>
                 <DataTableHead>Proveedor</DataTableHead>
-                <DataTableHead align="right">{activeList?.name ?? "Precio"}</DataTableHead>
+                <DataTableHead align="right">{activeList ? `${activeList.name} (neto)` : "Precio neto"}</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>

@@ -87,16 +87,17 @@ test("leadToCustomerInput mapea a CustomerInput (locality→city, seller, activo
     source: "Feria", stage: "interesado", nextFollowup: null, notes: "Ok",
     assignedSeller: "JUAN", convertedClientId: null, createdAt: "",
   };
-  const input = domain.leadToCustomerInput(lead);
+  const input = domain.leadToCustomerInput(lead, "Factura B");
   assert.equal(input.name, "Kiosco Sol");
   assert.equal(input.phone, "111");
   assert.equal(input.city, "Palermo");
   assert.equal(input.seller, "JUAN");
   assert.equal(input.assignedSeller, "JUAN");
+  assert.equal(input.receiptType, "Factura B");
   assert.equal(input.status, "activo");
   assert.match(input.observation, /Email: a@b\.com/);
   assert.deepEqual(
     Object.keys(input).sort(),
-    ["address","assignedSeller","businessName","city","name","observation","phone","priceList","province","seller","status","taxId","taxIdType","vatCondition"],
+    ["address","assignedSeller","businessName","city","name","observation","phone","priceList","province","receiptType","seller","status","taxId","taxIdType","vatCondition"],
   );
 });

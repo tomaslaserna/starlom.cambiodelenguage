@@ -21,8 +21,12 @@ import {
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
-import { createCustomerAction } from "@/app/customers/actions";
+import { createCustomerAction, updateCustomerReceiptTypeAction } from "@/app/customers/actions";
 import { listCustomers } from "@/lib/catalog";
+import {
+  CUSTOMER_RECEIPT_OPTIONS,
+  customerReceiptTypeOptionValue,
+} from "@/lib/catalog-management";
 import { fastOr } from "@/lib/fast-data";
 import { formatNumber } from "@/lib/format";
 import { listPriceLists } from "@/lib/pricing";
@@ -57,7 +61,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
   );
 
   const params = await searchParams;
-  const [result, priceLists, canCreateCustomers] = await Promise.all([
+  const [result, priceLists, canCreateCustomers, canEditCustomers] = await Promise.all([
     listCustomers({
       companyId: session.companyId,
       query: params.q,
@@ -66,6 +70,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
     }),
     listPriceLists(session.companyId, true),
     sessionAllows(session, [{ resource: "clientes", action: "crear" }]),
+    sessionAllows(session, [{ resource: "clientes", action: "editar" }]),
   ]);
   const activePriceLists = priceLists.filter((list) => list.active);
 
@@ -93,7 +98,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
         {canCreateCustomers ? (
           <Card className="p-4">
             <form action={createCustomerAction} className="grid gap-3">
-              <div className="grid gap-3 lg:grid-cols-4">
+              <div className="grid gap-3 lg:grid-cols-5">
                 <Field htmlFor="customer-name" label="Cliente" required>
                   <Input id="customer-name" name="name" required />
                 </Field>
@@ -109,6 +114,18 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                     <option value="Responsable inscripto">Responsable inscripto</option>
                     <option value="Monotributo">Monotributo</option>
                     <option value="Exento">Exento</option>
+                  </Select>
+                </Field>
+                <Field htmlFor="customer-receipt-type" label="Comprobante asociado" required>
+                  <Select defaultValue="" id="customer-receipt-type" name="receiptType" required>
+                    <option disabled value="">
+                      Seleccionar comprobante
+                    </option>
+                    {CUSTOMER_RECEIPT_OPTIONS.map((receiptType) => (
+                      <option key={receiptType} value={receiptType}>
+                        {receiptType}
+                      </option>
+                    ))}
                   </Select>
                 </Field>
               </div>
@@ -184,7 +201,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
           <DataTable
             caption="Listado paginado de clientes"
             className="rounded-none border-0 shadow-none"
-            minWidth="980px"
+            minWidth="1120px"
             tableLabel="Clientes"
           >
             <DataTableHeader>
@@ -194,13 +211,14 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                 <DataTableHead>Contacto</DataTableHead>
                 <DataTableHead>Ubicacion</DataTableHead>
                 <DataTableHead>Lista</DataTableHead>
+                <DataTableHead>Comprobante</DataTableHead>
                 <DataTableHead>Estado</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={6}>
+                  <DataTableCell colSpan={7}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -237,6 +255,41 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                       </div>
                     </DataTableCell>
                     <DataTableCell>{customer.priceList || "-"}</DataTableCell>
+                    <DataTableCell>
+                      {canEditCustomers ? (
+                        <form
+                          action={updateCustomerReceiptTypeAction}
+                          className="flex min-w-[220px] items-center gap-2"
+                        >
+                          <input name="id" type="hidden" value={customer.id} />
+                          <Select
+                            aria-label={`Comprobante asociado de ${customer.name}`}
+                            className="min-h-9"
+                            defaultValue={customerReceiptTypeOptionValue(customer.receiptType)}
+                            name="receiptType"
+                            required
+                          >
+                            <option disabled value="">
+                              {customer.receiptType
+                                ? `Valor historico: ${customer.receiptType}`
+                                : "Sin configurar"}
+                            </option>
+                            {CUSTOMER_RECEIPT_OPTIONS.map((receiptType) => (
+                              <option key={receiptType} value={receiptType}>
+                                {receiptType}
+                              </option>
+                            ))}
+                          </Select>
+                          <Button size="sm" type="submit" variant="secondary">
+                            Guardar
+                          </Button>
+                        </form>
+                      ) : (
+                        customerReceiptTypeOptionValue(customer.receiptType) ||
+                        customer.receiptType ||
+                        "Sin configurar"
+                      )}
+                    </DataTableCell>
                     <DataTableCell>
                       <StatusBadge tone={customerStatusTone(customer.status)}>
                         {customer.status || "Sin estado"}

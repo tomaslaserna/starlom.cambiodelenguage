@@ -4,10 +4,21 @@ import { reactivateClientIfInactive } from "@/lib/client-reactivation";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { lineSubtotal, money, normalizePriceListKey, resolvePriceListName, type PriceListKey } from "@/lib/order-pricing";
 import { dynamicPriceSqlExpression, productMarginCodeExpression } from "@/lib/product-pricing-sql";
-import { receiptTypeCode } from "@/lib/receipt-types";
+import {
+  receiptTypeCode,
+  saleOrderDocument,
+  saleVatRateForDocument,
+  type SaleOrderDocument,
+} from "@/lib/receipt-types";
 import { intField, numberField, textField, uuidParam, type RequestBody } from "@/lib/request-body";
-import { calculateQuoteTotals, type QuoteVatRate } from "@/lib/quote-totals";
 import { createCommercialRemittanceForSale } from "@/lib/deliveries";
+import {
+  isSaleVatRate,
+  normalizeStoredVatRate,
+  vatAmountsFromNet,
+  type SaleVatRate,
+  type StoredVatRate,
+} from "@/lib/vat-calculation";
 import type { AuthSession } from "@/lib/auth";
 
 type QuoteCustomer = {
@@ -37,8 +48,6 @@ type QuoteInput = {
   activePriceList: number;
   priceListOverride: string;
   validityDays: number;
-  includeVat: boolean;
-  vatRate: QuoteVatRate;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -80,18 +89,35 @@ function nestedNumber(input: Record<string, unknown>, keys: string[], fallback =
   return fallback;
 }
 
-function booleanValue(value: unknown, fallback = false) {
-  if (value === undefined || value === null || value === "") return fallback;
-  if (typeof value === "boolean") return value;
-  const normalized = String(value).trim().toLowerCase();
-  if (["1", "true", "on", "si", "sí"].includes(normalized)) return true;
-  if (["0", "false", "off", "no"].includes(normalized)) return false;
-  throw new ApiError(400, "includeVat invalido");
+export function normalizeQuoteVatRate(value: number): StoredVatRate {
+  if (value === 0 || isSaleVatRate(value)) return normalizeStoredVatRate(value);
+  throw new ApiError(400, "El IVA debe ser 21%, 10,5% o no mostrarse");
 }
 
-export function normalizeQuoteVatRate(value: number): QuoteVatRate {
-  if (value === 0 || value === 10.5 || value === 21) return value;
-  throw new ApiError(400, "El IVA debe ser 21%, 10,5% o no mostrarse");
+export function acceptedQuoteVatSnapshot(input: {
+  desiredDocument: unknown;
+  vatRate: unknown;
+  subtotalAmount: unknown;
+  totalAmount: unknown;
+}): { desiredDocument: SaleOrderDocument; vatRate: SaleVatRate } {
+  const desiredDocument = saleOrderDocument(String(input.desiredDocument ?? ""));
+  const expectedVatRate = saleVatRateForDocument(desiredDocument);
+  const subtotalAmount = money(Number(input.subtotalAmount));
+  const totalAmount = money(Number(input.totalAmount));
+  const expectedTotal = expectedVatRate ? vatAmountsFromNet(subtotalAmount, expectedVatRate).total : 0;
+  if (
+    desiredDocument
+    && expectedVatRate
+    && normalizeStoredVatRate(input.vatRate) === expectedVatRate
+    && subtotalAmount > 0
+    && totalAmount === expectedTotal
+  ) {
+    return { desiredDocument, vatRate: expectedVatRate };
+  }
+  throw new ApiError(
+    409,
+    "El presupuesto no tiene un comprobante e IVA consistentes. Genera uno nuevo o corregilo manualmente antes de aceptarlo.",
+  );
 }
 
 function nestedUuid(input: Record<string, unknown>, keys: string[]) {
@@ -197,12 +223,6 @@ export function quoteInputFromBody(body: RequestBody): QuoteInput {
 
   if (!products.length) throw new ApiError(400, "Agrega al menos un producto");
 
-  const requestedVatRate = normalizeQuoteVatRate(
-    numberField(body, "vatRate", numberField(body, "ivaRate", 0)),
-  );
-  const includeVat = booleanValue(body.includeVat, requestedVatRate > 0);
-  const vatRate = includeVat ? (requestedVatRate || 21) : 0;
-
   return {
     customerId,
     customer,
@@ -211,8 +231,6 @@ export function quoteInputFromBody(body: RequestBody): QuoteInput {
     activePriceList: intField(body, "activePriceList", intField(body, "lista_activa", 0)),
     priceListOverride: textField(body, "priceListOverride") || textField(body, "lista_precios"),
     validityDays: clamp(intField(body, "validityDays", intField(body, "vigencia_dias", 15)), 1, 365),
-    includeVat,
-    vatRate,
   };
 }
 
@@ -236,6 +254,7 @@ function mapQuote(row: {
   subtotal_amount: string;
   include_vat: boolean;
   vat_rate: string;
+  desired_document: string;
   vat_amount: string;
   productos_json?: unknown;
   estado: string;
@@ -270,6 +289,7 @@ function mapQuote(row: {
     subtotal: Number(row.subtotal_amount),
     includeVat: row.include_vat,
     vatRate: normalizeQuoteVatRate(Number(row.vat_rate)),
+    desiredDocument: saleOrderDocument(row.desired_document),
     vatAmount: Number(row.vat_amount),
     total: Number(row.total),
     products,
@@ -304,6 +324,7 @@ export async function listQuotes(companyId: number, status = "pendiente") {
              q.subtotal_amount::text,
              q.include_vat,
              q.vat_rate::text,
+             COALESCE(q.desired_document, '') AS desired_document,
              q.vat_amount::text,
              q.status AS estado,
              p.username AS creado_por,
@@ -361,6 +382,7 @@ export async function getQuote(companyId: number, id: string) {
              q.subtotal_amount::text,
              q.include_vat,
              q.vat_rate::text,
+             COALESCE(q.desired_document, '') AS desired_document,
              q.vat_amount::text,
              q.status AS estado,
              p.username AS creado_por,
@@ -470,8 +492,11 @@ async function resolveQuoteProductsFromCatalog(
 }
 
 export async function createQuote(session: AuthSession, input: QuoteInput) {
-  if (!input.customerId && !input.customer.name && !input.customer.businessName) {
-    throw new ApiError(400, "Completa el cliente del presupuesto");
+  if (!input.customerId) {
+    throw new ApiError(
+      400,
+      "Selecciona un cliente registrado con comprobante configurado para crear el presupuesto.",
+    );
   }
 
   const quoteId = await withCompanyContext(session.companyId, async (client) => {
@@ -485,37 +510,30 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
       address: string | null;
       price_list_name: string | null;
       seller_name: string | null;
+      receipt_type: string | null;
     };
 
-    let customer: QuoteClientRow | undefined;
-    if (input.customerId) {
-      const customerResult = await client.query<QuoteClientRow>(
-        `
-          SELECT id::text, display_name, legal_name, tax_id, fiscal_condition,
-                 phone, address, price_list_name, seller_name
-          FROM clients
-          WHERE id = $1::uuid AND empresa_id = $2
-          LIMIT 1
-        `,
-        [input.customerId, session.companyId],
+    const customerResult = await client.query<QuoteClientRow>(
+      `
+        SELECT id::text, display_name, legal_name, tax_id, fiscal_condition,
+               phone, address, price_list_name, seller_name, receipt_type
+        FROM clients
+        WHERE id = $1::uuid AND empresa_id = $2
+        LIMIT 1
+      `,
+      [input.customerId, session.companyId],
+    );
+    const customer = customerResult.rows[0];
+    if (!customer) throw new ApiError(404, "Cliente no encontrado");
+    await reactivateClientIfInactive(client, session.companyId, input.customerId);
+    const desiredDocument = saleOrderDocument(customer.receipt_type);
+    const vatRate = saleVatRateForDocument(customer.receipt_type);
+    if (!desiredDocument || !vatRate) {
+      throw new ApiError(
+        400,
+        "El cliente no tiene un comprobante valido. Configuralo como Remito, Factura A o Factura B antes de crear el presupuesto.",
       );
-      customer = customerResult.rows[0];
-      if (!customer) throw new ApiError(404, "Cliente no encontrado");
-    } else {
-      customer = {
-        id: null,
-        display_name: input.customer.name || input.customer.businessName,
-        legal_name: input.customer.businessName || input.customer.name,
-        tax_id: input.customer.taxId || null,
-        fiscal_condition: input.customer.vatCondition || null,
-        phone: input.customer.phone || null,
-        address: input.customer.address || null,
-        price_list_name: null,
-        seller_name: session.username,
-      };
     }
-
-    if (!customer) throw new ApiError(400, "No se pudo resolver el cliente del presupuesto");
 
     const activePriceLists = await getActivePriceListNames(client, session.companyId);
     const priceListName = resolvePriceListName(
@@ -544,8 +562,8 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
     const netAmount = money(detail.reduce((sum, product) => sum + product.subtotal, 0));
     const discountAmount = money((netAmount * input.discountPercent) / 100);
     const subtotal = money(netAmount - discountAmount);
-    const calculatedTotals = calculateQuoteTotals(subtotal, input.includeVat ? input.vatRate : 0);
-    const vatAmount = calculatedTotals.vatAmount;
+    const calculatedTotals = vatAmountsFromNet(subtotal, vatRate);
+    const vatAmount = calculatedTotals.vat;
     const total = calculatedTotals.total;
     if (total <= 0) throw new ApiError(400, "El presupuesto no tiene importe calculable");
 
@@ -565,7 +583,7 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
       `
         INSERT INTO quotes (
           quote_number, client_id, seller_id, status, total_amount,
-          validity_days, include_vat, vat_rate, active_price_list, price_list_name, discount_percent,
+          validity_days, include_vat, vat_rate, desired_document, active_price_list, price_list_name, discount_percent,
           net_amount, discount_amount, subtotal_amount, vat_amount,
           client_name, client_legal_name, client_document, client_fiscal_condition,
           client_phone, client_address, empresa_id
@@ -592,7 +610,8 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
           $18,
           $19,
           $20,
-          $21
+          $21,
+          $22
         )
         RETURNING id::text
       `,
@@ -602,8 +621,9 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
         session.userId,
         total,
         input.validityDays,
-        input.includeVat,
-        input.vatRate,
+        true,
+        vatRate,
+        desiredDocument,
         priceListNumber(priceListKey),
         priceListName,
         input.discountPercent,
@@ -665,6 +685,7 @@ export async function acceptQuote(
       total_amount: string;
       subtotal_amount: string;
       vat_rate: string;
+      desired_document: string;
       active_price_list: number;
       price_list_name: string | null;
       converted_order_id: string | null;
@@ -685,6 +706,7 @@ export async function acceptQuote(
                q.total_amount::text,
                q.subtotal_amount::text,
                q.vat_rate::text,
+               COALESCE(q.desired_document, '') AS desired_document,
                q.active_price_list,
                COALESCE(q.price_list_name, '') AS price_list_name,
                q.converted_order_id::text,
@@ -717,6 +739,18 @@ export async function acceptQuote(
     }
     if (quote.status !== "pendiente") {
       throw new ApiError(409, "El presupuesto ya no esta pendiente o no puede aceptarse");
+    }
+    const snapshot = acceptedQuoteVatSnapshot({
+      desiredDocument: quote.desired_document,
+      vatRate: quote.vat_rate,
+      subtotalAmount: quote.subtotal_amount,
+      totalAmount: quote.total_amount,
+    });
+    if (!quote.client_id) {
+      throw new ApiError(
+        409,
+        "El presupuesto no tiene un cliente registrado asociado y no puede convertirse automaticamente.",
+      );
     }
 
     const items = await client.query<{
@@ -754,62 +788,23 @@ export async function acceptQuote(
     const commercialNumber = Number(sequence.rows[0]?.value ?? 1);
     const receiptNumber = commercialNumber;
     const saleNumber = `P-${String(commercialNumber).padStart(4, "0")}`;
-    const fiscalRequested = Boolean(options.requestFiscalInvoice) && hasFiscalCustomerData(
-      quote.client_document ?? "",
-      quote.client_fiscal_condition ?? "",
-    );
-    const desiredDocument = fiscalRequested ? "factura" : "remito";
+    const isFiscalDocument = snapshot.desiredDocument === "factura_a" || snapshot.desiredDocument === "factura_b";
+    if (options.requestFiscalInvoice && !isFiscalDocument) {
+      throw new ApiError(400, "El comprobante asociado al cliente es Remito y no permite solicitar factura fiscal.");
+    }
+    if (
+      options.requestFiscalInvoice
+      && !hasFiscalCustomerData(quote.client_document ?? "", quote.client_fiscal_condition ?? "")
+    ) {
+      throw new ApiError(400, "El cliente no tiene CUIT y condicion fiscal completos para solicitar factura.");
+    }
+    const fiscalRequested = Boolean(options.requestFiscalInvoice) && isFiscalDocument;
+    const desiredDocument = snapshot.desiredDocument;
     const priceList = quote.price_list_name || priceListNameFromNumber(quote.active_price_list);
     const receiptType = receiptTypeCode(desiredDocument);
 
-    let clientId = quote.client_id;
-    if (!clientId) {
-      if ((quote.client_document ?? "").trim()) {
-        const existingClient = await client.query<{ id: string }>(
-          `
-            SELECT id::text
-            FROM clients
-            WHERE empresa_id = $1
-              AND regexp_replace(COALESCE(tax_id, ''), '[^0-9]', '', 'g') =
-                  regexp_replace($2, '[^0-9]', '', 'g')
-            ORDER BY created_at
-            LIMIT 1
-          `,
-          [session.companyId, quote.client_document],
-        );
-        clientId = existingClient.rows[0]?.id ?? null;
-      }
-
-      if (!clientId) {
-        const createdClient = await client.query<{ id: string }>(
-          `
-            INSERT INTO clients (
-              display_name, legal_name, tax_id, fiscal_condition, phone, address,
-              seller_name, price_list_name, active, empresa_id
-            )
-            VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''),
-                    NULLIF($6, ''), $7, $8, true, $9)
-            RETURNING id::text
-          `,
-          [
-            quote.client_name || quote.client_legal_name || "Cliente ocasional",
-            quote.client_legal_name,
-            quote.client_document,
-            quote.client_fiscal_condition,
-            quote.client_phone,
-            quote.client_address,
-            quote.seller_name || session.username,
-            priceList,
-            session.companyId,
-          ],
-        );
-        clientId = createdClient.rows[0].id;
-      }
-    }
-
-    if (clientId) {
-      await reactivateClientIfInactive(client, session.companyId, clientId);
-    }
+    const clientId = quote.client_id;
+    await reactivateClientIfInactive(client, session.companyId, clientId);
 
     const saleResult = await client.query<{ id: string }>(
       `
@@ -836,7 +831,7 @@ export async function acceptQuote(
         quote.client_document,
         priceList,
         Number(quote.total_amount),
-        Number(quote.vat_rate),
+        snapshot.vatRate,
         receiptNumber,
         receiptType,
         quote.seller_name || session.username,

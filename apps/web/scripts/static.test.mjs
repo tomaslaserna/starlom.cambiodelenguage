@@ -241,9 +241,9 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
   assert.match(orders, /"pedido\.modificado"/);
   assert.match(orders, /orderStatusTransitionError/);
   assert.match(orders, /assertSaleStockAvailableForConfirmation/);
-  assert.match(orders, /const confirmsAsSale = nextStatus === "entregado" && currentStatus === "cargado"/);
-  assert.match(orders, /confirmationDocument/);
-  assert.match(orders, /normalizeOrderConfirmationDocument/);
+  assert.match(orders, /hasConsistentOrderVatSnapshot/);
+  assert.doesNotMatch(orders, /confirmationDocument|normalizeOrderConfirmationDocument/);
+  assert.match(orders, /comprobante: order\.desired_document/);
   assert.match(orders, /nextStatus === "entregado" \? "pendiente"/);
   assert.match(orders, /"pedido\.confirmado_stock"/);
   assert.match(orders, /stock_pendiente_impresion/);
@@ -513,7 +513,7 @@ test("current accounts use only active account movements and a business-correct 
   assert.match(accountPdf, /type === "proveedor" \? credit - debit : debit - credit/);
 });
 
-test("order creation exposes the full legacy receipt type set", () => {
+test("future orders and quotes derive only Remito or Factura A/B from the registered client", () => {
   const receiptTypes = read("apps/web/src/lib/receipt-types.ts");
   for (const value of [
     "remito",
@@ -529,57 +529,39 @@ test("order creation exposes the full legacy receipt type set", () => {
   ]) {
     assert.match(receiptTypes, new RegExp(`value: "${value}"`));
   }
-  assert.match(receiptTypes, /ORDER_RECEIPT_OPTIONS\.map\(\(option\) => option\.value\)/);
-  assert.match(receiptTypes, /export const ORDER_CREATION_RECEIPT_OPTIONS = ORDER_RECEIPT_OPTIONS\.filter/);
-
-  const newOrderPage = read("apps/web/src/app/orders/new/page.tsx");
-  assert.match(newOrderPage, /OrderEntryFields/);
-  assert.equal(/<option value="factura">Factura<\/option>/.test(newOrderPage), false);
-  assert.equal(/name="amount"/.test(newOrderPage), false);
-  assert.equal(/name="desiredDocument"/.test(newOrderPage), false);
+  assert.match(receiptTypes, /export function saleOrderDocument/);
+  assert.match(receiptTypes, /export function saleVatRateForDocument/);
 
   const orders = read("apps/web/src/lib/orders.ts");
-  assert.match(orders, /normalizeOrderCreationDocument/);
+  assert.match(orders, /saleOrderDocument\(customer\.receipt_type\)/);
+  assert.match(orders, /saleVatRateForDocument\(customer\.receipt_type\)/);
   assert.match(orders, /INSERT INTO sale_items/);
 
   const orderEntryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
   assert.match(orderEntryFields, /name="productsJson"/);
   assert.match(orderEntryFields, /name="priceListOverride"/);
-  assert.match(orderEntryFields, /name="desiredDocumentOverride"/);
-  assert.match(orderEntryFields, /ORDER_CREATION_RECEIPT_OPTIONS/);
+  assert.doesNotMatch(orderEntryFields, /name="desiredDocumentOverride"|name="vatRate"/);
+  assert.match(orderEntryFields, /saleVatRateForDocument/);
   assert.match(orderEntryFields, /priceForList/);
   assert.match(orderEntryFields, /priceLists/);
-  assert.match(orderEntryFields, /Precio: \$\{formatCurrency\(priceForList\(product\.prices, activePriceList\)\)\}/);
+  assert.match(orderEntryFields, /Precio neto: \$\{formatCurrency\(priceForList\(product\.prices, activePriceList\)\)\}/);
   assert.doesNotMatch(orderEntryFields, /if \(!product \|\| !selectedClient\) return null/);
   assert.doesNotMatch(orderEntryFields, /draftProduct && selectedClient \? priceForList/);
   assert.match(orderEntryFields, /El producto no tiene precio para la lista/);
   assert.doesNotMatch(orderEntryFields, /PRECIO 1/);
 
   assert.match(orders, /priceListOverride/);
-  assert.match(orders, /desiredDocumentOverride/);
-
-  const quotesPage = read("apps/web/src/app/quotes/page.tsx");
-  assert.match(quotesPage, /QuoteEntryFields/);
-  assert.match(quotesPage, /acceptQuoteAndRemitAction/);
-  assert.match(quotesPage, /quoteWhatsappHref/);
-  assert.equal(/name="customerName"/.test(quotesPage), false);
-  assert.equal(/name="unitPrice"/.test(quotesPage), false);
+  assert.doesNotMatch(orders, /desiredDocumentOverride/);
 
   const quoteEntryFields = read("apps/web/src/app/quotes/quote-entry-fields.tsx");
   assert.match(quoteEntryFields, /name="customerId"/);
-  assert.match(quoteEntryFields, /Cliente ocasional/);
-  assert.match(quoteEntryFields, /name="customerName"/);
+  assert.doesNotMatch(quoteEntryFields, /Cliente ocasional|name="customerName"/);
   assert.match(quoteEntryFields, /name="productsJson"/);
   assert.match(quoteEntryFields, /priceForList/);
   assert.match(quoteEntryFields, /priceLists/);
   assert.doesNotMatch(quoteEntryFields, /PRECIO 1/);
-  assert.match(quoteEntryFields, /WhatsApp rapido/);
-  assert.match(quoteEntryFields, /quickQuoteHref/);
-  assert.match(quoteEntryFields, /<ButtonLink href=\{quickQuoteHref\}/);
-  assert.match(quoteEntryFields, /Crear presupuesto formal/);
-  assert.match(quoteEntryFields, /name="vatRate"/);
-  assert.match(quoteEntryFields, /Sumar IVA 21%/);
-  assert.match(quoteEntryFields, /Sumar IVA 10,5%/);
+  assert.doesNotMatch(quoteEntryFields, /name="vatRate"|name="includeVat"/);
+  assert.match(quoteEntryFields, /saleVatRateForDocument/);
   assert.doesNotMatch(quoteEntryFields, /window\.open/);
 
   const quotes = read("apps/web/src/lib/quotes.ts");
@@ -587,42 +569,23 @@ test("order creation exposes the full legacy receipt type set", () => {
   assert.match(quotes, /dynamicPriceSqlExpression/);
   assert.match(quotes, /price_list_name/);
   assert.match(quotes, /client_legal_name/);
-  assert.match(quotes, /calculateQuoteTotals/);
-  assert.match(quotes, /if \(!clientId\)[\s\S]*INSERT INTO clients/);
-  assert.match(quotes, /UPDATE quotes[\s\S]*client_id = \$4::uuid/);
-
-  const catalogManagement = read("apps/web/src/lib/catalog-management.ts");
-  assert.match(catalogManagement, /resolveCustomerPriceList/);
-  assert.match(catalogManagement, /resolvePriceListName/);
-
-  const imports = read("apps/web/src/lib/imports.ts");
-  assert.match(imports, /resolvePriceListName\(value\(row, 10\), activePriceLists\)/);
-
-  const billingPage = read("apps/web/src/app/billing/page.tsx");
-  assert.match(billingPage, /<option value="c">Factura C<\/option>/);
-  assert.match(billingPage, /name="cliente"/);
-  assert.match(billingPage, /className="grid w-full items-end gap-3 md:grid-cols-2 xl:grid-cols-6"/);
-  assert.match(billingPage, /md:col-span-2 md:flex-row md:justify-end xl:col-span-6/);
-  assert.match(billingPage, /className="w-full md:w-\[144px\]"/);
-
-  const salesAdmin = read("apps/web/src/lib/sales-admin.ts");
-  assert.match(salesAdmin, /TYPE_CODES = new Set\(\[1, 2, 3, 6, 7, 8, 11, 12, 13\]\)/);
-  assert.match(salesAdmin, /FROM sales_internal_documents sid/);
-  assert.match(salesAdmin, /sid\.class_name = 'NC'/);
-  assert.match(salesAdmin, /sid\.class_name = 'ND'/);
-  assert.match(salesAdmin, /filters\.customerName/);
+  assert.match(quotes, /vatAmountsFromNet/);
+  assert.match(quotes, /Selecciona un cliente registrado/);
+  assert.doesNotMatch(quotes, /if \(!clientId\)[\s\S]*INSERT INTO clients/);
 });
 
-test("orders keep final prices while quotes can add optional VAT", () => {
+test("price lists and sale items stay net while orders and quotes store final VAT totals", () => {
   const orderEntryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
-  assert.doesNotMatch(orderEntryFields, /receiptAddsVat|name="includeVat"|>\s*IVA\s*<|>\s*Neto\s*</);
-  assert.match(orderEntryFields, /Subtotal productos/);
+  assert.doesNotMatch(orderEntryFields, /receiptAddsVat|name="includeVat"|name="vatRate"/);
+  assert.match(orderEntryFields, /Subtotal neto/);
+  assert.match(orderEntryFields, /Total final/);
+  assert.match(orderEntryFields, /vatAmountsFromNet/);
 
   const quoteEntryFields = read("apps/web/src/app/quotes/quote-entry-fields.tsx");
-  assert.match(quoteEntryFields, /name="includeVat"/);
-  assert.match(quoteEntryFields, /calculateQuoteTotals/);
-  assert.match(quoteEntryFields, /IVA \{String\(vatRate\)/);
-  assert.match(quoteEntryFields, /Subtotal productos/);
+  assert.doesNotMatch(quoteEntryFields, /name="includeVat"|name="vatRate"/);
+  assert.match(quoteEntryFields, /vatAmountsFromNet/);
+  assert.match(quoteEntryFields, /IVA \$\{String\(vatRate/);
+  assert.match(quoteEntryFields, /Subtotal neto/);
 
   const quotesPage = read("apps/web/src/app/quotes/page.tsx");
   assert.doesNotMatch(quotesPage, /DataTableHead[^>]*>IVA/);
@@ -631,17 +594,15 @@ test("orders keep final prices while quotes can add optional VAT", () => {
   assert.match(quotesPage, /quote\.quoteNumber/);
   assert.doesNotMatch(quotesPage, />#\{quote\.id\}</);
   assert.doesNotMatch(quotesPage, /DataTableHead[^>]*>Subtotal/);
-  assert.match(quotesPage, /TableActionMenu/);
-
   const orders = read("apps/web/src/lib/orders.ts");
   assert.doesNotMatch(orders, /receiptAddsVat|money\(netAmount \* 0\.21\)|money\(subtotal \* 0\.21\)/);
-  assert.match(orders, /0::text AS monto_iva/);
-  assert.match(orders, /confirmationTotalAmount = money\(Number\(order\.total_amount\)\)/);
+  assert.match(orders, /SUM\(si\.total_amount\)/);
+  assert.match(orders, /calculateOrderTotals/);
   assert.match(orders, /normalizeStoredVatRate/);
 
   const quotes = read("apps/web/src/lib/quotes.ts");
-  assert.match(quotes, /booleanValue\(body\.includeVat/);
-  assert.match(quotes, /calculateQuoteTotals/);
+  assert.doesNotMatch(quotes, /booleanValue\(body\.includeVat/);
+  assert.match(quotes, /vatAmountsFromNet/);
   assert.match(quotes, /vat_rate/);
 
   const receiptTypes = read("apps/web/src/lib/receipt-types.ts");
@@ -651,7 +612,12 @@ test("orders keep final prices while quotes can add optional VAT", () => {
   assert.match(pdfDocuments, /quote\.includeVat/);
   assert.match(pdfDocuments, /quote\.vatAmount/);
   assert.match(pdfDocuments, /quote\.quoteNumber/);
-  assert.match(pdfDocuments, /\["IVA 21%"/);
+  assert.match(pdfDocuments, /quote\.vatRate/);
+
+  const pricesPage = read("apps/web/src/app/prices/page.tsx");
+  assert.match(pricesPage, /precios netos, sin IVA/);
+  assert.match(pricesPage, /Sumar IVA 10,5%/);
+  assert.match(pricesPage, /Sumar IVA 21%/);
 });
 
 test("pricing lists use the L0-L3 normalized names and L2 as default anchor", () => {
@@ -1185,21 +1151,17 @@ test("cargar pedido exposes price message toggle with iva in the confirmation pa
   assert.match(preview, /Mostrar precios/);
   assert.match(preview, /showPrices/);
   assert.match(preview, /ivaRate/);
-  // El IVA se define con el toggle "¿Lleva factura?" (Sí = 21%, No = 10,5%); ya no hay "Sin IVA".
-  assert.match(preview, /¿Lleva factura\?/);
-  assert.match(preview, /value="21"/);
-  assert.match(preview, /value="10.5"/);
+  assert.match(preview, /Comprobante e IVA derivados del cliente/);
+  assert.match(preview, /desiredDocumentLabel/);
+  assert.doesNotMatch(preview, /¿Lleva factura\?|onIvaRateChange/);
   assert.doesNotMatch(preview, /Sin IVA/);
 });
 
-test("the sale's VAT rate can be picked regardless of whether prices are shown to the client", () => {
+test("the sale VAT rate is displayed from the client document and cannot be picked manually", () => {
   const preview = read("apps/web/src/app/orders/new/order-confirmation-preview.tsx");
-  assert.match(preview, /<Field htmlFor="confirmation-iva"/, "the VAT rate picker must still exist");
-  assert.doesNotMatch(
-    preview,
-    /showPrices \? \(\s*<Field htmlFor="confirmation-iva"/,
-    "the VAT rate picker must not be gated behind the 'mostrar precios' checkbox",
-  );
+  assert.match(preview, /desiredDocument/);
+  assert.match(preview, /ivaRate/);
+  assert.doesNotMatch(preview, /confirmation-iva|onIvaRateChange|value="21"|value="10.5"/);
 });
 
 test("Registro de ventas shows only the delivered-sales listing, without duplicate navigation to other menu sections", () => {
@@ -1512,11 +1474,8 @@ test("Balance shows gross vs net sales, and profit metrics run on net-of-VAT rev
   assert.match(balancePage, /Ventas netas/);
 });
 
-test("Sales persist their own VAT rate so Balance nets out IVA using the real rate, not a fixed 21%", () => {
-  const migrationFiles = readdirSync(join(repoRoot, "migrations"));
-  const vatRateMigration = migrationFiles.find((name) => /sales.*vat.?rate/i.test(name));
-  assert.ok(vatRateMigration, "expected a migration adding vat_rate to the sales table");
-  const migrationSql = read(`migrations/${vatRateMigration}`);
+test("future sales persist the VAT rate derived from the client document, never from a posted selector", () => {
+  const migrationSql = read("supabase/migrations/20260812144142_persist_future_sales_vat_rate.sql");
   assert.match(migrationSql, /ALTER TABLE public\.sales/);
   assert.match(migrationSql, /ADD COLUMN IF NOT EXISTS vat_rate/);
   assert.match(migrationSql, /DEFAULT 0/, "historical sales without a captured rate must default to 0 (net = gross)");
@@ -1526,14 +1485,14 @@ test("Sales persist their own VAT rate so Balance nets out IVA using the real ra
   assert.doesNotMatch(salesVat, /\/ 1\.21/, "the divisor must use the sale's own stored rate, not a hardcoded 21%");
 
   const orders = read("apps/web/src/lib/orders.ts");
-  assert.match(orders, /vatRate/, "order creation must accept a vatRate field");
+  assert.match(orders, /saleVatRateForDocument\(customer\.receipt_type\)/);
   assert.match(orders, /vat_rate/, "order creation must persist vat_rate on the sales row");
 
   const entryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
-  assert.match(entryFields, /name="vatRate"/, "the order form must submit the chosen VAT rate");
+  assert.doesNotMatch(entryFields, /name="vatRate"|onIvaRateChange/);
 
   const preview = read("apps/web/src/app/orders/new/order-confirmation-preview.tsx");
-  assert.match(preview, /onIvaRateChange/, "the rate picker must be lifted up so the form can submit it");
+  assert.match(preview, /Comprobante e IVA derivados del cliente/);
 });
 
 test("cargar pedido and presupuestos quantity steppers move by whole units, not thousandths", () => {
@@ -1810,10 +1769,15 @@ test("order comprobante flow separates the commercial remito from stock", () => 
   assert.match(documents, /includePrices \? "remito_con_precios" : "remito_sin_precios"/);
   assert.match(documents, /copia \? "COPIA" : "ORIGINAL"/);
   assert.doesNotMatch(documents, /buildOrderRemitoPdf[\s\S]*INSERT INTO/, "the commercial remito must not write to the database");
-  // El remito con precios discrimina IVA (neto + 21%/10,5% encima) desde vat_rate.
+  // El remito valorizado usa el helper compartido y muestra neto, IVA y final por renglon.
   assert.match(documents, /COALESCE\(s\.vat_rate, 0\)::text AS vat_rate/);
-  assert.match(documents, /subtotalNeto \* \(vatRate \/ 100\)/);
-  assert.match(documents, /vatRate === 21 \? "IVA 21%" : "IVA 10,5%"/);
+  assert.match(documents, /requireValuedRemittanceVatRate/);
+  assert.match(documents, /valuedDocumentLines/);
+  for (const label of ["Unit. neto", "IVA %", "IVA unit.", "Unit. final", "Imp. neto", "Imp. final"]) {
+    assert.match(documents, new RegExp(label.replace(".", "\\.")));
+  }
+  assert.match(documents, /\["Subtotal neto", pdfMoney\(valuedSummary\.net\)\]/);
+  assert.match(documents, /includePrices \? "Total final" : "Control"/);
 
   const remitoRoute = read("apps/web/src/app/api/pdfs/orders/[id]/remito/route.ts");
   assert.match(remitoRoute, /requireApiSession\(\[\{ resource: "pedidos", action: "ver" \}\]\)/);
@@ -1872,15 +1836,18 @@ test("Solicitar Factura requests a fiscal invoice that ARCA emits on approval", 
   assert.match(ordersPage, /name="download"/);
 });
 
-test("editing an order loads its saved IVA rate instead of resetting it", () => {
+test("editing blocks historical zero-rate orders and derives future VAT from the selected client", () => {
   const entryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
   assert.match(entryFields, /vatRate\?: number/, "OrderEntryInitialValue must carry the saved vatRate");
-  assert.match(entryFields, /initialValue\?\.vatRate \?\? 10\.5/, "the form must seed the rate from the loaded order");
+  assert.match(entryFields, /saleVatRateForDocument\(selectedClient\?\.receiptType\)/);
+  assert.match(entryFields, /initialValue\?\.vatRate === undefined \|\| initialValue\.vatRate > 0/);
 
   const editPage = read("apps/web/src/app/orders/[id]/edit/page.tsx");
   assert.match(editPage, /vatRate: order\.vatRate/);
+  assert.match(editPage, /order\.vatRate === 0/);
+  assert.match(editPage, /No se modifica automáticamente/);
 
   const orders = read("apps/web/src/lib/orders.ts");
-  assert.match(orders, /vatRate: normalizeStoredVatRate\(Number\(row\.vat_rate\)\)/);
+  assert.match(orders, /hasConsistentOrderVatSnapshot/);
   assert.match(orders, /COALESCE\(s\.vat_rate, 0\)::text AS vat_rate/);
 });

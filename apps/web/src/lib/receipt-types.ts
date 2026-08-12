@@ -117,3 +117,23 @@ export function receiptTypeCode(value: string) {
   const normalized = normalizeDesiredDocument(value);
   return ORDER_RECEIPT_OPTIONS.find((option) => option.value === normalized)?.receiptType ?? 0;
 }
+
+export type SaleOrderDocument = "remito" | "factura_a" | "factura_b";
+export type SaleOrderVatRate = 10.5 | 21;
+
+export function saleOrderDocument(value: string | null | undefined): SaleOrderDocument | null {
+  const normalized = normalizeReceiptKey(String(value ?? ""));
+  if (!normalized) return null;
+  const compact = normalized.replaceAll("_", "");
+  const explicit = ORDER_RECEIPT_VALUES.has(normalized)
+    ? normalized as OrderReceiptValue
+    : ORDER_RECEIPT_ALIASES[normalized] ?? ORDER_RECEIPT_ALIASES[compact];
+  return explicit === "remito" || explicit === "factura_a" || explicit === "factura_b" ? explicit : null;
+}
+
+export function saleVatRateForDocument(value: string | null | undefined): SaleOrderVatRate | null {
+  const document = saleOrderDocument(value);
+  if (document === "remito") return 10.5;
+  if (document === "factura_a" || document === "factura_b") return 21;
+  return null;
+}

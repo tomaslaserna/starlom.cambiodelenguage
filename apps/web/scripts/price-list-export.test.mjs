@@ -41,4 +41,5 @@ test("vatLegend refleja la tasa", () => {
   assert.match(vatLegend(21), /21/);
   assert.match(vatLegend(21), /incluido/i);
   assert.match(vatLegend(10.5), /10,5/);
+  assert.match(vatLegend(10.5), /incluido/i);
 });

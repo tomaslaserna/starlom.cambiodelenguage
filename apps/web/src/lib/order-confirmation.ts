@@ -73,7 +73,7 @@ export function buildWhatsappConfirmation(input: ConfirmationInput): string {
     ? priced
         .map(
           (line) =>
-            `• ${formatConfirmationQuantity(line.quantity)} x ${line.name} — ${formatConfirmationMoney(line.unitPrice)} (subtotal ${formatConfirmationMoney(line.subtotal)})`,
+            `• ${formatConfirmationQuantity(line.quantity)} x ${line.name} — unitario neto ${formatConfirmationMoney(line.unitPrice)} (subtotal neto ${formatConfirmationMoney(line.subtotal)})`,
         )
         .join("\n")
     : input.lines
@@ -93,7 +93,7 @@ export function buildWhatsappConfirmation(input: ConfirmationInput): string {
     const net = priced.reduce((sum, line) => sum + line.subtotal, 0);
     const rate = input.ivaRate ?? 0;
     const iva = ivaAmount(net, rate);
-    parts.push("", `*Subtotal:* ${formatConfirmationMoney(net)}`);
+    parts.push("", `*Subtotal neto:* ${formatConfirmationMoney(net)}`);
     if (rate > 0) {
       parts.push(`*IVA (${rate}%):* ${formatConfirmationMoney(iva)}`);
     }

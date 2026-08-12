@@ -21,10 +21,11 @@ import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, priceForList, resolvePriceListNa
 import { offerLineDiscount } from "@/lib/offer-status";
 import type { PriceOffer } from "@/lib/price-offers";
 import { localDateIso } from "@/lib/timezone";
-import { ORDER_CREATION_RECEIPT_OPTIONS, normalizeOrderCreationDocument } from "@/lib/receipt-types";
+import { desiredDocumentLabel, saleOrderDocument, saleVatRateForDocument } from "@/lib/receipt-types";
 import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
 import { OrderConfirmationPreview } from "@/app/orders/new/order-confirmation-preview";
 import type { IvaRate } from "@/lib/order-confirmation";
+import { vatAmountsFromNet } from "@/lib/vat-calculation";
 
 type OrderLineDraft = {
   productId: string;
@@ -41,7 +42,6 @@ export type OrderEntryInitialValue = {
   date: string;
   observation: string;
   priceListOverride: string;
-  desiredDocumentOverride: string;
   vatRate?: number;
   lines: OrderLineDraft[];
 };
@@ -93,8 +93,6 @@ export function OrderEntryFields({
   const [date, setDate] = useState(() => initialValue?.date || localDateIso());
   const [observation, setObservation] = useState(initialValue?.observation ?? "");
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
-  const [documentOverride, setDocumentOverride] = useState(initialValue?.desiredDocumentOverride ?? "");
-  const [vatRate, setVatRate] = useState<IvaRate>((initialValue?.vatRate ?? 10.5) as IvaRate);
   const [draftError, setDraftError] = useState("");
   const lineIdRef = useRef(initialValue?.lines.length ?? 0);
 
@@ -111,17 +109,16 @@ export function OrderEntryFields({
     [clients],
   );
   const priceListOptions = priceLists.length ? priceLists : [{ name: DEFAULT_PRICE_LIST_NAME }];
-  const suggestedDocument = selectedClient
-    ? normalizeOrderCreationDocument(selectedClient.receiptType, selectedClient.fiscalCondition)
-    : "remito";
-  const desiredDocument = documentOverride || suggestedDocument;
+  const desiredDocument = saleOrderDocument(selectedClient?.receiptType);
+  const vatRate: IvaRate = saleVatRateForDocument(selectedClient?.receiptType) ?? 0;
+  const hasConfiguredDocument = desiredDocument !== null && vatRate > 0;
   const activePriceList = resolvePriceListName(priceListOverride || selectedClient?.priceList, priceListOptions);
   const productOptions = useMemo(
     () =>
       products.map((product) => ({
         value: product.id,
         label: product.name,
-        description: `${product.code || "Sin codigo"} - Disponible: ${formatNumber(product.available)} - Precio: ${formatCurrency(priceForList(product.prices, activePriceList))}`,
+        description: `${product.code || "Sin codigo"} - Disponible: ${formatNumber(product.available)} - Precio neto: ${formatCurrency(priceForList(product.prices, activePriceList))}`,
         searchText: product.code,
       })),
     [activePriceList, products],
@@ -145,7 +142,8 @@ export function OrderEntryFields({
     })
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
 
-  const totalAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0);
+  const netAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0);
+  const orderTotals = vatAmountsFromNet(netAmount, vatRate);
   const pricedLines = calculatedLines
     .filter((line) => line.quantity > 0)
     .map((line) => ({
@@ -162,7 +160,10 @@ export function OrderEntryFields({
   const draftHasPrice = draftUnitPrice > 0;
   const missingDraftPrice = Boolean(draftProduct && !draftHasPrice);
   const canAddLine = Boolean(selectedClient && draftProduct && draftQuantity > 0 && draftHasPrice);
-  const canSubmit = Boolean(selectedClient) && calculatedLines.some((line) => line.quantity > 0);
+  const canSubmit = Boolean(selectedClient)
+    && calculatedLines.some((line) => line.quantity > 0)
+    && hasConfiguredDocument
+    && (initialValue?.vatRate === undefined || initialValue.vatRate > 0);
 
   const payload = calculatedLines.map((line) => ({
     productId: line.product.id,
@@ -248,8 +249,6 @@ export function OrderEntryFields({
       <input name="date" type="hidden" value={date} />
       <input name="observation" type="hidden" value={observation} />
       <input name="priceListOverride" type="hidden" value={activePriceList} />
-      <input name="desiredDocumentOverride" type="hidden" value={desiredDocument} />
-      <input name="vatRate" type="hidden" value={String(vatRate)} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_180px]">
         <Field htmlFor="order-customer" label="Cliente" required>
@@ -264,9 +263,6 @@ export function OrderEntryFields({
               const nextClient = clients.find((client) => client.id === nextCustomerId) ?? null;
               setCustomerId(nextCustomerId);
               setPriceListOverride(resolvePriceListName(nextClient?.priceList, priceListOptions));
-              setDocumentOverride(
-                nextClient ? normalizeOrderCreationDocument(nextClient.receiptType, nextClient.fiscalCondition) : "remito",
-              );
             }}
           />
         </Field>
@@ -281,19 +277,17 @@ export function OrderEntryFields({
             <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Condicion fiscal</div>
             <div className="erp-text-body-sm font-bold">{selectedClient.fiscalCondition || "-"}</div>
           </div>
-          <Field htmlFor="order-document" label="Comprobante">
-            <Select
-              id="order-document"
-              value={desiredDocument}
-              onChange={(event) => setDocumentOverride(event.target.value)}
-            >
-              {ORDER_CREATION_RECEIPT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <div>
+            <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Comprobante e IVA</div>
+            <div className="erp-text-body-sm font-bold">
+              {desiredDocument ? `${desiredDocumentLabel(desiredDocument)} · IVA ${String(vatRate).replace(".", ",")}%` : "Sin configurar"}
+            </div>
+            {!hasConfiguredDocument ? (
+              <div className="mt-1 text-xs font-semibold text-[color:var(--danger)]">
+                Configurá al cliente con Remito, Factura A o Factura B antes de cargar el pedido.
+              </div>
+            ) : null}
+          </div>
           <Field htmlFor="order-price-list" label="Lista">
             <Select
               id="order-price-list"
@@ -365,13 +359,13 @@ export function OrderEntryFields({
                 />
               </Field>
               <div>
-                <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Unitario</div>
+                <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Unitario neto</div>
                 <div className="erp-text-body-sm min-h-[var(--control-height-md)] content-center font-mono font-bold">
                   {formatCurrency(draftUnitPrice)}
                 </div>
               </div>
               <div>
-                <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Subtotal</div>
+                <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Subtotal neto</div>
                 <div className="erp-text-body-sm min-h-[var(--control-height-md)] content-center font-mono font-bold">
                   {formatCurrency(draftSubtotal)}
                 </div>
@@ -429,8 +423,8 @@ export function OrderEntryFields({
                 <DataTableHead>Producto</DataTableHead>
                 <DataTableHead align="right">Cant.</DataTableHead>
                 <DataTableHead align="right">Desc.</DataTableHead>
-                <DataTableHead align="right">Unitario</DataTableHead>
-                <DataTableHead align="right">Subtotal</DataTableHead>
+                <DataTableHead align="right">Unitario neto</DataTableHead>
+                <DataTableHead align="right">Subtotal neto</DataTableHead>
                 <DataTableHead align="right">Accion</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
@@ -510,13 +504,28 @@ export function OrderEntryFields({
         <div className="rounded-lg border border-[color:var(--border)] bg-white p-4">
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
-              <span className="erp-text-body-sm text-[color:var(--muted)]">Subtotal productos</span>
-              <span className="font-mono font-bold">{formatCurrency(totalAmount)}</span>
+              <span className="erp-text-body-sm text-[color:var(--muted)]">Subtotal neto</span>
+              <span className="font-mono font-bold">{formatCurrency(orderTotals.net)}</span>
             </div>
+            {hasConfiguredDocument ? (
+              <div className="flex items-center justify-between">
+                <span className="erp-text-body-sm text-[color:var(--muted)]">
+                  IVA {String(vatRate).replace(".", ",")}%
+                </span>
+                <span className="font-mono font-bold">{formatCurrency(orderTotals.vat)}</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between text-[color:var(--danger)]">
+                <span className="erp-text-body-sm font-semibold">IVA pendiente</span>
+                <span className="erp-text-body-sm font-semibold">Configurar cliente</span>
+              </div>
+            )}
             <div className="border-t border-[color:var(--border)] pt-3">
               <div className="flex items-center justify-between">
-                <span className="erp-text-body font-black">Total</span>
-                <span className="font-mono text-xl font-black">{formatCurrency(totalAmount)}</span>
+                <span className="erp-text-body font-black">Total final</span>
+                <span className="font-mono text-xl font-black">
+                  {hasConfiguredDocument ? formatCurrency(orderTotals.total) : "—"}
+                </span>
               </div>
             </div>
           </div>
@@ -537,7 +546,7 @@ export function OrderEntryFields({
         phone={selectedClient?.phone ?? ""}
         ready={canSubmit}
         ivaRate={vatRate}
-        onIvaRateChange={setVatRate}
+        desiredDocument={desiredDocument}
       />
 
       <Button disabled={!canSubmit} type="submit">

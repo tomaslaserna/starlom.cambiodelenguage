@@ -27,6 +27,18 @@ import {
   type PdfTableCell,
 } from "@/lib/pdf/renderer";
 import { localDateIso } from "@/lib/timezone";
+import {
+  allocateAmountByWeights,
+  formatVatRate,
+  isFinalTotalConsistent,
+  isSaleVatRate,
+  normalizeStoredVatRate,
+  requireValuedRemittanceVatRate,
+  valuedDocumentLines,
+  valuedDocumentSummary,
+  vatAmountsFromGross,
+  type StoredVatRate,
+} from "@/lib/vat-calculation";
 
 type QuoteProduct = {
   id?: number;
@@ -127,12 +139,46 @@ async function buildArcaQrImage(input: {
   return image;
 }
 
-function fiscalAmounts(receiptType: number, total: number) {
+function fiscalAmounts(receiptType: number, total: number, vatRate: number) {
   const hasVat = [1, 2, 3, 6, 7, 8].includes(receiptType);
   if (!hasVat) return { net: total, vat: 0, total, hasVat };
-  const net = Number((total / 1.21).toFixed(2));
-  const vat = Number((total - net).toFixed(2));
-  return { net, vat, total, hasVat };
+  if (vatRate !== 21) {
+    throw new ApiError(
+      409,
+      "La Factura o Nota A/B no registra la alicuota IVA 21% autorizada. No se reinterpretaron datos historicos.",
+    );
+  }
+  return { ...vatAmountsFromGross(total, 21), hasVat };
+}
+
+function vatLabel(vatRate: StoredVatRate) {
+  return vatRate > 0 ? `${formatVatRate(vatRate)}%` : "-";
+}
+
+function valuedPdfVatRate(value: unknown, context: {
+  desiredDocument: string;
+  receiptType: number | null;
+  fiscalReceiptType: number | null;
+}) {
+  try {
+    return requireValuedRemittanceVatRate(value, context);
+  } catch (error) {
+    throw new ApiError(
+      409,
+      error instanceof Error
+        ? error.message
+        : "El remito valorizado no tiene una alicuota IVA compatible con el comprobante persistido.",
+    );
+  }
+}
+
+function assertValuedPdfTotal(totalAmount: number, netAmount: number, vatRate: StoredVatRate) {
+  if (!isSaleVatRate(vatRate) || !isFinalTotalConsistent(totalAmount, netAmount, vatRate)) {
+    throw new ApiError(
+      409,
+      "El total almacenado no coincide con los renglones netos mas IVA. Use el remito sin precios para no reinterpretar una venta historica.",
+    );
+  }
 }
 
 function asFiscalDetail(value: unknown): Array<{ code: string; name: string; quantity: number; unitPrice: number; subtotal: number }> {
@@ -243,6 +289,10 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
     fecha: string | null;
     condicion_pago: string;
     monto: string;
+    vat_rate: string;
+    desired_document: string;
+    receipt_type: number | null;
+    fiscal_receipt_type: number | null;
     vendedor: string;
     provincia: string;
     sucursal_cliente: string;
@@ -265,6 +315,10 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
              r.delivery_date::text AS fecha,
              COALESCE(r.payment_condition, '') AS condicion_pago,
              COALESCE(r.total_amount, 0)::text AS monto,
+             COALESCE(s.vat_rate, 0)::text AS vat_rate,
+             COALESCE(s.desired_document, '') AS desired_document,
+             s.receipt_type,
+             s.fiscal_receipt_type,
              COALESCE(r.seller_name, '') AS vendedor,
              COALESCE(c.province, '') AS provincia,
              '' AS sucursal_cliente,
@@ -293,6 +347,7 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
     nombre: string;
     cantidad: string;
     precio_unit: string;
+    descuento: string;
     subtotal: string;
   }>(
     companyId,
@@ -301,6 +356,7 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
              COALESCE(d.description, p.name, '(producto eliminado)') AS nombre,
              d.quantity::text AS cantidad,
              COALESCE(d.unit_price, 0)::text AS precio_unit,
+             COALESCE(d.discount, 0)::text AS descuento,
              COALESCE(d.total_amount, 0)::text AS subtotal
       FROM delivery_document_items d
       LEFT JOIN products p ON p.id = d.product_id AND p.empresa_id = d.empresa_id
@@ -311,6 +367,21 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
   );
 
   const number = String(remito.nro_remito).padStart(8, "0");
+  const vatRate = includePrices
+    ? valuedPdfVatRate(remito.vat_rate, {
+        desiredDocument: remito.desired_document,
+        receiptType: remito.receipt_type,
+        fiscalReceiptType: remito.fiscal_receipt_type,
+      })
+    : normalizeStoredVatRate(remito.vat_rate);
+  const valuedLines = valuedDocumentLines(detail.rows.map((row) => ({
+    quantity: Number(row.cantidad),
+    unitPrice: Number(row.precio_unit),
+    discountPercent: Number(row.descuento),
+    netAmount: Number(row.subtotal),
+  })), vatRate);
+  const valuedSummary = valuedDocumentSummary(valuedLines);
+  if (includePrices) assertValuedPdfTotal(Number(remito.monto), valuedSummary.net, vatRate);
   return createPdfFile(`${includePrices ? "remito_con_precios" : "remito"}_${number}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Remito",
@@ -319,7 +390,7 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
       date: pdfDate(remito.fecha),
       extra: [includePrices ? "Documento valorizado" : "Control de mercaderia", remito.deposito ? `Deposito: ${remito.deposito}` : ""].filter(Boolean),
       footerLeft: includePrices ? "Documento no valido como factura" : "Control de mercaderia - sin valores",
-      footerRight: includePrices ? `Total ${pdfMoney(Number(remito.monto))}` : "Deposito",
+      footerRight: includePrices ? `Total final ${pdfMoney(valuedSummary.total)}` : "Deposito",
     });
 
     pdf.section("Destinatario");
@@ -342,11 +413,15 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
 
     const columns = includePrices
       ? [
-          { label: "Cant.", width: 54 },
-          { label: "Codigo", width: 70 },
-          { label: "Descripcion", width: 211 },
-          { label: "P. unit.", width: 84, align: "right" as const },
-          { label: "Importe", width: 85, align: "right" as const },
+          { label: "Cant.", width: 30 },
+          { label: "Codigo", width: 40 },
+          { label: "Descripcion", width: 100 },
+          { label: "Unit. neto", width: 60, align: "right" as const },
+          { label: "IVA %", width: 34, align: "center" as const },
+          { label: "IVA unit.", width: 55, align: "right" as const },
+          { label: "Unit. final", width: 62, align: "right" as const },
+          { label: "Imp. neto", width: 58, align: "right" as const },
+          { label: "Imp. final", width: 65, align: "right" as const },
         ]
       : [
           { label: "Cant.", width: 54 },
@@ -355,16 +430,36 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
           { label: "Control", width: 60, align: "center" as const },
         ];
     const totalUnits = detail.rows.reduce((sum, row) => sum + Number(row.cantidad), 0);
-    const totalAmount = detail.rows.reduce((sum, row) => sum + Number(row.subtotal), 0);
     pdf.table(
       columns,
-      detail.rows.map((row) =>
+      detail.rows.map((row, index) =>
         includePrices
-          ? [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, pdfMoney(Number(row.precio_unit)), pdfMoney(Number(row.subtotal))]
+          ? [
+              pdfNumber(Number(row.cantidad)),
+              row.product_code,
+              row.nombre,
+              pdfMoney(valuedLines[index].netUnitPrice),
+              vatLabel(vatRate),
+              pdfMoney(valuedLines[index].vatUnitAmount),
+              pdfMoney(valuedLines[index].finalUnitPrice),
+              pdfMoney(valuedLines[index].net),
+              pdfMoney(valuedLines[index].total),
+            ]
           : [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, "[ ]"],
       ),
+      includePrices ? { density: "compact" } : {},
     );
-    pdf.totals([["Total de unidades", pdfNumber(totalUnits)]], includePrices ? "Total" : "Control", includePrices ? pdfMoney(totalAmount) : "");
+    pdf.totals(
+      includePrices
+        ? [
+            ["Total de unidades", pdfNumber(totalUnits)],
+            ["Subtotal neto", pdfMoney(valuedSummary.net)],
+            [`IVA ${vatLabel(vatRate)}`, pdfMoney(valuedSummary.vat)],
+          ]
+        : [["Total de unidades", pdfNumber(totalUnits)]],
+      includePrices ? "Total final" : "Control",
+      includePrices ? pdfMoney(valuedSummary.total) : "",
+    );
     pdf.note(remito.observacion || remito.observacion_cliente || "Verificar cantidades y estado de la mercaderia al momento de la recepcion.");
     pdf.signatures("Preparo / despacho", "Controlo / recibio");
   });
@@ -580,6 +675,7 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
     fiscal_receipt_number: number | null;
     cae: string;
     cae_expires_at: string | null;
+    vat_rate: string;
   }>(
     companyId,
     `
@@ -601,7 +697,13 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
              s.fiscal_receipt_type,
              s.fiscal_receipt_number,
              COALESCE(s.cae, '') AS cae,
-             s.cae_expires_at::text
+             s.cae_expires_at::text,
+             CASE
+               WHEN s.fiscal_vat_rate = 21 THEN 21
+               WHEN s.fiscal_vat_rate IS NULL
+                 AND s.fiscal_receipt_type IN (1, 2, 3, 6, 7, 8) THEN 21
+               ELSE 0
+             END::text AS vat_rate
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
       WHERE s.id = $1::uuid
@@ -647,7 +749,16 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
   const receiptType = Number(sale.fiscal_receipt_type ?? 0);
   const receipt = fiscalReceiptLabel(receiptType);
   const total = Number(sale.monto);
-  const amounts = fiscalAmounts(receiptType, total);
+  const vatRate = normalizeStoredVatRate(sale.vat_rate);
+  const amounts = fiscalAmounts(receiptType, total, vatRate);
+  const allocatedDetailAmounts = allocateAmountByWeights(
+    amounts.hasVat ? amounts.net : amounts.total,
+    detail.rows.map((row) => Number(row.subtotal)),
+  );
+  const allocatedDetailFinalAmounts = allocateAmountByWeights(
+    amounts.total,
+    detail.rows.map((row) => Number(row.subtotal)),
+  );
   const number = fiscalReceiptNumber(sale.fiscal_point_of_sale, sale.fiscal_receipt_number);
   const qrImage = await buildArcaQrImage({
     issueDate: sale.fiscal_issue_date,
@@ -684,26 +795,28 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
         Number(row.cantidad),
         Number(row.precio_unit),
         Number(row.subtotal),
-      ] as const).map(([row, quantity, unitPrice, subtotal]) => ({
-        code: row.product_code,
-        description: row.nombre,
-        quantity: pdfNumber(quantity),
-        unit: "unidades",
-        unitPrice: pdfMoney(unitPrice),
-        discount: "0,00",
-        vatRate: amounts.hasVat ? "21%" : "-",
-        subtotal: pdfMoney(subtotal),
-      })),
+      ] as const).map(([row, quantity, unitPrice], index) => {
+        const lineNetAmount = allocatedDetailAmounts[index] ?? 0;
+        const effectiveUnitPrice = quantity > 0 ? lineNetAmount / quantity : 0;
+        const combinedDiscount = amounts.hasVat && unitPrice > 0
+          ? Math.max(0, Math.min(100, (1 - effectiveUnitPrice / unitPrice) * 100))
+          : 0;
+        return {
+          code: row.product_code,
+          description: row.nombre,
+          quantity: pdfNumber(quantity),
+          unit: "unidades",
+          unitPrice: pdfMoney(amounts.hasVat ? unitPrice : effectiveUnitPrice),
+          discount: pdfNumber(combinedDiscount),
+          vatRate: amounts.hasVat ? vatLabel(vatRate) : "-",
+          subtotal: pdfMoney(allocatedDetailFinalAmounts[index] ?? 0),
+        };
+      }),
     );
     const fiscalRows: [string, string][] = amounts.hasVat
       ? [
           ["Importe Neto Gravado", pdfMoney(amounts.net)],
-          ["IVA 27%", pdfMoney(0)],
-          ["IVA 21%", pdfMoney(amounts.vat)],
-          ["IVA 10.5%", pdfMoney(0)],
-          ["IVA 5%", pdfMoney(0)],
-          ["IVA 2.5%", pdfMoney(0)],
-          ["IVA 0%", pdfMoney(0)],
+          [`IVA ${vatLabel(vatRate)}`, pdfMoney(amounts.vat)],
           ["Importe Otros Tributos", pdfMoney(0)],
         ]
       : [["Importe", pdfMoney(amounts.total)], ["Importe Otros Tributos", pdfMoney(0)]];
@@ -736,6 +849,7 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
     condicion_iva_cliente: string;
     domicilio_cliente: string;
     condicion_pago: string;
+    vat_rate: string;
   }>(
     companyId,
     `
@@ -764,7 +878,13 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
              COALESCE(s.client_document, c.tax_id, '') AS documento,
              COALESCE(c.fiscal_condition, '') AS condicion_iva_cliente,
              COALESCE(c.delivery_address, c.address, '') AS domicilio_cliente,
-             COALESCE(s.payment_condition, '') AS condicion_pago
+             COALESCE(s.payment_condition, '') AS condicion_pago,
+             CASE
+               WHEN sid.fiscal_vat_rate = 21 THEN 21
+               WHEN sid.fiscal_vat_rate IS NULL
+                 AND sid.fiscal_receipt_type IN (1, 2, 3, 6, 7, 8) THEN 21
+               ELSE 0
+             END::text AS vat_rate
       FROM sales_internal_documents sid
       LEFT JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
@@ -787,11 +907,20 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
   const receipt = fiscalReceiptLabel(receiptType);
   const number = fiscalReceiptNumber(note.fiscal_point_of_sale, note.fiscal_receipt_number ?? note.receipt_number);
   const total = Number(note.amount);
-  const amounts = fiscalAmounts(receiptType, total);
+  const vatRate = normalizeStoredVatRate(note.vat_rate);
+  const amounts = fiscalAmounts(receiptType, total, vatRate);
   const detail = asFiscalDetail(note.detail_json);
   if (detail.length === 0) {
     throw new ApiError(409, "La nota fiscal no tiene detalle y no puede generarse.");
   }
+  const allocatedDetailAmounts = allocateAmountByWeights(
+    amounts.hasVat ? amounts.net : amounts.total,
+    detail.map((row) => row.subtotal),
+  );
+  const allocatedDetailFinalAmounts = allocateAmountByWeights(
+    amounts.total,
+    detail.map((row) => row.subtotal),
+  );
   const associated = fiscalReceiptNumber(note.sale_fiscal_point_of_sale, note.sale_fiscal_receipt_number);
   const qrImage = await buildArcaQrImage({
     issueDate: note.fiscal_issue_date,
@@ -824,26 +953,21 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
       associatedDocument: associated,
     });
     pdf.fiscalItemsTable(
-      detail.map((row) => ({
+      detail.map((row, index) => ({
         code: row.code,
         description: row.name,
         quantity: pdfNumber(row.quantity),
         unit: "unidades",
-        unitPrice: pdfMoney(row.unitPrice),
+        unitPrice: pdfMoney(row.quantity > 0 ? (allocatedDetailAmounts[index] ?? 0) / row.quantity : 0),
         discount: "0,00",
-        vatRate: amounts.hasVat ? "21%" : "-",
-        subtotal: pdfMoney(row.subtotal),
+        vatRate: amounts.hasVat ? vatLabel(vatRate) : "-",
+        subtotal: pdfMoney(allocatedDetailFinalAmounts[index] ?? 0),
       })),
     );
     const fiscalRows: [string, string][] = amounts.hasVat
       ? [
           ["Importe Neto Gravado", pdfMoney(amounts.net)],
-          ["IVA 27%", pdfMoney(0)],
-          ["IVA 21%", pdfMoney(amounts.vat)],
-          ["IVA 10.5%", pdfMoney(0)],
-          ["IVA 5%", pdfMoney(0)],
-          ["IVA 2.5%", pdfMoney(0)],
-          ["IVA 0%", pdfMoney(0)],
+          [`IVA ${vatLabel(vatRate)}`, pdfMoney(amounts.vat)],
           ["Importe Otros Tributos", pdfMoney(0)],
         ]
       : [["Importe", pdfMoney(amounts.total)], ["Importe Otros Tributos", pdfMoney(0)]];
@@ -1007,7 +1131,7 @@ export async function buildPriceListPdf(companyId: number, options: PriceListPdf
   }
   const orderedGroups = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0], "es"));
 
-  const ivaTag = iva === 10.5 ? "IVA 10,5%" : "IVA 21% incluido";
+  const ivaTag = iva === 10.5 ? "IVA 10,5% incluido" : "IVA 21% incluido";
 
   return createPdfFile(`lista_precios_${safeFilename(listName)}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
@@ -1181,6 +1305,9 @@ export async function buildOrderRemitoPdf(
     nro_id: string;
     observacion: string;
     vat_rate: string;
+    desired_document: string;
+    receipt_type: number | null;
+    fiscal_receipt_type: number | null;
   }>(
     companyId,
     `
@@ -1194,6 +1321,9 @@ export async function buildOrderRemitoPdf(
              COALESCE(s.payment_condition, '') AS condicion_pago,
              COALESCE(s.total_amount, 0)::text AS monto,
              COALESCE(s.vat_rate, 0)::text AS vat_rate,
+             COALESCE(s.desired_document, '') AS desired_document,
+             s.receipt_type,
+             s.fiscal_receipt_type,
              COALESCE(s.seller_name, '') AS vendedor,
              COALESCE(c.delivery_address, c.address, '') AS domicilio,
              COALESCE(c.locality, '') AS ciudad,
@@ -1216,6 +1346,7 @@ export async function buildOrderRemitoPdf(
     nombre: string;
     cantidad: string;
     precio_unit: string;
+    descuento: string;
     subtotal: string;
   }>(
     companyId,
@@ -1224,6 +1355,7 @@ export async function buildOrderRemitoPdf(
              COALESCE(si.description, p.name, '(producto eliminado)') AS nombre,
              si.quantity::text AS cantidad,
              COALESCE(si.unit_price, 0)::text AS precio_unit,
+             COALESCE(si.discount, 0)::text AS descuento,
              COALESCE(si.total_amount, 0)::text AS subtotal
       FROM sale_items si
       LEFT JOIN products p ON p.id = si.product_id AND p.empresa_id = si.empresa_id
@@ -1242,20 +1374,27 @@ export async function buildOrderRemitoPdf(
   const number = commercialCode === "Sin número" ? "Sin número" : commercialCode;
   const filenamePrefix = includePrices ? "remito_con_precios" : "remito_sin_precios";
 
-  // Los precios del listado son netos; el IVA (21% o 10,5%) se suma encima, igual que
-  // el mensaje de confirmación. Con vat_rate 0 (ventas históricas) el IVA queda en 0.
-  const vatRate = Number(order.vat_rate) || 0;
+  const vatRate = includePrices
+    ? valuedPdfVatRate(order.vat_rate, {
+        desiredDocument: order.desired_document,
+        receiptType: order.receipt_type,
+        fiscalReceiptType: order.fiscal_receipt_type,
+      })
+    : normalizeStoredVatRate(order.vat_rate);
   const totalUnits = detail.rows.reduce((sum, row) => sum + Number(row.cantidad), 0);
-  const subtotalNeto = detail.rows.reduce((sum, row) => sum + Number(row.subtotal), 0);
-  const ivaMonto = Math.round((subtotalNeto * (vatRate / 100) + Number.EPSILON) * 100) / 100;
-  const totalConIva = subtotalNeto + ivaMonto;
+  const valuedLines = valuedDocumentLines(detail.rows.map((row) => ({
+    quantity: Number(row.cantidad),
+    unitPrice: Number(row.precio_unit),
+    discountPercent: Number(row.descuento),
+    netAmount: Number(row.subtotal),
+  })), vatRate);
+  const valuedSummary = valuedDocumentSummary(valuedLines);
+  if (includePrices) assertValuedPdfTotal(Number(order.monto), valuedSummary.net, vatRate);
   const priceSummaryRows: [string, string][] = [
     ["Total de unidades", pdfNumber(totalUnits)],
-    ["Subtotal", pdfMoney(subtotalNeto)],
+    ["Subtotal neto", pdfMoney(valuedSummary.net)],
+    [`IVA ${vatLabel(vatRate)}`, pdfMoney(valuedSummary.vat)],
   ];
-  if (vatRate > 0) {
-    priceSummaryRows.push([vatRate === 21 ? "IVA 21%" : "IVA 10,5%", pdfMoney(ivaMonto)]);
-  }
 
   return createPdfFile(`${filenamePrefix}_${safeFilename(number)}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
@@ -1265,7 +1404,7 @@ export async function buildOrderRemitoPdf(
       date: pdfDate(order.fecha),
       extra: [includePrices ? "Documento valorizado" : "Control de mercaderia", copia ? "COPIA" : "ORIGINAL"],
       footerLeft: includePrices ? "Documento no valido como factura" : "Control de mercaderia - sin valores",
-      footerRight: includePrices ? `Total ${pdfMoney(totalConIva)}` : "Deposito",
+      footerRight: includePrices ? `Total final ${pdfMoney(valuedSummary.total)}` : "Deposito",
     });
 
     pdf.section("Destinatario");
@@ -1286,11 +1425,15 @@ export async function buildOrderRemitoPdf(
 
     const columns = includePrices
       ? [
-          { label: "Cant.", width: 54 },
-          { label: "Codigo", width: 70 },
-          { label: "Descripcion", width: 211 },
-          { label: "P. unit.", width: 84, align: "right" as const },
-          { label: "Importe", width: 85, align: "right" as const },
+          { label: "Cant.", width: 30 },
+          { label: "Codigo", width: 40 },
+          { label: "Descripcion", width: 100 },
+          { label: "Unit. neto", width: 60, align: "right" as const },
+          { label: "IVA %", width: 34, align: "center" as const },
+          { label: "IVA unit.", width: 55, align: "right" as const },
+          { label: "Unit. final", width: 62, align: "right" as const },
+          { label: "Imp. neto", width: 58, align: "right" as const },
+          { label: "Imp. final", width: 65, align: "right" as const },
         ]
       : [
           { label: "Cant.", width: 54 },
@@ -1300,16 +1443,27 @@ export async function buildOrderRemitoPdf(
         ];
     pdf.table(
       columns,
-      detail.rows.map((row) =>
+      detail.rows.map((row, index) =>
         includePrices
-          ? [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, pdfMoney(Number(row.precio_unit)), pdfMoney(Number(row.subtotal))]
+          ? [
+              pdfNumber(Number(row.cantidad)),
+              row.product_code,
+              row.nombre,
+              pdfMoney(valuedLines[index].netUnitPrice),
+              vatLabel(vatRate),
+              pdfMoney(valuedLines[index].vatUnitAmount),
+              pdfMoney(valuedLines[index].finalUnitPrice),
+              pdfMoney(valuedLines[index].net),
+              pdfMoney(valuedLines[index].total),
+            ]
           : [pdfNumber(Number(row.cantidad)), row.product_code, row.nombre, "[ ]"],
       ),
+      includePrices ? { density: "compact" } : {},
     );
     pdf.totals(
       includePrices ? priceSummaryRows : [["Total de unidades", pdfNumber(totalUnits)]],
-      includePrices ? "Total" : "Control",
-      includePrices ? pdfMoney(totalConIva) : "",
+      includePrices ? "Total final" : "Control",
+      includePrices ? pdfMoney(valuedSummary.total) : "",
     );
     pdf.note(order.observacion || "Verificar cantidades y estado de la mercaderia al momento de la recepcion.");
     pdf.signatures("Preparo / despacho", "Controlo / recibio");

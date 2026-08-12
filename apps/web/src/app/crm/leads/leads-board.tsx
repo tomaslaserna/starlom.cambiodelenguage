@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Field, Input } from "@/components/ui";
+import { Button, Field, Input, Select } from "@/components/ui";
 import type { Lead } from "@/lib/leads-domain";
+import { ORDER_CONFIRMATION_RECEIPT_OPTIONS } from "@/lib/receipt-types";
 
 type Action = (formData: FormData) => Promise<void>;
 
@@ -23,6 +24,9 @@ const COLUMNS: { key: string; label: string }[] = [
 ];
 
 const NEXT_STAGE: Record<string, string> = { nuevo: "contactado", contactado: "interesado" };
+const CUSTOMER_RECEIPT_OPTIONS = ORDER_CONFIRMATION_RECEIPT_OPTIONS.filter(
+  (option) => option.value === "remito" || option.value === "factura_a" || option.value === "factura_b",
+);
 
 function followupTone(date: string | null): string {
   if (!date) return "";
@@ -104,8 +108,19 @@ export function LeadsBoard({
                       </Button>
                     </form>
                   ) : null}
-                  <form action={convertAction}>
+                  <form action={convertAction} className="flex items-center gap-2">
                     <input name="id" type="hidden" value={lead.id} />
+                    <Select
+                      aria-label={`Comprobante asociado de ${lead.name}`}
+                      defaultValue=""
+                      name="receiptType"
+                      required
+                    >
+                      <option disabled value="">Comprobante</option>
+                      {CUSTOMER_RECEIPT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </Select>
                     <Button size="sm" type="submit">Convertir</Button>
                   </form>
                   <form action={discardAction}>

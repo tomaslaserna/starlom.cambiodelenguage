@@ -38,6 +38,6 @@ export async function discardLeadAction(formData: FormData) {
 export async function convertLeadAction(formData: FormData) {
   const session = await requireApiSession([CRM_READ_PERMISSION]);
   const id = uuidParam(String(formData.get("id") ?? ""), "Lead");
-  await convertLeadToClient(session, id);
+  await convertLeadToClient(session, id, String(formData.get("receiptType") ?? ""));
   revalidateLeads();
 }

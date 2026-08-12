@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
+import { desiredDocumentLabel, type SaleOrderDocument } from "@/lib/receipt-types";
 import {
   buildWhatsappConfirmation,
   normalizePhoneForWhatsapp,
@@ -23,7 +24,7 @@ type OrderConfirmationPreviewProps = {
   offersEnabled: boolean;
   offersRemaining: number;
   ivaRate: IvaRate;
-  onIvaRateChange: (rate: IvaRate) => void;
+  desiredDocument: SaleOrderDocument | null;
 };
 
 export function OrderConfirmationPreview({
@@ -38,7 +39,7 @@ export function OrderConfirmationPreview({
   offersEnabled,
   offersRemaining,
   ivaRate,
-  onIvaRateChange,
+  desiredDocument,
 }: OrderConfirmationPreviewProps) {
   const [offerText, setOfferText] = useState("");
   const [showPrices, setShowPrices] = useState(false);
@@ -116,16 +117,17 @@ export function OrderConfirmationPreview({
         </p>
       )}
 
-      <Field htmlFor="confirmation-iva" label="¿Lleva factura?">
-        <Select
-          id="confirmation-iva"
-          value={String(ivaRate)}
-          onChange={(event) => onIvaRateChange(Number(event.target.value) as IvaRate)}
-        >
-          <option value="21">Sí — IVA 21%</option>
-          <option value="10.5">No — IVA 10,5%</option>
-        </Select>
-      </Field>
+      <div className="rounded-md border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-3">
+        <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Comprobante e IVA derivados del cliente</div>
+        <div className="erp-text-body-sm font-bold">
+          {desiredDocument ? `${desiredDocumentLabel(desiredDocument)} · IVA ${String(ivaRate).replace(".", ",")}%` : "Sin configurar"}
+        </div>
+      </div>
+      {!desiredDocument || ivaRate === 0 ? (
+        <p className="erp-text-caption font-semibold text-[color:var(--danger)]" role="alert">
+          Configurá el comprobante del cliente antes de guardar el pedido.
+        </p>
+      ) : null}
 
       <label className="erp-text-body-sm flex items-center gap-2 font-medium">
         <input

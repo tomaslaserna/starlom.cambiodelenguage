@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ApiError } from "@/lib/api-response";
 import { requestSaleFiscalInvoice } from "@/lib/fiscal";
-import { orderConfirmationDocumentFromBody, orderStatusFromBody, updateOrderStatus } from "@/lib/orders";
+import { orderStatusFromBody, updateOrderStatus } from "@/lib/orders";
 import { uuidParam } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 import { deleteSale } from "@/lib/sales-admin";
@@ -31,9 +31,7 @@ export async function updateOrderStatusAction(formData: FormData) {
     const id = uuidParam(String(formData.get("id") ?? ""), "Pedido");
     const body = Object.fromEntries(formData.entries());
     const status = orderStatusFromBody(body);
-    await updateOrderStatus(session, id, status, {
-      confirmationDocument: orderConfirmationDocumentFromBody(body),
-    });
+    await updateOrderStatus(session, id, status);
   } catch (error) {
     if (!(error instanceof ApiError)) throw error;
     const message = encodeURIComponent(error.message.slice(0, 500));

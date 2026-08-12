@@ -24,6 +24,7 @@ export type Customer = {
   province: string;
   city: string;
   priceList: string;
+  receiptType: string;
   status: string;
   seller: string;
   observation: string;
@@ -172,6 +173,7 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
     locality: string | null;
     province: string | null;
     price_list_name: string | null;
+    receipt_type: string | null;
     active: boolean;
     seller_name: string | null;
     payment_term_days: number | null;
@@ -182,7 +184,7 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
     companyId,
     `
       SELECT id, external_code, display_name, legal_name, tax_id,
-             fiscal_condition, phone, locality, province, price_list_name,
+             fiscal_condition, phone, locality, province, price_list_name, receipt_type,
              active, seller_name, payment_term_days, address, notes,
              (SELECT count(*) FROM sales s WHERE s.empresa_id = clients.empresa_id AND s.client_id = clients.id)::text AS sales_count
       FROM clients
@@ -209,6 +211,7 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
       province: row.province ?? "",
       city: row.locality ?? "",
       priceList: row.price_list_name ?? "",
+      receiptType: row.receipt_type ?? "",
       status: row.active ? "Activo" : "Inactivo",
       seller: row.seller_name ?? "",
       observation: row.notes ?? "",

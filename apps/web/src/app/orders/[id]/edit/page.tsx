@@ -35,7 +35,6 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
     date: order.date ?? localDateIso(),
     observation: order.observation,
     priceListOverride: order.priceList,
-    desiredDocumentOverride: order.desiredDocument,
     vatRate: order.vatRate,
     lines: order.lines
       .filter((line) => Boolean(line.productId))
@@ -65,7 +64,7 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
       <div className="grid gap-4">
         <PageHeader
           title={`Modificar pedido #${orderNumberLabel}`}
-          description="Ajusta cliente, productos, cantidades, descuentos, lista y comprobante antes de entregar."
+          description="Ajusta cliente, productos, cantidades, descuentos y lista antes de entregar. El comprobante y el IVA vienen del cliente."
           actions={
             <ButtonLink href="/orders?status=cargado" variant="secondary">
               Volver
@@ -73,7 +72,19 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
           }
         />
 
-        {order.orderStatus !== "cargado" && order.orderStatus !== "confirmado" ? (
+        {order.vatRate === 0 ? (
+          <Card>
+            <CardContent className="grid gap-3 p-5">
+              <div className="font-bold">Este pedido histórico no tiene una tasa de IVA registrada.</div>
+              <p className="text-sm text-[color:var(--muted)]">
+                No se modifica automáticamente para evitar alterar datos históricos. Generá un pedido nuevo o solicitá una revisión manual del comprobante y el IVA.
+              </p>
+              <ButtonLink className="w-fit" href="/orders/new" variant="secondary">
+                Generar pedido nuevo
+              </ButtonLink>
+            </CardContent>
+          </Card>
+        ) : order.orderStatus !== "cargado" && order.orderStatus !== "confirmado" ? (
           <Card>
             <CardContent className="grid gap-3 p-5">
               <div className="flex flex-wrap items-center gap-3">

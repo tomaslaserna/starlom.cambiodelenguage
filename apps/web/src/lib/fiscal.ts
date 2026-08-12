@@ -11,6 +11,7 @@ import { hasCompleteFiscalData } from "@/lib/client-fiscal";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { desiredDocumentLabel, normalizeDesiredDocument, receiptTypeCode } from "@/lib/receipt-types";
+import { isFinalTotalConsistent, isSaleVatRate } from "@/lib/vat-calculation";
 
 export type FiscalProviderName = "disabled" | "arca";
 export type FiscalEnvironmentMode = "disabled" | "testing" | "production";
@@ -38,6 +39,7 @@ export type FiscalAuthorizationInput = {
   receiptType: number;
   receiptNumber: number;
   totalAmount: number;
+  vatRate: number;
   customerName: string;
   customerDocument: string;
   customerFiscalCondition: string;
@@ -77,6 +79,29 @@ const DEBIT_NOTE_BY_INVOICE_RECEIPT_TYPE = new Map([
   [6, 7],
   [11, 12],
 ]);
+const VAT_DISCRIMINATING_RECEIPT_TYPES = new Set([1, 2, 3, 6, 7, 8]);
+
+function assertFiscalVatRate(receiptType: number, vatRate: number) {
+  if (VAT_DISCRIMINATING_RECEIPT_TYPES.has(receiptType) && vatRate !== 21) {
+    throw new ApiError(
+      409,
+      "La Factura o Nota A/B requiere la alicuota IVA 21% persistida. No se emitio el comprobante ni se reinterpretaron datos historicos.",
+    );
+  }
+}
+
+function fiscalVatRateSnapshot(receiptType: number, vatRate: number) {
+  return VAT_DISCRIMINATING_RECEIPT_TYPES.has(receiptType) && vatRate === 21 ? 21 : 0;
+}
+
+function assertSaleFinalTotal(sale: Pick<SaleFiscalCandidate, "totalAmount" | "itemNetAmount" | "vatRate">) {
+  if (isSaleVatRate(sale.vatRate) && !isFinalTotalConsistent(sale.totalAmount, sale.itemNetAmount, sale.vatRate)) {
+    throw new ApiError(
+      409,
+      "El total almacenado no coincide con los renglones netos mas el IVA seleccionado. No se emitio el comprobante para evitar alterar una venta historica.",
+    );
+  }
+}
 
 type SaleFiscalCandidate = {
   id: string;
@@ -84,6 +109,9 @@ type SaleFiscalCandidate = {
   receiptType: number;
   receiptNumber: number;
   totalAmount: number;
+  vatRate: number;
+  fiscalVatRate: number | null;
+  itemNetAmount: number;
   customerName: string;
   customerDocument: string;
   customerFiscalCondition: string;
@@ -187,6 +215,7 @@ class ArcaFiscalProvider implements FiscalProvider {
       customerVatCondition: input.customerFiscalCondition,
       receiptType: input.receiptType,
       totalAmount: input.totalAmount,
+      vatRate: input.vatRate,
       preserveReceiptType: input.preserveReceiptType,
       associatedReceipt: input.associatedReceipt,
     });
@@ -378,6 +407,9 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
     receipt_type: number | null;
     receipt_number: number | null;
     total_amount: string;
+    vat_rate: string;
+    fiscal_vat_rate: string | null;
+    item_net_amount: string;
     client_name: string | null;
     client_document: string | null;
     fiscal_condition: string | null;
@@ -397,6 +429,13 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
              COALESCE(s.receipt_type, 0)::int AS receipt_type,
              COALESCE(s.receipt_number, 0)::int AS receipt_number,
              COALESCE(s.total_amount, 0)::text AS total_amount,
+             COALESCE(s.vat_rate, 0)::text AS vat_rate,
+             s.fiscal_vat_rate::text AS fiscal_vat_rate,
+             COALESCE((
+               SELECT SUM(COALESCE(si.total_amount, si.quantity * si.unit_price, 0))
+               FROM sale_items si
+               WHERE si.sale_id = s.id AND si.empresa_id = s.empresa_id
+             ), 0)::text AS item_net_amount,
              COALESCE(s.client_name, c.display_name, '') AS client_name,
              COALESCE(s.client_document, c.tax_id, '') AS client_document,
              COALESCE(c.fiscal_condition, '') AS fiscal_condition,
@@ -451,6 +490,9 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
     receiptType: Number(row.receipt_type ?? 0),
     receiptNumber: Number(row.receipt_number ?? 0),
     totalAmount: Number(row.total_amount),
+    vatRate: Number(row.vat_rate),
+    fiscalVatRate: row.fiscal_vat_rate === null ? null : Number(row.fiscal_vat_rate),
+    itemNetAmount: Number(row.item_net_amount),
     customerName: row.client_name ?? "",
     customerDocument: row.client_document ?? "",
     customerFiscalCondition: row.fiscal_condition ?? "",
@@ -662,6 +704,7 @@ async function markSaleFiscalApproved(
   session: AuthSession,
   saleId: string,
   result: FiscalAuthorizationResult,
+  vatRate: number,
 ) {
   await withCompanyContext(session.companyId, async (client) => {
     await client.query(
@@ -671,6 +714,7 @@ async function markSaleFiscalApproved(
             fiscal_point_of_sale = $1::integer,
             fiscal_receipt_type = $2::integer,
             fiscal_receipt_number = $3::integer,
+            fiscal_vat_rate = $11::numeric,
             receipt_type = $2::integer,
             receipt_number = $9::bigint,
             cae = $4,
@@ -699,6 +743,7 @@ async function markSaleFiscalApproved(
         session.companyId,
         result.receiptNumber,
         result.issueDate ?? "",
+        fiscalVatRateSnapshot(result.receiptType, vatRate),
       ],
     );
     await client.query(
@@ -711,6 +756,7 @@ async function markSaleFiscalApproved(
           pointOfSale: result.pointOfSale,
           receiptType: result.receiptType,
           receiptNumber: result.receiptNumber,
+          vatRate: fiscalVatRateSnapshot(result.receiptType, vatRate),
           issueDate: result.issueDate,
           cae: result.cae,
           caeExpiresAt: result.caeExpiresAt,
@@ -966,6 +1012,7 @@ async function markSaleFiscalNoteApproved(
             fiscal_point_of_sale = $1::integer,
             fiscal_receipt_type = $2::integer,
             fiscal_receipt_number = $3::integer,
+            fiscal_vat_rate = $11::numeric,
             receipt_type = $2::integer,
             receipt_number = $9::bigint,
             cae = $4,
@@ -992,6 +1039,7 @@ async function markSaleFiscalNoteApproved(
         session.companyId,
         result.receiptNumber,
         result.issueDate ?? "",
+        fiscalVatRateSnapshot(result.receiptType, sale.fiscalVatRate ?? sale.vatRate),
       ],
     );
 
@@ -1153,8 +1201,15 @@ export async function authorizeSaleFiscalNote(
   if (!Number.isFinite(sale.totalAmount) || sale.totalAmount <= 0) {
     throw new ApiError(400, "La venta no tiene monto fiscal valido.");
   }
+  if (sale.fiscalVatRate === null) {
+    throw new ApiError(
+      409,
+      "La factura asociada es historica y no registra la alicuota efectivamente autorizada. La nota fiscal requiere revision contable manual.",
+    );
+  }
 
   const receiptType = fiscalNoteReceiptTypeForInvoice(sale.fiscalReceiptType, kind);
+  assertFiscalVatRate(receiptType, sale.fiscalVatRate);
   const noteAmount = normalizeFiscalNoteAmount(requestedAmount, sale.totalAmount, kind);
   const fiscal = getFiscalStatus();
   const document = await prepareSaleFiscalNoteDocument(
@@ -1193,6 +1248,7 @@ export async function authorizeSaleFiscalNote(
       receiptType,
       receiptNumber: 0,
       totalAmount: noteAmount,
+      vatRate: sale.fiscalVatRate,
       customerName: sale.customerName,
       customerDocument: sale.customerDocument,
       customerFiscalCondition: sale.customerFiscalCondition,
@@ -1252,6 +1308,8 @@ export async function authorizeSaleFiscalDocument(session: AuthSession, saleId: 
     sale.customerFiscalCondition,
     invoiceReceiptTypeFromSale(sale),
   );
+  assertFiscalVatRate(receiptType, sale.vatRate);
+  assertSaleFinalTotal(sale);
   const fiscal = getFiscalStatus();
   await markSaleFiscalPending(session, sale, receiptType, fiscal);
 
@@ -1266,11 +1324,12 @@ export async function authorizeSaleFiscalDocument(session: AuthSession, saleId: 
       receiptType,
       receiptNumber: sale.receiptNumber,
       totalAmount: sale.totalAmount,
+      vatRate: sale.vatRate,
       customerName: sale.customerName,
       customerDocument: sale.customerDocument,
       customerFiscalCondition: sale.customerFiscalCondition,
     });
-    await markSaleFiscalApproved(session, sale.id, result);
+    await markSaleFiscalApproved(session, sale.id, result, sale.vatRate);
     return result;
   } catch (error) {
     const message = fiscalErrorMessage(error);

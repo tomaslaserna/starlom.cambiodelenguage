@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { resolvePriceListName } from "@/lib/order-pricing";
 import { parsePagination } from "@/lib/pagination";
+import { saleOrderDocument, type SaleOrderDocument } from "@/lib/receipt-types";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
 
@@ -38,6 +39,7 @@ export type CustomerDetail = {
   status: string;
   address: string;
   priceList: string;
+  receiptType: string;
   province: string;
   city: string;
   observation: string;
@@ -54,6 +56,7 @@ export type CustomerInput = {
   city: string;
   province: string;
   priceList: string;
+  receiptType: string;
   status: string;
   seller: string;
   assignedSeller: string;
@@ -95,6 +98,15 @@ export type ProductUpdateInput = {
 
 const DEFAULT_COMPANY_ID = 1;
 
+export const CUSTOMER_RECEIPT_OPTIONS = ["Remito", "Factura A", "Factura B"] as const;
+export type CustomerReceiptType = (typeof CUSTOMER_RECEIPT_OPTIONS)[number];
+
+const CUSTOMER_RECEIPT_TYPE_LABELS: Record<SaleOrderDocument, CustomerReceiptType> = {
+  remito: "Remito",
+  factura_a: "Factura A",
+  factura_b: "Factura B",
+};
+
 async function resolveCustomerPriceList(companyId: number, value: string) {
   const result = await queryWithCompanyContext<{ nombre: string }>(
     companyId,
@@ -117,12 +129,33 @@ function normalizeTaxId(value: string) {
   return value.replaceAll(/\D/g, "");
 }
 
+export function normalizeCustomerReceiptType(value: string): CustomerReceiptType {
+  const document = saleOrderDocument(value);
+  if (!document) {
+    throw new ApiError(400, "El comprobante asociado debe ser Remito, Factura A o Factura B");
+  }
+  return CUSTOMER_RECEIPT_TYPE_LABELS[document];
+}
+
+export function customerReceiptTypeOptionValue(value: string): CustomerReceiptType | "" {
+  try {
+    return normalizeCustomerReceiptType(value);
+  } catch {
+    return "";
+  }
+}
+
 function firstText(body: RequestBody, keys: string[], fallback = "") {
   for (const key of keys) {
     const value = textField(body, key, "");
     if (value !== "") return value;
   }
   return fallback;
+}
+
+function providedText(body: RequestBody, keys: string[]) {
+  const key = keys.find((candidate) => body[candidate] !== undefined && body[candidate] !== null);
+  return key ? textField(body, key, "") : null;
 }
 
 function firstNumber(body: RequestBody, keys: string[], fallback = 0) {
@@ -147,6 +180,7 @@ function mapCustomer(row: {
   active: boolean;
   address: string | null;
   price_list_name: string | null;
+  receipt_type: string | null;
   province: string | null;
   locality: string | null;
   notes: string | null;
@@ -165,6 +199,7 @@ function mapCustomer(row: {
     status: row.active ? "activo" : "inactivo",
     address: row.address ?? "",
     priceList: row.price_list_name ?? "",
+    receiptType: row.receipt_type ?? "",
     province: row.province ?? "",
     city: row.locality ?? "",
     observation: row.notes ?? "",
@@ -233,6 +268,18 @@ export function customerInputFromBody(
   body: RequestBody,
   defaults: Partial<CustomerInput> = {},
 ): CustomerInput {
+  const providedReceiptType = providedText(body, [
+    "receiptType",
+    "receipt_type",
+    "tipo_comprobante",
+    "comprobante",
+  ]);
+  const receiptType =
+    providedReceiptType !== null
+      ? normalizeCustomerReceiptType(providedReceiptType)
+      : defaults.receiptType !== undefined
+        ? defaults.receiptType
+        : normalizeCustomerReceiptType("");
   const input = {
     name: firstText(body, ["name", "nombre_cliente"], defaults.name),
     businessName: firstText(body, ["businessName", "razon_social"], defaults.businessName),
@@ -244,6 +291,7 @@ export function customerInputFromBody(
     city: firstText(body, ["city", "ciudad"], defaults.city),
     province: firstText(body, ["province", "provincia"], defaults.province),
     priceList: firstText(body, ["priceList", "lista_precios"], defaults.priceList),
+    receiptType,
     status: firstText(body, ["status", "estado"], defaults.status ?? "activo"),
     seller: firstText(body, ["seller", "vendedor_cl"], defaults.seller),
     assignedSeller: firstText(body, ["assignedSeller", "vendedor_asignado"], defaults.assignedSeller),
@@ -300,7 +348,7 @@ export async function getCustomer(companyId: number, id: string) {
     companyId,
     `
       SELECT id, external_code, display_name, legal_name, seller_name, assigned_seller, tax_id,
-             fiscal_condition, phone, active, address, price_list_name,
+             fiscal_condition, phone, active, address, price_list_name, receipt_type,
              province, locality, notes
       FROM clients
       WHERE id = $1::uuid AND empresa_id = $2
@@ -340,9 +388,9 @@ export async function createCustomer(companyId: number, input: CustomerInput) {
       INSERT INTO clients (
         display_name, legal_name, tax_id, fiscal_condition, phone,
         address, locality, province, price_list_name, active, seller_name,
-        notes, empresa_id, assigned_seller
+        receipt_type, notes, empresa_id, assigned_seller
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10 <> 'inactivo', $11, $12, $13, $14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10 <> 'inactivo', $11, $12, $13, $14, $15)
       RETURNING id::text AS id
     `,
     [
@@ -357,12 +405,14 @@ export async function createCustomer(companyId: number, input: CustomerInput) {
       priceList,
       input.status,
       input.seller,
+      normalizeCustomerReceiptType(input.receiptType),
       input.observation,
       companyId,
       input.assignedSeller,
     ],
   );
 
+  clearReadQueryCache();
   return getCustomer(companyId, result.rows[0].id);
 }
 
@@ -383,10 +433,11 @@ export async function updateCustomer(companyId: number, id: string, input: Custo
           price_list_name = $9,
           active = $10 <> 'inactivo',
           seller_name = $11,
-          notes = $12,
-          assigned_seller = $15,
+          receipt_type = COALESCE(NULLIF($12, ''), receipt_type),
+          notes = $13,
+          assigned_seller = $16,
           updated_at = now()
-      WHERE id = $13::uuid AND empresa_id = $14
+      WHERE id = $14::uuid AND empresa_id = $15
       RETURNING id::text AS id
     `,
     [
@@ -401,6 +452,7 @@ export async function updateCustomer(companyId: number, id: string, input: Custo
       priceList,
       input.status,
       input.seller,
+      input.receiptType,
       input.observation,
       id,
       companyId,
@@ -409,7 +461,27 @@ export async function updateCustomer(companyId: number, id: string, input: Custo
   );
 
   if (!result.rows[0]) throw new ApiError(404, "Cliente no encontrado");
+  clearReadQueryCache();
   return getCustomer(companyId, id);
+}
+
+export async function updateCustomerReceiptType(companyId: number, id: string, value: string) {
+  const receiptType = normalizeCustomerReceiptType(value);
+  const result = await queryWithCompanyContext<{ id: string }>(
+    companyId,
+    `
+      UPDATE clients
+      SET receipt_type = $1,
+          updated_at = now()
+      WHERE id = $2::uuid AND empresa_id = $3
+      RETURNING id::text AS id
+    `,
+    [receiptType, id, companyId],
+  );
+
+  if (!result.rows[0]) throw new ApiError(404, "Cliente no encontrado");
+  clearReadQueryCache();
+  return { id, receiptType };
 }
 
 export async function listSuppliers(input: ListInput = {}): Promise<ListResult<Supplier>> {

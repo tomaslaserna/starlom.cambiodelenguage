@@ -7,6 +7,7 @@ import {
   customerInputFromBody,
   getCustomer,
   updateCustomer,
+  updateCustomerReceiptType,
 } from "@/lib/catalog-management";
 import { deleteCustomer, mergeCustomers } from "@/lib/customer-admin";
 import { stringFieldsFromFormData } from "@/lib/storage";
@@ -40,6 +41,7 @@ export async function updateCustomerAction(formData: FormData) {
       city: current.city,
       province: current.province,
       priceList: current.priceList,
+      receiptType: current.receiptType,
       status: current.status,
       seller: current.seller,
       assignedSeller: current.assignedSeller,
@@ -47,6 +49,19 @@ export async function updateCustomerAction(formData: FormData) {
     }),
   );
   revalidatePath("/customers");
+}
+
+export async function updateCustomerReceiptTypeAction(formData: FormData) {
+  const session = await requireApiSession([{ resource: "clientes", action: "editar" }]);
+  const fields = stringFieldsFromFormData(formData);
+  await updateCustomerReceiptType(
+    session.companyId,
+    uuidParam(fields.id, "Cliente"),
+    fields.receiptType ?? "",
+  );
+  revalidatePath("/customers");
+  revalidatePath("/orders");
+  revalidatePath("/orders/new");
 }
 
 export async function deleteCustomerAction(formData: FormData) {

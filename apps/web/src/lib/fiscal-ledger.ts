@@ -12,9 +12,11 @@ export type FiscalVatSummary = {
   purchaseWithVatTotal: number;
 };
 
-function vatFromGrossSql(amountExpression: string, receiptTypeExpression: string) {
+function vatFromGrossSql(amountExpression: string, receiptTypeExpression: string, vatRateExpression: string) {
   return `CASE
-    WHEN ${receiptTypeExpression} IN (1, 2, 3, 6, 7, 8) THEN ${amountExpression} - (${amountExpression} / 1.21)
+    WHEN ${receiptTypeExpression} IN (1, 2, 3, 6, 7, 8)
+      AND ${vatRateExpression} = 21
+      THEN ${amountExpression} - (${amountExpression} / (1 + (${vatRateExpression} / 100)))
     ELSE 0
   END`;
 }
@@ -22,8 +24,16 @@ function vatFromGrossSql(amountExpression: string, receiptTypeExpression: string
 export async function getFiscalVatSummary(companyId: number): Promise<FiscalVatSummary> {
   const period = currentMonth();
   const range = monthRange(period);
-  const salesVat = vatFromGrossSql("COALESCE(s.total_amount, 0)", "COALESCE(s.fiscal_receipt_type, s.receipt_type, 0)");
-  const noteVat = vatFromGrossSql("COALESCE(sid.amount, 0)", "COALESCE(sid.fiscal_receipt_type, sid.receipt_type, 0)");
+  const salesVat = vatFromGrossSql(
+    "COALESCE(s.total_amount, 0)",
+    "COALESCE(s.fiscal_receipt_type, s.receipt_type, 0)",
+    "COALESCE(s.fiscal_vat_rate, 21)",
+  );
+  const noteVat = vatFromGrossSql(
+    "COALESCE(sid.amount, 0)",
+    "COALESCE(sid.fiscal_receipt_type, sid.receipt_type, 0)",
+    "COALESCE(sid.fiscal_vat_rate, 21)",
+  );
 
   const result = await queryWithCompanyContext<{
     sales_vat_debit: string;

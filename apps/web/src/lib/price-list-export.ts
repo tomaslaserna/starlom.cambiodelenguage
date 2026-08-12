@@ -25,6 +25,6 @@ export function normalizeGroupBy(value: string | null | undefined): PriceListGro
 
 export function vatLegend(rate: PriceListVat): string {
   const base = "Precios expresados en pesos argentinos (ARS)";
-  const iva = rate === 10.5 ? "IVA 10,5%" : "IVA incluido (21%)";
+  const iva = rate === 10.5 ? "IVA 10,5% incluido" : "IVA 21% incluido";
   return `${base}, ${iva}. Válidos hasta nuevo aviso o modificación de lista. Sujetos a disponibilidad de stock.`;
 }

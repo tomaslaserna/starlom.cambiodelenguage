@@ -10,7 +10,13 @@ export async function acceptQuoteAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "presupuestos", action: "aprobar" }]);
   const id = String(formData.get("id") ?? "").trim();
   const requestFiscalInvoice = String(formData.get("requestFiscalInvoice") ?? "") === "true";
-  const result = await acceptQuote(session, id, { requestFiscalInvoice });
+  let result;
+  try {
+    result = await acceptQuote(session, id, { requestFiscalInvoice });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo aprobar el presupuesto";
+    redirect(`/quotes?error=${encodeURIComponent(message)}`);
+  }
   revalidatePath("/quotes");
   revalidatePath("/orders");
   revalidatePath("/billing");

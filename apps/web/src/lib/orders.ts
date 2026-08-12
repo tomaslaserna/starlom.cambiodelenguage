@@ -23,17 +23,22 @@ import {
   saleReservesStockSql,
 } from "@/lib/order-status";
 import {
-  invoiceDocumentForFiscalCondition,
-  normalizeDesiredDocument,
-  normalizeOrderCreationDocument,
   receiptTypeCode,
+  saleOrderDocument,
+  saleVatRateForDocument,
 } from "@/lib/receipt-types";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
-import { calculateQuoteTotals, type QuoteVatRate } from "@/lib/quote-totals";
 import { assertSaleStockAvailableForConfirmation, discountSaleStockOnDelivery } from "@/lib/stock";
 import { createDeliveryDocumentForSale } from "@/lib/deliveries";
 import { localDateIso } from "@/lib/timezone";
+import {
+  normalizeStoredVatRate,
+  vatAmountsFromGross,
+  vatAmountsFromNet,
+  type SaleVatRate,
+  type StoredVatRate,
+} from "@/lib/vat-calculation";
 import type { AuthSession } from "@/lib/auth";
 import type { PoolClient } from "pg";
 
@@ -70,7 +75,7 @@ export type OrderSummary = {
   desiredDocument: string;
   stockDiscounted: boolean;
   observation: string;
-  vatRate: number;
+  vatRate: StoredVatRate;
   fiscalStatus: string;
   hasPendingFiscalRequest: boolean;
 };
@@ -119,6 +124,8 @@ type BasicOrderLineInput = {
   discount: number;
 };
 
+export type OrderVatRate = SaleVatRate;
+
 const DEFAULT_COMPANY_ID = 1;
 const COLLECTION_STATES = ["pendiente", "cancelado"] as const;
 
@@ -137,10 +144,10 @@ function mapOrder(row: {
   fiscal_condition: string;
   price_list_name: string;
   monto: string;
+  item_net: string;
+  item_count: string;
   monto_cobrado: string;
   saldo_pendiente: string;
-  monto_neto: string;
-  monto_iva: string;
   receipt_number: number | null;
   payment_condition: string;
   fecha: string | null;
@@ -154,6 +161,13 @@ function mapOrder(row: {
   fiscal_status: string;
   has_pending_fiscal_request: boolean;
 }): OrderSummary {
+  const vatRate = normalizeStoredVatRate(Number(row.vat_rate));
+  const storedAmounts = splitStoredOrderTotal(Number(row.monto), vatRate);
+  const hasStoredItems = Number(row.item_count) > 0;
+  const netAmount = hasStoredItems ? money(Number(row.item_net)) : storedAmounts.netAmount;
+  const vatAmount = hasStoredItems
+    ? money(Math.max(0, storedAmounts.totalAmount - netAmount))
+    : storedAmounts.vatAmount;
   return {
     id: row.id,
     commercialNumber: row.commercial_number === null ? null : Number(row.commercial_number),
@@ -164,11 +178,11 @@ function mapOrder(row: {
     customerDocument: row.client_document,
     customerFiscalCondition: row.fiscal_condition,
     priceList: row.price_list_name,
-    amount: Number(row.monto),
+    amount: storedAmounts.totalAmount,
     collectedAmount: Number(row.monto_cobrado),
     outstandingAmount: Number(row.saldo_pendiente),
-    netAmount: Number(row.monto_neto),
-    vatAmount: Number(row.monto_iva),
+    netAmount,
+    vatAmount,
     receiptNumber: Number(row.receipt_number ?? 0),
     paymentCondition: row.payment_condition,
     date: row.fecha,
@@ -178,7 +192,7 @@ function mapOrder(row: {
     desiredDocument: row.desired_document,
     stockDiscounted: row.stock_discounted,
     observation: row.notes,
-    vatRate: normalizeStoredVatRate(Number(row.vat_rate)),
+    vatRate,
     fiscalStatus: row.fiscal_status,
     hasPendingFiscalRequest: row.has_pending_fiscal_request,
   };
@@ -188,8 +202,39 @@ function normalizeOrderStatus(status: string) {
   return normalizeOrderStatusValue(status);
 }
 
-function normalizeStoredVatRate(value: number): QuoteVatRate {
-  return value === 10.5 || value === 21 ? value : 0;
+export function calculateOrderTotals(netAmount: number, vatRate: OrderVatRate) {
+  const totals = vatAmountsFromNet(netAmount, vatRate);
+  return {
+    netAmount: totals.net,
+    vatAmount: totals.vat,
+    totalAmount: totals.total,
+  };
+}
+
+export function hasConsistentOrderVatSnapshot(input: {
+  desiredDocument: unknown;
+  receiptType: unknown;
+  vatRate: unknown;
+}) {
+  const desiredDocument = saleOrderDocument(String(input.desiredDocument ?? ""));
+  const expectedVatRate = saleVatRateForDocument(desiredDocument);
+  return Boolean(
+    desiredDocument
+      && expectedVatRate
+      && normalizeStoredVatRate(input.vatRate) === expectedVatRate
+      && Number(input.receiptType) === receiptTypeCode(desiredDocument),
+  );
+}
+
+export function splitStoredOrderTotal(totalAmount: number, vatRate: StoredVatRate) {
+  const totals = vatRate === 0
+    ? vatAmountsFromNet(totalAmount, 0)
+    : vatAmountsFromGross(totalAmount, vatRate);
+  return {
+    netAmount: totals.net,
+    vatAmount: totals.vat,
+    totalAmount: totals.total,
+  };
 }
 
 async function insertIntegrationEvent(
@@ -244,14 +289,14 @@ export async function listOrders(input: ListInput = {}) {
       SELECT s.id::text AS id, s.client_id::text AS client_id, s.commercial_number,
              COALESCE(s.sale_number, '') AS sale_number,
              COALESCE(s.client_name, c.display_name, '') AS client_name,
-             COALESCE(s.client_document, c.tax_id, '') AS client_document,
+             COALESCE(NULLIF(s.client_document, ''), c.tax_id, '') AS client_document,
              COALESCE(c.fiscal_condition, '') AS fiscal_condition,
              COALESCE(s.price_list_name, c.price_list_name, '') AS price_list_name,
              COALESCE(s.total_amount, 0)::text AS monto,
+             COALESCE(item_totals.net_amount, 0)::text AS item_net,
+             COALESCE(item_totals.item_count, 0)::text AS item_count,
              COALESCE(collections.total_credit, 0)::text AS monto_cobrado,
              GREATEST(COALESCE(s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
-             COALESCE(s.total_amount, 0)::text AS monto_neto,
-             0::text AS monto_iva,
              COALESCE(s.vat_rate, 0)::text AS vat_rate,
              s.receipt_number,
              dd.delivery_number,
@@ -260,7 +305,7 @@ export async function listOrders(input: ListInput = {}) {
              COALESCE(s.seller_name, c.seller_name, '') AS seller,
              COALESCE(s.collection_status, 'pendiente') AS collection_status,
              ${normalizedOrderStatusSql("s")} AS order_status,
-             COALESCE(s.desired_document, 'remito') AS desired_document,
+             COALESCE(s.desired_document, '') AS desired_document,
              s.stock_discounted,
              COALESCE(s.notes, '') AS notes,
              COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
@@ -274,6 +319,12 @@ export async function listOrders(input: ListInput = {}) {
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
       LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(si.total_amount), 0) AS net_amount,
+               COUNT(*) AS item_count
+        FROM sale_items si
+        WHERE si.empresa_id = s.empresa_id AND si.sale_id = s.id
+      ) item_totals ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(cam.credit), 0) AS total_credit
         FROM current_account_movements cam
@@ -310,14 +361,14 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
       SELECT s.id::text AS id, s.client_id::text AS client_id, s.commercial_number,
              COALESCE(s.sale_number, '') AS sale_number,
              COALESCE(s.client_name, c.display_name, '') AS client_name,
-             COALESCE(s.client_document, c.tax_id, '') AS client_document,
+             COALESCE(NULLIF(s.client_document, ''), c.tax_id, '') AS client_document,
              COALESCE(c.fiscal_condition, '') AS fiscal_condition,
              COALESCE(s.price_list_name, c.price_list_name, '') AS price_list_name,
              COALESCE(s.total_amount, 0)::text AS monto,
+             COALESCE(item_totals.net_amount, 0)::text AS item_net,
+             COALESCE(item_totals.item_count, 0)::text AS item_count,
              COALESCE(collections.total_credit, 0)::text AS monto_cobrado,
              GREATEST(COALESCE(s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
-             COALESCE(s.total_amount, 0)::text AS monto_neto,
-             0::text AS monto_iva,
              COALESCE(s.vat_rate, 0)::text AS vat_rate,
              s.receipt_number,
              dd.delivery_number,
@@ -326,7 +377,7 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
              COALESCE(s.seller_name, c.seller_name, '') AS seller,
              COALESCE(s.collection_status, 'pendiente') AS collection_status,
              ${normalizedOrderStatusSql("s")} AS order_status,
-             COALESCE(s.desired_document, 'remito') AS desired_document,
+             COALESCE(s.desired_document, '') AS desired_document,
              s.stock_discounted,
              COALESCE(s.notes, '') AS notes,
              COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
@@ -340,6 +391,12 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
       LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(si.total_amount), 0) AS net_amount,
+               COUNT(*) AS item_count
+        FROM sale_items si
+        WHERE si.empresa_id = s.empresa_id AND si.sale_id = s.id
+      ) item_totals ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(cam.credit), 0) AS total_credit
         FROM current_account_movements cam
@@ -397,29 +454,6 @@ export function orderStatusFromBody(body: RequestBody): OrderStatus {
   const state = textField(body, "status") || textField(body, "estado");
   if (!isOrderStatus(state)) throw new ApiError(400, "Estado invalido");
   return state;
-}
-
-export function orderConfirmationDocumentFromBody(body: RequestBody) {
-  return (
-    textField(body, "confirmationDocument") ||
-    textField(body, "confirmation_document") ||
-    textField(body, "comprobante_confirmacion")
-  );
-}
-
-function normalizeOrderConfirmationDocument(
-  value: string,
-  fiscalCondition: string,
-  currentDesiredDocument: string,
-) {
-  const source = value.trim() ? value : currentDesiredDocument;
-  const normalized = normalizeDesiredDocument(source);
-  if (normalized === "remito" || normalized.startsWith("factura_")) return normalized;
-  if (value.trim()) throw new ApiError(400, "Al confirmar solo se permite factura o remito");
-
-  const invoiceDocument = invoiceDocumentForFiscalCondition(fiscalCondition, currentDesiredDocument);
-  if (invoiceDocument === "remito") return "remito";
-  return invoiceDocument;
 }
 
 export function observationFromBody(body: RequestBody) {
@@ -521,10 +555,14 @@ async function resolveBasicOrderDetail(
   const customer = await getOrderCustomer(client, companyId, input.customerId);
   const activePriceLists = await getActivePriceListNames(client, companyId);
   const priceListName = resolvePriceListName(input.priceListOverride || customer.price_list_name, activePriceLists);
-  const desiredDocument = normalizeOrderCreationDocument(
-    input.desiredDocumentOverride || customer.receipt_type || "",
-    customer.fiscal_condition ?? "",
-  );
+  const desiredDocument = saleOrderDocument(customer.receipt_type);
+  const vatRate = saleVatRateForDocument(customer.receipt_type);
+  if (!desiredDocument || !vatRate) {
+    throw new ApiError(
+      400,
+      "El cliente no tiene un comprobante valido. Configuralo como Remito, Factura A o Factura B antes de cargar el pedido.",
+    );
+  }
   const receiptType = receiptTypeCode(desiredDocument);
   const priceListKey = normalizePriceListKey(priceListName);
   const productIds = input.lines.map((line) => line.productId);
@@ -593,8 +631,7 @@ async function resolveBasicOrderDetail(
   });
 
   const netAmount = money(detail.reduce((total, line) => total + line.subtotal, 0));
-  const totalAmount = netAmount;
-  if (totalAmount <= 0) throw new ApiError(400, "El pedido no tiene importe calculable");
+  if (netAmount <= 0) throw new ApiError(400, "El pedido no tiene importe calculable");
 
   return {
     customer,
@@ -602,8 +639,8 @@ async function resolveBasicOrderDetail(
     priceListName,
     desiredDocument,
     receiptType,
+    vatRate,
     netAmount,
-    totalAmount,
   };
 }
 
@@ -817,7 +854,6 @@ export function basicOrderInputFromBody(body: RequestBody) {
     lines,
     date: textField(body, "date") || textField(body, "fecha") || localDateIso(),
     priceListOverride: textField(body, "priceListOverride") || textField(body, "lista_precios"),
-    desiredDocumentOverride: textField(body, "desiredDocumentOverride") || textField(body, "comprobante_deseado"),
     observation: textField(body, "observation") || textField(body, "observacion"),
   };
 }
@@ -833,9 +869,10 @@ export async function createBasicOrder(
       priceListName,
       desiredDocument,
       receiptType,
+      vatRate,
       netAmount,
-      totalAmount,
     } = await resolveBasicOrderDetail(client, session.companyId, input);
+    const amounts = calculateOrderTotals(netAmount, vatRate);
 
     await client.query("SELECT pg_advisory_xact_lock(83010, $1::int)", [session.companyId]);
     const sequence = await client.query<{ value: string }>(
@@ -851,11 +888,11 @@ export async function createBasicOrder(
         INSERT INTO sales (
           sale_number, commercial_number, client_id, seller_id, client_name, client_document, price_list_name,
           total_amount, receipt_number, receipt_type, payment_condition, sale_date, seller_name,
-          collection_status, order_status, desired_document, notes,
+          collection_status, order_status, desired_document, notes, vat_rate,
           stock_discounted, status, empresa_id
         )
         VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                'no_aplica', 'cargado', $14, $15, false, 'cargado', $16)
+                'no_aplica', 'cargado', $14, $15, $16, false, 'cargado', $17)
         RETURNING id::text AS id
       `,
       [
@@ -866,7 +903,7 @@ export async function createBasicOrder(
         customer.display_name || customer.legal_name || "",
         customer.tax_id ?? "",
         priceListName,
-        totalAmount,
+        amounts.totalAmount,
         receiptNumber,
         receiptType,
         fallbackPaymentCondition(customer.payment_term_days),
@@ -874,6 +911,7 @@ export async function createBasicOrder(
         customer.seller_name || session.username,
         desiredDocument,
         input.observation,
+        vatRate,
         session.companyId,
       ],
     );
@@ -891,8 +929,10 @@ export async function createBasicOrder(
           cliente: customer.display_name,
           lista_precios: priceListName,
           comprobante: desiredDocument,
-          subtotal: netAmount,
-          total: totalAmount,
+          subtotal: amounts.netAmount,
+          iva_tasa: vatRate,
+          iva: amounts.vatAmount,
+          total: amounts.totalAmount,
         }),
         session.companyId,
       ],
@@ -911,9 +951,16 @@ export async function updateBasicOrder(
   input: ReturnType<typeof basicOrderInputFromBody>,
 ) {
   const updatedId = await withCompanyContext(session.companyId, async (client) => {
-    const currentResult = await client.query<{ estado_pedido: string; vat_rate: string }>(
+    const currentResult = await client.query<{
+      estado_pedido: string;
+      desired_document: string;
+      receipt_type: number;
+      vat_rate: string;
+    }>(
       `
         SELECT ${normalizedOrderStatusSql("s")} AS estado_pedido,
+               COALESCE(s.desired_document, '') AS desired_document,
+               COALESCE(s.receipt_type, 0) AS receipt_type,
                COALESCE(s.vat_rate, 0)::text AS vat_rate
         FROM sales s
         WHERE s.id = $1::uuid AND s.empresa_id = $2
@@ -928,6 +975,16 @@ export async function updateBasicOrder(
     if (estadoActual !== "cargado" && estadoActual !== "confirmado") {
       throw new ApiError(400, "Solo se pueden modificar pedidos cargados o confirmados.");
     }
+    if (!hasConsistentOrderVatSnapshot({
+      desiredDocument: current.desired_document,
+      receiptType: current.receipt_type,
+      vatRate: current.vat_rate,
+    })) {
+      throw new ApiError(
+        409,
+        "El pedido historico no tiene un comprobante e IVA consistentes y no puede corregirse automaticamente.",
+      );
+    }
 
     const {
       customer,
@@ -935,13 +992,10 @@ export async function updateBasicOrder(
       priceListName,
       desiredDocument,
       receiptType,
+      vatRate,
       netAmount,
-      totalAmount,
     } = await resolveBasicOrderDetail(client, session.companyId, input);
-    const persistedTotalAmount = calculateQuoteTotals(
-      totalAmount,
-      normalizeStoredVatRate(Number(current.vat_rate)),
-    ).total;
+    const amounts = calculateOrderTotals(netAmount, vatRate);
 
     await client.query(
       `
@@ -960,22 +1014,24 @@ export async function updateBasicOrder(
             status = 'cargado',
             desired_document = $10,
             notes = $11,
+            vat_rate = $12,
             stock_discounted = false,
             updated_at = now()
-        WHERE id = $12::uuid AND empresa_id = $13
+        WHERE id = $13::uuid AND empresa_id = $14
       `,
       [
         customer.id,
         customer.display_name || customer.legal_name || "",
         customer.tax_id ?? "",
         priceListName,
-        persistedTotalAmount,
+        amounts.totalAmount,
         receiptType,
         fallbackPaymentCondition(customer.payment_term_days),
         input.date,
         customer.seller_name || session.username,
         desiredDocument,
         input.observation,
+        vatRate,
         id,
         session.companyId,
       ],
@@ -993,8 +1049,10 @@ export async function updateBasicOrder(
           cliente: customer.display_name,
           lista_precios: priceListName,
           comprobante: desiredDocument,
-          subtotal: netAmount,
-          total: persistedTotalAmount,
+          subtotal: amounts.netAmount,
+          iva_tasa: vatRate,
+          iva: amounts.vatAmount,
+          total: amounts.totalAmount,
         }),
         session.companyId,
       ],
@@ -1024,22 +1082,20 @@ export async function updateOrderStatus(
   session: AuthSession,
   id: string,
   nextStatus: OrderStatus,
-  options: { confirmationDocument?: string } = {},
 ) {
   const result = await withCompanyContext(session.companyId, async (client) => {
     const orderResult = await client.query<{
       estado_pedido: string;
       desired_document: string;
-      fiscal_condition: string;
-      total_amount: string;
+      receipt_type: number;
+      vat_rate: string;
     }>(
       `
         SELECT ${normalizedOrderStatusSql("s")} AS estado_pedido,
-               COALESCE(s.desired_document, 'remito') AS desired_document,
-               COALESCE(c.fiscal_condition, '') AS fiscal_condition,
-               COALESCE(s.total_amount, 0)::text AS total_amount
+               COALESCE(s.desired_document, '') AS desired_document,
+               COALESCE(s.receipt_type, 0) AS receipt_type,
+               COALESCE(s.vat_rate, 0)::text AS vat_rate
         FROM sales s
-        LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
         WHERE s.id = $1::uuid AND s.empresa_id = $2
         LIMIT 1
         FOR UPDATE OF s
@@ -1052,6 +1108,20 @@ export async function updateOrderStatus(
     const currentStatus = normalizeOrderStatus(order.estado_pedido);
     const transitionError = orderStatusTransitionError(currentStatus, nextStatus);
     if (transitionError) throw new ApiError(400, transitionError);
+
+    if (
+      (nextStatus === "confirmado" || nextStatus === "entregado")
+      && !hasConsistentOrderVatSnapshot({
+        desiredDocument: order.desired_document,
+        receiptType: order.receipt_type,
+        vatRate: order.vat_rate,
+      })
+    ) {
+      throw new ApiError(
+        409,
+        "El pedido no tiene un comprobante e IVA consistentes. Corregilo antes de confirmarlo o entregarlo.",
+      );
+    }
 
     if (nextStatus === "confirmado") {
       await assertSaleStockAvailableForConfirmation(client, session.companyId, id);
@@ -1069,43 +1139,16 @@ export async function updateOrderStatus(
 
     const nextCollectionStatus =
       nextStatus === "entregado" ? "pendiente" : nextStatus === "cancelado" ? "cancelado" : "no_aplica";
-    // La entrega directa convierte el pedido cargado en venta dentro de esta misma transaccion.
-    const confirmsAsSale = nextStatus === "entregado" && currentStatus === "cargado";
-    const confirmationDocument =
-      nextStatus === "confirmado" || confirmsAsSale
-        ? normalizeOrderConfirmationDocument(
-            options.confirmationDocument ?? "",
-            order.fiscal_condition,
-            order.desired_document,
-          )
-        : "";
-    let confirmationTotalAmount = 0;
-    let confirmationReceiptType = 0;
-    if (confirmationDocument) {
-      confirmationTotalAmount = money(Number(order.total_amount));
-      confirmationReceiptType = receiptTypeCode(confirmationDocument);
-    }
-
-    const updateParams: unknown[] = [nextStatus, id, session.companyId, nextCollectionStatus];
-    let confirmationUpdate = "";
-    if (confirmationDocument) {
-      updateParams.push(confirmationDocument, confirmationReceiptType, confirmationTotalAmount);
-      confirmationUpdate = `,
-            desired_document = $5,
-            receipt_type = $6,
-            total_amount = $7`;
-    }
-
     await client.query(
       `
         UPDATE sales
         SET order_status = $1,
             status = $1,
-            collection_status = $4${confirmationUpdate},
+            collection_status = $4,
             updated_at = now()
         WHERE id = $2::uuid AND empresa_id = $3
       `,
-      updateParams,
+      [nextStatus, id, session.companyId, nextCollectionStatus],
     );
 
     const delivery =
@@ -1125,7 +1168,7 @@ export async function updateOrderStatus(
           id,
           estado_anterior: currentStatus,
           estado_nuevo: nextStatus,
-          comprobante: confirmationDocument || order.desired_document,
+          comprobante: order.desired_document,
           remito_id: delivery?.id ?? null,
           nro_remito: delivery?.number ?? null,
           stock_pendiente_impresion: nextStatus === "confirmado",

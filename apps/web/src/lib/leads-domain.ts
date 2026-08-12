@@ -70,7 +70,7 @@ export function buildConversionNote(lead: Lead): string {
   return parts.join(" ");
 }
 
-export function leadToCustomerInput(lead: Lead): CustomerInput {
+export function leadToCustomerInput(lead: Lead, receiptType: string): CustomerInput {
   return {
     name: lead.name,
     businessName: "",
@@ -82,6 +82,7 @@ export function leadToCustomerInput(lead: Lead): CustomerInput {
     city: lead.locality,
     province: "",
     priceList: "",
+    receiptType,
     status: "activo",
     seller: lead.assignedSeller,
     assignedSeller: lead.assignedSeller,
