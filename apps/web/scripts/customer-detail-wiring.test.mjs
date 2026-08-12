@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const detailSource = readFileSync(new URL("../src/lib/customer-detail.ts", import.meta.url), "utf8");
+
+test("getCustomerPurchaseHistory consulta sales scopeado y usa summarizePurchases", () => {
+  assert.match(detailSource, /FROM sales/);
+  assert.match(detailSource, /client_id = \$2::uuid/);
+  assert.match(detailSource, /summarizePurchases\(/);
+});
