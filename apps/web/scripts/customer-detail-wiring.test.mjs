@@ -9,3 +9,10 @@ test("getCustomerPurchaseHistory consulta sales scopeado y usa summarizePurchase
   assert.match(detailSource, /client_id = \$2::uuid/);
   assert.match(detailSource, /summarizePurchases\(/);
 });
+
+const listSource = readFileSync(new URL("../src/app/customers/page.tsx", import.meta.url), "utf8");
+
+test("la lista de clientes linkea al detalle y no usa acciones inline", () => {
+  assert.match(listSource, /\/customers\/\$\{customer\.id\}/);
+  assert.doesNotMatch(listSource, /CustomerRowActions/);
+});

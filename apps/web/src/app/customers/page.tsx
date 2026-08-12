@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
 import {
@@ -20,14 +21,8 @@ import {
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
-import {
-  createCustomerAction,
-  deleteCustomerAction,
-  mergeCustomersAction,
-  updateCustomerAction,
-} from "@/app/customers/actions";
-import { CustomerRowActions } from "@/app/customers/customer-row-actions";
-import { listClientOptions, listCustomers } from "@/lib/catalog";
+import { createCustomerAction } from "@/app/customers/actions";
+import { listCustomers } from "@/lib/catalog";
 import { fastOr } from "@/lib/fast-data";
 import { formatNumber } from "@/lib/format";
 import { listPriceLists } from "@/lib/pricing";
@@ -73,8 +68,6 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
     sessionAllows(session, [{ resource: "clientes", action: "crear" }]),
   ]);
   const activePriceLists = priceLists.filter((list) => list.active);
-  const canDelete = await sessionAllows(session, [{ resource: "clientes", action: "eliminar" }]);
-  const allClients = canDelete ? await listClientOptions(session.companyId) : [];
 
   return (
     <ModulePage
@@ -202,13 +195,12 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                 <DataTableHead>Ubicacion</DataTableHead>
                 <DataTableHead>Lista</DataTableHead>
                 <DataTableHead>Estado</DataTableHead>
-                <DataTableHead>Acciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={7}>
+                  <DataTableCell colSpan={6}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -223,9 +215,12 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                 result.data.map((customer) => (
                   <DataTableRow key={customer.id}>
                     <DataTableCell>
-                      <div className="max-w-[260px] break-words font-medium">
+                      <Link
+                        className="max-w-[260px] break-words font-medium text-[color:var(--accent)] hover:underline"
+                        href={`/customers/${customer.id}`}
+                      >
                         {customer.name || "Sin nombre"}
-                      </div>
+                      </Link>
                       <div className="mt-1 max-w-[260px] break-words text-xs text-[color:var(--muted)]">
                         {customer.businessName || customer.code || `ID ${customer.id}`}
                       </div>
@@ -246,33 +241,6 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                       <StatusBadge tone={customerStatusTone(customer.status)}>
                         {customer.status || "Sin estado"}
                       </StatusBadge>
-                    </DataTableCell>
-                    <DataTableCell>
-                      <CustomerRowActions
-                        allClients={allClients}
-                        canDelete={canDelete}
-                        customer={{
-                          id: customer.id,
-                          name: customer.name,
-                          businessName: customer.businessName,
-                          taxIdType: customer.taxIdType,
-                          taxId: customer.taxId,
-                          vatCondition: customer.vatCondition,
-                          phone: customer.phone,
-                          address: customer.address,
-                          city: customer.city,
-                          province: customer.province,
-                          priceList: customer.priceList,
-                          status: customer.status,
-                          seller: customer.seller,
-                          observation: customer.observation,
-                          salesCount: customer.salesCount,
-                        }}
-                        deleteAction={deleteCustomerAction}
-                        mergeAction={mergeCustomersAction}
-                        priceLists={activePriceLists.map((list) => list.name)}
-                        updateAction={updateCustomerAction}
-                      />
                     </DataTableCell>
                   </DataTableRow>
                 ))
