@@ -29,3 +29,12 @@ test("QuoteEntryFields soporta modo edicion (initialValues, quoteId, boton Guard
   assert.match(src, /name="quoteId"/);
   assert.match(src, /Guardar cambios/);
 });
+
+test("existe la pagina de edicion y usa updateQuoteAction en modo edit", () => {
+  const src = read("../src/app/quotes/[id]/edit/page.tsx");
+  assert.match(src, /updateQuoteAction/);
+  assert.match(src, /mode="edit"/);
+  assert.match(src, /initialValues=/);
+  assert.match(src, /notFound|redirect\("\/quotes/); // no editable => fuera
+  assert.match(src, /presupuestos.*editar|QUOTES_EDIT/s);
+});
