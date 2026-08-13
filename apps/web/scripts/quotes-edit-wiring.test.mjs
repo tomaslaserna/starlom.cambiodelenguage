@@ -21,3 +21,11 @@ test("el rol jefe puede cancelar presupuestos", () => {
   const jefeBlock = src.slice(src.indexOf("jefe: ["), src.indexOf("deposito:"));
   assert.match(jefeBlock, /"presupuestos\.cancelar"/);
 });
+
+test("QuoteEntryFields soporta modo edicion (initialValues, quoteId, boton Guardar)", () => {
+  const src = read("../src/app/quotes/quote-entry-fields.tsx");
+  assert.match(src, /initialValues\?/);
+  assert.match(src, /mode\?:/);
+  assert.match(src, /name="quoteId"/);
+  assert.match(src, /Guardar cambios/);
+});

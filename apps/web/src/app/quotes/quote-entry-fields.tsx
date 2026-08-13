@@ -36,6 +36,14 @@ type QuoteEntryFieldsProps = {
   clients: OrderFormClient[];
   priceLists: OrderFormPriceList[];
   products: OrderFormProduct[];
+  initialValues?: {
+    customerId: string;
+    validityDays: string;
+    priceListOverride: string;
+    lines: { productId: string; quantity: string; discount: string }[];
+  };
+  mode?: "create" | "edit";
+  quoteId?: string;
 };
 
 const emptyLine = (): QuoteLineDraft => ({ productId: "", quantity: "1", discount: "0" });
@@ -56,12 +64,22 @@ function whatsappPhone(phone: string) {
   return `54${digits.replace(/^0+/, "")}`;
 }
 
-export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFieldsProps) {
-  const [customerId, setCustomerId] = useState("");
-  const [validityDays, setValidityDays] = useState("15");
-  const [priceListOverride, setPriceListOverride] = useState("");
+export function QuoteEntryFields({
+  clients,
+  priceLists,
+  products,
+  initialValues,
+  mode = "create",
+  quoteId,
+}: QuoteEntryFieldsProps) {
+  const isEdit = mode === "edit";
+  const [customerId, setCustomerId] = useState(initialValues?.customerId ?? "");
+  const [validityDays, setValidityDays] = useState(initialValues?.validityDays ?? "15");
+  const [priceListOverride, setPriceListOverride] = useState(initialValues?.priceListOverride ?? "");
   const [draftLine, setDraftLine] = useState<QuoteLineDraft>(emptyLine());
-  const [lines, setLines] = useState<QuoteLineState[]>([]);
+  const [lines, setLines] = useState<QuoteLineState[]>(
+    () => (initialValues?.lines ?? []).map((line, index) => ({ id: `quote-line-init-${index}`, ...line })),
+  );
   const [isQuickQuoteMessageEditing, setIsQuickQuoteMessageEditing] = useState(false);
   const [quickQuoteMessageOverride, setQuickQuoteMessageOverride] = useState<{
     source: string;
@@ -191,6 +209,7 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
 
   return (
     <div className="grid gap-4">
+      {isEdit && quoteId ? <input name="quoteId" type="hidden" value={quoteId} /> : null}
       <input name="productsJson" type="hidden" value={JSON.stringify(payload)} />
       <input name="priceListOverride" type="hidden" value={activePriceList} />
       <input name="validityDays" type="hidden" value={validityDays} />
@@ -488,28 +507,37 @@ export function QuoteEntryFields({ clients, priceLists, products }: QuoteEntryFi
       ) : null}
 
       <div className="flex flex-col justify-end gap-2 sm:flex-row sm:flex-wrap">
-        <Button
-          aria-controls="quick-quote-whatsapp-editor"
-          aria-expanded={isQuickQuoteMessageEditing}
-          disabled={!canComposeQuickQuote}
-          type="button"
-          variant="secondary"
-          onClick={() => setIsQuickQuoteMessageEditing((current) => !current)}
-        >
-          {isQuickQuoteMessageEditing ? "Ocultar mensaje" : "Editar mensaje"}
-        </Button>
-        {canSendQuickQuote ? (
-          <ButtonLink href={quickQuoteHref} prefetch={false} rel="noreferrer" target="_blank" variant="outline">
-            WhatsApp rapido
-          </ButtonLink>
+        {isEdit ? (
+          <>
+            <ButtonLink href="/quotes" variant="secondary">Cancelar</ButtonLink>
+            <Button disabled={!customerReady || calculatedLines.length === 0} type="submit">
+              Guardar cambios
+            </Button>
+          </>
         ) : (
-          <Button disabled type="button" variant="outline">
-            WhatsApp rapido
-          </Button>
+          <>
+            <Button
+              aria-controls="quick-quote-whatsapp-editor"
+              aria-expanded={isQuickQuoteMessageEditing}
+              disabled={!canComposeQuickQuote}
+              type="button"
+              variant="secondary"
+              onClick={() => setIsQuickQuoteMessageEditing((current) => !current)}
+            >
+              {isQuickQuoteMessageEditing ? "Ocultar mensaje" : "Editar mensaje"}
+            </Button>
+            {canSendQuickQuote ? (
+              <ButtonLink href={quickQuoteHref} prefetch={false} rel="noreferrer" target="_blank" variant="outline">
+                WhatsApp rapido
+              </ButtonLink>
+            ) : (
+              <Button disabled type="button" variant="outline">WhatsApp rapido</Button>
+            )}
+            <Button disabled={!customerReady || calculatedLines.length === 0} type="submit">
+              Crear presupuesto formal
+            </Button>
+          </>
         )}
-        <Button disabled={!customerReady || calculatedLines.length === 0} type="submit">
-          Crear presupuesto formal
-        </Button>
       </div>
     </div>
   );
