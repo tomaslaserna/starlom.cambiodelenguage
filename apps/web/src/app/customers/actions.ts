@@ -69,6 +69,9 @@ export async function deleteCustomerAction(formData: FormData) {
   const id = uuidParam(String(formData.get("id") ?? ""), "Cliente");
   await deleteCustomer(session.companyId, id);
   revalidatePath("/customers");
+  // La acción se dispara desde la ficha del cliente eliminado: esa ruta ya no
+  // existe, así que volvemos a la lista para no caer en un 404.
+  redirect("/customers?deleted=1");
 }
 
 export async function mergeCustomersAction(formData: FormData) {
@@ -77,4 +80,7 @@ export async function mergeCustomersAction(formData: FormData) {
   const duplicateId = uuidParam(String(formData.get("duplicateId") ?? ""), "Cliente duplicado");
   await mergeCustomers(session.companyId, keepId, duplicateId);
   revalidatePath("/customers");
+  // El duplicado (la ficha desde donde se fusiona) queda eliminado: redirigimos
+  // al cliente que se conserva en vez de recargar una ruta inexistente (404).
+  redirect(`/customers/${keepId}`);
 }
