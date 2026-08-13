@@ -1040,11 +1040,24 @@ export async function acceptQuote(
 }
 
 export async function deleteQuote(companyId: number, id: string) {
-  const result = await queryWithCompanyContext<{ id: string }>(
-    companyId,
-    "DELETE FROM quotes WHERE id = $1::uuid AND empresa_id = $2 RETURNING id::text",
-    [id, companyId],
-  );
-  if (!result.rows[0]) throw new ApiError(404, "Presupuesto no encontrado");
+  await withCompanyContext(companyId, async (client) => {
+    const existing = await client.query<{ id: string; status: string; converted_order_id: string | null }>(
+      `
+        SELECT id::text, status, converted_order_id::text
+        FROM quotes
+        WHERE id = $1::uuid AND empresa_id = $2
+        FOR UPDATE
+      `,
+      [id, companyId],
+    );
+    const quote = existing.rows[0];
+    if (!quote) throw new ApiError(404, "Presupuesto no encontrado");
+    if (quote.converted_order_id || (quote.status !== "pendiente" && quote.status !== "rechazada")) {
+      throw new ApiError(409, "No se puede eliminar un presupuesto aceptado");
+    }
+    await client.query(`DELETE FROM quote_items WHERE quote_id = $1::uuid AND empresa_id = $2`, [id, companyId]);
+    await client.query(`DELETE FROM quotes WHERE id = $1::uuid AND empresa_id = $2`, [id, companyId]);
+  });
+  clearReadQueryCache();
   return { id };
 }
