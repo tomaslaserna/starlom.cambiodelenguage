@@ -35,13 +35,16 @@ const requestBody = loadTypeScriptModule("../src/lib/request-body.ts", {
 });
 const orderPricing = loadTypeScriptModule("../src/lib/order-pricing.ts");
 
-const dbState = { withCompanyContext: null };
+const quotesDb = {
+  withCompanyContext: async (cb) => cb(),
+  queryWithCompanyContext: async () => ({ rows: [], rowCount: 0 }),
+};
 const aliases = {
   "@/lib/api-response": { ApiError },
   "@/lib/client-reactivation": { reactivateClientIfInactive: async () => {} },
   "@/lib/db": {
-    withCompanyContext: async (_companyId, cb) => dbState.withCompanyContext(cb),
-    queryWithCompanyContext: async () => ({ rows: [], rowCount: 0 }),
+    withCompanyContext: async (_companyId, cb) => quotesDb.withCompanyContext(cb),
+    queryWithCompanyContext: async (_companyId, sql, params) => quotesDb.queryWithCompanyContext(sql, params),
     clearReadQueryCache: () => {},
   },
   "@/lib/order-pricing": orderPricing,
@@ -112,4 +115,57 @@ test("buildQuoteDraft rechaza sin cliente", async () => {
     () => quotes.buildQuoteDraft(client, session, { ...baseInput, customerId: "" }),
     (e) => e.status === 400,
   );
+});
+
+// Cliente para updateQuote: agrega SELECT ... FOR UPDATE, UPDATE, DELETE items, INSERT items, y getQuote final.
+function updateClient(status) {
+  const base = draftClient();
+  const inner = base.query;
+  base.query = async (sql, params) => {
+    base.writes.push({ sql, params });
+    if (/FROM quotes q[\s\S]*FOR UPDATE/i.test(sql)) {
+      return { rows: [{ id: "q1", status }], rowCount: 1 };
+    }
+    if (/^\s*UPDATE quotes/i.test(sql)) return { rows: [], rowCount: 1 };
+    if (/DELETE FROM quote_items/i.test(sql)) return { rows: [], rowCount: 1 };
+    if (/INSERT INTO quote_items/i.test(sql)) return { rows: [], rowCount: 1 };
+    // getQuote() final (mapQuote): devolver una fila mínima válida.
+    if (/FROM quotes q[\s\S]*LEFT JOIN clients/i.test(sql)) {
+      return { rows: [{ id: "q1", quote_number: "P-0001", fecha_emision: "2026-08-13",
+        fecha_vencimiento: "2026-08-28", cliente_nombre: "ACME", cliente_razon_social: "ACME SA",
+        cliente_domicilio: "Calle 1", cliente_telefono: "11", cliente_cond_iva: "RI",
+        cliente_cuit: "30111111118", total: "2420", active_price_list: 2, price_list_name: "L2 - ANCLA",
+        discount_percent: "0", net_amount: "2000", discount_amount: "0", subtotal_amount: "2000",
+        include_vat: true, vat_rate: "21", desired_document: "factura_a", vat_amount: "420",
+        validity_days: 15, productos_json: [], estado: "pendiente", creado_por: "user",
+        created_at: "2026-08-13", dias_restantes: 15 }], rowCount: 1 };
+    }
+    return inner(sql, params);
+  };
+  return base;
+}
+
+test("updateQuote recalcula y reemplaza items de un pendiente", async () => {
+  const client = updateClient("pendiente");
+  const session = { companyId: 1, userId: "u1", username: "user" };
+  quotesDb.withCompanyContext = async (cb) => cb(client);
+  // getQuote() final se hace via queryWithCompanyContext (fuera de la transacción), no via el client:
+  // enrutarlo al mismo mock para que devuelva la fila mínima válida definida en updateClient().
+  quotesDb.queryWithCompanyContext = async (sql, params) => client.query(sql, params);
+  const result = await quotes.updateQuote(session, "q1", baseInput);
+  assert.equal(result.total, 2420);
+  assert.ok(client.writes.some((w) => /^\s*UPDATE quotes/i.test(w.sql)));
+  assert.ok(client.writes.some((w) => /DELETE FROM quote_items/i.test(w.sql)));
+  assert.ok(client.writes.some((w) => /INSERT INTO quote_items/i.test(w.sql)));
+  // No cambia el número ni el estado en el UPDATE:
+  const upd = client.writes.find((w) => /^\s*UPDATE quotes/i.test(w.sql));
+  assert.doesNotMatch(upd.sql, /quote_number\s*=/i);
+  assert.doesNotMatch(upd.sql, /status\s*=/i);
+});
+
+test("updateQuote rechaza (409) un presupuesto no pendiente", async () => {
+  const client = updateClient("aceptada");
+  const session = { companyId: 1, userId: "u1", username: "user" };
+  quotesDb.withCompanyContext = async (cb) => cb(client);
+  await assert.rejects(() => quotes.updateQuote(session, "q1", baseInput), (e) => e.status === 409);
 });

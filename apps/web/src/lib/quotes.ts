@@ -256,6 +256,7 @@ function mapQuote(row: {
   vat_rate: string;
   desired_document: string;
   vat_amount: string;
+  validity_days: number;
   productos_json?: unknown;
   estado: string;
   creado_por: string | null;
@@ -291,6 +292,7 @@ function mapQuote(row: {
     vatRate: normalizeQuoteVatRate(Number(row.vat_rate)),
     desiredDocument: saleOrderDocument(row.desired_document),
     vatAmount: Number(row.vat_amount),
+    validityDays: Number(row.validity_days),
     total: Number(row.total),
     products,
     status: row.estado,
@@ -317,6 +319,7 @@ export async function listQuotes(companyId: number, status = "pendiente") {
              COALESCE(NULLIF(q.client_document, ''), c.tax_id, '') AS cliente_cuit,
              q.total_amount::text AS total,
              q.active_price_list,
+             q.validity_days,
              COALESCE(q.price_list_name, '') AS price_list_name,
              q.discount_percent::text,
              q.net_amount::text,
@@ -375,6 +378,7 @@ export async function getQuote(companyId: number, id: string) {
              COALESCE(NULLIF(q.client_document, ''), c.tax_id, '') AS cliente_cuit,
              q.total_amount::text AS total,
              q.active_price_list,
+             q.validity_days,
              COALESCE(q.price_list_name, '') AS price_list_name,
              q.discount_percent::text,
              q.net_amount::text,
@@ -696,6 +700,95 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
       );
     }
     return newQuoteId;
+  });
+
+  clearReadQueryCache();
+  return getQuote(session.companyId, quoteId);
+}
+
+export async function updateQuote(session: AuthSession, id: string, input: QuoteInput) {
+  const quoteId = await withCompanyContext(session.companyId, async (client) => {
+    const existing = await client.query<{ id: string; status: string }>(
+      `
+        SELECT q.id::text, q.status
+        FROM quotes q
+        WHERE q.id = $1::uuid AND q.empresa_id = $2
+        FOR UPDATE OF q
+      `,
+      [id, session.companyId],
+    );
+    const quote = existing.rows[0];
+    if (!quote) throw new ApiError(404, "Presupuesto no encontrado");
+    if (quote.status !== "pendiente") {
+      throw new ApiError(409, "Solo se pueden editar presupuestos pendientes");
+    }
+
+    const draft = await buildQuoteDraft(client, session, input);
+
+    await client.query(
+      `
+        UPDATE quotes
+        SET client_id = $1::uuid,
+            total_amount = $2,
+            validity_days = $3,
+            include_vat = $4,
+            vat_rate = $5,
+            desired_document = $6,
+            active_price_list = $7,
+            price_list_name = $8,
+            discount_percent = $9,
+            net_amount = $10,
+            discount_amount = $11,
+            subtotal_amount = $12,
+            vat_amount = $13,
+            client_name = $14,
+            client_legal_name = $15,
+            client_document = $16,
+            client_fiscal_condition = $17,
+            client_phone = $18,
+            client_address = $19,
+            updated_at = NOW()
+        WHERE id = $20::uuid AND empresa_id = $21
+      `,
+      [
+        draft.customer.id,
+        draft.total,
+        input.validityDays,
+        true,
+        draft.vatRate,
+        draft.desiredDocument,
+        priceListNumber(draft.priceListKey),
+        draft.priceListName,
+        input.discountPercent,
+        draft.netAmount,
+        draft.discountAmount,
+        draft.subtotal,
+        draft.vatAmount,
+        draft.customer.display_name,
+        draft.customer.legal_name ?? "",
+        draft.customer.tax_id ?? "",
+        draft.customer.fiscal_condition ?? "",
+        draft.customer.phone ?? "",
+        draft.customer.address ?? "",
+        id,
+        session.companyId,
+      ],
+    );
+
+    await client.query(`DELETE FROM quote_items WHERE quote_id = $1::uuid AND empresa_id = $2`, [id, session.companyId]);
+
+    for (const product of draft.detail) {
+      await client.query(
+        `
+          INSERT INTO quote_items (
+            quote_id, product_id, description, quantity, unit_price, discount, total_amount, empresa_id
+          )
+          VALUES ($1::uuid, NULLIF($2, '')::uuid, $3, $4, $5, $6, $7, $8)
+        `,
+        [id, product.productId, product.description, product.quantity, product.unitPrice, product.discount, product.subtotal, session.companyId],
+      );
+    }
+    return id;
   });
 
   clearReadQueryCache();
