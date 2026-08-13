@@ -236,6 +236,7 @@ export function quoteInputFromBody(body: RequestBody): QuoteInput {
 
 function mapQuote(row: {
   id: string;
+  client_id: string | null;
   quote_number: string | null;
   fecha_emision: string | null;
   fecha_vencimiento: string | null;
@@ -271,6 +272,7 @@ function mapQuote(row: {
 
   return {
     id: row.id,
+    clientId: row.client_id ?? "",
     quoteNumber: row.quote_number || "Sin numero",
     issueDate: row.fecha_emision,
     expirationDate: row.fecha_vencimiento,
@@ -308,6 +310,7 @@ export async function listQuotes(companyId: number, status = "pendiente") {
     companyId,
     `
       SELECT q.id::text,
+             q.client_id::text AS client_id,
              COALESCE(NULLIF(q.quote_number, ''), 'Sin numero') AS quote_number,
              q.created_at::date::text AS fecha_emision,
              (q.created_at::date + (q.validity_days || ' days')::interval)::date::text AS fecha_vencimiento,
@@ -367,6 +370,7 @@ export async function getQuote(companyId: number, id: string) {
     companyId,
     `
       SELECT q.id::text,
+             q.client_id::text AS client_id,
              COALESCE(NULLIF(q.quote_number, ''), 'Sin numero') AS quote_number,
              q.created_at::date::text AS fecha_emision,
              (q.created_at::date + (q.validity_days || ' days')::interval)::date::text AS fecha_vencimiento,

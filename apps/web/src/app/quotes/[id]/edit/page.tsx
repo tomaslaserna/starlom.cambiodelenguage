@@ -26,8 +26,7 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
 
   const quoteFormData = await getOrderFormData(session.companyId);
 
-  const customerId =
-    quoteFormData.clients.find((client) => client.name === quote.customer.name || client.taxId === quote.customer.taxId)?.id ?? "";
+  const customerId = quote.clientId ?? "";
 
   const initialValues = {
     customerId,
