@@ -491,81 +491,135 @@ async function resolveQuoteProductsFromCatalog(
   });
 }
 
-export async function createQuote(session: AuthSession, input: QuoteInput) {
+export type QuoteDraft = {
+  customer: {
+    id: string;
+    display_name: string;
+    legal_name: string | null;
+    tax_id: string | null;
+    fiscal_condition: string | null;
+    phone: string | null;
+    address: string | null;
+  };
+  desiredDocument: SaleOrderDocument;
+  vatRate: SaleVatRate;
+  priceListKey: PriceListKey;
+  priceListName: string;
+  detail: {
+    productId: string;
+    description: string;
+    quantity: number;
+    discount: number;
+    unitPrice: number;
+    subtotal: number;
+  }[];
+  netAmount: number;
+  discountAmount: number;
+  subtotal: number;
+  vatAmount: number;
+  total: number;
+};
+
+export async function buildQuoteDraft(
+  client: PoolClient,
+  session: AuthSession,
+  input: QuoteInput,
+): Promise<QuoteDraft> {
   if (!input.customerId) {
     throw new ApiError(
       400,
       "Selecciona un cliente registrado con comprobante configurado para crear el presupuesto.",
     );
   }
+  type QuoteClientRow = {
+    id: string | null;
+    display_name: string;
+    legal_name: string | null;
+    tax_id: string | null;
+    fiscal_condition: string | null;
+    phone: string | null;
+    address: string | null;
+    price_list_name: string | null;
+    seller_name: string | null;
+    receipt_type: string | null;
+  };
+  const customerResult = await client.query<QuoteClientRow>(
+    `
+      SELECT id::text, display_name, legal_name, tax_id, fiscal_condition,
+             phone, address, price_list_name, seller_name, receipt_type
+      FROM clients
+      WHERE id = $1::uuid AND empresa_id = $2
+      LIMIT 1
+    `,
+    [input.customerId, session.companyId],
+  );
+  const customer = customerResult.rows[0];
+  if (!customer) throw new ApiError(404, "Cliente no encontrado");
+  await reactivateClientIfInactive(client, session.companyId, input.customerId);
+  const desiredDocument = saleOrderDocument(customer.receipt_type);
+  const vatRate = saleVatRateForDocument(customer.receipt_type);
+  if (!desiredDocument || !vatRate) {
+    throw new ApiError(
+      400,
+      "El cliente no tiene un comprobante valido. Configuralo como Remito, Factura A o Factura B antes de crear el presupuesto.",
+    );
+  }
+  const activePriceLists = await getActivePriceListNames(client, session.companyId);
+  const priceListName = resolvePriceListName(
+    input.priceListOverride || customer.price_list_name || priceListNameFromNumber(input.activePriceList),
+    activePriceLists,
+  );
+  const priceListKey = normalizePriceListKey(priceListName);
+  const allProductsHaveIds = input.products.every((product) => Boolean(product.id));
+  const detail = allProductsHaveIds
+    ? await resolveQuoteProductsFromCatalog(client, session.companyId, input.products, priceListKey, priceListName)
+    : input.products.map((product) => {
+        const unitPrice = money(Number(product.unitPrice ?? 0));
+        if (unitPrice <= 0) {
+          throw new ApiError(400, `El producto ${product.name || product.id || ""} no tiene precio`);
+        }
+        return {
+          productId: product.id,
+          description: product.name || `Producto ${product.id || ""}`.trim(),
+          quantity: product.quantity,
+          discount: product.discount,
+          unitPrice,
+          subtotal: lineSubtotal(unitPrice, product.quantity, product.discount),
+        };
+      });
+  const netAmount = money(detail.reduce((sum, product) => sum + product.subtotal, 0));
+  const discountAmount = money((netAmount * input.discountPercent) / 100);
+  const subtotal = money(netAmount - discountAmount);
+  const calculatedTotals = vatAmountsFromNet(subtotal, vatRate);
+  const vatAmount = calculatedTotals.vat;
+  const total = calculatedTotals.total;
+  if (total <= 0) throw new ApiError(400, "El presupuesto no tiene importe calculable");
+  return {
+    customer: {
+      id: customer.id ?? input.customerId,
+      display_name: customer.display_name,
+      legal_name: customer.legal_name,
+      tax_id: customer.tax_id,
+      fiscal_condition: customer.fiscal_condition,
+      phone: customer.phone,
+      address: customer.address,
+    },
+    desiredDocument,
+    vatRate,
+    priceListKey,
+    priceListName,
+    detail,
+    netAmount,
+    discountAmount,
+    subtotal,
+    vatAmount,
+    total,
+  };
+}
 
+export async function createQuote(session: AuthSession, input: QuoteInput) {
   const quoteId = await withCompanyContext(session.companyId, async (client) => {
-    type QuoteClientRow = {
-      id: string | null;
-      display_name: string;
-      legal_name: string | null;
-      tax_id: string | null;
-      fiscal_condition: string | null;
-      phone: string | null;
-      address: string | null;
-      price_list_name: string | null;
-      seller_name: string | null;
-      receipt_type: string | null;
-    };
-
-    const customerResult = await client.query<QuoteClientRow>(
-      `
-        SELECT id::text, display_name, legal_name, tax_id, fiscal_condition,
-               phone, address, price_list_name, seller_name, receipt_type
-        FROM clients
-        WHERE id = $1::uuid AND empresa_id = $2
-        LIMIT 1
-      `,
-      [input.customerId, session.companyId],
-    );
-    const customer = customerResult.rows[0];
-    if (!customer) throw new ApiError(404, "Cliente no encontrado");
-    await reactivateClientIfInactive(client, session.companyId, input.customerId);
-    const desiredDocument = saleOrderDocument(customer.receipt_type);
-    const vatRate = saleVatRateForDocument(customer.receipt_type);
-    if (!desiredDocument || !vatRate) {
-      throw new ApiError(
-        400,
-        "El cliente no tiene un comprobante valido. Configuralo como Remito, Factura A o Factura B antes de crear el presupuesto.",
-      );
-    }
-
-    const activePriceLists = await getActivePriceListNames(client, session.companyId);
-    const priceListName = resolvePriceListName(
-      input.priceListOverride || customer.price_list_name || priceListNameFromNumber(input.activePriceList),
-      activePriceLists,
-    );
-    const priceListKey = normalizePriceListKey(priceListName);
-    const allProductsHaveIds = input.products.every((product) => Boolean(product.id));
-    const detail = allProductsHaveIds
-      ? await resolveQuoteProductsFromCatalog(client, session.companyId, input.products, priceListKey, priceListName)
-      : input.products.map((product) => {
-          const unitPrice = money(Number(product.unitPrice ?? 0));
-          if (unitPrice <= 0) {
-            throw new ApiError(400, `El producto ${product.name || product.id || ""} no tiene precio`);
-          }
-          return {
-            productId: product.id,
-            description: product.name || `Producto ${product.id || ""}`.trim(),
-            quantity: product.quantity,
-            discount: product.discount,
-            unitPrice,
-            subtotal: lineSubtotal(unitPrice, product.quantity, product.discount),
-          };
-        });
-
-    const netAmount = money(detail.reduce((sum, product) => sum + product.subtotal, 0));
-    const discountAmount = money((netAmount * input.discountPercent) / 100);
-    const subtotal = money(netAmount - discountAmount);
-    const calculatedTotals = vatAmountsFromNet(subtotal, vatRate);
-    const vatAmount = calculatedTotals.vat;
-    const total = calculatedTotals.total;
-    if (total <= 0) throw new ApiError(400, "El presupuesto no tiene importe calculable");
+    const draft = await buildQuoteDraft(client, session, input);
 
     await client.query("SELECT pg_advisory_xact_lock(83011, $1::int)", [session.companyId]);
     const sequence = await client.query<{ value: string }>(
@@ -589,60 +643,39 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
           client_phone, client_address, empresa_id
         )
         VALUES (
-          $1,
-          $2::uuid,
-          $3::uuid,
-          'pendiente',
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
-          $9,
-          $10,
-          $11,
-          $12,
-          $13,
-          $14,
-          $15,
-          $16,
-          $17,
-          $18,
-          $19,
-          $20,
-          $21,
-          $22
+          $1, $2::uuid, $3::uuid, 'pendiente', $4, $5, $6, $7, $8, $9, $10, $11,
+          $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
         )
         RETURNING id::text
       `,
       [
         quoteNumber,
-        customer.id,
+        draft.customer.id,
         session.userId,
-        total,
+        draft.total,
         input.validityDays,
         true,
-        vatRate,
-        desiredDocument,
-        priceListNumber(priceListKey),
-        priceListName,
+        draft.vatRate,
+        draft.desiredDocument,
+        priceListNumber(draft.priceListKey),
+        draft.priceListName,
         input.discountPercent,
-        netAmount,
-        discountAmount,
-        subtotal,
-        vatAmount,
-        customer.display_name,
-        customer.legal_name ?? "",
-        customer.tax_id ?? "",
-        customer.fiscal_condition ?? "",
-        customer.phone ?? "",
-        customer.address ?? "",
+        draft.netAmount,
+        draft.discountAmount,
+        draft.subtotal,
+        draft.vatAmount,
+        draft.customer.display_name,
+        draft.customer.legal_name ?? "",
+        draft.customer.tax_id ?? "",
+        draft.customer.fiscal_condition ?? "",
+        draft.customer.phone ?? "",
+        draft.customer.address ?? "",
         session.companyId,
       ],
     );
     const newQuoteId = quoteResult.rows[0].id;
 
-    for (const product of detail) {
+    for (const product of draft.detail) {
       await client.query(
         `
           INSERT INTO quote_items (
@@ -662,7 +695,6 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
         ],
       );
     }
-
     return newQuoteId;
   });
 
