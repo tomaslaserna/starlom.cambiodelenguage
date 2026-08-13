@@ -38,3 +38,16 @@ test("existe la pagina de edicion y usa updateQuoteAction en modo edit", () => {
   assert.match(src, /notFound|redirect\("\/quotes/); // no editable => fuera
   assert.match(src, /presupuestos.*editar|QUOTES_EDIT/s);
 });
+
+test("la lista de presupuestos ofrece Editar y Eliminar con guardas de estado y permiso", () => {
+  const page = read("../src/app/quotes/page.tsx");
+  assert.match(page, /\/quotes\/\$\{[^}]*\}\/edit|\/quotes\/\$\{quote\.id\}\/edit/);
+  assert.match(page, /canEditQuotes/);
+  assert.match(page, /canDeleteQuotes/);
+  assert.match(page, /QuoteDeleteButton/);
+  assert.match(page, /updated|deleted/); // banner de exito
+  const del = read("../src/app/quotes/quote-delete-button.tsx");
+  assert.match(del, /"use client"/);
+  assert.match(del, /deleteQuoteAction|action/);
+  assert.match(del, /name="id"/);
+});

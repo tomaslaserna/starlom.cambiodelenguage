@@ -31,7 +31,8 @@ import {
   QUOTES_READ_PERMISSION,
   sessionAllows,
 } from "@/lib/route-auth";
-import { acceptQuoteAction, createQuoteAction } from "@/app/quotes/actions";
+import { acceptQuoteAction, createQuoteAction, deleteQuoteAction } from "@/app/quotes/actions";
+import { QuoteDeleteButton } from "@/app/quotes/quote-delete-button";
 import { QuoteEntryFields } from "@/app/quotes/quote-entry-fields";
 import { QuoteEntryForm } from "@/app/quotes/quote-entry-form";
 
@@ -40,6 +41,8 @@ type QuotesPageProps = {
     q?: string;
     status?: string;
     error?: string;
+    updated?: string;
+    deleted?: string;
   }>;
 };
 
@@ -103,9 +106,11 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const params = await searchParams;
   const status = params.status?.trim() || "pendiente";
   const query = params.q?.trim().toLowerCase() ?? "";
-  const [canCreateQuotes, canApproveQuotes, rawQuotes, quoteFormData] = await Promise.all([
+  const [canCreateQuotes, canApproveQuotes, canEditQuotes, canDeleteQuotes, rawQuotes, quoteFormData] = await Promise.all([
     sessionAllows(session, [QUOTES_CREATE_PERMISSION]),
     sessionAllows(session, [QUOTES_APPROVE_PERMISSION]),
+    sessionAllows(session, [{ resource: "presupuestos", action: "editar" }]),
+    sessionAllows(session, [{ resource: "presupuestos", action: "cancelar" }]),
     listQuotes(session.companyId, status === "all" ? "" : status),
     getOrderFormData(session.companyId),
   ]);
@@ -131,6 +136,17 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
           <p className="rounded-lg border border-[color:var(--danger)]/30 bg-white p-3 text-sm font-semibold text-[color:var(--danger)]">
             {params.error}
           </p>
+        ) : null}
+
+        {params.updated ? (
+          <div className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]">
+            Presupuesto actualizado.
+          </div>
+        ) : null}
+        {params.deleted ? (
+          <div className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]">
+            Presupuesto eliminado.
+          </div>
         ) : null}
 
         {canCreateQuotes ? (
@@ -243,6 +259,17 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                           Acciones
                         </summary>
                         <div className="grid gap-1.5">
+                          {quote.status === "pendiente" && canEditQuotes ? (
+                            <ButtonLink
+                              aria-label={`Editar presupuesto ${quote.quoteNumber}`}
+                              className={quoteActionClassName}
+                              href={`/quotes/${quote.id}/edit`}
+                              size="sm"
+                              variant="secondary"
+                            >
+                              Editar
+                            </ButtonLink>
+                          ) : null}
                           <ButtonLink
                             aria-label={`Abrir PDF del presupuesto ${quote.quoteNumber}`}
                             className={quoteActionClassName}
@@ -288,6 +315,9 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                                 </Button>
                               </form>
                             </>
+                          ) : null}
+                          {(quote.status === "pendiente" || quote.status === "rechazada") && canDeleteQuotes ? (
+                            <QuoteDeleteButton action={deleteQuoteAction} quoteId={quote.id} quoteNumber={quote.quoteNumber} />
                           ) : null}
                         </div>
                       </details>
