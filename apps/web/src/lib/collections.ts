@@ -567,7 +567,11 @@ export async function rejectCollection(session: AuthSession, saleId: string, rea
   });
 }
 
-export async function listSalesToCollect(companyId: number) {
+export async function listSalesToCollectWhere(
+  companyId: number,
+  extraWhere = "",
+  extraParams: unknown[] = [],
+) {
   const result = await queryWithCompanyContext<{
     id: string;
     fecha: string | null;
@@ -625,9 +629,10 @@ export async function listSalesToCollect(companyId: number) {
         AND ${canonicalSalesSourceSql("v")}
         AND ${normalizedOrderStatusSql("v")} = 'entregado'
         AND GREATEST(COALESCE(v.total_amount, 0) + COALESCE(approved.debit_notes, 0) - COALESCE(approved.total_credit, 0), 0) > 0.005
+        ${extraWhere}
       ORDER BY v.sale_date DESC NULLS LAST, v.created_at DESC, v.id DESC
     `,
-    [companyId],
+    [companyId, ...extraParams],
   );
 
   return result.rows.map((row) => ({
@@ -647,4 +652,8 @@ export async function listSalesToCollect(companyId: number) {
     hasFiscalPdf: row.tiene_pdf_fiscal,
     deliveryDocumentId: row.remito_id,
   }));
+}
+
+export async function listSalesToCollect(companyId: number) {
+  return listSalesToCollectWhere(companyId);
 }

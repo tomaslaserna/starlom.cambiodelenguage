@@ -83,3 +83,28 @@ test("getVendorCustomers filtra por vendedor (propio/a cargo), busca y pagina", 
   assert.equal(result.data[1].status, "Inactivo");
   assert.equal(result.meta.total, 2);
 });
+
+test("getVendorCollections delega en listSalesToCollectWhere con filtro de vendedor", async () => {
+  const crm = makeCrm(() => ({ rows: [] }));
+  await crm.getVendorCollections(session);
+  assert.ok(collectionsCall, "debe llamar listSalesToCollectWhere");
+  assert.match(collectionsCall.extraWhere, /cli\.seller_name/i);
+  assert.match(collectionsCall.extraWhere, /cli\.assigned_seller/i);
+  assert.ok(collectionsCall.extraParams[0].includes("JUAN"));
+});
+
+test("assertVendorOwnsSale lanza 403 si la venta no es de un cliente del vendedor", async () => {
+  const crm = makeCrm(() => ({ rows: [] }));
+  await assert.rejects(
+    () => crm.assertVendorOwnsSale(session, "11111111-1111-1111-1111-111111111111"),
+    (e) => e.status === 403,
+  );
+});
+
+test("assertVendorOwnsSale pasa cuando la venta es de un cliente del vendedor", async () => {
+  const crm = makeCrm(() => ({ rows: [{ ok: 1 }] }));
+  await crm.assertVendorOwnsSale(session, "11111111-1111-1111-1111-111111111111");
+  const call = dbCalls.find((c) => /FROM sales v/i.test(c.sql));
+  assert.match(call.sql, /JOIN clients c/i);
+  assert.match(call.sql, /assigned_seller/i);
+});
