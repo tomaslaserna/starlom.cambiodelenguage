@@ -13,3 +13,19 @@ test("registerCrmCollectionAction gatea por crm.ver y verifica propiedad", () =>
   assert.doesNotMatch(src, /COLLECTIONS_CREATE_PERMISSION/); // no usa el permiso global
   assert.match(src, /revalidatePath\("\/crm\/cobros"\)/);
 });
+
+test("nav CRM incluye /crm/cobros con crm.ver", () => {
+  const nav = read("../src/lib/navigation.ts");
+  assert.match(nav, /href: "\/crm\/cobros"/);
+  const line = nav.split("\n").find((l) => l.includes('"/crm/cobros"'));
+  assert.match(line, /active: "crm"/);
+  assert.match(line, /CRM_READ_PERMISSION/);
+});
+
+test("pagina /crm/cobros usa getVendorCollections y la accion CRM", () => {
+  const src = read("../src/app/crm/cobros/page.tsx");
+  assert.match(src, /getVendorCollections/);
+  assert.match(src, /registerCrmCollectionAction/);
+  assert.match(src, /RegisterCollectionDialog/);
+  assert.match(src, /sessionCanUseCrm/);
+});
