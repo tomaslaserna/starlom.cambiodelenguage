@@ -180,7 +180,10 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                   const showRegister = canRegister && !awaitingApproval(item);
 
                   return (
-                    <DataTableRow key={item.id}>
+                    <DataTableRow
+                      key={item.id}
+                      className={item.overdue ? "bg-[color:var(--danger-subtle)] hover:bg-[color:var(--danger-subtle)]" : undefined}
+                    >
                       <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
                         {formatDate(item.date)}
                       </DataTableCell>

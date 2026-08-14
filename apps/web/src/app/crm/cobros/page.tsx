@@ -152,7 +152,10 @@ export default async function CrmCobrosPage({ searchParams }: CrmCobrosPageProps
                   const receiptLabel = `${desiredDocumentLabel(item.desiredDocument)} #${String(item.receiptNumber).padStart(4, "0")}`;
 
                   return (
-                    <DataTableRow key={item.id}>
+                    <DataTableRow
+                      key={item.id}
+                      className={item.overdue ? "bg-[color:var(--danger-subtle)] hover:bg-[color:var(--danger-subtle)]" : undefined}
+                    >
                       <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">{formatDate(item.date)}</DataTableCell>
                       <DataTableCell className="px-2 py-2">
                         <span className="font-mono text-xs font-black">#{String(item.receiptNumber).padStart(4, "0")}</span>
