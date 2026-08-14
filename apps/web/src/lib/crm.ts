@@ -9,6 +9,7 @@ import {
 import { queryWithCompanyContext } from "@/lib/db";
 import { getCustomerFollowUp } from "@/lib/messages";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { parsePagination } from "@/lib/pagination";
 import { listPriceListParameters } from "@/lib/pricing";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 
@@ -291,4 +292,96 @@ export async function scheduleClientReminder(
     ],
     { cache: false },
   );
+}
+
+export type VendorCustomer = {
+  id: string;
+  name: string;
+  businessName: string;
+  taxId: string;
+  phone: string;
+  city: string;
+  province: string;
+  priceList: string;
+  status: string;
+  relation: "propio" | "a cargo";
+};
+
+// Base de datos de clientes del vendedor (propios ∪ a cargo). Espeja listCustomers
+// (catalog.ts) pero acota al vendedor logueado y agrega la relacion.
+export async function getVendorCustomers(
+  session: AuthSession,
+  input: { query?: string | null; page?: string | null; pageSize?: string | null } = {},
+) {
+  const names = sellerCandidates(session);
+  const query = input.query?.trim() ?? "";
+  const pagination = parsePagination(input);
+  const params: unknown[] = [session.companyId, names];
+  const sellerFilter =
+    "(UPPER(BTRIM(COALESCE(seller_name,''))) = ANY($2::text[]) OR UPPER(BTRIM(COALESCE(assigned_seller,''))) = ANY($2::text[]))";
+  const filters = ["empresa_id = $1", sellerFilter];
+  if (query) {
+    params.push(`%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
+    const p = params.length;
+    filters.push(
+      `(display_name ILIKE $${p} ESCAPE '\\' OR legal_name ILIKE $${p} ESCAPE '\\' OR tax_id ILIKE $${p} ESCAPE '\\' OR phone ILIKE $${p} ESCAPE '\\')`,
+    );
+  }
+  const where = filters.join(" AND ");
+
+  const countResult = await queryWithCompanyContext<{ total: string }>(
+    session.companyId,
+    `SELECT COUNT(*)::text AS total FROM clients WHERE ${where}`,
+    params,
+  );
+
+  params.push(pagination.pageSize, pagination.offset);
+  const rows = await queryWithCompanyContext<{
+    id: string;
+    display_name: string;
+    legal_name: string | null;
+    tax_id: string | null;
+    phone: string | null;
+    locality: string | null;
+    province: string | null;
+    price_list_name: string | null;
+    active: boolean;
+    relation: "propio" | "a cargo";
+  }>(
+    session.companyId,
+    `
+      SELECT id::text AS id, display_name, legal_name, tax_id, phone,
+             locality, province, price_list_name, active,
+             CASE WHEN UPPER(BTRIM(COALESCE(seller_name,''))) = ANY($2::text[])
+                  THEN 'propio' ELSE 'a cargo' END AS relation
+        FROM clients
+       WHERE ${where}
+       ORDER BY display_name ASC, id ASC
+       LIMIT $${params.length - 1} OFFSET $${params.length}
+    `,
+    params,
+  );
+
+  const total = Number.parseInt(countResult.rows[0]?.total ?? "0", 10);
+  return {
+    data: rows.rows.map((row) => ({
+      id: row.id,
+      name: row.display_name,
+      businessName: row.legal_name ?? "",
+      taxId: row.tax_id ?? "",
+      phone: row.phone ?? "",
+      city: row.locality ?? "",
+      province: row.province ?? "",
+      priceList: row.price_list_name ?? "",
+      status: row.active ? "Activo" : "Inactivo",
+      relation: row.relation,
+    })),
+    meta: {
+      query,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / pagination.pageSize)),
+    },
+  };
 }
