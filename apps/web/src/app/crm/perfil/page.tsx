@@ -2,15 +2,20 @@ import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import { Card, PageHeader, StatCard } from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
-import { getVendorProfile } from "@/lib/crm";
+import { getVendorClients, getVendorProfile } from "@/lib/crm";
 import { formatCurrency } from "@/lib/format";
 import { sessionCanUseCrm } from "@/lib/route-auth";
+import { agendarClienteAction } from "@/app/crm/actions";
+import { ClientesDashboard } from "@/app/crm/clientes/clientes-dashboard";
 
 export default async function CrmPerfilPage() {
   const session = await requireStaffSession();
   if (!(await sessionCanUseCrm(session))) redirect("/");
 
-  const profile = await getVendorProfile(session);
+  const [profile, { groups, counts, zonas }] = await Promise.all([
+    getVendorProfile(session),
+    getVendorClients(session),
+  ]);
 
   return (
     <ModulePage
@@ -49,6 +54,17 @@ export default async function CrmPerfilPage() {
             nuevas ventas, este numero se actualiza solo.
           </p>
         </Card>
+
+        {/* Seguimiento de clientes por estado */}
+        <div>
+          <PageHeader
+            title="Seguimiento de clientes"
+            description="Tus clientes propios y a cargo agrupados por estado. Agenda a los que hay que recontactar."
+          />
+          <div className="mt-4">
+            <ClientesDashboard groups={groups} counts={counts} zonas={zonas} agendar={agendarClienteAction} />
+          </div>
+        </div>
       </div>
     </ModulePage>
   );

@@ -16,5 +16,5 @@ export async function agendarClienteAction(formData: FormData) {
   const sendAt = `${tomorrow} 09:00:00`;
 
   await scheduleClientReminder(session, { customerName, sendAt });
-  revalidatePath("/crm/clientes");
+  revalidatePath("/crm/perfil");
 }

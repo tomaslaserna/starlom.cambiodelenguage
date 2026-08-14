@@ -30,11 +30,19 @@ test("pagina /crm/cobros usa getVendorCollections y la accion CRM", () => {
   assert.match(src, /sessionCanUseCrm/);
 });
 
-test("pagina /crm/clientes es DB del vendedor: tabla + tablero, sin tira de perfil", () => {
+test("pagina /crm/clientes es DB pura del vendedor: tabla, sin tablero ni tira de perfil", () => {
   const src = read("../src/app/crm/clientes/page.tsx");
   assert.match(src, /getVendorCustomers/);
-  assert.match(src, /ClientesDashboard/); // mantiene el tablero
   assert.match(src, /\/customers\/\$\{/); // linkea a la ficha
   assert.match(src, /PaginationLinks/);
+  assert.doesNotMatch(src, /ClientesDashboard/); // el seguimiento se movio a Perfil
   assert.doesNotMatch(src, /getVendorProfile/); // saca la tira de perfil
+});
+
+test("el seguimiento de clientes (tablero) vive en Perfil", () => {
+  const src = read("../src/app/crm/perfil/page.tsx");
+  assert.match(src, /ClientesDashboard/);
+  assert.match(src, /getVendorClients/);
+  assert.match(src, /agendarClienteAction/);
+  assert.match(src, /getVendorProfile/); // mantiene los numeros del vendedor
 });

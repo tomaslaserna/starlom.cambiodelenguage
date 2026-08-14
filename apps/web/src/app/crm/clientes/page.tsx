@@ -20,10 +20,8 @@ import {
   type StatusBadgeTone,
 } from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
-import { getVendorClients, getVendorCustomers } from "@/lib/crm";
+import { getVendorCustomers } from "@/lib/crm";
 import { sessionCanUseCrm } from "@/lib/route-auth";
-import { agendarClienteAction } from "@/app/crm/actions";
-import { ClientesDashboard } from "@/app/crm/clientes/clientes-dashboard";
 
 type CrmClientesPageProps = {
   searchParams: Promise<{ q?: string; page?: string }>;
@@ -38,26 +36,21 @@ export default async function CrmClientesPage({ searchParams }: CrmClientesPageP
   if (!(await sessionCanUseCrm(session))) redirect("/");
 
   const params = await searchParams;
-  const [customers, { groups, counts, zonas }] = await Promise.all([
-    getVendorCustomers(session, { query: params.q, page: params.page }),
-    getVendorClients(session),
-  ]);
+  const customers = await getVendorCustomers(session, { query: params.q, page: params.page });
 
-  const enRiesgo = counts.riesgo ?? 0;
-  const aRecontactar = counts.contactar ?? 0;
   const vendor = session.displayName || session.username || "vendedor";
 
   return (
     <ModulePage
       active="crm"
-      description="Tu base de clientes y su seguimiento."
+      description="Tu base de datos de clientes propios y a cargo."
       session={session}
       title="CRM · Clientes"
     >
       <div className="grid gap-5">
         <PageHeader
           title={`Hola, ${vendor} 👋`}
-          description={`Tenés ${enRiesgo} ${enRiesgo === 1 ? "cliente" : "clientes"} en riesgo y ${aRecontactar} para recontactar.`}
+          description={`Tenés ${customers.meta.total} ${customers.meta.total === 1 ? "cliente" : "clientes"} entre propios y a cargo. El seguimiento por estado está en Perfil.`}
         />
 
         {/* Base de datos de tus clientes */}
@@ -145,9 +138,6 @@ export default async function CrmClientesPage({ searchParams }: CrmClientesPageP
             totalPages={customers.meta.totalPages}
           />
         </Card>
-
-        {/* Seguimiento por estado (tablero existente) */}
-        <ClientesDashboard groups={groups} counts={counts} zonas={zonas} agendar={agendarClienteAction} />
       </div>
     </ModulePage>
   );
