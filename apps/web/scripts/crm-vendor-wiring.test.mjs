@@ -22,11 +22,9 @@ test("nav CRM incluye /crm/cobros con crm.ver", () => {
   assert.match(line, /CRM_READ_PERMISSION/);
 });
 
-test("pagina /crm/cobros usa getVendorCollections y la accion CRM", () => {
+test("pagina /crm/cobros usa getVendorOpenAccounts (saldo corrido)", () => {
   const src = read("../src/app/crm/cobros/page.tsx");
-  assert.match(src, /getVendorCollections/);
-  assert.match(src, /registerCrmCollectionAction/);
-  assert.match(src, /RegisterCollectionDialog/);
+  assert.match(src, /getVendorOpenAccounts/);
   assert.match(src, /sessionCanUseCrm/);
 });
 

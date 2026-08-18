@@ -182,3 +182,10 @@ test("ruta PDF de estado de cuenta existe y usa getCustomerStatement", () => {
   const src = readFileSync(new URL("../src/app/api/pdfs/accounts/statement/[id]/route.ts", import.meta.url), "utf8");
   assert.match(src, /getCustomerStatement/);
 });
+
+const crmSource = readFileSync(new URL("../src/lib/crm.ts", import.meta.url), "utf8");
+test("crm.ts expone las cuentas abiertas del vendedor por saldo corrido", () => {
+  assert.match(crmSource, /getVendorOpenAccounts/);
+  assert.match(crmSource, /listOpenCustomerAccounts/);
+  assert.match(crmSource, /sellerCandidates/);
+});

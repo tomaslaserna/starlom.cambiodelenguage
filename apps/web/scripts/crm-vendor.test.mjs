@@ -32,6 +32,7 @@ function makeCrm(queryImpl) {
   return loadTypeScriptModule("../src/lib/crm.ts", {
     "@/lib/api-response": { ApiError },
     "@/lib/crm-quotes": { classifyQuote: () => null, topQuoteClients: () => [] },
+    "@/lib/customer-accounts": { listOpenCustomerAccounts: async () => ({ accounts: [], totals: { debit: 0, credit: 0 } }) },
     "@/lib/db": {
       queryWithCompanyContext: async (companyId, sql, params) => {
         dbCalls.push({ sql, params });

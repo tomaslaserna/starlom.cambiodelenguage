@@ -8,6 +8,7 @@ import {
   type TopQuoteClient,
   type VendorQuote,
 } from "@/lib/crm-quotes";
+import { listOpenCustomerAccounts } from "@/lib/customer-accounts";
 import { queryWithCompanyContext } from "@/lib/db";
 import { getCustomerFollowUp } from "@/lib/messages";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
@@ -398,6 +399,12 @@ export async function getVendorCollections(session: AuthSession) {
     "AND (UPPER(BTRIM(COALESCE(cli.seller_name,''))) = ANY($2::text[]) OR UPPER(BTRIM(COALESCE(cli.assigned_seller,''))) = ANY($2::text[]))",
     [names],
   );
+}
+
+// Cuentas abiertas (saldo corrido) de los clientes del vendedor (propios ∪ a cargo).
+// Delega en listOpenCustomerAccounts (customer-accounts.ts) filtrando por seller_name.
+export async function getVendorOpenAccounts(session: AuthSession) {
+  return listOpenCustomerAccounts(session.companyId, { sellerNames: sellerCandidates(session) });
 }
 
 // Guard: la venta debe pertenecer a un cliente del vendedor, si no 403.

@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import {
-  Button,
-  ButtonLink,
   Card,
   DataTable,
   DataTableBody,
@@ -15,79 +13,46 @@ import {
   Input,
   PageHeader,
   StatCard,
-  StatusBadge,
   Toolbar,
+  Button,
 } from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
-import { getVendorCollections } from "@/lib/crm";
-import { buildCollectionOrderMessage } from "@/lib/collection-order";
+import { getVendorOpenAccounts } from "@/lib/crm";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { normalizePhoneForWhatsapp } from "@/lib/order-confirmation";
-import { desiredDocumentLabel } from "@/lib/receipt-types";
 import { sessionCanUseCrm } from "@/lib/route-auth";
-import { localDateIso } from "@/lib/timezone";
-import { registerCrmCollectionAction } from "@/app/crm/cobros/actions";
-import { RegisterCollectionDialog } from "@/app/collections/register-collection-dialog";
 
 type CrmCobrosPageProps = {
   searchParams: Promise<{ q?: string }>;
 };
-
-type SaleToCollect = Awaited<ReturnType<typeof getVendorCollections>>[number];
-
-const actionItemClass =
-  "block w-full rounded-[6px] px-2.5 py-1.5 text-left text-xs font-semibold text-[#0f172a] transition-colors hover:bg-[color:var(--panel-subtle)] hover:text-[color:var(--accent-strong)]";
-
-function matchesQuery(item: SaleToCollect, query: string) {
-  if (!query) return true;
-  return [item.customerName, item.customerTaxId, String(item.receiptNumber)]
-    .join(" ")
-    .toLowerCase()
-    .includes(query);
-}
-
-function awaitingApproval(item: SaleToCollect) {
-  return item.collectionStatus === "pendiente_aprobacion" || item.collectionStatus === "en_proceso";
-}
-
-function collectionOrderHref(item: SaleToCollect) {
-  const phone = normalizePhoneForWhatsapp(item.phone);
-  if (!phone) return null;
-  const message = buildCollectionOrderMessage({
-    customerName: item.customerName,
-    documentLabel: desiredDocumentLabel(item.desiredDocument),
-    receiptNumber: item.receiptNumber,
-    amountLabel: formatCurrency(item.outstandingAmount),
-    dueDateLabel: formatDate(item.dueDate),
-    overdueDays: item.overdueDays,
-  });
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-}
 
 export default async function CrmCobrosPage({ searchParams }: CrmCobrosPageProps) {
   const session = await requireStaffSession();
   if (!(await sessionCanUseCrm(session))) redirect("/");
 
   const params = await searchParams;
-  const query = params.q?.trim().toLowerCase() ?? "";
-  const allSales = await getVendorCollections(session);
-  const sales = allSales.filter((item) => matchesQuery(item, query));
-  const totalOutstanding = sales.reduce((sum, item) => sum + item.outstandingAmount, 0);
-  const overdueSales = sales.filter((item) => item.overdue);
-  const overdueAmount = overdueSales.reduce((sum, item) => sum + item.outstandingAmount, 0);
-  const today = localDateIso();
+  const query = params.q?.trim() ?? "";
+  const { accounts: allAccounts } = await getVendorOpenAccounts(session);
+  const lowerQuery = query.toLowerCase();
+  const accounts = lowerQuery
+    ? allAccounts.filter((account) =>
+        [account.name, account.taxId].join(" ").toLowerCase().includes(lowerQuery),
+      )
+    : allAccounts;
+
+  const totalDebt = accounts.reduce((sum, account) => (account.balance > 0 ? sum + account.balance : sum), 0);
+  const totalOverdue = accounts.reduce((sum, account) => sum + account.aging.overdueTotal, 0);
 
   return (
     <ModulePage
       active="crm"
-      description="Lo que te deben tus clientes, con vencimientos y registro de cobros."
+      description="Lo que te deben tus clientes, con saldo corrido y antiguedad de deuda."
       session={session}
       title="CRM · Cobros"
     >
       <div className="grid gap-5">
         <PageHeader
           title="Cobros de tus clientes"
-          description="Ventas entregadas de tus clientes con saldo pendiente. Podés registrar el cobro (queda pendiente de aprobación)."
+          description="Cuentas corrientes abiertas de tus clientes (propios y a cargo), con antiguedad de deuda."
         />
 
         <Toolbar ariaLabel="Busqueda de cobros">
@@ -97,7 +62,7 @@ export default async function CrmCobrosPage({ searchParams }: CrmCobrosPageProps
                 defaultValue={params.q ?? ""}
                 id="crm-cobros-query"
                 name="q"
-                placeholder="Cliente, CUIT o nro de comprobante"
+                placeholder="Cliente o CUIT"
                 type="search"
               />
             </Field>
@@ -106,127 +71,73 @@ export default async function CrmCobrosPage({ searchParams }: CrmCobrosPageProps
         </Toolbar>
 
         <div className="grid gap-3 md:grid-cols-3">
-          <StatCard className="p-3" detail="Sobre las ventas visibles" label="Saldo total a cobrar" value={formatCurrency(totalOutstanding)} />
-          <StatCard className="p-3" detail={`${overdueSales.length} ventas vencidas`} label="Monto vencido" value={formatCurrency(overdueAmount)} />
-          <StatCard className="p-3" detail="Con la busqueda actual" label="Ventas visibles" value={sales.length} />
+          <StatCard className="p-3" detail="Suma de saldos deudores" label="Saldo total a cobrar" tone="danger" value={formatCurrency(totalDebt)} />
+          <StatCard className="p-3" detail="Suma de tramos vencidos" label="Monto vencido" tone="danger" value={formatCurrency(totalOverdue)} />
+          <StatCard className="p-3" detail="Con la busqueda actual" label="Cuentas visibles" value={accounts.length} />
         </div>
 
         <Card className="overflow-hidden">
           <DataTable
-            caption="Ventas de tus clientes con saldo pendiente"
+            caption="Cuentas corrientes abiertas de tus clientes"
             className="rounded-none border-0 shadow-none"
-            minWidth="1120px"
+            minWidth="1080px"
             tableLabel="Cobros del vendedor"
             tableProps={{ className: "table-fixed" }}
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[9%] px-2">Fecha</DataTableHead>
-                <DataTableHead className="w-[11%] px-2">Comprobante</DataTableHead>
-                <DataTableHead className="w-[20%] px-2">Cliente</DataTableHead>
-                <DataTableHead className="w-[12%] px-2">CUIT</DataTableHead>
-                <DataTableHead align="right" className="w-[12%] px-2">Monto a cobrar</DataTableHead>
-                <DataTableHead className="w-[12%] px-2">Vencimiento</DataTableHead>
-                <DataTableHead className="w-[10%] px-2">Documento</DataTableHead>
-                <DataTableHead className="w-[14%] px-2">Accion</DataTableHead>
+                <DataTableHead className="w-[24%] px-2">Cliente</DataTableHead>
+                <DataTableHead className="w-[13%] px-2">Ult. movimiento</DataTableHead>
+                <DataTableHead align="right" className="w-[11%] px-2">Al dia</DataTableHead>
+                <DataTableHead align="right" className="w-[11%] px-2">+30</DataTableHead>
+                <DataTableHead align="right" className="w-[11%] px-2">+60</DataTableHead>
+                <DataTableHead align="right" className="w-[11%] px-2">+90</DataTableHead>
+                <DataTableHead align="right" className="w-[19%] px-2">Saldo</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
-              {sales.length === 0 ? (
+              {accounts.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={8}>
+                  <DataTableCell colSpan={7}>
                     <EmptyState
-                      description="No hay ventas de tus clientes con saldo pendiente para la busqueda actual."
+                      description="No hay clientes tuyos con saldo abierto para la busqueda actual."
                       title="Sin cobros pendientes"
                     />
                   </DataTableCell>
                 </DataTableRow>
               ) : (
-                sales.map((item) => {
-                  const pdfHref = item.hasFiscalPdf
-                    ? `/api/pdfs/fiscal/sales/${item.id}`
-                    : item.deliveryDocumentId
-                      ? `/api/pdfs/deliveries/${item.deliveryDocumentId}`
-                      : `/api/pdfs/orders/${item.id}/request`;
-                  const orderHref = collectionOrderHref(item);
-                  const receiptLabel = `${desiredDocumentLabel(item.desiredDocument)} #${String(item.receiptNumber).padStart(4, "0")}`;
-
-                  return (
-                    <DataTableRow
-                      key={item.id}
-                      className={item.overdue ? "bg-[color:var(--danger-subtle)] hover:bg-[color:var(--danger-subtle)]" : undefined}
+                accounts.map((account) => (
+                  <DataTableRow
+                    key={account.clientId}
+                    className={account.aging.overdueTotal > 0 ? "bg-[color:var(--danger-subtle)] hover:bg-[color:var(--danger-subtle)]" : undefined}
+                  >
+                    <DataTableCell className="truncate px-2 py-2 font-medium">
+                      {account.name || "Sin nombre"}
+                    </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
+                      {formatDate(account.lastMovementDate)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
+                      {formatCurrency(account.aging.current)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
+                      {formatCurrency(account.aging.d30)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
+                      {formatCurrency(account.aging.d60)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
+                      {formatCurrency(account.aging.d90)}
+                    </DataTableCell>
+                    <DataTableCell
+                      align="right"
+                      className="whitespace-nowrap px-2 py-2 font-mono text-xs font-black"
+                      style={{ color: account.balance > 0 ? "var(--danger)" : account.balance < 0 ? "var(--accent-strong)" : undefined }}
                     >
-                      <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">{formatDate(item.date)}</DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        <span className="font-mono text-xs font-black">#{String(item.receiptNumber).padStart(4, "0")}</span>
-                      </DataTableCell>
-                      <DataTableCell className="truncate px-2 py-2 font-medium">{item.customerName || "Sin cliente"}</DataTableCell>
-                      <DataTableCell className="truncate px-2 py-2 font-mono text-xs">{item.customerTaxId || "-"}</DataTableCell>
-                      <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">{formatCurrency(item.outstandingAmount)}</DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        <div className={`whitespace-nowrap text-xs ${item.overdue ? "font-black text-[color:var(--danger)]" : ""}`}>
-                          {formatDate(item.dueDate)}
-                        </div>
-                        {item.overdue ? <StatusBadge className="mt-1" tone="danger">Vencida</StatusBadge> : null}
-                      </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        <div className="grid justify-items-start gap-1.5">
-                          <span className="truncate text-xs">{desiredDocumentLabel(item.desiredDocument)}</span>
-                          <ButtonLink
-                            aria-label={`Descargar PDF de ${receiptLabel}`}
-                            className="shrink-0"
-                            href={pdfHref}
-                            prefetch={false}
-                            rel="noreferrer"
-                            size="sm"
-                            target="_blank"
-                            variant="secondary"
-                          >
-                            PDF
-                          </ButtonLink>
-                        </div>
-                      </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        {awaitingApproval(item) ? (
-                          <div className="min-w-0">
-                            <StatusBadge tone="warning">En aprobacion</StatusBadge>
-                            <div className="mt-1 text-[11px] text-[color:var(--muted)]">
-                              {formatCurrency(item.registeredAmount)} registrado
-                            </div>
-                          </div>
-                        ) : (
-                          <details className="erp-action-menu">
-                            <summary>Acciones</summary>
-                            <div className="grid gap-0.5">
-                              <RegisterCollectionDialog
-                                action={registerCrmCollectionAction}
-                                customerName={item.customerName}
-                                outstandingAmount={item.outstandingAmount}
-                                receiptLabel={receiptLabel}
-                                saleId={item.id}
-                                today={today}
-                                triggerClassName={actionItemClass}
-                              />
-                              {orderHref ? (
-                                <a
-                                  aria-label={`Emitir orden de cobro por WhatsApp para ${receiptLabel}`}
-                                  className={actionItemClass}
-                                  href={orderHref}
-                                  rel="noreferrer"
-                                  target="_blank"
-                                >
-                                  Emitir orden de cobro
-                                </a>
-                              ) : (
-                                <span className="block px-2.5 py-1.5 text-xs text-[color:var(--muted)]">Sin telefono</span>
-                              )}
-                            </div>
-                          </details>
-                        )}
-                      </DataTableCell>
-                    </DataTableRow>
-                  );
-                })
+                      {formatCurrency(account.balance)}
+                    </DataTableCell>
+                  </DataTableRow>
+                ))
               )}
             </DataTableBody>
           </DataTable>
