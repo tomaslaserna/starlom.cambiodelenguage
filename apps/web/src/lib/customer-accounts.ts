@@ -8,6 +8,10 @@ export type StatementMovement = { id: string; date: string; description: string;
 export type StatementLine = StatementMovement & { balance: number };
 export type CustomerStatement = { openingBalance: number; lines: StatementLine[]; finalBalance: number };
 export type OpenCustomerAccount = { clientId: string; name: string; sellerName: string; taxId: string; lastMovementDate: string | null; balance: number; aging: AgingBuckets };
+export type CustomerStatementResult = {
+  customer: { id: string; name: string; taxId: string; sellerName: string };
+  statement: CustomerStatement;
+};
 
 function money(value: number) {
   return Math.round(value * 100) / 100;
@@ -157,4 +161,56 @@ export async function listOpenCustomerAccounts(
   });
 
   return { accounts, totals: { debit: totalDebit, credit: totalCredit } };
+}
+
+function movementKind(description: string, debit: number): string {
+  const lower = description.toLowerCase();
+  if (lower.startsWith("nota de debito")) return "nota_debito";
+  if (lower.includes("nota de credito") || lower.includes("devolucion")) return "nota_credito";
+  if (debit > 0) return "remito";
+  return "pago";
+}
+
+export async function getCustomerStatement(
+  companyId: number,
+  clientId: string,
+  options: { from?: string | null; to?: string | null } = {},
+): Promise<CustomerStatementResult> {
+  const info = await queryWithCompanyContext<{ name: string; tax_id: string; seller_name: string }>(
+    companyId,
+    `SELECT COALESCE(display_name, '') AS name, COALESCE(tax_id, '') AS tax_id, COALESCE(seller_name, '') AS seller_name
+     FROM clients WHERE id = $1::uuid AND empresa_id = $2 LIMIT 1`,
+    [clientId, companyId],
+  );
+  if (!info.rows[0]) throw new ApiError(404, "Cliente no encontrado");
+
+  const rows = await queryWithCompanyContext<{
+    id: string; movement_date: string; description: string; debit: string; credit: string;
+  }>(
+    companyId,
+    `
+      SELECT m.id::text AS id, m.movement_date::text AS movement_date,
+             COALESCE(m.description, '') AS description, m.debit::text, m.credit::text
+      FROM current_account_movements m
+      LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
+      WHERE m.empresa_id = $1 AND m.client_id = $2::uuid
+        AND ${activeAccountMovementWhereSql("m", "s")}
+      ORDER BY m.movement_date ASC, m.created_at ASC
+    `,
+    [companyId, clientId],
+  );
+
+  const movements: StatementMovement[] = rows.rows.map((row) => ({
+    id: row.id,
+    date: row.movement_date,
+    description: row.description,
+    debit: Number(row.debit),
+    credit: Number(row.credit),
+    kind: movementKind(row.description, Number(row.debit)),
+  }));
+
+  return {
+    customer: { id: clientId, name: info.rows[0].name, taxId: info.rows[0].tax_id, sellerName: info.rows[0].seller_name },
+    statement: buildCustomerStatement(movements, options),
+  };
 }
