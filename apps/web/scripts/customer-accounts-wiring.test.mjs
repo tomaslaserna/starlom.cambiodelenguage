@@ -162,3 +162,11 @@ test("payments/actions.ts registra y anula con gate de permiso", () => {
   assert.match(paymentsActions, /COLLECTIONS_CREATE_PERMISSION/);
   assert.match(paymentsActions, /revalidatePath\("\/payments"\)/);
 });
+
+const accountsPage = () => readFileSync(new URL("../src/app/payments/accounts/page.tsx", import.meta.url), "utf8");
+test("cuentas abiertas usa listOpenCustomerAccounts y linkea al detalle", () => {
+  const src = accountsPage();
+  assert.match(src, /listOpenCustomerAccounts/);
+  assert.match(src, /\/payments\/accounts\//); // link al estado de cuenta [id]
+  assert.match(src, /Vencido|aging|\+30/i);
+});
