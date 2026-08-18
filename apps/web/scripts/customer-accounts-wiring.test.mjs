@@ -1,6 +1,57 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
+import ts from "typescript";
+
+const require = createRequire(import.meta.url);
+
+function loadTypeScriptModule(relativePath, aliases = {}) {
+  const source = readFileSync(new URL(relativePath, import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      esModuleInterop: true,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const compiledModule = { exports: {} };
+  const moduleRequire = (specifier) => aliases[specifier] ?? require(specifier);
+  Function("require", "module", "exports", compiled)(moduleRequire, compiledModule, compiledModule.exports);
+  return compiledModule.exports;
+}
+
+class ApiError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function loadCustomerAccounts(overrides = {}) {
+  return loadTypeScriptModule("../src/lib/customer-accounts.ts", {
+    "@/lib/api-response": { ApiError },
+    "@/lib/db": {
+      clearReadQueryCache: () => undefined,
+      queryWithCompanyContext: overrides.queryWithCompanyContext ?? (async () => ({ rows: [] })),
+      withCompanyContext: overrides.withCompanyContext ?? (async () => undefined),
+    },
+    "@/lib/accounts": { activeAccountMovementWhereSql: () => "TRUE" },
+    "@/lib/collection-methods": {
+      COLLECTION_METHODS: ["efectivo", "transferencia", "echeck"],
+      collectionMethodRequiresOperation: (m) => m !== "efectivo",
+    },
+    "@/lib/request-body": {
+      numberField: (b, k, d = 0) => (b[k] !== undefined ? Number(b[k]) : d),
+      textField: (b, k) => (b[k] !== undefined ? String(b[k]) : ""),
+    },
+    "@/lib/route-auth": {
+      COLLECTIONS_APPROVE_PERMISSION: { resource: "cobros", action: "aprobar" },
+      sessionAllows: overrides.sessionAllows ?? (async () => false),
+    },
+    "@/lib/timezone": { localDateIso: () => "2026-08-18" },
+  });
+}
 
 const source = readFileSync(new URL("../src/lib/customer-accounts.ts", import.meta.url), "utf8");
 
@@ -18,4 +69,30 @@ test("getCustomerStatement trae todos los movimientos ordenados y delega el cort
   assert.match(source, /buildCustomerStatement\(/);
   // NO filtra por fecha en SQL (el opening necesita lo anterior a `from`)
   assert.doesNotMatch(source, /movement_date >= \$/);
+});
+
+test("customerPaymentFromBody valida monto, metodo y operacion", () => {
+  const mod = loadCustomerAccounts();
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "0", method: "efectivo", destination: "caja" }), /mayor a cero/);
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "bitcoin", destination: "caja" }), /Metodo/);
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "transferencia", destination: "banco" }), /operacion/i);
+  const ok = mod.customerPaymentFromBody({ amount: "10", method: "efectivo", destination: "caja", clientId: "c1" });
+  assert.equal(ok.amount, 10);
+  assert.equal(ok.method, "efectivo");
+});
+
+test("registerCustomerPayment: admin registra directo, vendedor deja pendiente", async () => {
+  const queries = [];
+  const mod = loadCustomerAccounts({
+    withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => { queries.push({ sql, params }); return { rows: [{ id: "p1" }] }; } }),
+    sessionAllows: async (_session, perms) => true, // admin
+  });
+  const res = await mod.registerCustomerPayment(
+    { companyId: 1, userId: "u1", username: "admin", role: "administrador" },
+    { clientId: "c1", amount: 100, date: "2026-08-18", method: "efectivo", destination: "caja", operation: "", notes: "" },
+  );
+  assert.equal(res.status, "registrado");
+  // admin: inserta el pago Y el movimiento de crédito
+  assert.ok(queries.some((q) => /INSERT INTO payments/i.test(q.sql)));
+  assert.ok(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql)));
 });

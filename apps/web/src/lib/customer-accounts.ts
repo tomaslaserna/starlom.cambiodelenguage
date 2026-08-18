@@ -1,6 +1,11 @@
 import { ApiError } from "@/lib/api-response";
 import { activeAccountMovementWhereSql } from "@/lib/accounts";
-import { queryWithCompanyContext } from "@/lib/db";
+import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { COLLECTION_METHODS, collectionMethodRequiresOperation } from "@/lib/collection-methods";
+import { numberField, textField, type RequestBody } from "@/lib/request-body";
+import { COLLECTIONS_APPROVE_PERMISSION, sessionAllows } from "@/lib/route-auth";
+import { localDateIso } from "@/lib/timezone";
+import type { AuthSession } from "@/lib/auth";
 
 export type AgingDebit = { amount: number; date: string; dueDate: string | null };
 export type AgingBuckets = { current: number; d30: number; d60: number; d90: number; overdueTotal: number };
@@ -213,4 +218,85 @@ export async function getCustomerStatement(
     customer: { id: clientId, name: info.rows[0].name, taxId: info.rows[0].tax_id, sellerName: info.rows[0].seller_name },
     statement: buildCustomerStatement(movements, options),
   };
+}
+
+const PAYMENT_METHODS = new Set<string>(COLLECTION_METHODS);
+
+export type CustomerPaymentInput = {
+  clientId: string; amount: number; date: string; method: string;
+  destination: string; operation: string; notes: string;
+};
+
+export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput {
+  const clientId = textField(body, "clientId") || textField(body, "cliente_id");
+  const amount = numberField(body, "amount", numberField(body, "monto", 0));
+  const method = (textField(body, "method") || textField(body, "metodo")).toLowerCase();
+  const destination = textField(body, "destination") || textField(body, "destino");
+  const operation = textField(body, "operation") || textField(body, "operacion");
+  const notes = textField(body, "notes") || textField(body, "notas");
+  const date = textField(body, "date") || textField(body, "fecha") || localDateIso();
+
+  if (amount <= 0) throw new ApiError(400, "El monto debe ser mayor a cero");
+  if (!PAYMENT_METHODS.has(method)) throw new ApiError(400, "Metodo de cobro invalido");
+  if (!destination) throw new ApiError(400, "El destino es obligatorio");
+  if (collectionMethodRequiresOperation(method) && !operation) throw new ApiError(400, "La operacion es obligatoria");
+
+  return { clientId, amount, date, method, destination, operation, notes };
+}
+
+export async function registerCustomerPayment(session: AuthSession, input: CustomerPaymentInput) {
+  if (!input.clientId) throw new ApiError(400, "El cliente es obligatorio");
+  const canApprove = await sessionAllows(session, [COLLECTIONS_APPROVE_PERMISSION]);
+  const status = canApprove ? "registrado" : "pendiente_aprobacion";
+
+  const result = await withCompanyContext(session.companyId, async (client) => {
+    const clientInfo = await client.query(
+      `SELECT COALESCE(display_name,'') AS name FROM clients WHERE id = $1::uuid AND empresa_id = $2 LIMIT 1`,
+      [input.clientId, session.companyId],
+    );
+    const clientName = clientInfo.rows[0]?.name ?? "";
+    const reference = [input.operation, input.notes].filter(Boolean).join(" | ");
+
+    const payment = await client.query(
+      `
+        INSERT INTO payments (
+          client_id, payment_date, amount, method, reference, status,
+          registered_by, entity_type, entity_name, concept, notes, empresa_id
+        )
+        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, 'cliente', $8, $9, $10, $11)
+        RETURNING id::text AS id
+      `,
+      [
+        input.clientId, input.date, input.amount, input.method, reference, status,
+        session.userId, clientName, `Cobro ${input.method}`, input.notes, session.companyId,
+      ],
+    );
+    const paymentId = payment.rows[0].id as string;
+
+    if (status === "registrado") {
+      await client.query(
+        `
+          INSERT INTO current_account_movements (
+            client_id, payment_id, movement_date, debit, credit, description, entity_type, entity_name, empresa_id
+          )
+          VALUES ($1::uuid, $2::uuid, $3, 0, $4, $5, 'cliente', $6, $7)
+        `,
+        [
+          input.clientId, paymentId, input.date, input.amount,
+          `Cobro - ${input.method} | Destino ${input.destination} | ${reference}`.trim(),
+          clientName, session.companyId,
+        ],
+      );
+    }
+
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1,$2,$3,$4,$5,$6)",
+      [session.userId, "customer_payment.registered", "payments", paymentId, JSON.stringify({ status, amount: input.amount }), session.companyId],
+    );
+
+    return { id: paymentId, status };
+  });
+
+  clearReadQueryCache();
+  return result as { id: string; status: "registrado" | "pendiente_aprobacion" };
 }
