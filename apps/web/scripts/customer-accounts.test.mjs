@@ -77,3 +77,28 @@ test("computeAgingBuckets: sin vencimiento usa la fecha del movimiento", () => {
   const b = accounts.computeAgingBuckets(debits, 0, "2026-08-18"); // >120 días
   assert.equal(b.d90, 100);
 });
+
+test("buildCustomerStatement arranca con saldo anterior y corre el saldo", () => {
+  const movements = [
+    { id: "1", date: "2026-07-15", description: "Remito #0400", debit: 1150000, credit: 0, kind: "remito" },
+    { id: "2", date: "2026-08-03", description: "Remito #0412", debit: 980000, credit: 0, kind: "remito" },
+    { id: "3", date: "2026-08-07", description: "Pago", debit: 0, credit: 600000, kind: "pago" },
+    { id: "4", date: "2026-08-25", description: "Remito futuro", debit: 111, credit: 0, kind: "remito" },
+  ];
+  const st = accounts.buildCustomerStatement(movements, { from: "2026-08-01", to: "2026-08-18" });
+  assert.equal(st.openingBalance, 1150000);      // el remito del 15/07 quedó afuera del filtro
+  assert.equal(st.lines.length, 2);              // 03/08 y 07/08 (el 25/08 queda fuera de `to`)
+  assert.equal(st.lines[0].balance, 2130000);
+  assert.equal(st.lines[1].balance, 1530000);
+  assert.equal(st.finalBalance, 1530000);
+});
+
+test("buildCustomerStatement sin filtro: opening 0 y final = saldo total", () => {
+  const movements = [
+    { id: "1", date: "2026-08-03", description: "Remito", debit: 1000, credit: 0, kind: "remito" },
+    { id: "2", date: "2026-08-07", description: "Pago", debit: 0, credit: 400, kind: "pago" },
+  ];
+  const st = accounts.buildCustomerStatement(movements, {});
+  assert.equal(st.openingBalance, 0);
+  assert.equal(st.finalBalance, 600);
+});

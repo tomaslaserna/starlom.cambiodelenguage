@@ -2,6 +2,9 @@ import { ApiError } from "@/lib/api-response";
 
 export type AgingDebit = { amount: number; date: string; dueDate: string | null };
 export type AgingBuckets = { current: number; d30: number; d60: number; d90: number; overdueTotal: number };
+export type StatementMovement = { id: string; date: string; description: string; debit: number; credit: number; kind: string };
+export type StatementLine = StatementMovement & { balance: number };
+export type CustomerStatement = { openingBalance: number; lines: StatementLine[]; finalBalance: number };
 
 function money(value: number) {
   return Math.round(value * 100) / 100;
@@ -38,4 +41,29 @@ export function computeAgingBuckets(debits: AgingDebit[], creditTotal: number, a
     }
   }
   return buckets;
+}
+
+export function buildCustomerStatement(
+  movements: StatementMovement[],
+  options: { from?: string | null; to?: string | null },
+): CustomerStatement {
+  const from = options.from?.trim() || null;
+  const to = options.to?.trim() || null;
+
+  let openingBalance = 0;
+  const lines: StatementLine[] = [];
+
+  for (const movement of movements) {
+    const delta = money(movement.debit - movement.credit);
+    if (from && movement.date < from) {
+      openingBalance = money(openingBalance + delta);
+      continue;
+    }
+    if (to && movement.date > to) continue;
+    const previous = lines.length ? lines[lines.length - 1].balance : openingBalance;
+    lines.push({ ...movement, balance: money(previous + delta) });
+  }
+
+  const finalBalance = lines.length ? lines[lines.length - 1].balance : openingBalance;
+  return { openingBalance, lines, finalBalance };
 }
