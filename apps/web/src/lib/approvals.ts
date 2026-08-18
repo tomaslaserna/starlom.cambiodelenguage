@@ -1,6 +1,7 @@
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { ApiError } from "@/lib/api-response";
 import { listPendingCollections } from "@/lib/collections";
+import { listPendingCustomerPayments } from "@/lib/customer-accounts";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { authorizeSaleFiscalDocument } from "@/lib/fiscal";
 import { executeSupplierPayment, purchaseIdFromParam } from "@/lib/purchases";
@@ -9,7 +10,7 @@ import { localDateIso } from "@/lib/timezone";
 
 export const COLLECTION_APPROVAL_PERMISSION = COLLECTIONS_APPROVE_PERMISSION;
 
-export type ApprovalSource = "collection" | "request" | "purchase";
+export type ApprovalSource = "collection" | "request" | "purchase" | "payment";
 
 export type ApprovalCenterAccess = {
   collections: boolean;
@@ -60,6 +61,8 @@ export function parseApprovalSource(value: FormDataEntryValue | null): ApprovalS
       return "request";
     case "purchase":
       return "purchase";
+    case "payment":
+      return "payment";
     default:
       throw new ApiError(400, "Tipo de solicitud invalido");
   }
@@ -85,6 +88,8 @@ export function canOperateApprovalSource(access: ApprovalCenterAccess, source: A
       return access.requests;
     case "purchase":
       return access.requests;
+    case "payment":
+      return access.collections;
   }
 }
 
@@ -126,10 +131,11 @@ async function listPendingPurchaseApprovals(companyId: number) {
 }
 
 export async function listApprovalCenter(companyId: number, access: ApprovalCenterAccess) {
-  const [collections, requests, purchaseRequests] = await Promise.all([
+  const [collections, requests, purchaseRequests, payments] = await Promise.all([
     access.collections ? listPendingCollections(companyId) : Promise.resolve([]),
     access.requests ? listPendingApprovalRequests(companyId) : Promise.resolve([]),
     access.requests ? listPendingPurchaseApprovals(companyId) : Promise.resolve([]),
+    access.collections ? listPendingCustomerPayments(companyId) : Promise.resolve([]),
   ]);
 
   const collectionItems: ApprovalItem[] = collections.map((item) => ({
@@ -167,7 +173,18 @@ export async function listApprovalCenter(companyId: number, access: ApprovalCent
     source: "purchase",
   }));
 
-  const items = [...collectionItems, ...requestItems, ...purchaseRequestItems].sort((a, b) =>
+  const paymentItems: ApprovalItem[] = payments.map((item) => ({
+    id: item.id,
+    type: "Solicitud de aprobacion de pago",
+    title: `Pago ${item.customerName}`,
+    detail: `${item.method || "Metodo"} - ${item.reference || "sin referencia"}`,
+    amount: item.amount,
+    requester: item.registeredBy,
+    createdAt: item.createdAt,
+    source: "payment",
+  }));
+
+  const items = [...collectionItems, ...requestItems, ...purchaseRequestItems, ...paymentItems].sort((a, b) =>
     String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")),
   );
 
@@ -178,6 +195,7 @@ export async function listApprovalCenter(companyId: number, access: ApprovalCent
       collections: collectionItems.length,
       requests: requestItems.length,
       purchaseRequests: purchaseRequestItems.length,
+      payments: paymentItems.length,
       amount: items.reduce((sum, item) => sum + item.amount, 0),
     },
   };

@@ -113,6 +113,18 @@ test("registerCustomerPayment: vendedor deja pendiente, sin movimiento de crédi
   assert.equal(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql)), false);
 });
 
+test("approveCustomerPayment inserta el credito y pasa a registrado", () => {
+  assert.match(source, /export async function approveCustomerPayment/);
+  assert.match(source, /INSERT INTO current_account_movements/);
+  assert.match(source, /pendiente_aprobacion/);
+});
+
+const approvalsSource = readFileSync(new URL("../src/lib/approvals.ts", import.meta.url), "utf8");
+test("approvals.ts suma el source payment", () => {
+  assert.match(approvalsSource, /"payment"/);
+  assert.match(approvalsSource, /listPendingCustomerPayments/);
+});
+
 test("voidCustomerPayment marca anulado y compensa el credito con un debito", async () => {
   const queries = [];
   const mod = loadCustomerAccounts({

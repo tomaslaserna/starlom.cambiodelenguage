@@ -302,6 +302,84 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
   return result as { id: string; status: "registrado" | "pendiente_aprobacion" };
 }
 
+export type PendingCustomerPayment = {
+  id: string; clientId: string; customerName: string; amount: number;
+  method: string; reference: string; registeredBy: string; createdAt: string | null;
+};
+
+export async function listPendingCustomerPayments(companyId: number): Promise<PendingCustomerPayment[]> {
+  const rows = await queryWithCompanyContext<{
+    id: string; client_id: string; name: string; amount: string; method: string;
+    reference: string; registered_by: string; created_at: string | null;
+  }>(
+    companyId,
+    `
+      SELECT p.id::text AS id, p.client_id::text AS client_id,
+             COALESCE(c.display_name, p.entity_name, '') AS name,
+             p.amount::text, COALESCE(p.method,'') AS method, COALESCE(p.reference,'') AS reference,
+             COALESCE(u.full_name, u.username, '') AS registered_by, p.created_at::text
+      FROM payments p
+      LEFT JOIN clients c ON c.id = p.client_id AND c.empresa_id = p.empresa_id
+      LEFT JOIN profiles u ON u.id = p.registered_by
+      WHERE p.empresa_id = $1 AND p.status = 'pendiente_aprobacion' AND p.entity_type = 'cliente'
+      ORDER BY p.created_at DESC
+    `,
+    [companyId],
+  );
+  return rows.rows.map((row) => ({
+    id: row.id, clientId: row.client_id, customerName: row.name, amount: Number(row.amount),
+    method: row.method, reference: row.reference, registeredBy: row.registered_by, createdAt: row.created_at,
+  }));
+}
+
+export async function approveCustomerPayment(session: AuthSession, paymentId: string) {
+  const result = await withCompanyContext(session.companyId, async (client) => {
+    const found = await client.query(
+      `SELECT id::text AS id, client_id::text AS client_id, amount::text AS amount,
+              COALESCE(method,'') AS method, COALESCE(reference,'') AS reference, COALESCE(entity_name,'') AS entity_name
+       FROM payments WHERE id = $1::uuid AND empresa_id = $2 AND status = 'pendiente_aprobacion' FOR UPDATE`,
+      [paymentId, session.companyId],
+    );
+    const payment = found.rows[0];
+    if (!payment) throw new ApiError(409, "El pago ya no esta pendiente de aprobacion");
+
+    await client.query(
+      `INSERT INTO current_account_movements (client_id, payment_id, movement_date, debit, credit, description, entity_type, entity_name, empresa_id)
+       VALUES ($1::uuid, $2::uuid, CURRENT_DATE, 0, $3, $4, 'cliente', $5, $6)`,
+      [payment.client_id, paymentId, Number(payment.amount), `Cobro aprobado - ${payment.method} | ${payment.reference}`.trim(), payment.entity_name, session.companyId],
+    );
+    await client.query(
+      `UPDATE payments SET status = 'registrado', updated_at = now() WHERE id = $1::uuid AND empresa_id = $2`,
+      [paymentId, session.companyId],
+    );
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1,$2,$3,$4,$5,$6)",
+      [session.userId, "customer_payment.approved", "payments", paymentId, JSON.stringify({ amount: Number(payment.amount) }), session.companyId],
+    );
+    return { id: paymentId, status: "registrado" as const };
+  });
+  clearReadQueryCache();
+  return result;
+}
+
+export async function rejectCustomerPayment(session: AuthSession, paymentId: string, reason: string) {
+  const result = await withCompanyContext(session.companyId, async (client) => {
+    const updated = await client.query<{ id: string }>(
+      `UPDATE payments SET status = 'rechazado', notes = CASE WHEN $3 = '' THEN notes ELSE CONCAT_WS(' | ', NULLIF(notes,''), 'Rechazo: ' || $3) END, updated_at = now()
+       WHERE id = $1::uuid AND empresa_id = $2 AND status = 'pendiente_aprobacion' RETURNING id::text AS id`,
+      [paymentId, session.companyId, reason.trim()],
+    );
+    if (!updated.rows[0]) throw new ApiError(409, "El pago ya no esta pendiente de aprobacion");
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1,$2,$3,$4,$5,$6)",
+      [session.userId, "customer_payment.rejected", "payments", paymentId, JSON.stringify({ reason: reason.trim() }), session.companyId],
+    );
+    return { id: paymentId, status: "rechazado" as const };
+  });
+  clearReadQueryCache();
+  return result;
+}
+
 export async function voidCustomerPayment(session: AuthSession, paymentId: string) {
   const result = await withCompanyContext(session.companyId, async (client) => {
     const found = await client.query(
