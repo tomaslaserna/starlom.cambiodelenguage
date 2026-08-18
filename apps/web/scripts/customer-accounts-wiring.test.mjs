@@ -96,3 +96,19 @@ test("registerCustomerPayment: admin registra directo, vendedor deja pendiente",
   assert.ok(queries.some((q) => /INSERT INTO payments/i.test(q.sql)));
   assert.ok(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql)));
 });
+
+test("registerCustomerPayment: vendedor deja pendiente, sin movimiento de crédito", async () => {
+  const queries = [];
+  const mod = loadCustomerAccounts({
+    withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => { queries.push({ sql, params }); return { rows: [{ id: "p1" }] }; } }),
+    sessionAllows: async (_session, perms) => false, // vendor
+  });
+  const res = await mod.registerCustomerPayment(
+    { companyId: 1, userId: "u1", username: "vendor", role: "vendedor" },
+    { clientId: "c1", amount: 100, date: "2026-08-18", method: "efectivo", destination: "caja", operation: "", notes: "" },
+  );
+  assert.equal(res.status, "pendiente_aprobacion");
+  // vendor: inserta el pago pero NO el movimiento de crédito
+  assert.ok(queries.some((q) => /INSERT INTO payments/i.test(q.sql)));
+  assert.equal(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql)), false);
+});

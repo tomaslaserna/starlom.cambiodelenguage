@@ -254,6 +254,7 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
       `SELECT COALESCE(display_name,'') AS name FROM clients WHERE id = $1::uuid AND empresa_id = $2 LIMIT 1`,
       [input.clientId, session.companyId],
     );
+    if (clientInfo.rows.length === 0) throw new ApiError(404, "Cliente no encontrado");
     const clientName = clientInfo.rows[0]?.name ?? "";
     const reference = [input.operation, input.notes].filter(Boolean).join(" | ");
 
