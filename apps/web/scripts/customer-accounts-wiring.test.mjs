@@ -170,3 +170,15 @@ test("cuentas abiertas usa listOpenCustomerAccounts y linkea al detalle", () => 
   assert.match(src, /\/payments\/accounts\//); // link al estado de cuenta [id]
   assert.match(src, /Vencido|aging|\+30/i);
 });
+
+test("estado de cuenta usa getCustomerStatement, filtro de fecha y saldo anterior", () => {
+  const src = readFileSync(new URL("../src/app/payments/accounts/[id]/page.tsx", import.meta.url), "utf8");
+  assert.match(src, /getCustomerStatement/);
+  assert.match(src, /Saldo anterior/i);
+  assert.match(src, /openingBalance/);
+  assert.match(src, /api\/pdfs\/accounts\/statement\//);
+});
+test("ruta PDF de estado de cuenta existe y usa getCustomerStatement", () => {
+  const src = readFileSync(new URL("../src/app/api/pdfs/accounts/statement/[id]/route.ts", import.meta.url), "utf8");
+  assert.match(src, /getCustomerStatement/);
+});
