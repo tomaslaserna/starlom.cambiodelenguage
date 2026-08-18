@@ -112,3 +112,20 @@ test("registerCustomerPayment: vendedor deja pendiente, sin movimiento de crédi
   assert.ok(queries.some((q) => /INSERT INTO payments/i.test(q.sql)));
   assert.equal(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql)), false);
 });
+
+test("voidCustomerPayment marca anulado y compensa el credito con un debito", async () => {
+  const queries = [];
+  const mod = loadCustomerAccounts({
+    withCompanyContext: async (_companyId, fn) => fn({
+      query: async (sql, params) => {
+        queries.push({ sql, params });
+        if (/SELECT/i.test(sql)) return { rows: [{ id: "p1", client_id: "c1", amount: "100", status: "registrado", entity_name: "Cliente", movement_id: "m1" }] };
+        return { rows: [{ id: "p1" }] };
+      },
+    }),
+  });
+  const res = await mod.voidCustomerPayment({ companyId: 1, userId: "u1", username: "admin" }, "p1");
+  assert.equal(res.status, "anulado");
+  assert.ok(queries.some((q) => /UPDATE payments/i.test(q.sql) && /anulado/i.test(q.sql)));
+  assert.ok(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql) && /debit/i.test(q.sql)));
+});

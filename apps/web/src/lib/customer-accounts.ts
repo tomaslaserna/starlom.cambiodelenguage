@@ -301,3 +301,46 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
   clearReadQueryCache();
   return result as { id: string; status: "registrado" | "pendiente_aprobacion" };
 }
+
+export async function voidCustomerPayment(session: AuthSession, paymentId: string) {
+  const result = await withCompanyContext(session.companyId, async (client) => {
+    const found = await client.query(
+      `SELECT id::text AS id, client_id::text AS client_id, amount::text AS amount,
+              COALESCE(status,'') AS status, COALESCE(entity_name,'') AS entity_name
+       FROM payments WHERE id = $1::uuid AND empresa_id = $2 FOR UPDATE`,
+      [paymentId, session.companyId],
+    );
+    const payment = found.rows[0];
+    if (!payment) throw new ApiError(404, "Pago no encontrado");
+    if (payment.status === "anulado") throw new ApiError(409, "El pago ya esta anulado");
+
+    const hadMovement = payment.status === "registrado";
+
+    await client.query(
+      `UPDATE payments SET status = 'anulado', updated_at = now() WHERE id = $1::uuid AND empresa_id = $2`,
+      [paymentId, session.companyId],
+    );
+
+    if (hadMovement) {
+      await client.query(
+        `
+          INSERT INTO current_account_movements (
+            client_id, payment_id, movement_date, debit, credit, description, entity_type, entity_name, empresa_id
+          )
+          VALUES ($1::uuid, $2::uuid, CURRENT_DATE, $3, 0, $4, 'cliente', $5, $6)
+        `,
+        [payment.client_id, paymentId, Number(payment.amount), `Anulacion de cobro (pago ${paymentId})`, payment.entity_name, session.companyId],
+      );
+    }
+
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1,$2,$3,$4,$5,$6)",
+      [session.userId, "customer_payment.voided", "payments", paymentId, JSON.stringify({ amount: Number(payment.amount) }), session.companyId],
+    );
+
+    return { id: paymentId, status: "anulado" as const };
+  });
+
+  clearReadQueryCache();
+  return result;
+}
