@@ -214,7 +214,8 @@ export async function getVendorQuotes(session: AuthSession): Promise<VendorQuote
         LEFT JOIN clients c ON c.id = q.client_id AND c.empresa_id = q.empresa_id
         LEFT JOIN profiles p ON p.id = q.seller_id
         WHERE q.empresa_id = $1
-          AND UPPER(BTRIM(COALESCE(p.username, p.full_name, ''))) = ANY($2::text[])
+          AND (UPPER(BTRIM(COALESCE(p.username, p.full_name, ''))) = ANY($2::text[])
+               OR q.visible_to_all = true)
         ORDER BY q.created_at DESC, q.id DESC
       `,
       [session.companyId, names],
