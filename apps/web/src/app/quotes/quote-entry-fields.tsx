@@ -36,10 +36,12 @@ type QuoteEntryFieldsProps = {
   clients: OrderFormClient[];
   priceLists: OrderFormPriceList[];
   products: OrderFormProduct[];
+  vendors: { id: string; name: string }[];
   initialValues?: {
     customerId: string;
     validityDays: string;
     priceListOverride: string;
+    assignedSellerId?: string;
     lines: { productId: string; quantity: string; discount: string }[];
   };
   mode?: "create" | "edit";
@@ -68,6 +70,7 @@ export function QuoteEntryFields({
   clients,
   priceLists,
   products,
+  vendors,
   initialValues,
   mode = "create",
   quoteId,
@@ -76,6 +79,7 @@ export function QuoteEntryFields({
   const [customerId, setCustomerId] = useState(initialValues?.customerId ?? "");
   const [validityDays, setValidityDays] = useState(initialValues?.validityDays ?? "15");
   const [priceListOverride, setPriceListOverride] = useState(initialValues?.priceListOverride ?? "");
+  const [assignedSellerId, setAssignedSellerId] = useState(initialValues?.assignedSellerId ?? "");
   const [draftLine, setDraftLine] = useState<QuoteLineDraft>(emptyLine());
   const [lines, setLines] = useState<QuoteLineState[]>(
     () => (initialValues?.lines ?? []).map((line, index) => ({ id: `quote-line-init-${index}`, ...line })),
@@ -249,6 +253,23 @@ export function QuoteEntryFields({
           </div>
         </div>
       </div>
+
+      <Field htmlFor="quote-assigned-seller" label="Asignar a">
+        <Select
+          id="quote-assigned-seller"
+          name="assignedSellerId"
+          value={assignedSellerId}
+          onChange={(event) => setAssignedSellerId(event.target.value)}
+        >
+          <option value="">Todos los vendedores</option>
+          {assignedSellerId && !vendors.some((vendor) => vendor.id === assignedSellerId) ? (
+            <option value={assignedSellerId}>Vendedor asignado</option>
+          ) : null}
+          {vendors.map((vendor) => (
+            <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+          ))}
+        </Select>
+      </Field>
 
       {selectedClient ? (
         <div className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4 md:grid-cols-2 xl:grid-cols-4">
