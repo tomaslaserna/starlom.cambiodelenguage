@@ -48,6 +48,7 @@ type QuoteInput = {
   activePriceList: number;
   priceListOverride: string;
   validityDays: number;
+  assignedSellerId: string;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -231,6 +232,7 @@ export function quoteInputFromBody(body: RequestBody): QuoteInput {
     activePriceList: intField(body, "activePriceList", intField(body, "lista_activa", 0)),
     priceListOverride: textField(body, "priceListOverride") || textField(body, "lista_precios"),
     validityDays: clamp(intField(body, "validityDays", intField(body, "vigencia_dias", 15)), 1, 365),
+    assignedSellerId: textField(body, "assignedSellerId"),
   };
 }
 
@@ -633,9 +635,37 @@ export async function buildQuoteDraft(
   };
 }
 
+const QUOTE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+// Resuelve a quién se asigna el presupuesto. Un vendedor válido de la empresa => solo
+// ese vendedor lo ve. "" o un id inválido => visible para todos (y se conserva el creador).
+export async function resolveQuoteAssignment(
+  client: PoolClient,
+  session: AuthSession,
+  assignedSellerId: string,
+): Promise<{ sellerId: string; visibleToAll: boolean }> {
+  const candidate = (assignedSellerId ?? "").trim();
+  if (candidate && QUOTE_UUID_RE.test(candidate)) {
+    const result = await client.query(
+      `
+        SELECT 1
+          FROM usuario_empresa ue
+          JOIN profiles p ON p.id = ue.id_usuario
+         WHERE ue.empresa_id = $1 AND ue.id_usuario = $2::uuid
+           AND ue.activo = TRUE AND ue.role::text = 'vendedor'
+         LIMIT 1
+      `,
+      [session.companyId, candidate],
+    );
+    if (result.rows[0]) return { sellerId: candidate, visibleToAll: false };
+  }
+  return { sellerId: session.userId, visibleToAll: true };
+}
+
 export async function createQuote(session: AuthSession, input: QuoteInput) {
   const quoteId = await withCompanyContext(session.companyId, async (client) => {
     const draft = await buildQuoteDraft(client, session, input);
+    const assignment = await resolveQuoteAssignment(client, session, input.assignedSellerId);
 
     await client.query("SELECT pg_advisory_xact_lock(83011, $1::int)", [session.companyId]);
     const sequence = await client.query<{ value: string }>(
@@ -656,18 +686,18 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
           validity_days, include_vat, vat_rate, desired_document, active_price_list, price_list_name, discount_percent,
           net_amount, discount_amount, subtotal_amount, vat_amount,
           client_name, client_legal_name, client_document, client_fiscal_condition,
-          client_phone, client_address, empresa_id
+          client_phone, client_address, empresa_id, visible_to_all
         )
         VALUES (
           $1, $2::uuid, $3::uuid, 'pendiente', $4, $5, $6, $7, $8, $9, $10, $11,
-          $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+          $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
         )
         RETURNING id::text
       `,
       [
         quoteNumber,
         draft.customer.id,
-        session.userId,
+        assignment.sellerId,
         draft.total,
         input.validityDays,
         true,
@@ -687,6 +717,7 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
         draft.customer.phone ?? "",
         draft.customer.address ?? "",
         session.companyId,
+        assignment.visibleToAll,
       ],
     );
     const newQuoteId = quoteResult.rows[0].id;

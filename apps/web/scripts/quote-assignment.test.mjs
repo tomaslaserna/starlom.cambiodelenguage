@@ -64,3 +64,67 @@ test("mapQuote (via getQuote) expone sellerId y visibleToAll", async () => {
   assert.equal(q.sellerId, "s9");
   assert.equal(q.visibleToAll, true);
 });
+
+test("quoteInputFromBody lee assignedSellerId", () => {
+  const withVendor = quotes.quoteInputFromBody({
+    customerId: "28d84c33-122d-4480-a183-26da0dfd17f8",
+    productsJson: JSON.stringify([{ productId: "28d84c33-122d-4480-a183-26da0dfd17f8", quantity: 1, unitPrice: 1000 }]),
+    assignedSellerId: "11111111-1111-4111-8111-111111111111",
+  });
+  assert.equal(withVendor.assignedSellerId, "11111111-1111-4111-8111-111111111111");
+  const withoutVendor = quotes.quoteInputFromBody({
+    customerId: "28d84c33-122d-4480-a183-26da0dfd17f8",
+    productsJson: JSON.stringify([{ productId: "28d84c33-122d-4480-a183-26da0dfd17f8", quantity: 1, unitPrice: 1000 }]),
+  });
+  assert.equal(withoutVendor.assignedSellerId, "");
+});
+
+test("resolveQuoteAssignment: vendedor valido -> asignado; invalido/'' -> Todos", async () => {
+  const session = { companyId: 1, userId: "creator" };
+  const okClient = { query: async () => ({ rows: [{ ok: 1 }] }) };
+  const assigned = await quotes.resolveQuoteAssignment(okClient, session, "11111111-1111-4111-8111-111111111111");
+  assert.deepEqual(assigned, { sellerId: "11111111-1111-4111-8111-111111111111", visibleToAll: false });
+  const noClient = { query: async () => { throw new Error("no deberia consultar"); } };
+  const all = await quotes.resolveQuoteAssignment(noClient, session, "");
+  assert.deepEqual(all, { sellerId: "creator", visibleToAll: true });
+  const emptyClient = { query: async () => ({ rows: [] }) };
+  const fallback = await quotes.resolveQuoteAssignment(emptyClient, session, "22222222-2222-4222-8222-222222222222");
+  assert.deepEqual(fallback, { sellerId: "creator", visibleToAll: true });
+});
+
+test("createQuote inserta seller_id resuelto y visible_to_all", async () => {
+  const writes = [];
+  const client = {
+    async query(sql, params) {
+      writes.push({ sql, params });
+      if (/FROM clients\s+WHERE id = \$1::uuid/i.test(sql)) {
+        return { rows: [{ id: "c1", display_name: "ACME", legal_name: "ACME SA", tax_id: "30111111118",
+          fiscal_condition: "RI", phone: "11", address: "Calle 1", price_list_name: "L2 - ANCLA",
+          seller_name: "V", receipt_type: "Factura A" }], rowCount: 1 };
+      }
+      if (/FROM listas_precio/i.test(sql)) return { rows: [{ nombre: "L2 - ANCLA" }], rowCount: 1 };
+      if (/WITH requested AS/i.test(sql)) {
+        return { rows: [{ product_id: "p1", description: "P1", quantity: "1", discount: "0", unit_price: "1000", sort_order: 0 }], rowCount: 1 };
+      }
+      if (/pg_advisory_xact_lock/i.test(sql)) return { rows: [], rowCount: 0 };
+      if (/MAX\(substring\(quote_number/i.test(sql)) return { rows: [{ value: "1" }], rowCount: 1 };
+      if (/INSERT INTO quotes/i.test(sql)) return { rows: [{ id: "newq" }], rowCount: 1 };
+      if (/INSERT INTO quote_items/i.test(sql)) return { rows: [], rowCount: 1 };
+      if (/FROM usuario_empresa/i.test(sql)) return { rows: [{ ok: 1 }], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    },
+  };
+  quotesDb.withCompanyContext = async (cb) => cb(client);
+  quotesDb.queryWithCompanyContext = async () => ({ rows: [getQuoteRow()], rowCount: 1 });
+  const session = { companyId: 1, userId: "creator", username: "creator" };
+  const input = quotes.quoteInputFromBody({
+    customerId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    productsJson: JSON.stringify([{ productId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", quantity: 1, unitPrice: 1000 }]),
+    assignedSellerId: "11111111-1111-4111-8111-111111111111",
+  });
+  await quotes.createQuote(session, input);
+  const insert = writes.find((w) => /INSERT INTO quotes/i.test(w.sql));
+  assert.match(insert.sql, /visible_to_all/i);
+  assert.equal(insert.params[2], "11111111-1111-4111-8111-111111111111");
+  assert.equal(insert.params[insert.params.length - 1], false);
+});
