@@ -22,6 +22,7 @@ import {
 } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getOrderFormData } from "@/lib/orders";
+import { listVendors } from "@/lib/imports";
 import { hasFiscalCustomerData, listQuotes } from "@/lib/quotes";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
@@ -106,13 +107,14 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const params = await searchParams;
   const status = params.status?.trim() || "pendiente";
   const query = params.q?.trim().toLowerCase() ?? "";
-  const [canCreateQuotes, canApproveQuotes, canEditQuotes, canDeleteQuotes, rawQuotes, quoteFormData] = await Promise.all([
+  const [canCreateQuotes, canApproveQuotes, canEditQuotes, canDeleteQuotes, rawQuotes, quoteFormData, vendors] = await Promise.all([
     sessionAllows(session, [QUOTES_CREATE_PERMISSION]),
     sessionAllows(session, [QUOTES_APPROVE_PERMISSION]),
     sessionAllows(session, [{ resource: "presupuestos", action: "editar" }]),
     sessionAllows(session, [{ resource: "presupuestos", action: "cancelar" }]),
     listQuotes(session.companyId, status === "all" ? "" : status),
     getOrderFormData(session.companyId),
+    listVendors(session.companyId),
   ]);
   const quotes = rawQuotes.filter((item) => matchesQuery(item, query));
   const total = quotes.reduce((sum, quote) => sum + quote.total, 0);
@@ -156,6 +158,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
               clients={quoteFormData.clients}
               priceLists={quoteFormData.priceLists}
               products={quoteFormData.products}
+              vendors={vendors}
             />
           </QuoteEntryForm>
         </Card>
@@ -229,6 +232,9 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                     <DataTableCell>
                       <div className="font-mono text-xs font-black">{quote.quoteNumber}</div>
                       <div className="mt-1 text-xs text-[color:var(--muted)]">{quote.createdBy || "-"}</div>
+                      <div className="mt-0.5 text-xs text-[color:var(--muted)]">
+                        Asignado a: {quote.visibleToAll ? "Todos" : quote.createdBy || "-"}
+                      </div>
                     </DataTableCell>
                     <DataTableCell>
                       <div className="font-medium">

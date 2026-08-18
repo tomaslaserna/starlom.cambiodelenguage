@@ -3,6 +3,7 @@ import { ModulePage } from "@/components/module-page";
 import { Card, PageHeader } from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
 import { getOrderFormData } from "@/lib/orders";
+import { listVendors } from "@/lib/imports";
 import { getQuote } from "@/lib/quotes";
 import { requirePagePermission } from "@/lib/page-auth";
 import { updateQuoteAction } from "@/app/quotes/actions";
@@ -24,7 +25,10 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
     redirect("/quotes?error=Solo%20se%20pueden%20editar%20presupuestos%20pendientes");
   }
 
-  const quoteFormData = await getOrderFormData(session.companyId);
+  const [quoteFormData, vendors] = await Promise.all([
+    getOrderFormData(session.companyId),
+    listVendors(session.companyId),
+  ]);
 
   const customerId = quote.clientId ?? "";
 
@@ -32,6 +36,7 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
     customerId,
     validityDays: String(quote.validityDays ?? 15),
     priceListOverride: quote.priceListName ?? "",
+    assignedSellerId: quote.visibleToAll ? "" : (quote.sellerId ?? ""),
     lines: (Array.isArray(quote.products) ? quote.products : [])
       .filter((product) => Boolean(product?.id))
       .map((product) => ({
@@ -54,6 +59,7 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
               priceLists={quoteFormData.priceLists}
               products={quoteFormData.products}
               quoteId={quote.id}
+              vendors={vendors}
             />
           </QuoteEntryForm>
         </Card>
