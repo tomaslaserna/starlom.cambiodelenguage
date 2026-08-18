@@ -261,6 +261,8 @@ function mapQuote(row: {
   productos_json?: unknown;
   estado: string;
   creado_por: string | null;
+  seller_id: string | null;
+  visible_to_all: boolean;
   created_at?: string;
   dias_restantes?: number;
 }) {
@@ -273,6 +275,8 @@ function mapQuote(row: {
   return {
     id: row.id,
     clientId: row.client_id ?? "",
+    sellerId: row.seller_id ?? "",
+    visibleToAll: Boolean(row.visible_to_all),
     quoteNumber: row.quote_number || "Sin numero",
     issueDate: row.fecha_emision,
     expirationDate: row.fecha_vencimiento,
@@ -311,6 +315,8 @@ export async function listQuotes(companyId: number, status = "pendiente") {
     `
       SELECT q.id::text,
              q.client_id::text AS client_id,
+             q.seller_id::text AS seller_id,
+             q.visible_to_all,
              COALESCE(NULLIF(q.quote_number, ''), 'Sin numero') AS quote_number,
              q.created_at::date::text AS fecha_emision,
              (q.created_at::date + (q.validity_days || ' days')::interval)::date::text AS fecha_vencimiento,
@@ -371,6 +377,8 @@ export async function getQuote(companyId: number, id: string) {
     `
       SELECT q.id::text,
              q.client_id::text AS client_id,
+             q.seller_id::text AS seller_id,
+             q.visible_to_all,
              COALESCE(NULLIF(q.quote_number, ''), 'Sin numero') AS quote_number,
              q.created_at::date::text AS fecha_emision,
              (q.created_at::date + (q.validity_days || ' days')::interval)::date::text AS fecha_vencimiento,
