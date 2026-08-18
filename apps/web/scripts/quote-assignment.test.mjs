@@ -128,3 +128,39 @@ test("createQuote inserta seller_id resuelto y visible_to_all", async () => {
   assert.equal(insert.params[2], "11111111-1111-4111-8111-111111111111");
   assert.equal(insert.params[insert.params.length - 1], false);
 });
+
+test("updateQuote setea seller_id y visible_to_all segun la asignacion", async () => {
+  const writes = [];
+  const client = {
+    async query(sql, params) {
+      writes.push({ sql, params });
+      if (/FROM quotes q[\s\S]*FOR UPDATE/i.test(sql)) return { rows: [{ id: "q1", status: "pendiente" }], rowCount: 1 };
+      if (/FROM clients\s+WHERE id = \$1::uuid/i.test(sql)) {
+        return { rows: [{ id: "c1", display_name: "ACME", legal_name: "ACME SA", tax_id: "30111111118",
+          fiscal_condition: "RI", phone: "11", address: "Calle 1", price_list_name: "L2 - ANCLA",
+          seller_name: "V", receipt_type: "Factura A" }], rowCount: 1 };
+      }
+      if (/FROM listas_precio/i.test(sql)) return { rows: [{ nombre: "L2 - ANCLA" }], rowCount: 1 };
+      if (/WITH requested AS/i.test(sql)) {
+        return { rows: [{ product_id: "p1", description: "P1", quantity: "1", discount: "0", unit_price: "1000", sort_order: 0 }], rowCount: 1 };
+      }
+      if (/FROM usuario_empresa/i.test(sql)) return { rows: [], rowCount: 0 };
+      if (/^\s*UPDATE quotes/i.test(sql)) return { rows: [], rowCount: 1 };
+      if (/DELETE FROM quote_items/i.test(sql)) return { rows: [], rowCount: 1 };
+      if (/INSERT INTO quote_items/i.test(sql)) return { rows: [], rowCount: 1 };
+      return { rows: [], rowCount: 0 };
+    },
+  };
+  quotesDb.withCompanyContext = async (cb) => cb(client);
+  quotesDb.queryWithCompanyContext = async () => ({ rows: [getQuoteRow()], rowCount: 1 });
+  const session = { companyId: 1, userId: "editor", username: "editor" };
+  const input = quotes.quoteInputFromBody({
+    customerId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    productsJson: JSON.stringify([{ productId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", quantity: 1, unitPrice: 1000 }]),
+    assignedSellerId: "",
+  });
+  await quotes.updateQuote(session, "q1", input);
+  const upd = writes.find((w) => /^\s*UPDATE quotes/i.test(w.sql));
+  assert.match(upd.sql, /seller_id = \$\d+::uuid/i);
+  assert.match(upd.sql, /visible_to_all = \$\d+/i);
+});

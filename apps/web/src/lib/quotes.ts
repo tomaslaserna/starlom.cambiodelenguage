@@ -767,6 +767,7 @@ export async function updateQuote(session: AuthSession, id: string, input: Quote
     }
 
     const draft = await buildQuoteDraft(client, session, input);
+    const assignment = await resolveQuoteAssignment(client, session, input.assignedSellerId);
 
     await client.query(
       `
@@ -790,6 +791,8 @@ export async function updateQuote(session: AuthSession, id: string, input: Quote
             client_fiscal_condition = $17,
             client_phone = $18,
             client_address = $19,
+            seller_id = $22::uuid,
+            visible_to_all = $23,
             updated_at = NOW()
         WHERE id = $20::uuid AND empresa_id = $21
       `,
@@ -815,6 +818,8 @@ export async function updateQuote(session: AuthSession, id: string, input: Quote
         draft.customer.address ?? "",
         id,
         session.companyId,
+        assignment.sellerId,
+        assignment.visibleToAll,
       ],
     );
 
