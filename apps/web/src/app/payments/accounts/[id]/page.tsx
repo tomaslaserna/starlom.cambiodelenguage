@@ -38,6 +38,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
   await requirePagePermission(session, [COLLECTIONS_READ_PERMISSION]);
 
   const { id } = await params;
+  if (!/^[0-9a-fA-F-]{36}$/.test(id)) notFound();
   const query = await searchParams;
   const from = query.from ?? "";
   const to = query.to ?? "";

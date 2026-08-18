@@ -132,7 +132,7 @@ export default async function CrmCobrosPage({ searchParams }: CrmCobrosPageProps
                     <DataTableCell
                       align="right"
                       className="whitespace-nowrap px-2 py-2 font-mono text-xs font-black"
-                      style={{ color: account.balance > 0 ? "var(--danger)" : account.balance < 0 ? "var(--accent-strong)" : undefined }}
+                      style={{ color: account.balance > 0 ? "var(--danger)" : account.balance < 0 ? "var(--success)" : undefined }}
                     >
                       {formatCurrency(account.balance)}
                     </DataTableCell>

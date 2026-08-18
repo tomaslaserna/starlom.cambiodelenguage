@@ -22,7 +22,7 @@ import {
 import { listCustomerOptions, listCustomerPayments, listPendingCustomerPayments } from "@/lib/customer-accounts";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
-import { COLLECTIONS_CREATE_PERMISSION, sessionAllows, sessionCanReadCollections } from "@/lib/route-auth";
+import { COLLECTIONS_APPROVE_PERMISSION, COLLECTIONS_CREATE_PERMISSION, sessionAllows, sessionCanReadCollections } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
 import { registerCustomerPaymentAction, voidCustomerPaymentAction } from "@/app/payments/actions";
 import { RegisterPaymentDialog } from "@/app/payments/register-payment-dialog";
@@ -61,11 +61,12 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
   const status = params.status ?? "";
   const today = localDateIso();
 
-  const [payments, customers, pendingPayments, canRegister] = await Promise.all([
+  const [payments, customers, pendingPayments, canRegister, canVoid] = await Promise.all([
     listCustomerPayments(session.companyId, { query, status }),
     listCustomerOptions(session.companyId),
     listPendingCustomerPayments(session.companyId),
     sessionAllows(session, [COLLECTIONS_CREATE_PERMISSION]),
+    sessionAllows(session, [COLLECTIONS_APPROVE_PERMISSION]),
   ]);
 
   return (
@@ -177,7 +178,7 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                         </StatusBadge>
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
-                        {payment.status === "registrado" && canRegister ? (
+                        {payment.status === "registrado" && canVoid ? (
                           <form action={voidCustomerPaymentAction}>
                             <input name="id" type="hidden" value={payment.id} />
                             <Button size="sm" type="submit" variant="danger">

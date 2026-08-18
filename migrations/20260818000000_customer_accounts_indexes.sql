@@ -1,5 +1,8 @@
 -- Cuenta corriente con saldo corrido: aceleran la bandeja de pagos pendientes
 -- y el estado de cuenta por cliente. Aditivo e idempotente.
+alter table public.payments
+  add column if not exists updated_at timestamptz not null default now();
+
 create index if not exists payments_empresa_status_idx
   on public.payments (empresa_id, status, payment_date desc);
 

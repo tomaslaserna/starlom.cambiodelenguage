@@ -149,6 +149,42 @@ test("voidCustomerPayment marca anulado y compensa el credito con un debito", as
   assert.ok(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql) && /debit/i.test(q.sql)));
 });
 
+test("voidCustomerPayment rechaza anular un pago pendiente de aprobacion", async () => {
+  const queries = [];
+  const mod = loadCustomerAccounts({
+    withCompanyContext: async (_companyId, fn) => fn({
+      query: async (sql, params) => {
+        queries.push({ sql, params });
+        if (/SELECT/i.test(sql)) return { rows: [{ id: "p1", client_id: "c1", amount: "100", status: "pendiente_aprobacion", entity_name: "Cliente" }] };
+        return { rows: [{ id: "p1" }] };
+      },
+    }),
+  });
+  await assert.rejects(
+    () => mod.voidCustomerPayment({ companyId: 1, userId: "u1", username: "admin" }, "p1"),
+    /pendiente de aprobacion se rechaza, no se anula/,
+  );
+  assert.equal(queries.some((q) => /UPDATE payments/i.test(q.sql)), false);
+});
+
+test("voidCustomerPayment rechaza anular un pago ya anulado", async () => {
+  const queries = [];
+  const mod = loadCustomerAccounts({
+    withCompanyContext: async (_companyId, fn) => fn({
+      query: async (sql, params) => {
+        queries.push({ sql, params });
+        if (/SELECT/i.test(sql)) return { rows: [{ id: "p1", client_id: "c1", amount: "100", status: "anulado", entity_name: "Cliente" }] };
+        return { rows: [{ id: "p1" }] };
+      },
+    }),
+  });
+  await assert.rejects(
+    () => mod.voidCustomerPayment({ companyId: 1, userId: "u1", username: "admin" }, "p1"),
+    /ya esta anulado/,
+  );
+  assert.equal(queries.some((q) => /UPDATE payments/i.test(q.sql)), false);
+});
+
 test("listCustomerPayments filtra por status del diario", () => {
   assert.match(source, /export async function listCustomerPayments/);
   assert.match(source, /FROM payments/);

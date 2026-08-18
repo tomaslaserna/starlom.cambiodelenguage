@@ -147,7 +147,7 @@ export async function listOpenCustomerAccounts(
     params,
   );
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateIso();
   let totalDebit = 0;
   let totalCredit = 0;
   const accounts = rows.rows.map((row) => {
@@ -231,7 +231,7 @@ export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput
   const clientId = textField(body, "clientId") || textField(body, "cliente_id");
   const amount = numberField(body, "amount", numberField(body, "monto", 0));
   const method = (textField(body, "method") || textField(body, "metodo")).toLowerCase();
-  const destination = textField(body, "destination") || textField(body, "destino");
+  const destination = (textField(body, "destination") || textField(body, "destino")).trim();
   const operation = textField(body, "operation") || textField(body, "operacion");
   const notes = textField(body, "notes") || textField(body, "notas");
   const date = textField(body, "date") || textField(body, "fecha") || localDateIso();
@@ -453,6 +453,9 @@ export async function voidCustomerPayment(session: AuthSession, paymentId: strin
     const payment = found.rows[0];
     if (!payment) throw new ApiError(404, "Pago no encontrado");
     if (payment.status === "anulado") throw new ApiError(409, "El pago ya esta anulado");
+    if (payment.status === "pendiente_aprobacion") {
+      throw new ApiError(409, "Un pago pendiente de aprobacion se rechaza, no se anula");
+    }
 
     const hadMovement = payment.status === "registrado";
 

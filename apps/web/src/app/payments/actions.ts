@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { customerPaymentFromBody, registerCustomerPayment, voidCustomerPayment } from "@/lib/customer-accounts";
 import { uuidParam } from "@/lib/request-body";
-import { COLLECTIONS_CREATE_PERMISSION, requireApiSession } from "@/lib/route-auth";
+import { COLLECTIONS_APPROVE_PERMISSION, COLLECTIONS_CREATE_PERMISSION, requireApiSession } from "@/lib/route-auth";
 
 function revalidatePaymentsFlow() {
   revalidatePath("/payments");
@@ -18,7 +18,7 @@ export async function registerCustomerPaymentAction(formData: FormData) {
 }
 
 export async function voidCustomerPaymentAction(formData: FormData) {
-  const session = await requireApiSession([COLLECTIONS_CREATE_PERMISSION]);
+  const session = await requireApiSession([COLLECTIONS_APPROVE_PERMISSION]);
   const id = uuidParam(String(formData.get("id") ?? ""), "Pago");
   await voidCustomerPayment(session, id);
   revalidatePaymentsFlow();
