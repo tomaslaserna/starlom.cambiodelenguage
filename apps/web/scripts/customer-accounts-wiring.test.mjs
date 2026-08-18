@@ -125,6 +125,13 @@ test("approvals.ts suma el source payment", () => {
   assert.match(approvalsSource, /listPendingCustomerPayments/);
 });
 
+const navSource = readFileSync(new URL("../src/lib/navigation.ts", import.meta.url), "utf8");
+test("navegacion apunta a los nuevos submenus de Cobros y pagos", () => {
+  assert.match(navSource, /href: "\/payments"/);
+  assert.match(navSource, /href: "\/payments\/accounts"/);
+  assert.match(navSource, /Registro de pagos/i);
+});
+
 test("voidCustomerPayment marca anulado y compensa el credito con un debito", async () => {
   const queries = [];
   const mod = loadCustomerAccounts({

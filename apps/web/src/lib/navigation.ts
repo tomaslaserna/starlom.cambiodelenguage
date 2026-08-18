@@ -185,14 +185,14 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "collectionApprovals",
     items: [
       {
-        href: "/collections",
-        label: "Cobros",
+        href: "/payments",
+        label: "Registro de pagos",
         active: "collections",
         badge: "collectionApprovals",
         permission: COLLECTIONS_READ_PERMISSION,
       },
       {
-        href: "/treasury/current-accounts",
+        href: "/payments/accounts",
         label: "Cuentas corrientes",
         active: "collections",
         permission: COLLECTIONS_READ_PERMISSION,
