@@ -148,3 +148,17 @@ test("voidCustomerPayment marca anulado y compensa el credito con un debito", as
   assert.ok(queries.some((q) => /UPDATE payments/i.test(q.sql) && /anulado/i.test(q.sql)));
   assert.ok(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql) && /debit/i.test(q.sql)));
 });
+
+test("listCustomerPayments filtra por status del diario", () => {
+  assert.match(source, /export async function listCustomerPayments/);
+  assert.match(source, /FROM payments/);
+  assert.match(source, /entity_type = 'cliente'/);
+});
+
+const paymentsActions = readFileSync(new URL("../src/app/payments/actions.ts", import.meta.url), "utf8");
+test("payments/actions.ts registra y anula con gate de permiso", () => {
+  assert.match(paymentsActions, /registerCustomerPayment/);
+  assert.match(paymentsActions, /voidCustomerPayment/);
+  assert.match(paymentsActions, /COLLECTIONS_CREATE_PERMISSION/);
+  assert.match(paymentsActions, /revalidatePath\("\/payments"\)/);
+});

@@ -380,6 +380,68 @@ export async function rejectCustomerPayment(session: AuthSession, paymentId: str
   return result;
 }
 
+export type CustomerPaymentRow = {
+  id: string; date: string | null; customerName: string; method: string;
+  reference: string; registeredBy: string; amount: number; status: string;
+};
+
+export async function listCustomerPayments(
+  companyId: number,
+  options: { query?: string | null; status?: string | null; from?: string | null; to?: string | null } = {},
+): Promise<CustomerPaymentRow[]> {
+  const params: unknown[] = [companyId];
+  const filters = ["p.empresa_id = $1", "p.entity_type = 'cliente'"];
+  const status = options.status?.trim() ?? "";
+  if (status) { params.push(status); filters.push(`p.status = $${params.length}`); }
+  const query = options.query?.trim() ?? "";
+  if (query) {
+    params.push(`%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
+    filters.push(`COALESCE(c.display_name, p.entity_name, '') ILIKE $${params.length} ESCAPE '\\'`);
+  }
+  if (options.from?.trim()) { params.push(options.from.trim()); filters.push(`p.payment_date >= $${params.length}`); }
+  if (options.to?.trim()) { params.push(options.to.trim()); filters.push(`p.payment_date <= $${params.length}`); }
+
+  const rows = await queryWithCompanyContext<{
+    id: string; date: string | null; name: string; method: string; reference: string;
+    registered_by: string; amount: string; status: string;
+  }>(
+    companyId,
+    `
+      SELECT p.id::text AS id, p.payment_date::text AS date,
+             COALESCE(c.display_name, p.entity_name, '') AS name,
+             COALESCE(p.method,'') AS method, COALESCE(p.reference,'') AS reference,
+             COALESCE(u.full_name, u.username, '') AS registered_by, p.amount::text, COALESCE(p.status,'') AS status
+      FROM payments p
+      LEFT JOIN clients c ON c.id = p.client_id AND c.empresa_id = p.empresa_id
+      LEFT JOIN profiles u ON u.id = p.registered_by
+      WHERE ${filters.join(" AND ")}
+      ORDER BY p.payment_date DESC NULLS LAST, p.created_at DESC
+      LIMIT 500
+    `,
+    params,
+  );
+  return rows.rows.map((row) => ({
+    id: row.id, date: row.date, customerName: row.name, method: row.method,
+    reference: row.reference, registeredBy: row.registered_by, amount: Number(row.amount), status: row.status,
+  }));
+}
+
+export type CustomerOption = { id: string; name: string };
+
+export async function listCustomerOptions(companyId: number): Promise<CustomerOption[]> {
+  const rows = await queryWithCompanyContext<{ id: string; name: string }>(
+    companyId,
+    `
+      SELECT id::text AS id, COALESCE(display_name, '') AS name
+      FROM clients
+      WHERE empresa_id = $1
+      ORDER BY display_name ASC, id ASC
+    `,
+    [companyId],
+  );
+  return rows.rows.map((row) => ({ id: row.id, name: row.name }));
+}
+
 export async function voidCustomerPayment(session: AuthSession, paymentId: string) {
   const result = await withCompanyContext(session.companyId, async (client) => {
     const found = await client.query(
