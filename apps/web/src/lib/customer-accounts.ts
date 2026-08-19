@@ -320,7 +320,7 @@ export async function listPendingCustomerPayments(companyId: number): Promise<Pe
              COALESCE(u.full_name, u.username, '') AS registered_by, p.created_at::text
       FROM payments p
       LEFT JOIN clients c ON c.id = p.client_id AND c.empresa_id = p.empresa_id
-      LEFT JOIN profiles u ON u.id = p.registered_by
+      LEFT JOIN profiles u ON u.id::text = p.registered_by::text
       WHERE p.empresa_id = $1 AND p.status = 'pendiente_aprobacion' AND p.entity_type = 'cliente'
       ORDER BY p.created_at DESC
     `,
@@ -413,7 +413,7 @@ export async function listCustomerPayments(
              COALESCE(u.full_name, u.username, '') AS registered_by, p.amount::text, COALESCE(p.status,'') AS status
       FROM payments p
       LEFT JOIN clients c ON c.id = p.client_id AND c.empresa_id = p.empresa_id
-      LEFT JOIN profiles u ON u.id = p.registered_by
+      LEFT JOIN profiles u ON u.id::text = p.registered_by::text
       WHERE ${filters.join(" AND ")}
       ORDER BY p.payment_date DESC NULLS LAST, p.created_at DESC
       LIMIT 500
