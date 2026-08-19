@@ -427,3 +427,23 @@ export async function assertVendorOwnsSale(session: AuthSession, saleId: string)
     throw new ApiError(403, "No podés registrar cobros de una venta que no es de tus clientes.");
   }
 }
+
+// Guard: el cliente debe ser propio o a cargo del vendedor, si no 403.
+export async function assertVendorOwnsClient(session: AuthSession, clientId: string): Promise<void> {
+  const names = sellerCandidates(session);
+  const result = await queryWithCompanyContext<{ ok: number }>(
+    session.companyId,
+    `
+      SELECT 1 AS ok
+        FROM clients c
+       WHERE c.id = $1::uuid AND c.empresa_id = $2
+         AND (UPPER(BTRIM(COALESCE(c.seller_name,''))) = ANY($3::text[])
+              OR UPPER(BTRIM(COALESCE(c.assigned_seller,''))) = ANY($3::text[]))
+       LIMIT 1
+    `,
+    [clientId, session.companyId, names],
+  );
+  if (!result.rows[0]) {
+    throw new ApiError(403, "No podés registrar cobros de un cliente que no es tuyo.");
+  }
+}

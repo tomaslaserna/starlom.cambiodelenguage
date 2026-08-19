@@ -109,3 +109,20 @@ test("assertVendorOwnsSale pasa cuando la venta es de un cliente del vendedor", 
   assert.match(call.sql, /JOIN clients c/i);
   assert.match(call.sql, /assigned_seller/i);
 });
+
+test("assertVendorOwnsClient lanza 403 si el cliente no es del vendedor", async () => {
+  const crm = makeCrm(() => ({ rows: [] }));
+  await assert.rejects(
+    () => crm.assertVendorOwnsClient(session, "22222222-2222-2222-2222-222222222222"),
+    (e) => e.status === 403,
+  );
+});
+
+test("assertVendorOwnsClient pasa y consulta clients por seller_name/assigned_seller", async () => {
+  const crm = makeCrm(() => ({ rows: [{ ok: 1 }] }));
+  await crm.assertVendorOwnsClient(session, "22222222-2222-2222-2222-222222222222");
+  const call = dbCalls.find((c) => /FROM clients c/i.test(c.sql));
+  assert.match(call.sql, /seller_name/i);
+  assert.match(call.sql, /assigned_seller/i);
+  assert.ok(call.params[2].includes("JUAN"));
+});
