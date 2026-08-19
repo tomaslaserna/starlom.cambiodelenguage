@@ -321,7 +321,7 @@ export async function listPendingCustomerPayments(companyId: number): Promise<Pe
       FROM payments p
       LEFT JOIN clients c ON c.id = p.client_id AND c.empresa_id = p.empresa_id
       LEFT JOIN profiles u ON u.id::text = p.registered_by::text
-      WHERE p.empresa_id = $1 AND p.status = 'pendiente_aprobacion' AND p.entity_type = 'cliente'
+      WHERE p.empresa_id = $1 AND p.status::text = 'pendiente_aprobacion' AND p.entity_type = 'cliente'
       ORDER BY p.created_at DESC
     `,
     [companyId],
@@ -337,7 +337,7 @@ export async function approveCustomerPayment(session: AuthSession, paymentId: st
     const found = await client.query(
       `SELECT id::text AS id, client_id::text AS client_id, amount::text AS amount,
               COALESCE(method,'') AS method, COALESCE(reference,'') AS reference, COALESCE(entity_name,'') AS entity_name
-       FROM payments WHERE id = $1::uuid AND empresa_id = $2 AND status = 'pendiente_aprobacion' FOR UPDATE`,
+       FROM payments WHERE id = $1::uuid AND empresa_id = $2 AND status::text = 'pendiente_aprobacion' FOR UPDATE`,
       [paymentId, session.companyId],
     );
     const payment = found.rows[0];
@@ -366,7 +366,7 @@ export async function rejectCustomerPayment(session: AuthSession, paymentId: str
   const result = await withCompanyContext(session.companyId, async (client) => {
     const updated = await client.query<{ id: string }>(
       `UPDATE payments SET status = 'rechazado', notes = CASE WHEN $3 = '' THEN notes ELSE CONCAT_WS(' | ', NULLIF(notes,''), 'Rechazo: ' || $3) END, updated_at = now()
-       WHERE id = $1::uuid AND empresa_id = $2 AND status = 'pendiente_aprobacion' RETURNING id::text AS id`,
+       WHERE id = $1::uuid AND empresa_id = $2 AND status::text = 'pendiente_aprobacion' RETURNING id::text AS id`,
       [paymentId, session.companyId, reason.trim()],
     );
     if (!updated.rows[0]) throw new ApiError(409, "El pago ya no esta pendiente de aprobacion");
@@ -392,7 +392,7 @@ export async function listCustomerPayments(
   const params: unknown[] = [companyId];
   const filters = ["p.empresa_id = $1", "p.entity_type = 'cliente'"];
   const status = options.status?.trim() ?? "";
-  if (status) { params.push(status); filters.push(`p.status = $${params.length}`); }
+  if (status) { params.push(status); filters.push(`p.status::text = $${params.length}`); }
   const query = options.query?.trim() ?? "";
   if (query) {
     params.push(`%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
@@ -410,7 +410,7 @@ export async function listCustomerPayments(
       SELECT p.id::text AS id, p.payment_date::text AS date,
              COALESCE(c.display_name, p.entity_name, '') AS name,
              COALESCE(p.method,'') AS method, COALESCE(p.reference,'') AS reference,
-             COALESCE(u.full_name, u.username, '') AS registered_by, p.amount::text, COALESCE(p.status,'') AS status
+             COALESCE(u.full_name, u.username, '') AS registered_by, p.amount::text, COALESCE(p.status::text,'') AS status
       FROM payments p
       LEFT JOIN clients c ON c.id = p.client_id AND c.empresa_id = p.empresa_id
       LEFT JOIN profiles u ON u.id::text = p.registered_by::text
@@ -446,7 +446,7 @@ export async function voidCustomerPayment(session: AuthSession, paymentId: strin
   const result = await withCompanyContext(session.companyId, async (client) => {
     const found = await client.query(
       `SELECT id::text AS id, client_id::text AS client_id, amount::text AS amount,
-              COALESCE(status,'') AS status, COALESCE(entity_name,'') AS entity_name
+              COALESCE(status::text,'') AS status, COALESCE(entity_name,'') AS entity_name
        FROM payments WHERE id = $1::uuid AND empresa_id = $2 FOR UPDATE`,
       [paymentId, session.companyId],
     );
