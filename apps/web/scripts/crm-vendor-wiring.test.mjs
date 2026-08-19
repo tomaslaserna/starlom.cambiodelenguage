@@ -18,6 +18,13 @@ test("pagina /crm/cobros usa getVendorOpenAccounts (saldo corrido)", () => {
   assert.match(src, /sessionCanUseCrm/);
 });
 
+const crmCobrosPage = readFileSync(new URL("../src/app/crm/cobros/page.tsx", import.meta.url), "utf8");
+test("crm/cobros muestra el boton Registrar cobro con el cliente pre-cargado", () => {
+  assert.match(crmCobrosPage, /RegisterPaymentDialog/);
+  assert.match(crmCobrosPage, /registerCrmCustomerPaymentAction/);
+  assert.match(crmCobrosPage, /defaultCustomerId=\{[^}]*clientId[^}]*\}/);
+});
+
 test("pagina /crm/clientes es DB pura del vendedor: tabla, sin tablero ni tira de perfil", () => {
   const src = read("../src/app/crm/clientes/page.tsx");
   assert.match(src, /getVendorCustomers/);

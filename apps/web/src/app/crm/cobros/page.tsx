@@ -16,10 +16,13 @@ import {
   Toolbar,
   Button,
 } from "@/components/ui";
+import { registerCrmCustomerPaymentAction } from "@/app/crm/cobros/actions";
+import { RegisterPaymentDialog } from "@/app/payments/register-payment-dialog";
 import { requireStaffSession } from "@/lib/auth";
 import { getVendorOpenAccounts } from "@/lib/crm";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { sessionCanUseCrm } from "@/lib/route-auth";
+import { localDateIso } from "@/lib/timezone";
 
 type CrmCobrosPageProps = {
   searchParams: Promise<{ q?: string }>;
@@ -41,6 +44,7 @@ export default async function CrmCobrosPage({ searchParams }: CrmCobrosPageProps
 
   const totalDebt = accounts.reduce((sum, account) => (account.balance > 0 ? sum + account.balance : sum), 0);
   const totalOverdue = accounts.reduce((sum, account) => sum + account.aging.overdueTotal, 0);
+  const today = localDateIso();
 
   return (
     <ModulePage
@@ -86,19 +90,20 @@ export default async function CrmCobrosPage({ searchParams }: CrmCobrosPageProps
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[24%] px-2">Cliente</DataTableHead>
-                <DataTableHead className="w-[13%] px-2">Ult. movimiento</DataTableHead>
-                <DataTableHead align="right" className="w-[11%] px-2">Al dia</DataTableHead>
-                <DataTableHead align="right" className="w-[11%] px-2">+30</DataTableHead>
-                <DataTableHead align="right" className="w-[11%] px-2">+60</DataTableHead>
-                <DataTableHead align="right" className="w-[11%] px-2">+90</DataTableHead>
-                <DataTableHead align="right" className="w-[19%] px-2">Saldo</DataTableHead>
+                <DataTableHead className="w-[20%] px-2">Cliente</DataTableHead>
+                <DataTableHead className="w-[12%] px-2">Ult. movimiento</DataTableHead>
+                <DataTableHead align="right" className="w-[10%] px-2">Al dia</DataTableHead>
+                <DataTableHead align="right" className="w-[10%] px-2">+30</DataTableHead>
+                <DataTableHead align="right" className="w-[10%] px-2">+60</DataTableHead>
+                <DataTableHead align="right" className="w-[10%] px-2">+90</DataTableHead>
+                <DataTableHead align="right" className="w-[16%] px-2">Saldo</DataTableHead>
+                <DataTableHead align="right" className="w-[12%] px-2">Cobro</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {accounts.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={7}>
+                  <DataTableCell colSpan={8}>
                     <EmptyState
                       description="No hay clientes tuyos con saldo abierto para la busqueda actual."
                       title="Sin cobros pendientes"
@@ -135,6 +140,15 @@ export default async function CrmCobrosPage({ searchParams }: CrmCobrosPageProps
                       style={{ color: account.balance > 0 ? "var(--danger)" : account.balance < 0 ? "var(--success)" : undefined }}
                     >
                       {formatCurrency(account.balance)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2">
+                      <RegisterPaymentDialog
+                        action={registerCrmCustomerPaymentAction}
+                        customers={[]}
+                        defaultCustomerId={account.clientId}
+                        today={today}
+                        triggerLabel="Registrar cobro"
+                      />
                     </DataTableCell>
                   </DataTableRow>
                 ))
