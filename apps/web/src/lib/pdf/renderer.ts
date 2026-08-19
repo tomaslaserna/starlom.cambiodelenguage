@@ -222,7 +222,7 @@ export class StarlimPdf {
       this.drawCompanyBlock(PAGE.marginX, top + 52);
 
       const rightX = PAGE.width - PAGE.marginX - 218;
-      const boxedTitle = !["Presupuesto", "Lista de precios", "Cuenta corriente"].includes(input.title);
+      const boxedTitle = !["Presupuesto", "Lista de precios", "Cuenta corriente", "Estado de cuenta"].includes(input.title);
       if (boxedTitle) {
         const longTitle = input.title.length > 18;
         const boxWidth = Math.min(176, Math.max(128, input.title.length * 7.3));

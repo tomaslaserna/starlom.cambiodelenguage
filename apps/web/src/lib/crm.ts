@@ -1,6 +1,5 @@
 import type { AuthSession } from "@/lib/auth";
 import { ApiError } from "@/lib/api-response";
-import { listSalesToCollectWhere } from "@/lib/collections";
 import {
   classifyQuote,
   topQuoteClients,
@@ -8,6 +7,7 @@ import {
   type TopQuoteClient,
   type VendorQuote,
 } from "@/lib/crm-quotes";
+import { listOpenCustomerAccounts } from "@/lib/customer-accounts";
 import { queryWithCompanyContext } from "@/lib/db";
 import { getCustomerFollowUp } from "@/lib/messages";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
@@ -389,34 +389,28 @@ export async function getVendorCustomers(
   };
 }
 
-// Ventas a cobrar de los clientes del vendedor (propios ∪ a cargo). Reusa el
-// SELECT canonico de collections.ts, acotando por el cliente (alias cli).
-export async function getVendorCollections(session: AuthSession) {
-  const names = sellerCandidates(session);
-  return listSalesToCollectWhere(
-    session.companyId,
-    "AND (UPPER(BTRIM(COALESCE(cli.seller_name,''))) = ANY($2::text[]) OR UPPER(BTRIM(COALESCE(cli.assigned_seller,''))) = ANY($2::text[]))",
-    [names],
-  );
+// Cuentas abiertas (saldo corrido) de los clientes del vendedor (propios ∪ a cargo).
+// Delega en listOpenCustomerAccounts (customer-accounts.ts) filtrando por seller_name.
+export async function getVendorOpenAccounts(session: AuthSession) {
+  return listOpenCustomerAccounts(session.companyId, { sellerNames: sellerCandidates(session) });
 }
 
-// Guard: la venta debe pertenecer a un cliente del vendedor, si no 403.
-export async function assertVendorOwnsSale(session: AuthSession, saleId: string) {
+// Guard: el cliente debe ser propio o a cargo del vendedor, si no 403.
+export async function assertVendorOwnsClient(session: AuthSession, clientId: string): Promise<void> {
   const names = sellerCandidates(session);
   const result = await queryWithCompanyContext<{ ok: number }>(
     session.companyId,
     `
       SELECT 1 AS ok
-        FROM sales v
-        JOIN clients c ON c.id = v.client_id AND c.empresa_id = v.empresa_id
-       WHERE v.id = $1::uuid AND v.empresa_id = $2
+        FROM clients c
+       WHERE c.id = $1::uuid AND c.empresa_id = $2
          AND (UPPER(BTRIM(COALESCE(c.seller_name,''))) = ANY($3::text[])
               OR UPPER(BTRIM(COALESCE(c.assigned_seller,''))) = ANY($3::text[]))
        LIMIT 1
     `,
-    [saleId, session.companyId, names],
+    [clientId, session.companyId, names],
   );
   if (!result.rows[0]) {
-    throw new ApiError(403, "No podés registrar cobros de una venta que no es de tus clientes.");
+    throw new ApiError(403, "No podés registrar cobros de un cliente que no es tuyo.");
   }
 }

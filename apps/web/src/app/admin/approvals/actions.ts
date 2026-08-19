@@ -9,6 +9,7 @@ import {
   resolveGenericApproval,
   resolvePurchaseApproval,
 } from "@/lib/approvals";
+import { approveCustomerPayment, rejectCustomerPayment } from "@/lib/customer-accounts";
 import { positiveId, uuidParam } from "@/lib/request-body";
 import { requireApiSession, requireSessionPermission } from "@/lib/route-auth";
 
@@ -29,6 +30,14 @@ function revalidatePurchaseApprovalFlow() {
   revalidatePath("/purchases");
   revalidatePath("/treasury/accounts-payable");
   revalidatePath("/metrics");
+}
+
+function revalidatePaymentApprovalFlow() {
+  revalidatePath("/admin/approvals");
+  revalidatePath("/treasury/current-accounts");
+  revalidatePath("/metrics");
+  revalidatePath("/payments");
+  revalidatePath("/payments/accounts");
 }
 
 function actionErrorMessage(error: unknown) {
@@ -63,6 +72,11 @@ export async function approveApprovalAction(formData: FormData) {
         await resolvePurchaseApproval(session, uuidParam(rawId, "Solicitud de compra"), "aprobada");
         revalidatePurchaseApprovalFlow();
         return;
+      case "payment":
+        await requireSessionPermission(session, [COLLECTION_APPROVAL_PERMISSION]);
+        await approveCustomerPayment(session, uuidParam(rawId, "Pago"));
+        revalidatePaymentApprovalFlow();
+        return;
       default:
         assertNeverApprovalSource(source);
     }
@@ -94,6 +108,11 @@ export async function rejectApprovalAction(formData: FormData) {
       case "purchase":
         await resolvePurchaseApproval(session, uuidParam(rawId, "Solicitud de compra"), "rechazada", reason);
         revalidatePurchaseApprovalFlow();
+        return;
+      case "payment":
+        await requireSessionPermission(session, [COLLECTION_APPROVAL_PERMISSION]);
+        await rejectCustomerPayment(session, uuidParam(rawId, "Pago"), reason);
+        revalidatePaymentApprovalFlow();
         return;
       default:
         assertNeverApprovalSource(source);

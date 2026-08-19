@@ -17,3 +17,6 @@ apps/web/.env*.local
 apps/web/.env.smoke
 apps/web/tsconfig.tsbuildinfo
 .env*.local
+
+# Visual brainstorming companion (local mockups)
+.superpowers/
