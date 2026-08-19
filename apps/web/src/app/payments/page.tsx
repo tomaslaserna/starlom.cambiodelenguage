@@ -61,13 +61,30 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
   const status = params.status ?? "";
   const today = localDateIso();
 
-  const [payments, customers, pendingPayments, canRegister, canVoid] = await Promise.all([
-    listCustomerPayments(session.companyId, { query, status }),
-    listCustomerOptions(session.companyId),
-    listPendingCustomerPayments(session.companyId),
-    sessionAllows(session, [COLLECTIONS_CREATE_PERMISSION]),
-    sessionAllows(session, [COLLECTIONS_APPROVE_PERMISSION]),
-  ]);
+  // DIAGNOSTICO TEMPORAL: corre cada fuente por separado y, si alguna falla,
+  // imprime el mensaje real en pantalla en vez de un 500 generico.
+  const diag: string[] = [];
+  async function probe<T>(label: string, fn: () => Promise<T>): Promise<T | undefined> {
+    try {
+      return await fn();
+    } catch (error) {
+      diag.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+      return undefined;
+    }
+  }
+  const payments = (await probe("listCustomerPayments", () => listCustomerPayments(session.companyId, { query, status }))) ?? [];
+  const customers = (await probe("listCustomerOptions", () => listCustomerOptions(session.companyId))) ?? [];
+  const pendingPayments = (await probe("listPendingCustomerPayments", () => listPendingCustomerPayments(session.companyId))) ?? [];
+  const canRegister = (await probe("canRegister", () => sessionAllows(session, [COLLECTIONS_CREATE_PERMISSION]))) ?? false;
+  const canVoid = (await probe("canVoid", () => sessionAllows(session, [COLLECTIONS_APPROVE_PERMISSION]))) ?? false;
+
+  if (diag.length > 0) {
+    return (
+      <pre style={{ whiteSpace: "pre-wrap", padding: 16, margin: 16, border: "2px solid crimson", color: "crimson", fontSize: 13, fontFamily: "monospace" }}>
+        {"DIAGNOSTICO /payments — errores:\n\n" + diag.join("\n\n")}
+      </pre>
+    );
+  }
 
   return (
     <ModulePage
