@@ -1078,6 +1078,59 @@ export async function updateOrderObservation(companyId: number, id: string, obse
   return getOrder(companyId, id);
 }
 
+// Saldo corrido: entregar una venta genera el DEBITO en la cuenta corriente del
+// cliente (la mitad "debe"; el cobro genera el "haber"). Idempotente por sale_id:
+// no duplica si el evento de entrega se reprocesa. Sin cliente o sin monto no
+// aplica (no hay cuenta corriente que mover).
+async function postSaleAccountDebitOnDelivery(
+  client: PoolClient,
+  companyId: number,
+  saleId: string,
+) {
+  const saleResult = await client.query<{
+    client_id: string | null;
+    total: string;
+    name: string;
+    fecha: string;
+    nro: number;
+    doc: string;
+  }>(
+    `
+      SELECT v.client_id::text AS client_id,
+             COALESCE(v.total_amount, 0)::text AS total,
+             COALESCE(v.client_name, cl.display_name, '') AS name,
+             v.sale_date::text AS fecha,
+             COALESCE(v.receipt_number, nullif(regexp_replace(COALESCE(v.sale_number, ''), '\\D', '', 'g'), '')::bigint, 0)::int AS nro,
+             LOWER(COALESCE(v.desired_document, 'remito')) AS doc
+      FROM sales v
+      LEFT JOIN clients cl ON cl.id = v.client_id AND cl.empresa_id = v.empresa_id
+      WHERE v.id = $1::uuid AND v.empresa_id = $2
+    `,
+    [saleId, companyId],
+  );
+  const sale = saleResult.rows[0];
+  if (!sale || !sale.client_id || Number(sale.total) <= 0) return;
+
+  const existing = await client.query(
+    "SELECT 1 FROM current_account_movements WHERE empresa_id = $1 AND sale_id = $2::uuid AND debit > 0 LIMIT 1",
+    [companyId, saleId],
+  );
+  if (existing.rows[0]) return;
+
+  const label = sale.doc === "factura" ? "Factura" : "Remito";
+  const [year, month, day] = String(sale.fecha).slice(0, 10).split("-");
+  const description = `${label} #${String(sale.nro).padStart(4, "0")} - ${day}/${month}/${year}`;
+  await client.query(
+    `
+      INSERT INTO current_account_movements (
+        client_id, sale_id, movement_date, debit, credit, description, entity_type, entity_name, empresa_id
+      )
+      VALUES ($1::uuid, $2::uuid, $3::date, $4, 0, $5, 'cliente', $6, $7)
+    `,
+    [sale.client_id, saleId, sale.fecha, Number(sale.total), description, sale.name, companyId],
+  );
+}
+
 export async function updateOrderStatus(
   session: AuthSession,
   id: string,
@@ -1155,6 +1208,10 @@ export async function updateOrderStatus(
       nextStatus === "entregado"
         ? await createDeliveryDocumentForSale(client, session, id, { onExisting: "return" })
         : null;
+
+    if (nextStatus === "entregado") {
+      await postSaleAccountDebitOnDelivery(client, session.companyId, id);
+    }
 
     await client.query(
       "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
