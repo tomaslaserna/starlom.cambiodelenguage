@@ -171,10 +171,10 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                       </DataTableCell>
                       <DataTableCell align="center" className="px-2 py-2">
                         <TableActionMenu
-                          className="mx-auto min-w-0 w-11"
+                          className="mx-auto"
                           compact
                           label={<><span aria-hidden="true" className="text-lg leading-none tracking-[2px]">•••</span><span className="sr-only">Opciones de la venta {saleNumberLabel}</span></>}
-                          menuClassName="min-w-[230px]"
+                          menuClassName="min-w-[230px] -translate-x-[186px]"
                         >
                           <div className="px-2.5 pb-1 pt-0.5 text-left text-[10px] font-black uppercase tracking-[0.08em] text-[color:var(--muted)]">
                             Comprobantes asociados

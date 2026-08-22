@@ -22,7 +22,8 @@ export function TableActionMenu({
   return (
     <details
       className={cn(
-        "group min-w-[150px] rounded-[9px] border border-[#b8cdf1] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] open:border-[#8fb1e8] open:shadow-[0_7px_18px_rgba(30,64,175,0.12)]",
+        "group rounded-[9px] border border-[#b8cdf1] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] open:border-[#8fb1e8] open:shadow-[0_7px_18px_rgba(30,64,175,0.12)]",
+        compact ? "w-11 min-w-11" : "min-w-[150px]",
         className,
       )}
       {...props}
