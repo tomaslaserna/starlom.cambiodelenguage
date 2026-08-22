@@ -21,7 +21,7 @@ import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, priceForList, resolvePriceListNa
 import { offerLineDiscount } from "@/lib/offer-status";
 import type { PriceOffer } from "@/lib/price-offers";
 import { localDateIso } from "@/lib/timezone";
-import { desiredDocumentLabel, saleOrderDocument, saleVatRateForDocument } from "@/lib/receipt-types";
+import { desiredDocumentLabel, invoiceSaleOrderDocument, saleOrderDocument, saleVatRateForDocument } from "@/lib/receipt-types";
 import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
 import { OrderConfirmationPreview } from "@/app/orders/new/order-confirmation-preview";
 import type { IvaRate } from "@/lib/order-confirmation";
@@ -93,6 +93,7 @@ export function OrderEntryFields({
   const [date, setDate] = useState(() => initialValue?.date || localDateIso());
   const [observation, setObservation] = useState(initialValue?.observation ?? "");
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
+  const [requestedDocument, setRequestedDocument] = useState<"habitual" | "remito" | "factura">("habitual");
   const [draftError, setDraftError] = useState("");
   const lineIdRef = useRef(initialValue?.lines.length ?? 0);
 
@@ -109,8 +110,13 @@ export function OrderEntryFields({
     [clients],
   );
   const priceListOptions = priceLists.length ? priceLists : [{ name: DEFAULT_PRICE_LIST_NAME }];
-  const desiredDocument = saleOrderDocument(selectedClient?.receiptType);
-  const vatRate: IvaRate = saleVatRateForDocument(selectedClient?.receiptType) ?? 0;
+  const habitualDocument = saleOrderDocument(selectedClient?.receiptType);
+  const desiredDocument = requestedDocument === "factura"
+    ? invoiceSaleOrderDocument(selectedClient?.fiscalCondition, selectedClient?.receiptType)
+    : requestedDocument === "remito"
+      ? "remito"
+      : habitualDocument;
+  const vatRate: IvaRate = saleVatRateForDocument(desiredDocument) ?? 0;
   const hasConfiguredDocument = desiredDocument !== null && vatRate > 0;
   const activePriceList = resolvePriceListName(priceListOverride || selectedClient?.priceList, priceListOptions);
   const productOptions = useMemo(
@@ -249,6 +255,7 @@ export function OrderEntryFields({
       <input name="date" type="hidden" value={date} />
       <input name="observation" type="hidden" value={observation} />
       <input name="priceListOverride" type="hidden" value={activePriceList} />
+      <input name="requestedDocument" type="hidden" value={requestedDocument === "habitual" ? "" : requestedDocument} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_180px]">
         <Field htmlFor="order-customer" label="Cliente" required>
@@ -263,6 +270,7 @@ export function OrderEntryFields({
               const nextClient = clients.find((client) => client.id === nextCustomerId) ?? null;
               setCustomerId(nextCustomerId);
               setPriceListOverride(resolvePriceListName(nextClient?.priceList, priceListOptions));
+              setRequestedDocument("habitual");
             }}
           />
         </Field>
@@ -277,17 +285,20 @@ export function OrderEntryFields({
             <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Condicion fiscal</div>
             <div className="erp-text-body-sm font-bold">{selectedClient.fiscalCondition || "-"}</div>
           </div>
-          <div>
-            <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Comprobante e IVA</div>
-            <div className="erp-text-body-sm font-bold">
-              {desiredDocument ? `${desiredDocumentLabel(desiredDocument)} · IVA ${String(vatRate).replace(".", ",")}%` : "Sin configurar"}
+          <Field htmlFor="order-document" label="Comprobante de este pedido">
+            <Select
+              id="order-document"
+              value={requestedDocument}
+              onChange={(event) => setRequestedDocument(event.target.value as "habitual" | "remito" | "factura")}
+            >
+              <option value="habitual">Habitual: {habitualDocument ? desiredDocumentLabel(habitualDocument) : "sin configurar"}</option>
+              <option value="remito">Remito</option>
+              <option value="factura">Factura</option>
+            </Select>
+            <div className="mt-1 text-xs text-[color:var(--muted)]">
+              Se aplicará {desiredDocument ? `${desiredDocumentLabel(desiredDocument)} · IVA ${String(vatRate).replace(".", ",")}%` : "el comprobante seleccionado"}. El habitual es solo una sugerencia.
             </div>
-            {!hasConfiguredDocument ? (
-              <div className="mt-1 text-xs font-semibold text-[color:var(--danger)]">
-                Configurá al cliente con Remito, Factura A o Factura B antes de cargar el pedido.
-              </div>
-            ) : null}
-          </div>
+          </Field>
           <Field htmlFor="order-price-list" label="Lista">
             <Select
               id="order-price-list"

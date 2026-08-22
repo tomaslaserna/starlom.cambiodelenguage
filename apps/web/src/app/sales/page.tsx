@@ -121,8 +121,8 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                 <DataTableHead className="w-[30%] px-2">Cliente</DataTableHead>
                 <DataTableHead className="w-[16%] px-2">Vendedor</DataTableHead>
                 <DataTableHead className="w-[13%] px-2">Fecha</DataTableHead>
-                <DataTableHead className="w-[13%] px-2">Monto</DataTableHead>
-                <DataTableHead align="center" className="w-[14%] px-2">Comprobante</DataTableHead>
+                <DataTableHead className="w-[15%] px-2">Monto neto de ajustes</DataTableHead>
+                <DataTableHead align="center" className="w-[18%] px-2">Comprobantes asociados</DataTableHead>
                 {canDeleteRecords ? <DataTableHead className="w-[12%] px-2">Acciones</DataTableHead> : null}
               </DataTableRow>
             </DataTableHeader>
@@ -159,9 +159,17 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                       <DataTableCell className="truncate px-2 py-2">{sale.seller || "-"}</DataTableCell>
                       <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">{formatDate(sale.date)}</DataTableCell>
                       <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs font-semibold">
-                        {formatCurrency(sale.amount)}
+                        <div>{formatCurrency(sale.adjustedAmount)}</div>
+                        {sale.creditNoteAmount || sale.debitNoteAmount ? (
+                          <div className="mt-1 text-[11px] font-medium text-[color:var(--muted)]">
+                            Original {formatCurrency(sale.amount)}
+                            {sale.creditNoteAmount ? ` · NC -${formatCurrency(sale.creditNoteAmount)}` : ""}
+                            {sale.debitNoteAmount ? ` · ND +${formatCurrency(sale.debitNoteAmount)}` : ""}
+                          </div>
+                        ) : null}
                       </DataTableCell>
                       <DataTableCell align="center" className="px-2 py-2">
+                        <div className="grid gap-1 justify-items-center">
                         {sale.deliveryNumber ? (
                           <a
                             aria-label={`Ver PDF del remito ${sale.deliveryNumber}`}
@@ -175,6 +183,23 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                         ) : (
                           <span className="text-xs font-semibold text-[color:var(--muted)]">Sin remito</span>
                         )}
+                        {sale.fiscalStatus === "aprobado" ? (
+                          <a className="text-xs font-black text-[color:var(--accent-strong)] hover:underline" href={`/api/pdfs/orders/${sale.id}/document`} rel="noreferrer" target="_blank">Factura</a>
+                        ) : null}
+                        {sale.associatedDocuments.map((document) => document.fiscal ? (
+                          <a key={document.id} className="text-xs font-black text-[color:var(--accent-strong)] hover:underline" href={`/api/pdfs/fiscal/notes/${document.id}`} rel="noreferrer" target="_blank">
+                            {document.className} #{String(document.receiptNumber).padStart(8, "0")}
+                          </a>
+                        ) : (
+                          <span key={document.id} className="text-xs font-semibold text-[color:var(--muted)]">
+                            {document.className} interna #{String(document.receiptNumber).padStart(8, "0")}
+                          </span>
+                        ))}
+                        <div className="mt-1 flex gap-2">
+                          <a className="text-[11px] font-bold text-[color:var(--accent-strong)] hover:underline" href={`/orders/new?tipo=nota_credito&venta=${sale.id}`}>Devolucion</a>
+                          <a className="text-[11px] font-bold text-[color:var(--accent-strong)] hover:underline" href={`/orders/new?tipo=nota_debito&venta=${sale.id}`}>Agregado</a>
+                        </div>
+                        </div>
                       </DataTableCell>
                       {canDeleteRecords ? (
                         <DataTableCell className="px-2 py-2">

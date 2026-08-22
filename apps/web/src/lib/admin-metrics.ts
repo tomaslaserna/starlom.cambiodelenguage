@@ -4,7 +4,7 @@ import { currentMonth, monthRange, shiftMonthKey } from "@/lib/month-range";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { periodBounds, type Period } from "@/lib/period-range";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
-import { netSalesAmountSql } from "@/lib/sales-vat";
+import { adjustedSalesAmountSql, netSalesAmountSql } from "@/lib/sales-vat";
 
 function monthBounds(date = new Date()) {
   const month = currentMonth(date);
@@ -93,23 +93,23 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
     `
       WITH sales_summary AS (
         SELECT
-          COALESCE(SUM(${netSalesAmountSql("total_amount", "s")}) FILTER (
+          COALESCE(SUM(${netSalesAmountSql(adjustedSalesAmountSql("s.total_amount", "s"), "s")}) FILTER (
             WHERE sale_date >= $2 AND sale_date < $3
               AND ${normalizedOrderStatusSql("s")} = 'entregado'
           ), 0) AS sales_current,
-          COALESCE(SUM(${netSalesAmountSql("total_amount", "s")}) FILTER (
+          COALESCE(SUM(${netSalesAmountSql(adjustedSalesAmountSql("s.total_amount", "s"), "s")}) FILTER (
             WHERE sale_date >= $1 AND sale_date < $2
               AND ${normalizedOrderStatusSql("s")} = 'entregado'
           ), 0) AS sales_previous,
-          COALESCE(SUM(total_amount) FILTER (
+          COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}) FILTER (
             WHERE sale_date >= $2 AND sale_date < $3
               AND ${normalizedOrderStatusSql("s")} = 'entregado'
           ), 0) AS sales_current_gross,
-          COALESCE(SUM(total_amount) FILTER (
+          COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}) FILTER (
             WHERE sale_date >= $1 AND sale_date < $2
               AND ${normalizedOrderStatusSql("s")} = 'entregado'
           ), 0) AS sales_previous_gross,
-          COALESCE(SUM(total_amount) FILTER (
+          COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}) FILTER (
             WHERE COALESCE(collection_status,'pendiente') IN ('pendiente','vencido','pendiente_aprobacion','en_proceso')
               AND ${normalizedOrderStatusSql("s")} = 'entregado'
           ), 0) AS open_sales_total
@@ -270,7 +270,7 @@ export async function getMonthlySeries(companyId: number, year: string): Promise
     `
       WITH ventas AS (
         SELECT to_char(s.sale_date, 'YYYY-MM') AS month_key,
-               ${netSalesAmountSql("s.total_amount", "s")} AS neto,
+               ${netSalesAmountSql(adjustedSalesAmountSql("s.total_amount", "s"), "s")} AS neto,
                COALESCE(s.source_cost_amount, line_totals.item_cost, 0) AS costo
         FROM sales s
         LEFT JOIN LATERAL (

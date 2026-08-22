@@ -513,7 +513,7 @@ test("current accounts use only active account movements and a business-correct 
   assert.match(accountPdf, /type === "proveedor" \? credit - debit : debit - credit/);
 });
 
-test("future orders and quotes derive only Remito or Factura A/B from the registered client", () => {
+test("future orders use the registered receipt as a suggestion and allow an explicit invoice or remito", () => {
   const receiptTypes = read("apps/web/src/lib/receipt-types.ts");
   for (const value of [
     "remito",
@@ -533,13 +533,17 @@ test("future orders and quotes derive only Remito or Factura A/B from the regist
   assert.match(receiptTypes, /export function saleVatRateForDocument/);
 
   const orders = read("apps/web/src/lib/orders.ts");
-  assert.match(orders, /saleOrderDocument\(customer\.receipt_type\)/);
-  assert.match(orders, /saleVatRateForDocument\(customer\.receipt_type\)/);
+  assert.match(orders, /habitualDocument = saleOrderDocument\(customer\.receipt_type\)/);
+  assert.match(orders, /requestedDocument === "factura"/);
+  assert.match(orders, /invoiceSaleOrderDocument/);
+  assert.match(orders, /saleVatRateForDocument\(desiredDocument\)/);
   assert.match(orders, /INSERT INTO sale_items/);
 
   const orderEntryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
   assert.match(orderEntryFields, /name="productsJson"/);
   assert.match(orderEntryFields, /name="priceListOverride"/);
+  assert.match(orderEntryFields, /name="requestedDocument"/);
+  assert.match(orderEntryFields, /Comprobante de este pedido/);
   assert.doesNotMatch(orderEntryFields, /name="desiredDocumentOverride"|name="vatRate"/);
   assert.match(orderEntryFields, /saleVatRateForDocument/);
   assert.match(orderEntryFields, /priceForList/);
@@ -1836,10 +1840,11 @@ test("Solicitar Factura requests a fiscal invoice that ARCA emits on approval", 
   assert.match(ordersPage, /name="download"/);
 });
 
-test("editing blocks historical zero-rate orders and derives future VAT from the selected client", () => {
+test("editing blocks historical zero-rate orders and derives VAT from the selected document", () => {
   const entryFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
   assert.match(entryFields, /vatRate\?: number/, "OrderEntryInitialValue must carry the saved vatRate");
-  assert.match(entryFields, /saleVatRateForDocument\(selectedClient\?\.receiptType\)/);
+  assert.match(entryFields, /saleVatRateForDocument\(desiredDocument\)/);
+  assert.match(entryFields, /requestedDocument === "factura"/);
   assert.match(entryFields, /initialValue\?\.vatRate === undefined \|\| initialValue\.vatRate > 0/);
 
   const editPage = read("apps/web/src/app/orders/[id]/edit/page.tsx");

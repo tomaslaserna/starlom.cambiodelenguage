@@ -23,6 +23,7 @@ import {
   saleReservesStockSql,
 } from "@/lib/order-status";
 import {
+  invoiceSaleOrderDocument,
   receiptTypeCode,
   saleOrderDocument,
   saleVatRateForDocument,
@@ -62,6 +63,16 @@ export type OrderSummary = {
   customerFiscalCondition: string;
   priceList: string;
   amount: number;
+  adjustedAmount: number;
+  creditNoteAmount: number;
+  debitNoteAmount: number;
+  associatedDocuments: Array<{
+    id: string;
+    className: "NC" | "ND";
+    fiscal: boolean;
+    receiptNumber: number;
+    amount: number;
+  }>;
   collectedAmount: number;
   outstandingAmount: number;
   netAmount: number;
@@ -160,6 +171,9 @@ function mapOrder(row: {
   vat_rate: string;
   fiscal_status: string;
   has_pending_fiscal_request: boolean;
+  credit_note_amount: string;
+  debit_note_amount: string;
+  adjustment_documents: Array<{ id: string; className: "NC" | "ND"; fiscal: boolean; receiptNumber: number; amount: number }> | null;
 }): OrderSummary {
   const vatRate = normalizeStoredVatRate(Number(row.vat_rate));
   const storedAmounts = splitStoredOrderTotal(Number(row.monto), vatRate);
@@ -179,6 +193,10 @@ function mapOrder(row: {
     customerFiscalCondition: row.fiscal_condition,
     priceList: row.price_list_name,
     amount: storedAmounts.totalAmount,
+    adjustedAmount: money(storedAmounts.totalAmount + Number(row.debit_note_amount) - Number(row.credit_note_amount)),
+    creditNoteAmount: Number(row.credit_note_amount),
+    debitNoteAmount: Number(row.debit_note_amount),
+    associatedDocuments: row.adjustment_documents ?? [],
     collectedAmount: Number(row.monto_cobrado),
     outstandingAmount: Number(row.saldo_pendiente),
     netAmount,
@@ -296,7 +314,7 @@ export async function listOrders(input: ListInput = {}) {
              COALESCE(item_totals.net_amount, 0)::text AS item_net,
              COALESCE(item_totals.item_count, 0)::text AS item_count,
              COALESCE(collections.total_credit, 0)::text AS monto_cobrado,
-             GREATEST(COALESCE(s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
+             GREATEST(COALESCE(NULLIF(collections.total_debit, 0), s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
              COALESCE(s.vat_rate, 0)::text AS vat_rate,
              s.receipt_number,
              dd.delivery_number,
@@ -309,6 +327,9 @@ export async function listOrders(input: ListInput = {}) {
              s.stock_discounted,
              COALESCE(s.notes, '') AS notes,
              COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
+             COALESCE(adjustments.credit_note_amount, 0)::text AS credit_note_amount,
+             COALESCE(adjustments.debit_note_amount, 0)::text AS debit_note_amount,
+             COALESCE(adjustments.documents, '[]'::jsonb) AS adjustment_documents,
              EXISTS (
                SELECT 1 FROM app_solicitudes sol
                WHERE sol.empresa_id = s.empresa_id
@@ -326,10 +347,24 @@ export async function listOrders(input: ListInput = {}) {
         WHERE si.empresa_id = s.empresa_id AND si.sale_id = s.id
       ) item_totals ON true
       LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(cam.credit), 0) AS total_credit
+        SELECT COALESCE(SUM(cam.debit), 0) AS total_debit,
+               COALESCE(SUM(cam.credit), 0) AS total_credit
         FROM current_account_movements cam
         WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
       ) collections ON true
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(doc.amount) FILTER (WHERE doc.class_name = 'NC'), 0) AS credit_note_amount,
+               COALESCE(SUM(doc.amount) FILTER (WHERE doc.class_name = 'ND'), 0) AS debit_note_amount,
+               jsonb_agg(jsonb_build_object(
+                 'id', doc.id::text,
+                 'className', doc.class_name,
+                 'fiscal', doc.fiscal,
+                 'receiptNumber', COALESCE(doc.fiscal_receipt_number, doc.receipt_number, 0),
+                 'amount', doc.amount
+               ) ORDER BY doc.created_at) AS documents
+        FROM sales_internal_documents doc
+        WHERE doc.empresa_id = s.empresa_id AND doc.sale_id = s.id
+      ) adjustments ON true
       WHERE ${where}
       ORDER BY s.sale_date DESC, s.created_at DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}
@@ -368,7 +403,7 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
              COALESCE(item_totals.net_amount, 0)::text AS item_net,
              COALESCE(item_totals.item_count, 0)::text AS item_count,
              COALESCE(collections.total_credit, 0)::text AS monto_cobrado,
-             GREATEST(COALESCE(s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
+             GREATEST(COALESCE(NULLIF(collections.total_debit, 0), s.total_amount, 0) - COALESCE(collections.total_credit, 0), 0)::text AS saldo_pendiente,
              COALESCE(s.vat_rate, 0)::text AS vat_rate,
              s.receipt_number,
              dd.delivery_number,
@@ -381,6 +416,9 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
              s.stock_discounted,
              COALESCE(s.notes, '') AS notes,
              COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
+             COALESCE(adjustments.credit_note_amount, 0)::text AS credit_note_amount,
+             COALESCE(adjustments.debit_note_amount, 0)::text AS debit_note_amount,
+             COALESCE(adjustments.documents, '[]'::jsonb) AS adjustment_documents,
              EXISTS (
                SELECT 1 FROM app_solicitudes sol
                WHERE sol.empresa_id = s.empresa_id
@@ -398,10 +436,24 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
         WHERE si.empresa_id = s.empresa_id AND si.sale_id = s.id
       ) item_totals ON true
       LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(cam.credit), 0) AS total_credit
+        SELECT COALESCE(SUM(cam.debit), 0) AS total_debit,
+               COALESCE(SUM(cam.credit), 0) AS total_credit
         FROM current_account_movements cam
         WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
       ) collections ON true
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(doc.amount) FILTER (WHERE doc.class_name = 'NC'), 0) AS credit_note_amount,
+               COALESCE(SUM(doc.amount) FILTER (WHERE doc.class_name = 'ND'), 0) AS debit_note_amount,
+               jsonb_agg(jsonb_build_object(
+                 'id', doc.id::text,
+                 'className', doc.class_name,
+                 'fiscal', doc.fiscal,
+                 'receiptNumber', COALESCE(doc.fiscal_receipt_number, doc.receipt_number, 0),
+                 'amount', doc.amount
+               ) ORDER BY doc.created_at) AS documents
+        FROM sales_internal_documents doc
+        WHERE doc.empresa_id = s.empresa_id AND doc.sale_id = s.id
+      ) adjustments ON true
       WHERE s.id = $1::uuid AND s.empresa_id = $2
       LIMIT 1
     `,
@@ -555,12 +607,18 @@ async function resolveBasicOrderDetail(
   const customer = await getOrderCustomer(client, companyId, input.customerId);
   const activePriceLists = await getActivePriceListNames(client, companyId);
   const priceListName = resolvePriceListName(input.priceListOverride || customer.price_list_name, activePriceLists);
-  const desiredDocument = saleOrderDocument(customer.receipt_type);
-  const vatRate = saleVatRateForDocument(customer.receipt_type);
+  const habitualDocument = saleOrderDocument(customer.receipt_type);
+  const requestedDocument = input.requestedDocument;
+  const desiredDocument = requestedDocument === "factura"
+    ? invoiceSaleOrderDocument(customer.fiscal_condition ?? "", customer.receipt_type ?? "")
+    : requestedDocument === "remito"
+      ? "remito"
+      : habitualDocument;
+  const vatRate = saleVatRateForDocument(desiredDocument);
   if (!desiredDocument || !vatRate) {
     throw new ApiError(
       400,
-      "El cliente no tiene un comprobante valido. Configuralo como Remito, Factura A o Factura B antes de cargar el pedido.",
+      "Selecciona el comprobante de este pedido o configura uno habitual para el cliente.",
     );
   }
   const receiptType = receiptTypeCode(desiredDocument);
@@ -855,6 +913,14 @@ export function basicOrderInputFromBody(body: RequestBody) {
     date: textField(body, "date") || textField(body, "fecha") || localDateIso(),
     priceListOverride: textField(body, "priceListOverride") || textField(body, "lista_precios"),
     observation: textField(body, "observation") || textField(body, "observacion"),
+    requestedDocument: (() => {
+      const value = textField(body, "requestedDocument") || textField(body, "comprobante_pedido");
+      if (!value) return "" as const;
+      if (value !== "remito" && value !== "factura") {
+        throw new ApiError(400, "Comprobante del pedido invalido");
+      }
+      return value;
+    })(),
   };
 }
 

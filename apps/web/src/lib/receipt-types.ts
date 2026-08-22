@@ -121,6 +121,12 @@ export function receiptTypeCode(value: string) {
 export type SaleOrderDocument = "remito" | "factura_a" | "factura_b";
 export type SaleOrderVatRate = 10.5 | 21;
 
+export function invoiceSaleOrderDocument(fiscalCondition = "", preferredReceiptType = ""): SaleOrderDocument {
+  return invoiceDocumentForFiscalCondition(fiscalCondition, preferredReceiptType) === "factura_a"
+    ? "factura_a"
+    : "factura_b";
+}
+
 export function saleOrderDocument(value: string | null | undefined): SaleOrderDocument | null {
   const normalized = normalizeReceiptKey(String(value ?? ""));
   if (!normalized) return null;

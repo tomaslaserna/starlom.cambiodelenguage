@@ -10,7 +10,7 @@ import {
 import { hasCompleteFiscalData } from "@/lib/client-fiscal";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
-import { desiredDocumentLabel, normalizeDesiredDocument, receiptTypeCode } from "@/lib/receipt-types";
+import { invoiceSaleOrderDocument, normalizeDesiredDocument, receiptTypeCode } from "@/lib/receipt-types";
 import { isFinalTotalConsistent, isSaleVatRate } from "@/lib/vat-calculation";
 
 export type FiscalProviderName = "disabled" | "arca";
@@ -365,10 +365,7 @@ function invoiceReceiptTypeFromSale(sale: SaleFiscalCandidate) {
   const desired = normalizeDesiredDocument(sale.desiredDocument);
   const receiptType = receiptTypeCode(desired);
   if (INVOICE_RECEIPT_TYPES.has(receiptType)) return receiptType;
-  throw new ApiError(
-    400,
-    `La venta esta preparada como ${desiredDocumentLabel(desired)}. Para emitir en ARCA debe ser Factura A, B o C.`,
-  );
+  return receiptTypeCode(invoiceSaleOrderDocument(sale.customerFiscalCondition));
 }
 
 function fiscalNoteClass(kind: Exclude<FiscalDocumentKind, "invoice">) {

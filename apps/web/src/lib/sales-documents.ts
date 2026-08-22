@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api-response";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
+import { normalizeStoredVatRate, vatAmountsFromNet } from "@/lib/vat-calculation";
 import type { AuthSession } from "@/lib/auth";
 
 export type SalesDocumentItem = {
@@ -20,6 +21,105 @@ export type SalesNoteInput = {
   reason: string;
   detail: SalesDocumentItem[];
 };
+
+export type SalesAdjustmentReference = {
+  id: string;
+  label: string;
+  customerName: string;
+  date: string;
+  amount: number;
+  vatRate: number;
+  fiscalApproved: boolean;
+  priceList: string;
+  items: Array<SalesDocumentItem & { returnedQuantity: number }>;
+};
+
+export async function listSalesAdjustmentReferences(companyId: number) {
+  const result = await queryWithCompanyContext<{
+    id: string;
+    commercial_number: number | null;
+    sale_number: string;
+    customer_name: string;
+    sale_date: string;
+    amount: string;
+    vat_rate: string;
+    fiscal_approved: boolean;
+    price_list: string;
+    items: Array<{
+      id: string;
+      name: string;
+      quantity: number;
+      unitPrice: number;
+      subtotal: number;
+      returnedQuantity: number;
+    }> | null;
+  }>(
+    companyId,
+    `
+      SELECT s.id::text,
+             s.commercial_number,
+             COALESCE(s.sale_number, '') AS sale_number,
+             COALESCE(s.client_name, c.display_name, '') AS customer_name,
+             s.sale_date::text,
+             COALESCE(s.total_amount, 0)::text AS amount,
+             COALESCE(s.vat_rate, 0)::text AS vat_rate,
+             (COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado' AND COALESCE(s.cae, '') <> '') AS fiscal_approved,
+             COALESCE(s.price_list_name, c.price_list_name, '') AS price_list,
+             COALESCE(lines.items, '[]'::jsonb) AS items
+      FROM sales s
+      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(jsonb_build_object(
+          'id', si.product_id::text,
+          'name', COALESCE(si.description, p.name, '(producto)'),
+          'quantity', si.quantity,
+          'unitPrice', si.unit_price,
+          'subtotal', si.total_amount,
+          'returnedQuantity', COALESCE(returned.quantity, 0)
+        ) ORDER BY si.id) AS items
+        FROM sale_items si
+        LEFT JOIN products p ON p.id = si.product_id AND p.empresa_id = si.empresa_id
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM((entry->>'quantity')::numeric), 0) AS quantity
+          FROM sales_internal_documents doc,
+               jsonb_array_elements(doc.detail_json) entry
+          WHERE doc.empresa_id = s.empresa_id
+            AND doc.sale_id = s.id
+            AND doc.class_name = 'NC'
+            AND entry->>'id' = si.product_id::text
+        ) returned ON true
+        WHERE si.empresa_id = s.empresa_id AND si.sale_id = s.id
+      ) lines ON true
+      WHERE s.empresa_id = $1
+        AND ${normalizedOrderStatusSql("s")} = 'entregado'
+      ORDER BY s.sale_date DESC, s.created_at DESC
+      LIMIT 300
+    `,
+    [companyId],
+  );
+
+  return result.rows.map((row): SalesAdjustmentReference => {
+    const commercial = row.commercial_number ? `#${String(row.commercial_number).padStart(4, "0")}` : row.sale_number;
+    return {
+      id: row.id,
+      label: `${commercial || "Venta"} · ${row.customer_name} · ${row.sale_date}`,
+      customerName: row.customer_name,
+      date: row.sale_date,
+      amount: Number(row.amount),
+      vatRate: Number(row.vat_rate),
+      fiscalApproved: row.fiscal_approved,
+      priceList: row.price_list,
+      items: (row.items ?? []).map((item) => ({
+        id: String(item.id ?? ""),
+        name: String(item.name ?? ""),
+        quantity: Number(item.quantity ?? 0),
+        unitPrice: Number(item.unitPrice ?? 0),
+        subtotal: Number(item.subtotal ?? 0),
+        returnedQuantity: Number(item.returnedQuantity ?? 0),
+      })),
+    };
+  });
+}
 
 function parseDetail(raw: unknown): unknown[] {
   if (Array.isArray(raw)) return raw;
@@ -86,12 +186,15 @@ export function salesNoteInputFromBody(body: RequestBody): SalesNoteInput {
 
   if (!detail.length) throw new ApiError(400, "Agrega al menos un producto");
 
+  const reason = textField(body, "reason") || textField(body, "motivo");
+  if (reason.length < 5) throw new ApiError(400, "Explica el motivo de la nota (minimo 5 caracteres)");
+
   return {
     saleId: optionalUuid(body, ["saleId", "id_venta"], "Venta"),
     remittanceId: optionalUuid(body, ["remittanceId", "id_remito"], "Remito"),
     className,
     fiscal: ["1", "true", "si", "sí"].includes(textField(body, "fiscal").toLowerCase()),
-    reason: textField(body, "reason") || textField(body, "motivo"),
+    reason,
     detail,
   };
 }
@@ -282,18 +385,20 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
   }
 
   return withCompanyContext(session.companyId, async (client) => {
-    let reference: { nombre_cliente: string; estado_pedido?: string; client_id?: string | null } | undefined;
+    let reference: { nombre_cliente: string; estado_pedido?: string; client_id?: string | null; vat_rate?: string } | undefined;
 
     if (input.saleId) {
       const referenceResult = await client.query<{
         nombre_cliente: string;
         estado_pedido: string;
         client_id: string | null;
+        vat_rate: string;
       }>(
         `
           SELECT COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
                  ${normalizedOrderStatusSql("s")} AS estado_pedido,
-                 s.client_id::text
+                 s.client_id::text,
+                 COALESCE(s.vat_rate, 0)::text AS vat_rate
           FROM sales s
           LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
           WHERE s.id = $1::uuid AND s.empresa_id = $2
@@ -306,6 +411,62 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
       if (reference.estado_pedido !== "entregado") {
         throw new ApiError(400, "El pedido aun no fue entregado.");
       }
+
+      const originalItems = await client.query<{
+        product_id: string;
+        name: string;
+        quantity: string;
+        unit_price: string;
+        returned_quantity: string;
+      }>(
+        `
+          SELECT si.product_id::text,
+                 COALESCE(si.description, p.name, '(producto)') AS name,
+                 SUM(si.quantity)::text AS quantity,
+                 MAX(si.unit_price)::text AS unit_price,
+                 COALESCE((
+                   SELECT SUM((entry->>'quantity')::numeric)
+                   FROM sales_internal_documents doc,
+                        jsonb_array_elements(doc.detail_json) entry
+                   WHERE doc.empresa_id = si.empresa_id
+                     AND doc.sale_id = si.sale_id
+                     AND doc.class_name = 'NC'
+                     AND entry->>'id' = si.product_id::text
+                 ), 0)::text AS returned_quantity
+          FROM sale_items si
+          LEFT JOIN products p ON p.id = si.product_id AND p.empresa_id = si.empresa_id
+          WHERE si.sale_id = $1::uuid AND si.empresa_id = $2 AND si.product_id IS NOT NULL
+          GROUP BY si.product_id, si.empresa_id, si.sale_id, p.name
+        `,
+        [input.saleId, session.companyId],
+      );
+      const originalByProduct = new Map(originalItems.rows.map((item) => [item.product_id, item]));
+      const requestedIds = Array.from(new Set(input.detail.map((item) => item.id).filter(Boolean)));
+      if (requestedIds.length !== input.detail.length) {
+        throw new ApiError(400, "Cada renglon debe tener un producto valido y no repetido");
+      }
+      const products = await client.query<{ id: string; name: string }>(
+        `SELECT id::text, name FROM products WHERE empresa_id = $1 AND id = ANY($2::uuid[]) AND active = true FOR UPDATE`,
+        [session.companyId, requestedIds],
+      );
+      if (products.rowCount !== requestedIds.length) throw new ApiError(400, "Uno o mas productos no existen o estan inactivos");
+      const productNames = new Map(products.rows.map((product) => [product.id, product.name]));
+      input.detail = input.detail.map((item) => {
+        const original = originalByProduct.get(item.id);
+        if (input.className === "NC") {
+          if (!original) throw new ApiError(400, "La devolucion solo puede incluir productos de la venta vinculada");
+          const available = Number(original.quantity) - Number(original.returned_quantity);
+          if (item.quantity > available) {
+            throw new ApiError(400, `La devolucion de ${original.name} supera las ${available} unidades pendientes`);
+          }
+          const unitPrice = Number(original.unit_price);
+          return { ...item, name: original.name, unitPrice, subtotal: Number((item.quantity * unitPrice).toFixed(2)) };
+        }
+        if (!Number.isFinite(item.unitPrice) || item.unitPrice <= 0) {
+          throw new ApiError(400, `El precio de ${productNames.get(item.id) ?? "producto"} debe ser mayor a cero`);
+        }
+        return { ...item, name: productNames.get(item.id) ?? item.name, subtotal: Number((item.quantity * item.unitPrice).toFixed(2)) };
+      });
     } else {
       const referenceResult = await client.query<{ nombre_cliente: string; client_id: string | null }>(
         `
@@ -321,9 +482,10 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
       if (!reference) throw new ApiError(404, "Remito no encontrado");
     }
 
-    const amount = Number(
+    const netAmount = Number(
       input.detail.reduce((total, item) => total + item.subtotal, 0).toFixed(2),
     );
+    const amount = vatAmountsFromNet(netAmount, normalizeStoredVatRate(reference.vat_rate)).total;
     await client.query("SELECT pg_advisory_xact_lock(83030, $1::int)", [session.companyId]);
     const nextNumber = await client.query<{ valor: number }>(
       "SELECT COALESCE(MAX(receipt_number), 0) + 1 AS valor FROM sales_internal_documents WHERE empresa_id = $1",
@@ -361,13 +523,14 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
       if (!item.id) continue;
       await client.query(
         `
-          INSERT INTO stock_movements (product_id, movement_type, quantity, notes, empresa_id)
-          VALUES ($1::uuid, $2::stock_movement_type, $3, $4, $5)
+          INSERT INTO stock_movements (product_id, movement_type, quantity, sale_id, notes, empresa_id)
+          VALUES ($1::uuid, $2::stock_movement_type, $3, $4::uuid, $5, $6)
         `,
         [
           item.id,
           sign > 0 ? "ajuste_positivo" : "ajuste_negativo",
           item.quantity,
+          input.saleId || null,
           `${input.className === "NC" ? "Nota de credito" : "Nota de debito"} interna #${receiptNumber}`,
           session.companyId,
         ],

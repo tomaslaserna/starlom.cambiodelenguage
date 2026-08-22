@@ -29,3 +29,13 @@ export function netSalesAmountSql(amountExpression: string, alias: string) {
     ELSE ${amountExpression}
   END`;
 }
+
+export function adjustedSalesAmountSql(amountExpression: string, alias: string) {
+  assertSqlIdentifier(alias);
+  return `(${amountExpression}
+    + COALESCE((
+        SELECT SUM(CASE WHEN sid.class_name = 'ND' THEN sid.amount ELSE -sid.amount END)
+        FROM sales_internal_documents sid
+        WHERE sid.empresa_id = ${alias}.empresa_id AND sid.sale_id = ${alias}.id
+      ), 0))`;
+}

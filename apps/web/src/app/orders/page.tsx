@@ -182,10 +182,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                     fiscalCondition: order.customerFiscalCondition,
                   });
                   const fiscalApproved = order.fiscalStatus === "aprobado";
-                  const usesFiscalInvoice = order.desiredDocument === "factura_a" || order.desiredDocument === "factura_b";
                   const canRequestInvoice =
                     order.orderStatus === "entregado"
-                    && usesFiscalInvoice
                     && canInvoice
                     && !fiscalApproved
                     && !order.hasPendingFiscalRequest;

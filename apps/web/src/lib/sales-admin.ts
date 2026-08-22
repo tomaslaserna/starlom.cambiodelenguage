@@ -12,6 +12,7 @@ import {
 import { parsePagination } from "@/lib/pagination";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
+import { adjustedSalesAmountSql } from "@/lib/sales-vat";
 import { assertSaleStockAvailableForConfirmation, discountSaleStockOnDelivery } from "@/lib/stock";
 import type { PoolClient } from "pg";
 import { requireOperationalRecordDeletePermission } from "@/lib/route-auth";
@@ -201,7 +202,7 @@ export async function getSalesSummary(companyId: number, period: string | null) 
              COALESCE(SUM(CASE WHEN con_factura THEN monto ELSE 0 END), 0)::text AS facturadas,
              COALESCE(SUM(CASE WHEN NOT con_factura THEN monto ELSE 0 END), 0)::text AS no_facturadas
       FROM (
-        SELECT COALESCE(s.total_amount, 0) AS monto,
+        SELECT ${adjustedSalesAmountSql("COALESCE(s.total_amount, 0)", "s")} AS monto,
                COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
                  AND COALESCE(s.cae, '') <> '' AS con_factura,
                s.sale_date
@@ -219,8 +220,8 @@ export async function getSalesSummary(companyId: number, period: string | null) 
     companyId,
     `
       SELECT
-        COALESCE(SUM(CASE WHEN COALESCE(s.collection_status,'pendiente') IN ('pendiente','en_proceso','pendiente_aprobacion') THEN COALESCE(s.total_amount, 0) ELSE 0 END), 0)::text AS pendiente,
-        COALESCE(SUM(CASE WHEN s.collection_status = 'vencido' THEN COALESCE(s.total_amount, 0) ELSE 0 END), 0)::text AS vencido
+        COALESCE(SUM(CASE WHEN COALESCE(s.collection_status,'pendiente') IN ('pendiente','en_proceso','pendiente_aprobacion') THEN ${adjustedSalesAmountSql("COALESCE(s.total_amount, 0)", "s")} ELSE 0 END), 0)::text AS pendiente,
+        COALESCE(SUM(CASE WHEN s.collection_status = 'vencido' THEN ${adjustedSalesAmountSql("COALESCE(s.total_amount, 0)", "s")} ELSE 0 END), 0)::text AS vencido
       FROM sales s
       WHERE s.empresa_id = $1
         AND ${canonicalSalesSourceSql("s")}
