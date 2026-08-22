@@ -16,7 +16,9 @@ import {
   Input,
   PageHeader,
   StatCard,
+  TableActionMenu,
   Toolbar,
+  tableActionItemClass,
 } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { listOrders } from "@/lib/orders";
@@ -122,14 +124,13 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                 <DataTableHead className="w-[16%] px-2">Vendedor</DataTableHead>
                 <DataTableHead className="w-[13%] px-2">Fecha</DataTableHead>
                 <DataTableHead className="w-[15%] px-2">Monto neto de ajustes</DataTableHead>
-                <DataTableHead align="center" className="w-[18%] px-2">Comprobantes asociados</DataTableHead>
-                {canDeleteRecords ? <DataTableHead className="w-[12%] px-2">Acciones</DataTableHead> : null}
+                <DataTableHead align="center" className="w-[10%] px-2">Opciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {sales.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={canDeleteRecords ? 7 : 6}>
+                  <DataTableCell colSpan={6}>
                     <EmptyState
                       description="Ajusta la busqueda para volver al listado completo de ventas entregadas."
                       title="No hay ventas entregadas para los filtros actuales"
@@ -169,53 +170,58 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                         ) : null}
                       </DataTableCell>
                       <DataTableCell align="center" className="px-2 py-2">
-                        <div className="grid gap-1 justify-items-center">
-                        {sale.deliveryNumber ? (
-                          <a
-                            aria-label={`Ver PDF del remito ${sale.deliveryNumber}`}
-                            className="text-xs font-black text-[color:var(--accent-strong)] hover:underline"
-                            href={`/api/pdfs/orders/${sale.id}/document`}
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            Remito #{String(sale.deliveryNumber).padStart(4, "0")}
-                          </a>
-                        ) : (
-                          <span className="text-xs font-semibold text-[color:var(--muted)]">Sin remito</span>
-                        )}
-                        {sale.fiscalStatus === "aprobado" ? (
-                          <a className="text-xs font-black text-[color:var(--accent-strong)] hover:underline" href={`/api/pdfs/orders/${sale.id}/document`} rel="noreferrer" target="_blank">Factura</a>
-                        ) : null}
-                        {sale.associatedDocuments.map((document) => document.fiscal ? (
-                          <a key={document.id} className="text-xs font-black text-[color:var(--accent-strong)] hover:underline" href={`/api/pdfs/fiscal/notes/${document.id}`} rel="noreferrer" target="_blank">
-                            {document.className} #{String(document.receiptNumber).padStart(8, "0")}
-                          </a>
-                        ) : (
-                          <span key={document.id} className="text-xs font-semibold text-[color:var(--muted)]">
-                            {document.className} interna #{String(document.receiptNumber).padStart(8, "0")}
-                          </span>
-                        ))}
-                        <div className="mt-1 flex gap-2">
-                          <a className="text-[11px] font-bold text-[color:var(--accent-strong)] hover:underline" href={`/orders/new?tipo=nota_credito&venta=${sale.id}`}>Devolucion</a>
-                          <a className="text-[11px] font-bold text-[color:var(--accent-strong)] hover:underline" href={`/orders/new?tipo=nota_debito&venta=${sale.id}`}>Agregado</a>
-                        </div>
-                        </div>
-                      </DataTableCell>
-                      {canDeleteRecords ? (
-                        <DataTableCell className="px-2 py-2">
-                          <div className="grid gap-2">
+                        <TableActionMenu
+                          className="mx-auto min-w-0 w-11"
+                          compact
+                          label={<><span aria-hidden="true" className="text-lg leading-none tracking-[2px]">•••</span><span className="sr-only">Opciones de la venta {saleNumberLabel}</span></>}
+                          menuClassName="min-w-[230px]"
+                        >
+                          <div className="px-2.5 pb-1 pt-0.5 text-left text-[10px] font-black uppercase tracking-[0.08em] text-[color:var(--muted)]">
+                            Comprobantes asociados
+                          </div>
+                          {sale.deliveryNumber ? (
+                            <a
+                              aria-label={`Ver PDF del remito ${sale.deliveryNumber}`}
+                              className={tableActionItemClass}
+                              href={`/api/pdfs/orders/${sale.id}/remito`}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              Remito #{String(sale.deliveryNumber).padStart(4, "0")}
+                            </a>
+                          ) : (
+                            <span className={`${tableActionItemClass} cursor-default text-[color:var(--muted)] hover:bg-transparent hover:text-[color:var(--muted)]`}>Sin remito</span>
+                          )}
+                          {sale.fiscalStatus === "aprobado" ? (
+                            <a className={tableActionItemClass} href={`/api/pdfs/orders/${sale.id}/document`} rel="noreferrer" target="_blank">Factura</a>
+                          ) : null}
+                          {sale.associatedDocuments.map((document) => document.fiscal ? (
+                            <a key={document.id} className={tableActionItemClass} href={`/api/pdfs/fiscal/notes/${document.id}`} rel="noreferrer" target="_blank">
+                              {document.className} #{String(document.receiptNumber).padStart(8, "0")}
+                            </a>
+                          ) : (
+                            <span key={document.id} className={`${tableActionItemClass} cursor-default text-[color:var(--muted)] hover:bg-transparent hover:text-[color:var(--muted)]`}>
+                              {document.className} interna #{String(document.receiptNumber).padStart(8, "0")}
+                            </span>
+                          ))}
+                          <div className="mt-1 border-t border-[#dbe7f8] px-2.5 pb-1 pt-2 text-left text-[10px] font-black uppercase tracking-[0.08em] text-[color:var(--muted)]">
+                            Operaciones
+                          </div>
+                          <a className={tableActionItemClass} href={`/orders/new?tipo=nota_credito&venta=${sale.id}`}>Registrar devolucion</a>
+                          <a className={tableActionItemClass} href={`/orders/new?tipo=nota_debito&venta=${sale.id}`}>Registrar agregado</a>
+                          {canDeleteRecords ? (
                             <form action={deleteSaleAction}>
                               <input name="id" type="hidden" value={sale.id} />
                               <ConfirmDeleteButton
                                 aria-label={`Borrar venta ${saleNumberLabel}`}
-                                className="w-full px-2"
+                                className="mt-1 w-full"
                                 confirmation={`¿Borrar definitivamente la venta #${saleNumberLabel}? Esta acción también elimina sus movimientos relacionados.`}
                                 size="sm"
                               />
                             </form>
-                          </div>
-                        </DataTableCell>
-                      ) : null}
+                          ) : null}
+                        </TableActionMenu>
+                      </DataTableCell>
                     </DataTableRow>
                   );
                 })

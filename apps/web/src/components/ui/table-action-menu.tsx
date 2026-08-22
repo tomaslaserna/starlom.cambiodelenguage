@@ -6,6 +6,7 @@ export const tableActionItemClass =
 
 type TableActionMenuProps = Omit<DetailsHTMLAttributes<HTMLDetailsElement>, "children"> & {
   children: ReactNode;
+  compact?: boolean;
   label?: ReactNode;
   menuClassName?: string;
 };
@@ -13,6 +14,7 @@ type TableActionMenuProps = Omit<DetailsHTMLAttributes<HTMLDetailsElement>, "chi
 export function TableActionMenu({
   children,
   className,
+  compact = false,
   label = "Acciones",
   menuClassName,
   ...props
@@ -25,16 +27,21 @@ export function TableActionMenu({
       )}
       {...props}
     >
-      <summary className="flex min-h-10 list-none items-center justify-between gap-2 rounded-[8px] px-3.5 py-2 text-[13px] font-bold text-[#1755b8] transition-colors hover:bg-[#f5f8ff] [&::-webkit-details-marker]:hidden">
+      <summary className={cn(
+        "flex min-h-10 list-none items-center gap-2 rounded-[8px] py-2 text-[13px] font-bold text-[#1755b8] transition-colors hover:bg-[#f5f8ff] [&::-webkit-details-marker]:hidden",
+        compact ? "justify-center px-2" : "justify-between px-3.5",
+      )}>
         <span className="truncate">{label}</span>
-        <svg
-          aria-hidden="true"
-          className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <path d="m7 10 5 5 5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-        </svg>
+        {compact ? null : (
+          <svg
+            aria-hidden="true"
+            className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <path d="m7 10 5 5 5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+          </svg>
+        )}
       </summary>
       <div className={cn("grid gap-0.5 border-t border-[#dbe7f8] bg-[#fbfdff] p-1.5", menuClassName)}>
         {children}
