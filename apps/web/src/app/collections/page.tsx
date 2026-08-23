@@ -15,6 +15,7 @@ import {
   PageHeader,
   StatCard,
   StatusBadge,
+  TableHoverActionMenu,
   Toolbar,
 } from "@/components/ui";
 import { listSalesToCollect } from "@/lib/collections";
@@ -54,7 +55,7 @@ function awaitingApproval(item: SaleToCollect) {
 }
 
 const actionItemClass =
-  "block w-full rounded-[6px] px-2.5 py-1.5 text-left text-xs font-semibold text-[#0f172a] transition-colors hover:bg-[color:var(--panel-subtle)] hover:text-[color:var(--accent-strong)]";
+  "flex h-[var(--control-height-sm)] min-h-[var(--control-height-sm)] w-full items-center rounded-[6px] px-2.5 text-left text-xs font-semibold text-[#0f172a] transition-colors hover:bg-[color:var(--panel-subtle)] hover:text-[color:var(--accent-strong)]";
 
 function collectionOrderHref(item: SaleToCollect) {
   const phone = normalizePhoneForWhatsapp(item.phone);
@@ -155,7 +156,7 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                 <DataTableHead align="right" className="w-[12%] px-2">Monto a cobrar</DataTableHead>
                 <DataTableHead className="w-[12%] px-2">Vencimiento</DataTableHead>
                 <DataTableHead className="w-[10%] px-2">Documento</DataTableHead>
-                <DataTableHead className="w-[14%] px-2">Accion</DataTableHead>
+                <DataTableHead align="center" className="w-[10%] px-2">Opciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
@@ -228,7 +229,7 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                           </ButtonLink>
                         </div>
                       </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
+                      <DataTableCell align="center" className="px-2 py-2">
                         {awaitingApproval(item) ? (
                           <div className="min-w-0">
                             <StatusBadge tone="warning">En aprobacion</StatusBadge>
@@ -237,10 +238,8 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                             </div>
                           </div>
                         ) : (
-                          <details className="erp-action-menu">
-                            <summary>
-                              Acciones
-                            </summary>
+                          <div className="flex justify-center">
+                          <TableHoverActionMenu label={`Opciones de cobranza de ${receiptLabel}`} width={270}>
                             <div className="grid gap-0.5">
                               {showRegister ? (
                                 <RegisterCollectionDialog
@@ -269,7 +268,8 @@ export default async function CollectionsPage({ searchParams }: CollectionsPageP
                                 <span className="block px-2.5 py-1.5 text-xs text-[color:var(--muted)]">Sin telefono</span>
                               )}
                             </div>
-                          </details>
+                          </TableHoverActionMenu>
+                          </div>
                         )}
                       </DataTableCell>
                     </DataTableRow>

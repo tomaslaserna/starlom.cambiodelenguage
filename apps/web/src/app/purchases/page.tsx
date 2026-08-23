@@ -33,6 +33,7 @@ import {
   Select,
   StatCard,
   StatusBadge,
+  TableHoverActionMenu,
   Textarea,
   Toolbar,
   type StatusBadgeTone,
@@ -141,7 +142,7 @@ function packageStatusTone(value: string): StatusBadgeTone {
 }
 
 const purchaseActionItemClass =
-  "block min-h-9 w-full appearance-none rounded-[6px] border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold leading-5 text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--hover)] hover:text-[color:var(--accent-strong)]";
+  "flex h-[var(--control-height-sm)] min-h-[var(--control-height-sm)] w-full appearance-none items-center rounded-[6px] border-0 bg-transparent px-2.5 text-left text-sm font-semibold leading-5 text-[color:var(--foreground)] transition-colors hover:bg-[color:var(--hover)] hover:text-[color:var(--accent-strong)]";
 
 export default async function PurchasesPage({ searchParams }: PurchasesPageProps) {
   const session = await requireStaffSession();
@@ -299,7 +300,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                     <DataTableHead align="right" className="w-[9%] px-2">Total</DataTableHead>
                     <DataTableHead align="right" className="w-[9%] px-2">Pagado</DataTableHead>
                     <DataTableHead align="right" className="w-[9%] px-2">Saldo</DataTableHead>
-                    <DataTableHead className="w-[13%] px-2">Acciones</DataTableHead>
+                    <DataTableHead align="center" className="w-[9%] px-2">Opciones</DataTableHead>
                   </DataTableRow>
                 </DataTableHeader>
                 <DataTableBody>
@@ -356,11 +357,9 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                           <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
                             {formatCurrency(purchase.balance)}
                           </DataTableCell>
-                          <DataTableCell className="px-2 py-2">
-                            <details className="erp-action-menu">
-                              <summary>
-                                Acciones
-                              </summary>
+                          <DataTableCell align="center" className="px-2 py-2">
+                            <div className="flex justify-center">
+                            <TableHoverActionMenu label={`Opciones de la compra ${purchase.id}`} width={340}>
                               <div className="grid min-w-0 gap-1">
                               <div className="grid gap-0.5">
                                 <a
@@ -557,7 +556,8 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                             </div>
                           ) : null}
                               </div>
-                            </details>
+                            </TableHoverActionMenu>
+                            </div>
                       </DataTableCell>
                     </DataTableRow>
                   );

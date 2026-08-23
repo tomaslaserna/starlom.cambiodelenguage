@@ -17,7 +17,7 @@ import {
   SearchInput,
   Select,
   StatusBadge,
-  TableActionMenu,
+  TableHoverActionMenu,
   Toolbar,
   tableActionItemClass,
   type StatusBadgeTone,
@@ -155,7 +155,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                 <DataTableHead className="w-[14%] px-2">Vendedor</DataTableHead>
                 <DataTableHead className="w-[12%] px-2">Fecha</DataTableHead>
                 <DataTableHead className="w-[14%] px-2">Estado</DataTableHead>
-                <DataTableHead className="w-[22%] px-2">Acciones</DataTableHead>
+                <DataTableHead align="center" className="w-[10%] px-2">Opciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
@@ -208,8 +208,9 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                           {orderStatusLabel(order.orderStatus)}
                         </StatusBadge>
                       </DataTableCell>
-                      <DataTableCell className="px-2 py-2">
-                        <TableActionMenu>
+                      <DataTableCell align="center" className="px-2 py-2">
+                        <div className="flex justify-center">
+                        <TableHoverActionMenu label={`Opciones del pedido ${orderNumberLabel}`}>
                           {isOpenOrder && canEditOrders ? (
                             <>
                               <form action={updateOrderStatusAction}>
@@ -296,7 +297,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                               </button>
                             </form>
                           ) : null}
-                        </TableActionMenu>
+                        </TableHoverActionMenu>
+                        </div>
                       </DataTableCell>
                     </DataTableRow>
                   );

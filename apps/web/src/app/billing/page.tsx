@@ -17,6 +17,7 @@ import {
   Select,
   StatCard,
   StatusBadge,
+  TableHoverActionMenu,
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
@@ -198,7 +199,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 <DataTableHead align="right" className="w-[11%] px-2">Monto</DataTableHead>
                 <DataTableHead className="w-[18%] px-2">Fiscal</DataTableHead>
                 <DataTableHead className="w-[10%] px-2">Pedido</DataTableHead>
-                <DataTableHead className="w-[15%] px-2">Acciones</DataTableHead>
+                <DataTableHead align="center" className="w-[10%] px-2">Opciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
@@ -261,11 +262,9 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                         {orderStatusLabel(item.orderStatus)}
                       </StatusBadge>
                     </DataTableCell>
-                    <DataTableCell className="px-2 py-2">
-                      <details className="erp-action-menu">
-                        <summary>
-                          Acciones
-                        </summary>
+                    <DataTableCell align="center" className="px-2 py-2">
+                      <div className="flex justify-center">
+                      <TableHoverActionMenu label={`Opciones fiscales de ${item.customerName}`} width={270}>
                         <div className="grid gap-1.5">
                           {item.saleId && item.hasFiscalIdentity ? (
                             <ButtonLink
@@ -357,7 +356,8 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                             </ButtonLink>
                           ) : null}
                         </div>
-                      </details>
+                      </TableHoverActionMenu>
+                      </div>
                     </DataTableCell>
                   </DataTableRow>
                 ))

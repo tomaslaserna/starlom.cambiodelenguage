@@ -19,6 +19,7 @@ import {
   Input,
   StatCard,
   StatusBadge,
+  TableHoverActionMenu,
 } from "@/components/ui";
 
 type AccountsPayablePageProps = {
@@ -89,7 +90,7 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
                   <DataTableHead className="w-[10%]">Estado</DataTableHead>
                   <DataTableHead align="right" className="w-[12%]">Saldo</DataTableHead>
                   <DataTableHead align="right" className="w-[13%]">Programado</DataTableHead>
-                  <DataTableHead align="center" className="w-[15%] px-2">Acciones</DataTableHead>
+                  <DataTableHead align="center" className="w-[10%] px-2">Opciones</DataTableHead>
                 </DataTableRow>
               </DataTableHeader>
               <DataTableBody>
@@ -128,10 +129,8 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
                       </DataTableCell>
                       <DataTableCell align="center" className="min-w-[10rem] px-2 py-2">
                         {item.source === "compra" && item.balance > item.scheduledAmount ? (
-                          <details className="erp-action-menu w-full">
-                            <summary>
-                              Programar
-                            </summary>
+                          <div className="flex justify-center">
+                          <TableHoverActionMenu label={`Programar pago de ${item.provider}`} width={320}>
                             <form action={programSupplierPaymentAction} className="grid min-w-0 gap-2">
                               <input name="id" type="hidden" value={item.id} />
                               <input name="notes" type="hidden" value="Programado desde cuentas por pagar" />
@@ -161,7 +160,8 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
                                 Enviar
                               </Button>
                             </form>
-                          </details>
+                          </TableHoverActionMenu>
+                          </div>
                         ) : (
                           <span className="text-xs text-[color:var(--muted)]">-</span>
                         )}

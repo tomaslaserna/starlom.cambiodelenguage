@@ -22,9 +22,9 @@ export const buttonVariantClasses = {
 } as const;
 
 export const buttonSizeClasses = {
-  sm: "erp-text-body-sm min-h-[var(--control-height-sm)] px-3.5",
-  md: "erp-text-body-sm min-h-[var(--control-height-md)] px-4",
-  lg: "erp-text-body min-h-[var(--control-height-lg)] px-5",
+  sm: "erp-text-body-sm h-[var(--control-height-sm)] min-h-[var(--control-height-sm)] px-3.5",
+  md: "erp-text-body-sm h-[var(--control-height-md)] min-h-[var(--control-height-md)] px-4",
+  lg: "erp-text-body h-[var(--control-height-lg)] min-h-[var(--control-height-lg)] px-5",
 } as const;
 
 export type ButtonVariant = keyof typeof buttonVariantClasses;
@@ -40,7 +40,7 @@ export function buttonClassName({
   variant?: ButtonVariant;
 }) {
   return cn(
-    "inline-flex max-w-full items-center justify-center gap-2 rounded-[var(--radius-sm)] font-bold leading-none transition-[background-color,border-color,box-shadow,color,transform] active:translate-y-px active:shadow-none disabled:translate-y-0 disabled:opacity-55",
+    "inline-flex max-w-full shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius-sm)] align-middle font-bold leading-none transition-[background-color,border-color,box-shadow,color,transform] active:translate-y-px active:shadow-none disabled:translate-y-0 disabled:opacity-55",
     buttonVariantClasses[variant],
     buttonSizeClasses[size],
     className,

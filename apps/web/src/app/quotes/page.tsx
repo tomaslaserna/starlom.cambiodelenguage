@@ -17,6 +17,7 @@ import {
   Select,
   StatCard,
   StatusBadge,
+  TableHoverActionMenu,
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
@@ -213,7 +214,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                 <DataTableHead className="w-[12%]">Vencimiento</DataTableHead>
                 <DataTableHead className="w-[12%]">Estado</DataTableHead>
                 <DataTableHead align="right" className="w-[12%]">Total</DataTableHead>
-                <DataTableHead className="w-[16%]">Acciones</DataTableHead>
+                <DataTableHead align="center" className="w-[10%]">Opciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
@@ -259,11 +260,9 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                     <DataTableCell align="right" className="whitespace-nowrap font-mono text-xs">
                       {formatCurrency(quote.total)}
                     </DataTableCell>
-                    <DataTableCell>
-                      <details className="erp-action-menu">
-                        <summary>
-                          Acciones
-                        </summary>
+                    <DataTableCell align="center">
+                      <div className="flex justify-center">
+                      <TableHoverActionMenu label={`Opciones del presupuesto ${quote.quoteNumber}`} width={270}>
                         <div className="grid gap-1.5">
                           {quote.status === "pendiente" && canEditQuotes ? (
                             <ButtonLink
@@ -326,7 +325,8 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                             <QuoteDeleteButton action={deleteQuoteAction} quoteId={quote.id} quoteNumber={quote.quoteNumber} />
                           ) : null}
                         </div>
-                      </details>
+                      </TableHoverActionMenu>
+                      </div>
                     </DataTableCell>
                   </DataTableRow>
                 ))
