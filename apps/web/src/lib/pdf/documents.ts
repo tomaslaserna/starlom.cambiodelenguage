@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api-response";
 import QRCode from "qrcode";
 import { accountBalanceExpressionSql, activeAccountMovementWhereSql } from "@/lib/accounts";
 import { queryWithCompanyContext } from "@/lib/db";
+import { collapsePaymentAllocations } from "@/lib/customer-accounts";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
 import {
@@ -506,14 +507,17 @@ export async function buildAccountStatementPdf(companyId: number, input: {
     : { rows: [{ balance: "0" }] };
 
   const movements = await queryWithCompanyContext<{
+    id: string;
     description: string;
     debit: string;
     credit: string;
     movement_date: string | null;
+    payment_id: string | null;
   }>(
     companyId,
     `
-      SELECT m.description, m.debit::text, m.credit::text, m.movement_date::text
+      SELECT m.id::text, m.description, m.debit::text, m.credit::text,
+             m.movement_date::text, m.payment_id::text
       ${fromSql}
       WHERE ${filters.join(" AND ")}
       ORDER BY m.movement_date ASC NULLS LAST, m.created_at ASC
@@ -537,19 +541,37 @@ export async function buildAccountStatementPdf(companyId: number, input: {
     pdf.muted(`Periodo: ${dateRangeLabel(input.from, input.to)}`);
     pdf.doc.y += 14;
 
+    const displayMovements = type === "cliente"
+      ? collapsePaymentAllocations(movements.rows.map((row) => ({
+          id: row.id,
+          date: row.movement_date ?? "",
+          description: row.description ?? "",
+          debit: Number(row.debit),
+          credit: Number(row.credit),
+          kind: "",
+          paymentId: row.payment_id,
+        })))
+      : movements.rows.map((row) => ({
+          id: row.id,
+          date: row.movement_date ?? "",
+          description: row.description ?? "",
+          debit: Number(row.debit),
+          credit: Number(row.credit),
+          kind: "",
+        }));
     let balance = Number(previous.rows[0]?.balance ?? 0);
-    const totalDebit = movements.rows.reduce((sum, row) => sum + Number(row.debit), 0);
-    const totalCredit = movements.rows.reduce((sum, row) => sum + Number(row.credit), 0);
+    const totalDebit = displayMovements.reduce((sum, row) => sum + row.debit, 0);
+    const totalCredit = displayMovements.reduce((sum, row) => sum + row.credit, 0);
     const rows: PdfTableCell[][] = [];
     if (input.from && Math.abs(balance) > 0.0001) {
       rows.push([pdfDate(input.from), "Saldo anterior", "-", "-", pdfMoney(balance)]);
     }
-    for (const movement of movements.rows) {
-      const debit = Number(movement.debit);
-      const credit = Number(movement.credit);
+    for (const movement of displayMovements) {
+      const debit = movement.debit;
+      const credit = movement.credit;
       balance += type === "proveedor" ? credit - debit : debit - credit;
       rows.push([
-        pdfDate(movement.movement_date),
+        pdfDate(movement.date),
         movement.description || "Movimiento de cuenta corriente",
         debit > 0 ? pdfMoney(debit) : "-",
         credit > 0 ? pdfMoney(credit) : "-",

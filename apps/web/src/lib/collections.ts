@@ -97,7 +97,10 @@ async function saleOutstandingBalance(
   const totalsResult = await client.query(
     `
       SELECT COALESCE(SUM(credit), 0)::text AS total_credit,
-             COALESCE(SUM(debit) FILTER (WHERE description ILIKE 'nota de debito%'), 0)::text AS debit_notes
+             COALESCE(SUM(debit) FILTER (
+               WHERE description ILIKE 'nota de debito%'
+                  OR description ILIKE 'anulacion de cobro%'
+             ), 0)::text AS debit_notes
       FROM current_account_movements
       WHERE empresa_id = $1 AND sale_id = $2::uuid
     `,
@@ -265,7 +268,10 @@ export async function listPendingCollections(companyId: number) {
       LEFT JOIN clients cli ON cli.id = v.client_id AND cli.empresa_id = v.empresa_id
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
-               COALESCE(SUM(cam.debit) FILTER (WHERE cam.description ILIKE 'nota de debito%'), 0) AS debit_notes
+               COALESCE(SUM(cam.debit) FILTER (
+                 WHERE cam.description ILIKE 'nota de debito%'
+                    OR cam.description ILIKE 'anulacion de cobro%'
+               ), 0) AS debit_notes
         FROM current_account_movements cam
         WHERE cam.empresa_id = v.empresa_id AND cam.sale_id = v.id
       ) approved ON true
@@ -614,7 +620,10 @@ export async function listSalesToCollectWhere(
       LEFT JOIN clients cli ON cli.id = v.client_id AND cli.empresa_id = v.empresa_id
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
-               COALESCE(SUM(cam.debit) FILTER (WHERE cam.description ILIKE 'nota de debito%'), 0) AS debit_notes
+               COALESCE(SUM(cam.debit) FILTER (
+                 WHERE cam.description ILIKE 'nota de debito%'
+                    OR cam.description ILIKE 'anulacion de cobro%'
+               ), 0) AS debit_notes
         FROM current_account_movements cam
         WHERE cam.empresa_id = v.empresa_id AND cam.sale_id = v.id
       ) approved ON true

@@ -98,7 +98,7 @@ export default async function CurrentAccountsPage({ searchParams }: CurrentAccou
             <div className="mt-2 text-2xl font-semibold">{formatCurrency(result.meta.totalCredit)}</div>
           </div>
           <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-4">
-            <div className="text-sm text-[color:var(--muted)]">Saldo</div>
+            <div className="text-sm text-[color:var(--muted)]">Saldo neto real</div>
             <div className="mt-2 text-2xl font-semibold">{formatCurrency(result.meta.balance)}</div>
           </div>
         </div>

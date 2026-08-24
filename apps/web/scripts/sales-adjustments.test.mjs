@@ -34,7 +34,8 @@ test("ventas y metricas asignan ajustes a la fecha de la nota y muestran sus PDF
   assert.match(salesPage, /sale\.associatedDocuments/);
   assert.match(salesPage, /\/api\/pdfs\/sales\/notes\/\$\{document\.id\}/);
   assert.match(salesVat, /adjustedSalesAmountSql/);
-  assert.match(metrics, /adjustedSalesAmountSql/);
+  assert.match(metrics, /SUM\(cam\.debit - cam\.credit\)/);
+  assert.match(metrics, /activeAccountMovementWhereSql/);
   assert.match(metrics, /sid\.issue_date AS event_date/);
   assert.match(metrics, /to_char\(sid\.issue_date, 'YYYY-MM'\)/);
 });

@@ -84,7 +84,16 @@ test("customerPaymentFromBody valida monto, metodo y operacion", () => {
 test("registerCustomerPayment: admin registra directo, vendedor deja pendiente", async () => {
   const queries = [];
   const mod = loadCustomerAccounts({
-    withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => { queries.push({ sql, params }); return { rows: [{ id: "p1" }] }; } }),
+    withCompanyContext: async (_companyId, fn) => fn({
+      query: async (sql, params) => {
+        queries.push({ sql, params });
+        if (/FROM sales s/i.test(sql)) {
+          return { rows: [{ id: "s1", outstanding: "100", receipt_number: 1 }] };
+        }
+        if (/SELECT COALESCE\(display_name/i.test(sql)) return { rows: [{ name: "Cliente" }] };
+        return { rows: [{ id: "p1" }] };
+      },
+    }),
     sessionAllows: async () => true, // admin
   });
   const res = await mod.registerCustomerPayment(
@@ -95,6 +104,7 @@ test("registerCustomerPayment: admin registra directo, vendedor deja pendiente",
   // admin: inserta el pago Y el movimiento de crédito
   assert.ok(queries.some((q) => /INSERT INTO payments/i.test(q.sql)));
   assert.ok(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql)));
+  assert.ok(queries.some((q) => /UPDATE sales/i.test(q.sql) && /collection_status/i.test(q.sql)));
 });
 
 test("registerCustomerPayment: vendedor deja pendiente, sin movimiento de crédito", async () => {
@@ -147,6 +157,18 @@ test("voidCustomerPayment marca anulado y compensa el credito con un debito", as
   assert.equal(res.status, "anulado");
   assert.ok(queries.some((q) => /UPDATE payments/i.test(q.sql) && /anulado/i.test(q.sql)));
   assert.ok(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql) && /debit/i.test(q.sql)));
+  assert.ok(queries.some((q) => /UPDATE sales s/i.test(q.sql) && /collection_status/i.test(q.sql)));
+});
+
+test("la migracion no imputa ni recrea cobros historicos", () => {
+  const migration = readFileSync(
+    new URL("../../../supabase/migrations/20260824154614_reconcile_customer_collections.sql", import.meta.url),
+    "utf8",
+  );
+  assert.match(migration, /Historical customer-level payments remain untouched/);
+  assert.doesNotMatch(migration, /INSERT INTO public\.current_account_movements/i);
+  assert.doesNotMatch(migration, /UPDATE public\.current_account_movements/i);
+  assert.doesNotMatch(migration, /DELETE FROM public\.current_account_movements/i);
 });
 
 test("voidCustomerPayment rechaza anular un pago pendiente de aprobacion", async () => {

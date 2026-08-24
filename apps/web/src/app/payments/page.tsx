@@ -125,7 +125,7 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
           <DataTable
             caption="Pagos de clientes registrados"
             className="rounded-none border-0 shadow-none"
-            minWidth="1080px"
+            minWidth="1180px"
             tableLabel="Registro de pagos"
             tableProps={{ className: "table-fixed" }}
           >
@@ -135,8 +135,9 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                 <DataTableHead className="w-[22%] px-2">Cliente</DataTableHead>
                 <DataTableHead className="w-[12%] px-2">Metodo</DataTableHead>
                 <DataTableHead className="w-[18%] px-2">Operacion/Ref.</DataTableHead>
-                <DataTableHead className="w-[14%] px-2">Cargo</DataTableHead>
+                <DataTableHead className="w-[12%] px-2">Cargo</DataTableHead>
                 <DataTableHead align="right" className="w-[10%] px-2">Monto</DataTableHead>
+                <DataTableHead className="w-[13%] px-2">Imputación</DataTableHead>
                 <DataTableHead className="w-[9%] px-2">Estado</DataTableHead>
                 <DataTableHead className="w-[5%] px-2">Accion</DataTableHead>
               </DataTableRow>
@@ -144,7 +145,7 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
             <DataTableBody>
               {payments.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={8}>
+                  <DataTableCell colSpan={9}>
                     <EmptyState
                       description="No hay pagos registrados para la busqueda actual."
                       title="Sin pagos"
@@ -171,6 +172,14 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                       </DataTableCell>
                       <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
                         {formatCurrency(payment.amount)}
+                      </DataTableCell>
+                      <DataTableCell className="px-2 py-2 text-xs">
+                        <div>{formatCurrency(payment.allocatedAmount)} aplicado</div>
+                        {payment.unallocatedAmount > 0 ? (
+                          <div className="mt-1 font-semibold text-[color:var(--warning)]">
+                            {formatCurrency(payment.unallocatedAmount)} a favor
+                          </div>
+                        ) : null}
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
                         <StatusBadge tone={paymentStatusTone(payment.status)}>

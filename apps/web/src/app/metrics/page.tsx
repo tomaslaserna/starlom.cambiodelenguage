@@ -153,10 +153,10 @@ export default async function MetricsPage() {
                 <div className="rounded-lg bg-[#10213b] px-3 py-2 text-white">
                   <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-blue-200">Exposición neta</p>
                   <div className="mt-0.5 font-mono text-xl font-black tracking-[-0.04em] tabular-nums">{compactCurrency(cashExposure)}</div>
-                  <p className="mt-0.5 text-[10px] leading-3.5 text-slate-300">Por cobrar menos compromisos abiertos.</p>
+                  <p className="mt-0.5 text-[10px] leading-3.5 text-slate-300">Documentos por cobrar menos compromisos abiertos.</p>
                 </div>
                 <div className="grid gap-2">
-                  <FinancialLine label="Por cobrar" tone="bg-[#2563eb]" value={compactCurrency(metrics.receivables.openTotal)} width={100} />
+                  <FinancialLine label="Documentos por cobrar" tone="bg-[#2563eb]" value={compactCurrency(metrics.receivables.openTotal)} width={100} />
                   <FinancialLine label="Por pagar" tone="bg-[#d97706]" value={compactCurrency(metrics.purchases.openTotal)} width={progress(metrics.purchases.openTotal, Math.max(metrics.receivables.openTotal, metrics.purchases.openTotal))} />
                   <FinancialLine label="Cobrado en el mes" tone="bg-[#059669]" value={compactCurrency(metrics.collections.current)} width={collectionCoverage} />
                 </div>

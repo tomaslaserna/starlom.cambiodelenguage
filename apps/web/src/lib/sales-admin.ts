@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api-response";
+import { activeAccountMovementWhereSql } from "@/lib/accounts";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { currentMonth, monthRange } from "@/lib/month-range";
@@ -12,7 +13,6 @@ import {
 import { parsePagination } from "@/lib/pagination";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
-import { adjustedSalesAmountSql } from "@/lib/sales-vat";
 import { assertSaleStockAvailableForConfirmation, discountSaleStockOnDelivery } from "@/lib/stock";
 import type { PoolClient } from "pg";
 import { requireOperationalRecordDeletePermission } from "@/lib/route-auth";
@@ -230,13 +230,40 @@ export async function getSalesSummary(companyId: number, period: string | null) 
   const collectionsQuery = queryWithCompanyContext<{ pendiente: string; vencido: string }>(
     companyId,
     `
+      WITH account_balance AS (
+        SELECT GREATEST(COALESCE(SUM(cam.debit - cam.credit), 0), 0) AS total
+        FROM current_account_movements cam
+        LEFT JOIN sales account_sale
+          ON account_sale.id = cam.sale_id AND account_sale.empresa_id = cam.empresa_id
+        WHERE cam.empresa_id = $1
+          AND cam.entity_type = 'cliente'
+          AND ${activeAccountMovementWhereSql("cam", "account_sale")}
+      ), overdue_documents AS (
+        SELECT COALESCE(SUM(GREATEST(
+          COALESCE(s.total_amount, 0)
+          + COALESCE(adjustments.debit_notes, 0)
+          - COALESCE(adjustments.total_credit, 0),
+          0
+        )), 0) AS total
+        FROM sales s
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
+                 COALESCE(SUM(cam.debit) FILTER (
+                   WHERE cam.description ILIKE 'nota de debito%'
+                      OR cam.description ILIKE 'anulacion de cobro%'
+                 ), 0) AS debit_notes
+          FROM current_account_movements cam
+          WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
+        ) adjustments ON true
+        WHERE s.empresa_id = $1
+          AND s.collection_status = 'vencido'
+          AND ${canonicalSalesSourceSql("s")}
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
+      )
       SELECT
-        COALESCE(SUM(CASE WHEN COALESCE(s.collection_status,'pendiente') IN ('pendiente','en_proceso','pendiente_aprobacion') THEN ${adjustedSalesAmountSql("COALESCE(s.total_amount, 0)", "s")} ELSE 0 END), 0)::text AS pendiente,
-        COALESCE(SUM(CASE WHEN s.collection_status = 'vencido' THEN ${adjustedSalesAmountSql("COALESCE(s.total_amount, 0)", "s")} ELSE 0 END), 0)::text AS vencido
-      FROM sales s
-      WHERE s.empresa_id = $1
-        AND ${canonicalSalesSourceSql("s")}
-        AND ${normalizedOrderStatusSql("s")} = 'entregado'
+        GREATEST(account_balance.total - LEAST(overdue_documents.total, account_balance.total), 0)::text AS pendiente,
+        LEAST(overdue_documents.total, account_balance.total)::text AS vencido
+      FROM account_balance CROSS JOIN overdue_documents
     `,
     [companyId],
   );

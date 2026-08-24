@@ -1,10 +1,11 @@
 import { queryWithCompanyContext } from "@/lib/db";
+import { activeAccountMovementWhereSql } from "@/lib/accounts";
 import { fillYearMonths, type MonthlyPoint } from "@/lib/metrics-series";
 import { currentMonth, monthRange, shiftMonthKey } from "@/lib/month-range";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { periodBounds, type Period } from "@/lib/period-range";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
-import { adjustedSalesAmountSql, netSalesAmountSql } from "@/lib/sales-vat";
+import { netSalesAmountSql } from "@/lib/sales-vat";
 
 function monthBounds(date = new Date()) {
   const month = currentMonth(date);
@@ -138,13 +139,13 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
         FROM sales_events
       ),
       open_sales AS (
-        SELECT COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}) FILTER (
-          WHERE COALESCE(s.collection_status,'pendiente') IN ('pendiente','vencido','pendiente_aprobacion','en_proceso')
-        ), 0) AS open_sales_total
-        FROM sales s
-        WHERE s.empresa_id = $4
-          AND ${canonicalSalesSourceSql("s")}
-          AND ${normalizedOrderStatusSql("s")} = 'entregado'
+        SELECT GREATEST(COALESCE(SUM(cam.debit - cam.credit), 0), 0) AS open_sales_total
+        FROM current_account_movements cam
+        LEFT JOIN sales account_sale
+          ON account_sale.id = cam.sale_id AND account_sale.empresa_id = cam.empresa_id
+        WHERE cam.empresa_id = $4
+          AND cam.entity_type = 'cliente'
+          AND ${activeAccountMovementWhereSql("cam", "account_sale")}
       ),
       payments_summary AS (
         SELECT

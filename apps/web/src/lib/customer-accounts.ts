@@ -6,10 +6,12 @@ import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import { COLLECTIONS_APPROVE_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
 import type { AuthSession } from "@/lib/auth";
+import type { PoolClient } from "pg";
 
 export type AgingDebit = { amount: number; date: string; dueDate: string | null };
 export type AgingBuckets = { current: number; d30: number; d60: number; d90: number; overdueTotal: number };
 export type StatementMovement = { id: string; date: string; description: string; debit: number; credit: number; kind: string };
+export type AccountMovementRow = StatementMovement & { paymentId?: string | null };
 export type StatementLine = StatementMovement & { balance: number };
 export type CustomerStatement = { openingBalance: number; lines: StatementLine[]; finalBalance: number };
 export type OpenCustomerAccount = { clientId: string; name: string; sellerName: string; taxId: string; lastMovementDate: string | null; balance: number; aging: AgingBuckets };
@@ -20,6 +22,46 @@ export type CustomerStatementResult = {
 
 function money(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+export function collapsePaymentAllocations(movements: AccountMovementRow[]): StatementMovement[] {
+  const result: Array<StatementMovement & { allocationCount?: number }> = [];
+  const groupedIndexes = new Map<string, number>();
+
+  for (const movement of movements) {
+    if (!movement.paymentId) {
+      result.push(movement);
+      continue;
+    }
+
+    const direction = movement.credit > 0 ? "credit" : "debit";
+    const key = `${movement.paymentId}:${movement.date}:${direction}`;
+    const existingIndex = groupedIndexes.get(key);
+    if (existingIndex === undefined) {
+      groupedIndexes.set(key, result.length);
+      result.push({
+        ...movement,
+        id: `payment:${movement.paymentId}:${movement.date}:${direction}`,
+        description: movement.description
+          .replace(/\s*\|\s*Imputaci[oó]n hist[oó]rica FIFO\s*$/i, "")
+          .replace(/\s*\|\s*$/, ""),
+        allocationCount: 1,
+      });
+      continue;
+    }
+
+    const existing = result[existingIndex];
+    existing.debit = money(existing.debit + movement.debit);
+    existing.credit = money(existing.credit + movement.credit);
+    existing.allocationCount = (existing.allocationCount ?? 1) + 1;
+  }
+
+  return result.map(({ allocationCount, ...movement }) => ({
+    ...movement,
+    description: allocationCount && allocationCount > 1
+      ? `${movement.description} (distribuido en ${allocationCount} imputaciones)`
+      : movement.description,
+  }));
 }
 
 function daysBetween(fromIso: string, toIso: string) {
@@ -190,12 +232,13 @@ export async function getCustomerStatement(
   if (!info.rows[0]) throw new ApiError(404, "Cliente no encontrado");
 
   const rows = await queryWithCompanyContext<{
-    id: string; movement_date: string; description: string; debit: string; credit: string;
+    id: string; movement_date: string; description: string; debit: string; credit: string; payment_id: string | null;
   }>(
     companyId,
     `
       SELECT m.id::text AS id, m.movement_date::text AS movement_date,
-             COALESCE(m.description, '') AS description, m.debit::text, m.credit::text
+             COALESCE(m.description, '') AS description, m.debit::text, m.credit::text,
+             m.payment_id::text AS payment_id
       FROM current_account_movements m
       LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
       WHERE m.empresa_id = $1 AND m.client_id = $2::uuid
@@ -205,14 +248,15 @@ export async function getCustomerStatement(
     [companyId, clientId],
   );
 
-  const movements: StatementMovement[] = rows.rows.map((row) => ({
+  const movements = collapsePaymentAllocations(rows.rows.map((row) => ({
     id: row.id,
     date: row.movement_date,
     description: row.description,
     debit: Number(row.debit),
     credit: Number(row.credit),
     kind: movementKind(row.description, Number(row.debit)),
-  }));
+    paymentId: row.payment_id,
+  })));
 
   return {
     customer: { id: clientId, name: info.rows[0].name, taxId: info.rows[0].tax_id, sellerName: info.rows[0].seller_name },
@@ -226,6 +270,151 @@ export type CustomerPaymentInput = {
   clientId: string; amount: number; date: string; method: string;
   destination: string; operation: string; notes: string;
 };
+
+type OpenSaleForAllocation = {
+  id: string;
+  outstanding: string;
+  receipt_number: number;
+};
+
+export function allocatePaymentAmount(
+  amount: number,
+  sales: { id: string; outstanding: number; receiptNumber: number }[],
+) {
+  let remaining = money(amount);
+  const allocations: { saleId: string; receiptNumber: number; amount: number }[] = [];
+  for (const sale of sales) {
+    if (remaining <= 0.005) break;
+    const outstanding = Number.isFinite(sale.outstanding) ? Math.max(0, sale.outstanding) : 0;
+    const allocated = money(Math.min(remaining, outstanding));
+    if (allocated <= 0.005) continue;
+    allocations.push({ saleId: sale.id, receiptNumber: sale.receiptNumber, amount: allocated });
+    remaining = money(remaining - allocated);
+  }
+  return { allocations, allocated: money(amount - remaining), unallocated: remaining };
+}
+
+async function postAllocatedCustomerPayment(
+  client: PoolClient,
+  companyId: number,
+  input: {
+    clientId: string;
+    paymentId: string;
+    amount: number;
+    date: string;
+    description: string;
+    clientName: string;
+  },
+) {
+  const sales = await client.query<OpenSaleForAllocation>(
+    `
+      SELECT s.id::text AS id,
+             GREATEST(
+               COALESCE(s.total_amount, 0)
+               + COALESCE(movements.debit_notes, 0)
+               - COALESCE(movements.total_credit, 0),
+               0
+             )::text AS outstanding,
+             COALESCE(
+               s.receipt_number,
+               NULLIF(regexp_replace(COALESCE(s.sale_number, ''), '\\D', '', 'g'), '')::bigint,
+               0
+             )::int AS receipt_number
+      FROM sales s
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
+               COALESCE(SUM(cam.debit) FILTER (
+                 WHERE cam.description ILIKE 'nota de debito%'
+                    OR cam.description ILIKE 'anulacion de cobro%'
+               ), 0) AS debit_notes
+        FROM current_account_movements cam
+        WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
+      ) movements ON true
+      WHERE s.empresa_id = $1
+        AND s.client_id = $2::uuid
+        AND COALESCE(s.order_status, s.status, 'cargado') IN ('entregado')
+        AND COALESCE(s.collection_status, 'pendiente') IN (
+          'pendiente', 'vencido', 'pendiente_aprobacion', 'en_proceso'
+        )
+        AND (
+          s.source_sheet IS NULL OR s.source_sheet = ''
+          OR s.source_sheet = '12lzgmYiRh-sIAFv-EnhPVnbAfZMuNZYi8uwTj-ooJIE:ENTREGAS MACRO'
+          OR (s.sale_date < DATE '2026-07-01' AND s.source_sheet = '1Ocl4Y9gcTS5LqNIePCebV3mtgYk7v6pa5Vy8uHDc75M:VENTAS ANUAL')
+        )
+        AND GREATEST(
+          COALESCE(s.total_amount, 0)
+          + COALESCE(movements.debit_notes, 0)
+          - COALESCE(movements.total_credit, 0),
+          0
+        ) > 0.005
+      ORDER BY s.sale_date ASC, s.created_at ASC, s.id ASC
+      FOR UPDATE OF s
+    `,
+    [companyId, input.clientId],
+  );
+
+  const allocation = allocatePaymentAmount(
+    input.amount,
+    sales.rows.map((sale) => ({
+      id: sale.id,
+      outstanding: Number(sale.outstanding),
+      receiptNumber: sale.receipt_number,
+    })),
+  );
+  for (const item of allocation.allocations) {
+    await client.query(
+      `
+        INSERT INTO current_account_movements (
+          client_id, sale_id, payment_id, movement_date, debit, credit,
+          description, entity_type, entity_name, empresa_id
+        )
+        VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 0, $5, $6, 'cliente', $7, $8)
+      `,
+      [
+        input.clientId,
+        item.saleId,
+        input.paymentId,
+        input.date,
+        item.amount,
+        `${input.description} | Imputado a #${String(item.receiptNumber).padStart(4, "0")}`,
+        input.clientName,
+        companyId,
+      ],
+    );
+    const originalOutstanding = Number(
+      sales.rows.find((sale) => sale.id === item.saleId)?.outstanding ?? 0,
+    );
+    await client.query(
+      `UPDATE sales
+       SET collection_status = $1, updated_at = now()
+       WHERE id = $2::uuid AND empresa_id = $3`,
+      [originalOutstanding - item.amount <= 0.005 ? "recibido" : "pendiente", item.saleId, companyId],
+    );
+  }
+
+  if (allocation.unallocated > 0.005) {
+    await client.query(
+      `
+        INSERT INTO current_account_movements (
+          client_id, payment_id, movement_date, debit, credit, description,
+          entity_type, entity_name, empresa_id
+        )
+        VALUES ($1::uuid, $2::uuid, $3, 0, $4, $5, 'cliente', $6, $7)
+      `,
+      [
+        input.clientId,
+        input.paymentId,
+        input.date,
+        allocation.unallocated,
+        `${input.description} | Saldo a favor sin imputar`,
+        input.clientName,
+        companyId,
+      ],
+    );
+  }
+
+  return { allocated: allocation.allocated, unallocated: allocation.unallocated };
+}
 
 export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput {
   const clientId = textField(body, "clientId") || textField(body, "cliente_id");
@@ -274,28 +463,24 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
     );
     const paymentId = payment.rows[0].id as string;
 
+    let allocation = { allocated: 0, unallocated: input.amount };
     if (status === "registrado") {
-      await client.query(
-        `
-          INSERT INTO current_account_movements (
-            client_id, payment_id, movement_date, debit, credit, description, entity_type, entity_name, empresa_id
-          )
-          VALUES ($1::uuid, $2::uuid, $3, 0, $4, $5, 'cliente', $6, $7)
-        `,
-        [
-          input.clientId, paymentId, input.date, input.amount,
-          `Cobro - ${input.method} | Destino ${input.destination} | ${reference}`.trim(),
-          clientName, session.companyId,
-        ],
-      );
+      allocation = await postAllocatedCustomerPayment(client, session.companyId, {
+        clientId: input.clientId,
+        paymentId,
+        amount: input.amount,
+        date: input.date,
+        description: `Cobro - ${input.method} | Destino ${input.destination} | ${reference}`.trim(),
+        clientName,
+      });
     }
 
     await client.query(
       "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1,$2,$3,$4,$5,$6)",
-      [session.userId, "customer_payment.registered", "payments", paymentId, JSON.stringify({ status, amount: input.amount }), session.companyId],
+      [session.userId, "customer_payment.registered", "payments", paymentId, JSON.stringify({ status, amount: input.amount, ...allocation }), session.companyId],
     );
 
-    return { id: paymentId, status };
+    return { id: paymentId, status, ...allocation };
   });
 
   clearReadQueryCache();
@@ -343,20 +528,23 @@ export async function approveCustomerPayment(session: AuthSession, paymentId: st
     const payment = found.rows[0];
     if (!payment) throw new ApiError(409, "El pago ya no esta pendiente de aprobacion");
 
-    await client.query(
-      `INSERT INTO current_account_movements (client_id, payment_id, movement_date, debit, credit, description, entity_type, entity_name, empresa_id)
-       VALUES ($1::uuid, $2::uuid, CURRENT_DATE, 0, $3, $4, 'cliente', $5, $6)`,
-      [payment.client_id, paymentId, Number(payment.amount), `Cobro aprobado - ${payment.method} | ${payment.reference}`.trim(), payment.entity_name, session.companyId],
-    );
+    const allocation = await postAllocatedCustomerPayment(client, session.companyId, {
+      clientId: payment.client_id,
+      paymentId,
+      amount: Number(payment.amount),
+      date: localDateIso(),
+      description: `Cobro aprobado - ${payment.method} | ${payment.reference}`.trim(),
+      clientName: payment.entity_name,
+    });
     await client.query(
       `UPDATE payments SET status = 'registrado', updated_at = now() WHERE id = $1::uuid AND empresa_id = $2`,
       [paymentId, session.companyId],
     );
     await client.query(
       "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1,$2,$3,$4,$5,$6)",
-      [session.userId, "customer_payment.approved", "payments", paymentId, JSON.stringify({ amount: Number(payment.amount) }), session.companyId],
+      [session.userId, "customer_payment.approved", "payments", paymentId, JSON.stringify({ amount: Number(payment.amount), ...allocation }), session.companyId],
     );
-    return { id: paymentId, status: "registrado" as const };
+    return { id: paymentId, status: "registrado" as const, ...allocation };
   });
   clearReadQueryCache();
   return result;
@@ -383,6 +571,7 @@ export async function rejectCustomerPayment(session: AuthSession, paymentId: str
 export type CustomerPaymentRow = {
   id: string; date: string | null; customerName: string; method: string;
   reference: string; registeredBy: string; amount: number; status: string;
+  allocatedAmount: number; unallocatedAmount: number;
 };
 
 export async function listCustomerPayments(
@@ -404,16 +593,26 @@ export async function listCustomerPayments(
   const rows = await queryWithCompanyContext<{
     id: string; date: string | null; name: string; method: string; reference: string;
     registered_by: string; amount: string; status: string;
+    allocated_amount: string; unallocated_amount: string;
   }>(
     companyId,
     `
       SELECT p.id::text AS id, p.payment_date::text AS date,
              COALESCE(c.display_name, p.entity_name, '') AS name,
              COALESCE(p.method,'') AS method, COALESCE(p.reference,'') AS reference,
-             COALESCE(u.full_name, u.username, '') AS registered_by, p.amount::text, COALESCE(p.status::text,'') AS status
+             COALESCE(u.full_name, u.username, '') AS registered_by, p.amount::text,
+             COALESCE(p.status::text,'') AS status,
+             COALESCE(allocation.allocated_amount, 0)::text AS allocated_amount,
+             COALESCE(allocation.unallocated_amount, 0)::text AS unallocated_amount
       FROM payments p
       LEFT JOIN clients c ON c.id = p.client_id AND c.empresa_id = p.empresa_id
       LEFT JOIN profiles u ON u.id::text = p.registered_by::text
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(cam.credit) FILTER (WHERE cam.sale_id IS NOT NULL), 0) AS allocated_amount,
+               COALESCE(SUM(cam.credit) FILTER (WHERE cam.sale_id IS NULL), 0) AS unallocated_amount
+        FROM current_account_movements cam
+        WHERE cam.empresa_id = p.empresa_id AND cam.payment_id = p.id AND cam.credit > 0
+      ) allocation ON true
       WHERE ${filters.join(" AND ")}
       ORDER BY p.payment_date DESC NULLS LAST, p.created_at DESC
       LIMIT 500
@@ -423,6 +622,7 @@ export async function listCustomerPayments(
   return rows.rows.map((row) => ({
     id: row.id, date: row.date, customerName: row.name, method: row.method,
     reference: row.reference, registeredBy: row.registered_by, amount: Number(row.amount), status: row.status,
+    allocatedAmount: Number(row.allocated_amount), unallocatedAmount: Number(row.unallocated_amount),
   }));
 }
 
@@ -468,11 +668,52 @@ export async function voidCustomerPayment(session: AuthSession, paymentId: strin
       await client.query(
         `
           INSERT INTO current_account_movements (
-            client_id, payment_id, movement_date, debit, credit, description, entity_type, entity_name, empresa_id
+            client_id, sale_id, payment_id, movement_date, debit, credit,
+            description, entity_type, entity_name, empresa_id
           )
-          VALUES ($1::uuid, $2::uuid, CURRENT_DATE, $3, 0, $4, 'cliente', $5, $6)
+          SELECT client_id, sale_id, payment_id, CURRENT_DATE, credit, 0,
+                 $3, entity_type, entity_name, empresa_id
+          FROM current_account_movements
+          WHERE payment_id = $1::uuid AND empresa_id = $2 AND credit > 0
         `,
-        [payment.client_id, paymentId, Number(payment.amount), `Anulacion de cobro (pago ${paymentId})`, payment.entity_name, session.companyId],
+        [paymentId, session.companyId, `Anulacion de cobro (pago ${paymentId})`],
+      );
+      await client.query(
+        `
+          UPDATE sales s
+          SET collection_status = CASE
+                WHEN GREATEST(
+                  COALESCE(s.total_amount, 0)
+                  + COALESCE((
+                      SELECT SUM(cam.debit)
+                      FROM current_account_movements cam
+                      WHERE cam.empresa_id = s.empresa_id
+                        AND cam.sale_id = s.id
+                        AND (
+                          cam.description ILIKE 'nota de debito%'
+                          OR cam.description ILIKE 'anulacion de cobro%'
+                        )
+                    ), 0)
+                  - COALESCE((
+                      SELECT SUM(cam.credit)
+                      FROM current_account_movements cam
+                      WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
+                    ), 0),
+                  0
+                ) <= 0.005 THEN 'recibido'
+                ELSE 'pendiente'
+              END,
+              updated_at = now()
+          WHERE s.empresa_id = $2
+            AND s.id IN (
+              SELECT DISTINCT cam.sale_id
+              FROM current_account_movements cam
+              WHERE cam.payment_id = $1::uuid
+                AND cam.empresa_id = $2
+                AND cam.sale_id IS NOT NULL
+            )
+        `,
+        [paymentId, session.companyId],
       );
     }
 

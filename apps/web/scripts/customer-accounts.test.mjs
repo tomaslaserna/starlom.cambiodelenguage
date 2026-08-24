@@ -102,3 +102,33 @@ test("buildCustomerStatement sin filtro: opening 0 y final = saldo total", () =>
   assert.equal(st.openingBalance, 0);
   assert.equal(st.finalBalance, 600);
 });
+
+test("statement groups FIFO allocations as one customer payment", () => {
+  const rows = accounts.collapsePaymentAllocations([
+    { id: "a", date: "2026-08-20", description: "Cobro - efectivo | Imputación histórica FIFO", debit: 0, credit: 48_422.90, kind: "Cobro", paymentId: "payment-1" },
+    { id: "b", date: "2026-08-20", description: "Cobro - efectivo | Imputación histórica FIFO", debit: 0, credit: 169_705.07, kind: "Cobro", paymentId: "payment-1" },
+    { id: "c", date: "2026-08-20", description: "Cobro - efectivo | Imputación histórica FIFO", debit: 0, credit: 0.03, kind: "Cobro", paymentId: "payment-1" },
+  ]);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].credit, 218_128);
+  assert.match(rows[0].description, /distribuido en 3 imputaciones/);
+});
+
+test("allocatePaymentAmount imputa FIFO, permite parcial y conserva saldo a favor", () => {
+  const sales = [
+    { id: "s1", outstanding: 80, receiptNumber: 1 },
+    { id: "s2", outstanding: 50, receiptNumber: 2 },
+  ];
+  const exact = accounts.allocatePaymentAmount(100, sales);
+  assert.deepEqual(exact.allocations, [
+    { saleId: "s1", receiptNumber: 1, amount: 80 },
+    { saleId: "s2", receiptNumber: 2, amount: 20 },
+  ]);
+  assert.equal(exact.allocated, 100);
+  assert.equal(exact.unallocated, 0);
+
+  const excess = accounts.allocatePaymentAmount(150, sales);
+  assert.equal(excess.allocated, 130);
+  assert.equal(excess.unallocated, 20);
+});

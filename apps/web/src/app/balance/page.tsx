@@ -73,7 +73,7 @@ export default async function BalancePage({
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <StatCard
-            detail="Monto total cobrado, IVA incluido"
+          detail="Ventas entregadas del período, IVA incluido"
             label="Ventas brutas"
             tone="accent"
             value={formatCurrency(metrics.sales.grossCurrent)}
@@ -108,7 +108,7 @@ export default async function BalancePage({
                 <div className="mt-1 font-semibold">{formatCurrency(metrics.margin.grossCost)}</div>
               </div>
               <div className="rounded-md bg-[color:var(--panel-subtle)] p-3">
-                <div className="text-xs text-[color:var(--muted)]">Por cobrar</div>
+                <div className="text-xs text-[color:var(--muted)]">Documentos pendientes de cobro</div>
                 <div className="mt-1 font-semibold">{formatCurrency(metrics.receivables.openTotal)}</div>
               </div>
               <div className="rounded-md bg-[color:var(--panel-subtle)] p-3">

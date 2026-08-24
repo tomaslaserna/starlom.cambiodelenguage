@@ -73,7 +73,8 @@ test("opening sale debit is not confused with later debit notes", () => {
 
   assert.match(source, /SALE_OPENING_DEBIT_DESCRIPTION_PREFIX = "Saldo pendiente - Remito "/);
   assert.match(source, /AND debit > 0\s*AND credit = 0\s*AND description LIKE \$3/);
-  assert.match(source, /FILTER \(WHERE description ILIKE 'nota de debito%'\)/);
+  assert.match(source, /description ILIKE 'nota de debito%'/);
+  assert.match(source, /description ILIKE 'anulacion de cobro%'/);
 });
 
 test("collection registration locks the sale while preserving configured transfer methods", () => {

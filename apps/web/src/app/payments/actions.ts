@@ -9,6 +9,11 @@ function revalidatePaymentsFlow() {
   revalidatePath("/payments");
   revalidatePath("/payments/accounts");
   revalidatePath("/admin/approvals");
+  revalidatePath("/collections");
+  revalidatePath("/sales");
+  revalidatePath("/balance");
+  revalidatePath("/metrics");
+  revalidatePath("/treasury/current-accounts");
 }
 
 export async function registerCustomerPaymentAction(formData: FormData) {
