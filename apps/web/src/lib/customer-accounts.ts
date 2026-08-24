@@ -29,6 +29,15 @@ export type OpenCustomerAccount = { clientId: string; name: string; sellerName: 
 export type CustomerStatementResult = {
   customer: { id: string; name: string; taxId: string; sellerName: string };
   statement: CustomerStatement;
+  unappliedPayments: Array<{
+    id: string;
+    date: string;
+    amount: number;
+    appliedAmount: number;
+    method: string;
+    reference: string;
+    notes: string;
+  }>;
 };
 
 function money(value: number) {
@@ -288,9 +297,44 @@ export async function getCustomerStatement(
     hasPricedItems: row.has_priced_items,
   })));
 
+  const pendingRows = await queryWithCompanyContext<{
+    id: string; payment_date: string; amount: string; applied_amount: string;
+    method: string; reference: string; notes: string;
+  }>(
+    companyId,
+    `
+      SELECT p.id::text AS id, p.payment_date::text AS payment_date,
+             p.amount::text,
+             COALESCE(allocation.applied_amount, 0)::text AS applied_amount,
+             COALESCE(p.method, '') AS method,
+             COALESCE(p.reference, '') AS reference,
+             COALESCE(p.notes, '') AS notes
+      FROM payments p
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(m.credit), 0) AS applied_amount
+        FROM current_account_movements m
+        WHERE m.empresa_id = p.empresa_id AND m.payment_id = p.id AND m.credit > 0
+      ) allocation ON true
+      WHERE p.empresa_id = $1 AND p.client_id = $2::uuid
+        AND p.entity_type = 'cliente' AND p.status::text = 'registrado'
+        AND p.amount - COALESCE(allocation.applied_amount, 0) > 0.005
+      ORDER BY p.payment_date DESC, p.created_at DESC
+    `,
+    [companyId, clientId],
+  );
+
   return {
     customer: { id: clientId, name: info.rows[0].name, taxId: info.rows[0].tax_id, sellerName: info.rows[0].seller_name },
     statement: buildCustomerStatement(movements, options),
+    unappliedPayments: pendingRows.rows.map((row) => ({
+      id: row.id,
+      date: row.payment_date,
+      amount: Number(row.amount),
+      appliedAmount: Number(row.applied_amount),
+      method: row.method,
+      reference: row.reference,
+      notes: row.notes,
+    })),
   };
 }
 

@@ -168,6 +168,14 @@ test("el estado de cuenta expone el remito con precios sin fabricar detalle hist
   assert.match(page, /detalle de productos no disponible en la migraci[oó]n/i);
 });
 
+test("el estado de cuenta muestra pagos registrados pendientes de aplicar", () => {
+  const page = readFileSync(new URL("../src/app/payments/accounts/[id]/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /unappliedPayments/);
+  assert.match(source, /p\.amount - COALESCE\(allocation\.applied_amount, 0\) > 0\.005/);
+  assert.match(page, /Pagos registrados pendientes de aplicar/);
+  assert.match(page, /no reducen la deuda/i);
+});
+
 test("un excedente de pago no se inserta como saldo a favor sin remito", () => {
   assert.doesNotMatch(source, /Saldo a favor sin imputar/);
   assert.match(source, /GREATEST\(p\.amount - COALESCE\(allocation\.allocated_amount, 0\), 0\)/);

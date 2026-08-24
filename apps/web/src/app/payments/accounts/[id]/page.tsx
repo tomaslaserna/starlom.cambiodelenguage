@@ -55,7 +55,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
   ]);
   if (!periodResult) notFound();
 
-  const { customer, statement } = periodResult;
+  const { customer, statement, unappliedPayments } = periodResult;
   const currentBalance = fullResult?.statement.finalBalance ?? statement.finalBalance;
   const today = localDateIso();
 
@@ -105,6 +105,49 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
           tone={currentBalance > 0 ? "danger" : currentBalance < 0 ? "success" : "neutral"}
           value={formatCurrency(currentBalance)}
         />
+
+        {unappliedPayments.length ? (
+          <Card className="overflow-hidden border-amber-300 bg-amber-50/40">
+            <div className="border-b border-amber-200 px-4 py-3">
+              <h2 className="font-bold">Pagos registrados pendientes de aplicar</h2>
+              <p className="mt-1 text-xs text-[color:var(--muted)]">
+                Estos comprobantes están cargados, pero no reducen la deuda hasta vincularlos con una venta o remito real.
+              </p>
+            </div>
+            <DataTable
+              caption="Pagos pendientes de aplicar"
+              className="rounded-none border-0 shadow-none"
+              minWidth="760px"
+              tableLabel="Pagos registrados pendientes de aplicar"
+            >
+              <DataTableHeader>
+                <DataTableRow className="hover:bg-transparent">
+                  <DataTableHead>Fecha</DataTableHead>
+                  <DataTableHead>Método / comprobante</DataTableHead>
+                  <DataTableHead align="right">Pago</DataTableHead>
+                  <DataTableHead align="right">Pendiente</DataTableHead>
+                </DataTableRow>
+              </DataTableHeader>
+              <DataTableBody>
+                {unappliedPayments.map((payment) => {
+                  const pendingAmount = Math.max(0, payment.amount - payment.appliedAmount);
+                  return (
+                    <DataTableRow key={payment.id}>
+                      <DataTableCell className="whitespace-nowrap text-xs">{formatDate(payment.date)}</DataTableCell>
+                      <DataTableCell className="text-xs">
+                        <span className="font-semibold capitalize">{payment.method || "Pago"}</span>
+                        {payment.reference ? <span> · {payment.reference}</span> : null}
+                        {payment.notes ? <div className="mt-1 text-[color:var(--muted)]">{payment.notes}</div> : null}
+                      </DataTableCell>
+                      <DataTableCell align="right" className="font-mono text-xs">{formatCurrency(payment.amount)}</DataTableCell>
+                      <DataTableCell align="right" className="font-mono text-xs font-bold">{formatCurrency(pendingAmount)}</DataTableCell>
+                    </DataTableRow>
+                  );
+                })}
+              </DataTableBody>
+            </DataTable>
+          </Card>
+        ) : null}
 
         <Toolbar ariaLabel="Filtro de fechas del estado de cuenta">
           <form
