@@ -1,4 +1,3 @@
-import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
 import { queryWithCompanyContext } from "@/lib/db";
 import { requireApiSession } from "@/lib/route-auth";
@@ -7,7 +6,7 @@ export const runtime = "nodejs";
 
 // Mensajes internos no leidos del usuario logueado. Lo consume el aviso (toast)
 // de la esquina inferior derecha, que hace polling.
-export async function GET(_request: NextRequest) {
+export async function GET() {
   try {
     const session = await requireApiSession();
     const result = await queryWithCompanyContext<{

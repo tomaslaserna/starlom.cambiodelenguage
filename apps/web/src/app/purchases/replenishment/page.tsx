@@ -1,6 +1,7 @@
 import { ModulePage } from "@/components/module-page";
 import {
   Button,
+  ButtonLink,
   Card,
   DataTable,
   DataTableBody,
@@ -18,7 +19,7 @@ import { createReplenishmentPurchaseRequestAction } from "@/app/purchases/replen
 import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
-import { getReplenishmentSuggestions, type ReplenishmentPriority } from "@/lib/replenishment";
+import { getReplenishmentSuggestions, type ReplenishmentItem, type ReplenishmentPriority } from "@/lib/replenishment";
 import { PRODUCTS_READ_PERMISSION, PURCHASES_READ_PERMISSION } from "@/lib/route-auth";
 
 function priorityLabel(priority: ReplenishmentPriority) {
@@ -33,6 +34,43 @@ function priorityTone(priority: ReplenishmentPriority): StatusBadgeTone {
   if (priority === "alto") return "warning";
   if (priority === "medio") return "neutral";
   return "neutral";
+}
+
+const PRIORITY_RANK: Record<ReplenishmentPriority, number> = {
+  critico: 0,
+  alto: 1,
+  medio: 2,
+  sin_movimiento: 3,
+};
+
+type SupplierGroup = {
+  supplierId: string | null;
+  supplier: string;
+  items: ReplenishmentItem[];
+  units: number;
+  topPriority: ReplenishmentPriority;
+};
+
+function groupBySupplier(items: ReplenishmentItem[]): SupplierGroup[] {
+  const groups = new Map<string, SupplierGroup>();
+  for (const item of items) {
+    const key = item.supplierId ?? "__none__";
+    const group = groups.get(key) ?? {
+      supplierId: item.supplierId,
+      supplier: item.supplier,
+      items: [],
+      units: 0,
+      topPriority: "sin_movimiento" as const,
+    };
+    group.items.push(item);
+    group.units += item.suggestedQuantity;
+    if (PRIORITY_RANK[item.priority] < PRIORITY_RANK[group.topPriority]) group.topPriority = item.priority;
+    groups.set(key, group);
+  }
+  return Array.from(groups.values()).sort((left, right) => {
+    if ((left.supplierId === null) !== (right.supplierId === null)) return left.supplierId === null ? 1 : -1;
+    return PRIORITY_RANK[left.topPriority] - PRIORITY_RANK[right.topPriority] || right.units - left.units;
+  });
 }
 
 function coverText(value: number | null) {
@@ -52,6 +90,7 @@ export default async function ReplenishmentPage({ searchParams }: ReplenishmentP
   await requirePagePermission(session, [PURCHASES_READ_PERMISSION, PRODUCTS_READ_PERMISSION]);
   const params = await searchParams;
   const replenishment = await getReplenishmentSuggestions(session.companyId);
+  const groups = groupBySupplier(replenishment.items);
 
   return (
     <ModulePage
@@ -94,89 +133,66 @@ export default async function ReplenishmentPage({ searchParams }: ReplenishmentP
           />
         </div>
 
-        <Card className="overflow-hidden">
-          <DataTable
-            caption="Recompra sugerida por producto"
-            className="rounded-none border-0 shadow-none"
-            minWidth="1180px"
-            tableLabel="Recompra MRP"
-            tableProps={{ className: "table-fixed" }}
-          >
-            <DataTableHeader>
-              <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[21%]">Producto</DataTableHead>
-                <DataTableHead className="w-[15%]">Proveedor</DataTableHead>
-                <DataTableHead align="right" className="w-[9%]">Stock</DataTableHead>
-                <DataTableHead align="right" className="w-[9%]">Pendiente</DataTableHead>
-                <DataTableHead align="right" className="w-[9%]">Venta 90d</DataTableHead>
-                <DataTableHead align="right" className="w-[9%]">Cobertura</DataTableHead>
-                <DataTableHead align="right" className="w-[9%]">Sugerido</DataTableHead>
-                <DataTableHead className="w-[9%]">Prioridad</DataTableHead>
-                <DataTableHead align="center" className="w-[10%] px-2">Accion</DataTableHead>
-              </DataTableRow>
-            </DataTableHeader>
-            <DataTableBody>
-              {replenishment.items.length === 0 ? (
-                <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={9}>
-                    <EmptyState
-                      description="No hay productos con faltante segun el consumo reciente y el stock disponible."
-                      title="Sin recompra sugerida"
-                    />
-                  </DataTableCell>
-                </DataTableRow>
-              ) : (
-                replenishment.items.map((item) => (
-                  <DataTableRow key={item.productId}>
-                    <DataTableCell>
-                      <div className="break-words font-semibold">{item.name}</div>
-                      <div className="mt-1 font-mono text-xs text-[color:var(--muted)]">{item.sku || item.productId}</div>
-                    </DataTableCell>
-                    <DataTableCell>
-                      <div className="break-words text-[color:var(--muted)]">{item.supplier}</div>
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono text-xs">
-                      {formatNumber(item.currentStock)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono text-xs">
-                      {formatNumber(item.pendingPurchase)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono text-xs">
-                      {formatNumber(item.sold90)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono text-xs">
-                      {coverText(item.coverDays)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="font-mono text-xs font-bold">
-                      {formatNumber(item.suggestedQuantity)}
-                    </DataTableCell>
-                    <DataTableCell>
-                      <StatusBadge tone={priorityTone(item.priority)}>{priorityLabel(item.priority)}</StatusBadge>
-                    </DataTableCell>
-                    <DataTableCell align="center" className="min-w-[118px] px-2 py-2">
-                      {item.supplierId && item.suggestedQuantity > 0 ? (
-                        <form action={createReplenishmentPurchaseRequestAction} className="flex justify-center">
-                          <input name="productId" type="hidden" value={item.productId} />
-                          <input name="quantity" type="hidden" value={item.suggestedQuantity} />
-                          <Button
-                            aria-label={`Solicitar recompra de ${item.name}`}
-                            className="min-w-[106px] whitespace-nowrap"
-                            size="sm"
-                            type="submit"
-                          >
-                            Solicitar
-                          </Button>
-                        </form>
-                      ) : (
-                        <span className="text-xs text-[color:var(--muted)]">Sin proveedor</span>
-                      )}
-                    </DataTableCell>
-                  </DataTableRow>
-                ))
-              )}
-            </DataTableBody>
-          </DataTable>
-        </Card>
+        {groups.length === 0 ? (
+          <Card className="p-4">
+            <EmptyState description="No hay productos con faltante segun el consumo reciente y el stock disponible." title="Sin recompra sugerida" />
+          </Card>
+        ) : (
+          <div className="grid gap-3">
+            {groups.map((group) => (
+              <Card className="overflow-hidden p-0" key={group.supplierId ?? "sin-proveedor"}>
+                <details className="group">
+                  <summary className="flex min-h-[var(--control-height-lg)] cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-3">
+                    <span aria-hidden="true" className="w-3 shrink-0 text-center transition-transform group-open:rotate-90">›</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="font-black">{group.supplier}</span>
+                      <span className="ml-2 rounded-full bg-[color:var(--accent-subtle)] px-2 py-0.5 text-xs font-bold text-[color:var(--accent-strong)]">
+                        {group.items.length} {group.items.length === 1 ? "articulo" : "articulos"}
+                      </span>
+                      <span className="ml-2 text-xs text-[color:var(--muted)]">{formatNumber(group.units)} unidades sugeridas</span>
+                    </span>
+                    <StatusBadge tone={priorityTone(group.topPriority)}>{priorityLabel(group.topPriority)}</StatusBadge>
+                    {group.supplierId ? (
+                      <ButtonLink href={`/purchases?view=nueva&mrpSupplier=${group.supplierId}`} size="sm">
+                        Mandar a nueva compra
+                      </ButtonLink>
+                    ) : (
+                      <span className="text-xs text-[color:var(--muted)]">Sin proveedor asignado</span>
+                    )}
+                  </summary>
+                  <DataTable caption={`Recompra sugerida para ${group.supplier}`} className="rounded-none border-x-0 border-b-0 shadow-none" minWidth="980px" tableLabel={`Recompra ${group.supplier}`}>
+                    <DataTableHeader>
+                      <DataTableRow className="hover:bg-transparent">
+                        <DataTableHead>Producto</DataTableHead><DataTableHead align="right">Stock</DataTableHead><DataTableHead align="right">Pendiente</DataTableHead>
+                        <DataTableHead align="right">Venta 90d</DataTableHead><DataTableHead align="right">Cobertura</DataTableHead><DataTableHead align="right">Sugerido</DataTableHead>
+                        <DataTableHead>Prioridad</DataTableHead><DataTableHead align="center">Accion</DataTableHead>
+                      </DataTableRow>
+                    </DataTableHeader>
+                    <DataTableBody>
+                      {group.items.map((item) => (
+                        <DataTableRow key={item.productId}>
+                          <DataTableCell><div className="font-semibold">{item.name}</div><div className="mt-0.5 font-mono text-xs text-[color:var(--muted)]">{item.sku || item.productId}</div></DataTableCell>
+                          <DataTableCell align="right">{formatNumber(item.currentStock)}</DataTableCell><DataTableCell align="right">{formatNumber(item.pendingPurchase)}</DataTableCell>
+                          <DataTableCell align="right">{formatNumber(item.sold90)}</DataTableCell><DataTableCell align="right">{coverText(item.coverDays)}</DataTableCell>
+                          <DataTableCell align="right" className="font-bold">{formatNumber(item.suggestedQuantity)}</DataTableCell>
+                          <DataTableCell><StatusBadge tone={priorityTone(item.priority)}>{priorityLabel(item.priority)}</StatusBadge></DataTableCell>
+                          <DataTableCell align="center">
+                            {item.supplierId ? (
+                              <form action={createReplenishmentPurchaseRequestAction} className="flex justify-center">
+                                <input name="productId" type="hidden" value={item.productId} /><input name="quantity" type="hidden" value={item.suggestedQuantity} />
+                                <Button aria-label={`Solicitar recompra de ${item.name}`} size="sm" type="submit">Solicitar</Button>
+                              </form>
+                            ) : <span className="text-xs text-[color:var(--muted)]">Sin proveedor</span>}
+                          </DataTableCell>
+                        </DataTableRow>
+                      ))}
+                    </DataTableBody>
+                  </DataTable>
+                </details>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </ModulePage>
   );

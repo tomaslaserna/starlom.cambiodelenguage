@@ -69,7 +69,7 @@ test("future fiscal snapshots preserve the remote invoice guard fix and historic
   const documents = readFileSync(new URL("../src/lib/pdf/documents.ts", import.meta.url), "utf8");
   const ledger = readFileSync(new URL("../src/lib/fiscal-ledger.ts", import.meta.url), "utf8");
   const migration = readFileSync(
-    new URL("../../../supabase/migrations/20260812144142_persist_future_sales_vat_rate.sql", import.meta.url),
+    new URL("../../../supabase/migrations/20260812224915_persist_future_sales_vat_rate.sql", import.meta.url),
     "utf8",
   );
 

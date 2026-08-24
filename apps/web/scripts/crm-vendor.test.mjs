@@ -25,10 +25,8 @@ const parsePagination = loadTypeScriptModule("../src/lib/pagination.ts");
 
 // Mock de @/lib/db que registra cada query y responde por regex.
 const dbCalls = [];
-let collectionsCall = null;
 function makeCrm(queryImpl) {
   dbCalls.length = 0;
-  collectionsCall = null;
   return loadTypeScriptModule("../src/lib/crm.ts", {
     "@/lib/api-response": { ApiError },
     "@/lib/crm-quotes": { classifyQuote: () => null, topQuoteClients: () => [] },
@@ -45,10 +43,7 @@ function makeCrm(queryImpl) {
     "@/lib/sales-source-sql": { canonicalSalesSourceSql: () => "true" },
     "@/lib/pagination": parsePagination,
     "@/lib/collections": {
-      listSalesToCollectWhere: async (companyId, extraWhere, extraParams) => {
-        collectionsCall = { companyId, extraWhere, extraParams };
-        return [];
-      },
+      listSalesToCollectWhere: async () => [],
     },
   });
 }

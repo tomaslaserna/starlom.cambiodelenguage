@@ -85,7 +85,7 @@ test("registerCustomerPayment: admin registra directo, vendedor deja pendiente",
   const queries = [];
   const mod = loadCustomerAccounts({
     withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => { queries.push({ sql, params }); return { rows: [{ id: "p1" }] }; } }),
-    sessionAllows: async (_session, perms) => true, // admin
+    sessionAllows: async () => true, // admin
   });
   const res = await mod.registerCustomerPayment(
     { companyId: 1, userId: "u1", username: "admin", role: "administrador" },
@@ -101,7 +101,7 @@ test("registerCustomerPayment: vendedor deja pendiente, sin movimiento de crédi
   const queries = [];
   const mod = loadCustomerAccounts({
     withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => { queries.push({ sql, params }); return { rows: [{ id: "p1" }] }; } }),
-    sessionAllows: async (_session, perms) => false, // vendor
+    sessionAllows: async () => false, // vendor
   });
   const res = await mod.registerCustomerPayment(
     { companyId: 1, userId: "u1", username: "vendor", role: "vendedor" },

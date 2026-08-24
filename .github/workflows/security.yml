@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   web-security:
@@ -20,6 +21,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -49,3 +55,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@v3

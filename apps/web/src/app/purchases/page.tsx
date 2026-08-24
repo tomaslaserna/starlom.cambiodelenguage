@@ -49,6 +49,7 @@ import {
 import { PurchaseEntryFields } from "@/app/purchases/purchase-entry-fields";
 import { PurchaseReceiptUpload } from "@/app/purchases/purchase-receipt-upload";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
+import { getReplenishmentSuggestions } from "@/lib/replenishment";
 
 type PurchasesPageProps = {
   searchParams: Promise<{
@@ -58,6 +59,7 @@ type PurchasesPageProps = {
     view?: string;
     error?: string;
     message?: string;
+    mrpSupplier?: string;
   }>;
 };
 
@@ -164,6 +166,17 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   const [allPurchases] = await Promise.all([
     showRegistry ? listPurchases(session.companyId) : Promise.resolve([]),
   ]);
+  const mrpSupplierId = params.mrpSupplier?.trim() ?? "";
+  let initialSupplierId = "";
+  let initialLines: { productId: string; quantity: number }[] = [];
+  if (showCreateForm && mrpSupplierId) {
+    const suggestions = await getReplenishmentSuggestions(session.companyId);
+    const supplierItems = suggestions.items.filter((item) => item.supplierId === mrpSupplierId && item.suggestedQuantity > 0);
+    if (supplierItems.length) {
+      initialSupplierId = mrpSupplierId;
+      initialLines = supplierItems.map((item) => ({ productId: item.productId, quantity: item.suggestedQuantity }));
+    }
+  }
   const purchases = showRegistry
     ? allPurchases.filter(
         (item) =>
@@ -207,7 +220,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
         {showCreateForm && canCreatePurchases ? (
           <Card className="p-4">
             <form action={createPurchaseAction} className="grid gap-4">
-              <PurchaseEntryFields defaultDate={today} />
+              <PurchaseEntryFields defaultDate={today} initialLines={initialLines} initialSupplierId={initialSupplierId} />
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12 xl:items-end">
                 <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-total" label="Total">
                   <Input className="w-full min-w-0" id="purchase-total" min="0" name="total" required step="0.01" type="number" />
