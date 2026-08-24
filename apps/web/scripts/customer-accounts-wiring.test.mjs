@@ -160,6 +160,19 @@ test("voidCustomerPayment marca anulado y compensa el credito con un debito", as
   assert.ok(queries.some((q) => /UPDATE sales s/i.test(q.sql) && /collection_status/i.test(q.sql)));
 });
 
+test("el estado de cuenta expone el remito con precios sin fabricar detalle historico", () => {
+  const page = readFileSync(new URL("../src/app/payments/accounts/[id]/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /delivery_documents/);
+  assert.match(source, /has_priced_items/);
+  assert.match(page, /Abrir Remito/);
+  assert.match(page, /detalle de productos no disponible en la migraci[oó]n/i);
+});
+
+test("un excedente de pago no se inserta como saldo a favor sin remito", () => {
+  assert.doesNotMatch(source, /Saldo a favor sin imputar/);
+  assert.match(source, /GREATEST\(p\.amount - COALESCE\(allocation\.allocated_amount, 0\), 0\)/);
+});
+
 test("la migracion no imputa ni recrea cobros historicos", () => {
   const migration = readFileSync(
     new URL("../../../supabase/migrations/20260824154614_reconcile_customer_collections.sql", import.meta.url),

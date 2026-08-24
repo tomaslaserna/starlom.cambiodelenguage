@@ -115,7 +115,7 @@ test("statement groups FIFO allocations as one customer payment", () => {
   assert.match(rows[0].description, /distribuido en 3 imputaciones/);
 });
 
-test("allocatePaymentAmount imputa FIFO, permite parcial y conserva saldo a favor", () => {
+test("allocatePaymentAmount imputa FIFO y deja el excedente sin aplicar", () => {
   const sales = [
     { id: "s1", outstanding: 80, receiptNumber: 1 },
     { id: "s2", outstanding: 50, receiptNumber: 2 },

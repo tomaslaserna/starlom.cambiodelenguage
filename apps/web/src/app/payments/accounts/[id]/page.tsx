@@ -165,7 +165,27 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
                     <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
                       {formatDate(line.date)}
                     </DataTableCell>
-                    <DataTableCell className="px-2 py-2 text-xs">{line.description || "-"}</DataTableCell>
+                    <DataTableCell className="px-2 py-2 text-xs">
+                      <div className="grid gap-1">
+                        <span>{line.description || "-"}</span>
+                        {line.debit > 0 && line.saleId ? (
+                          line.hasPricedItems && line.deliveryNumber ? (
+                            <Link
+                              className="font-semibold text-[color:var(--accent)] hover:underline"
+                              href={`/api/pdfs/orders/${line.saleId}/remito`}
+                              prefetch={false}
+                              target="_blank"
+                            >
+                              Abrir Remito #{String(line.deliveryNumber).padStart(4, "0")} con productos y precios
+                            </Link>
+                          ) : (
+                            <span className="text-[color:var(--warning)]">
+                              {line.saleNumber ?? "Venta histórica"} · detalle de productos no disponible en la migración
+                            </span>
+                          )
+                        ) : null}
+                      </div>
+                    </DataTableCell>
                     <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
                       {line.debit > 0 ? formatCurrency(line.debit) : "-"}
                     </DataTableCell>

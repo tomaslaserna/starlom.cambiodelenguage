@@ -10,7 +10,18 @@ import type { PoolClient } from "pg";
 
 export type AgingDebit = { amount: number; date: string; dueDate: string | null };
 export type AgingBuckets = { current: number; d30: number; d60: number; d90: number; overdueTotal: number };
-export type StatementMovement = { id: string; date: string; description: string; debit: number; credit: number; kind: string };
+export type StatementMovement = {
+  id: string;
+  date: string;
+  description: string;
+  debit: number;
+  credit: number;
+  kind: string;
+  saleId?: string | null;
+  saleNumber?: string | null;
+  deliveryNumber?: number | null;
+  hasPricedItems?: boolean;
+};
 export type AccountMovementRow = StatementMovement & { paymentId?: string | null };
 export type StatementLine = StatementMovement & { balance: number };
 export type CustomerStatement = { openingBalance: number; lines: StatementLine[]; finalBalance: number };
@@ -233,12 +244,27 @@ export async function getCustomerStatement(
 
   const rows = await queryWithCompanyContext<{
     id: string; movement_date: string; description: string; debit: string; credit: string; payment_id: string | null;
+    sale_id: string | null; sale_number: string | null; delivery_number: number | null; has_priced_items: boolean;
   }>(
     companyId,
     `
       SELECT m.id::text AS id, m.movement_date::text AS movement_date,
              COALESCE(m.description, '') AS description, m.debit::text, m.credit::text,
-             m.payment_id::text AS payment_id
+             m.payment_id::text AS payment_id, m.sale_id::text AS sale_id,
+             s.sale_number,
+             (
+               SELECT dd.delivery_number
+               FROM delivery_documents dd
+               WHERE dd.empresa_id = m.empresa_id AND dd.sale_id = m.sale_id
+               ORDER BY dd.created_at DESC, dd.id DESC
+               LIMIT 1
+             ) AS delivery_number,
+             EXISTS (
+               SELECT 1
+               FROM sale_items si
+               WHERE si.empresa_id = m.empresa_id AND si.sale_id = m.sale_id
+                 AND si.quantity > 0 AND si.unit_price >= 0
+             ) AS has_priced_items
       FROM current_account_movements m
       LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
       WHERE m.empresa_id = $1 AND m.client_id = $2::uuid
@@ -256,6 +282,10 @@ export async function getCustomerStatement(
     credit: Number(row.credit),
     kind: movementKind(row.description, Number(row.debit)),
     paymentId: row.payment_id,
+    saleId: row.sale_id,
+    saleNumber: row.sale_number,
+    deliveryNumber: row.delivery_number === null ? null : Number(row.delivery_number),
+    hasPricedItems: row.has_priced_items,
   })));
 
   return {
@@ -389,27 +419,6 @@ async function postAllocatedCustomerPayment(
        SET collection_status = $1, updated_at = now()
        WHERE id = $2::uuid AND empresa_id = $3`,
       [originalOutstanding - item.amount <= 0.005 ? "recibido" : "pendiente", item.saleId, companyId],
-    );
-  }
-
-  if (allocation.unallocated > 0.005) {
-    await client.query(
-      `
-        INSERT INTO current_account_movements (
-          client_id, payment_id, movement_date, debit, credit, description,
-          entity_type, entity_name, empresa_id
-        )
-        VALUES ($1::uuid, $2::uuid, $3, 0, $4, $5, 'cliente', $6, $7)
-      `,
-      [
-        input.clientId,
-        input.paymentId,
-        input.date,
-        allocation.unallocated,
-        `${input.description} | Saldo a favor sin imputar`,
-        input.clientName,
-        companyId,
-      ],
     );
   }
 
@@ -603,13 +612,12 @@ export async function listCustomerPayments(
              COALESCE(u.full_name, u.username, '') AS registered_by, p.amount::text,
              COALESCE(p.status::text,'') AS status,
              COALESCE(allocation.allocated_amount, 0)::text AS allocated_amount,
-             COALESCE(allocation.unallocated_amount, 0)::text AS unallocated_amount
+             GREATEST(p.amount - COALESCE(allocation.allocated_amount, 0), 0)::text AS unallocated_amount
       FROM payments p
       LEFT JOIN clients c ON c.id = p.client_id AND c.empresa_id = p.empresa_id
       LEFT JOIN profiles u ON u.id::text = p.registered_by::text
       LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(cam.credit) FILTER (WHERE cam.sale_id IS NOT NULL), 0) AS allocated_amount,
-               COALESCE(SUM(cam.credit) FILTER (WHERE cam.sale_id IS NULL), 0) AS unallocated_amount
+        SELECT COALESCE(SUM(cam.credit) FILTER (WHERE cam.sale_id IS NOT NULL), 0) AS allocated_amount
         FROM current_account_movements cam
         WHERE cam.empresa_id = p.empresa_id AND cam.payment_id = p.id AND cam.credit > 0
       ) allocation ON true
