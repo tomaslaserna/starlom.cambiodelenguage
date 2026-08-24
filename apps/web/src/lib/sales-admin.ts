@@ -187,7 +187,7 @@ async function applySaleOrderStatusTransition(
 export async function getSalesSummary(companyId: number, period: string | null) {
   const bounds = currentPeriod(period);
   const params = bounds.start && bounds.end ? [companyId, bounds.start, bounds.end] : [companyId];
-  const periodFilter = bounds.start && bounds.end ? "AND sale_date >= $2 AND sale_date < $3" : "";
+  const periodFilter = bounds.start && bounds.end ? "WHERE event_date >= $2 AND event_date < $3" : "";
 
   const summaryQuery = queryWithCompanyContext<{
     total_facturas: string;
@@ -202,16 +202,27 @@ export async function getSalesSummary(companyId: number, period: string | null) 
              COALESCE(SUM(CASE WHEN con_factura THEN monto ELSE 0 END), 0)::text AS facturadas,
              COALESCE(SUM(CASE WHEN NOT con_factura THEN monto ELSE 0 END), 0)::text AS no_facturadas
       FROM (
-        SELECT ${adjustedSalesAmountSql("COALESCE(s.total_amount, 0)", "s")} AS monto,
+        SELECT COALESCE(s.total_amount, 0) AS monto,
                COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
                  AND COALESCE(s.cae, '') <> '' AS con_factura,
-               s.sale_date
+               s.sale_date AS event_date
         FROM sales s
         WHERE s.empresa_id = $1
           AND ${canonicalSalesSourceSql("s")}
           AND ${normalizedOrderStatusSql("s")} = 'entregado'
-          ${periodFilter}
+        UNION ALL
+        SELECT CASE WHEN sid.class_name = 'ND' THEN sid.amount ELSE -sid.amount END AS monto,
+               COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
+                 AND COALESCE(s.cae, '') <> '' AS con_factura,
+               sid.issue_date AS event_date
+        FROM sales_internal_documents sid
+        JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
+        WHERE sid.empresa_id = $1
+          AND (sid.fiscal = false OR sid.operational_document_id IS NULL)
+          AND ${canonicalSalesSourceSql("s")}
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
       ) combined
+      ${periodFilter}
     `,
     params,
   );

@@ -353,8 +353,14 @@ export async function listOrders(input: ListInput = {}) {
         WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
       ) collections ON true
       LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(doc.amount) FILTER (WHERE doc.class_name = 'NC'), 0) AS credit_note_amount,
-               COALESCE(SUM(doc.amount) FILTER (WHERE doc.class_name = 'ND'), 0) AS debit_note_amount,
+        SELECT COALESCE(SUM(doc.amount) FILTER (
+                 WHERE doc.class_name = 'NC'
+                   AND (doc.fiscal = false OR doc.operational_document_id IS NULL)
+               ), 0) AS credit_note_amount,
+               COALESCE(SUM(doc.amount) FILTER (
+                 WHERE doc.class_name = 'ND'
+                   AND (doc.fiscal = false OR doc.operational_document_id IS NULL)
+               ), 0) AS debit_note_amount,
                jsonb_agg(jsonb_build_object(
                  'id', doc.id::text,
                  'className', doc.class_name,
@@ -442,8 +448,14 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
         WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
       ) collections ON true
       LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(doc.amount) FILTER (WHERE doc.class_name = 'NC'), 0) AS credit_note_amount,
-               COALESCE(SUM(doc.amount) FILTER (WHERE doc.class_name = 'ND'), 0) AS debit_note_amount,
+        SELECT COALESCE(SUM(doc.amount) FILTER (
+                 WHERE doc.class_name = 'NC'
+                   AND (doc.fiscal = false OR doc.operational_document_id IS NULL)
+               ), 0) AS credit_note_amount,
+               COALESCE(SUM(doc.amount) FILTER (
+                 WHERE doc.class_name = 'ND'
+                   AND (doc.fiscal = false OR doc.operational_document_id IS NULL)
+               ), 0) AS debit_note_amount,
                jsonb_agg(jsonb_build_object(
                  'id', doc.id::text,
                  'className', doc.class_name,

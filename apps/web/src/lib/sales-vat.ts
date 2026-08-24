@@ -36,6 +36,8 @@ export function adjustedSalesAmountSql(amountExpression: string, alias: string) 
     + COALESCE((
         SELECT SUM(CASE WHEN sid.class_name = 'ND' THEN sid.amount ELSE -sid.amount END)
         FROM sales_internal_documents sid
-        WHERE sid.empresa_id = ${alias}.empresa_id AND sid.sale_id = ${alias}.id
+        WHERE sid.empresa_id = ${alias}.empresa_id
+          AND sid.sale_id = ${alias}.id
+          AND (sid.fiscal = false OR sid.operational_document_id IS NULL)
       ), 0))`;
 }

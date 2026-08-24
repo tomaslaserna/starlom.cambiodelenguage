@@ -4,6 +4,7 @@ import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { normalizeStoredVatRate, vatAmountsFromNet } from "@/lib/vat-calculation";
 import type { AuthSession } from "@/lib/auth";
+import { localDateIso } from "@/lib/timezone";
 
 export type SalesDocumentItem = {
   id: string;
@@ -18,6 +19,7 @@ export type SalesNoteInput = {
   remittanceId: string;
   className: "NC" | "ND";
   fiscal: boolean;
+  issueDate: string;
   reason: string;
   detail: SalesDocumentItem[];
 };
@@ -86,6 +88,7 @@ export async function listSalesAdjustmentReferences(companyId: number) {
           WHERE doc.empresa_id = s.empresa_id
             AND doc.sale_id = s.id
             AND doc.class_name = 'NC'
+            AND (doc.fiscal = false OR doc.operational_document_id IS NULL)
             AND entry->>'id' = si.product_id::text
         ) returned ON true
         WHERE si.empresa_id = s.empresa_id AND si.sale_id = s.id
@@ -188,12 +191,20 @@ export function salesNoteInputFromBody(body: RequestBody): SalesNoteInput {
 
   const reason = textField(body, "reason") || textField(body, "motivo");
   if (reason.length < 5) throw new ApiError(400, "Explica el motivo de la nota (minimo 5 caracteres)");
+  const issueDate = textField(body, "issueDate") || localDateIso();
+  const parsedIssueDate = new Date(`${issueDate}T00:00:00Z`);
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(issueDate)
+    || Number.isNaN(parsedIssueDate.getTime())
+    || parsedIssueDate.toISOString().slice(0, 10) !== issueDate
+  ) throw new ApiError(400, "La fecha de la nota es invalida");
 
   return {
     saleId: optionalUuid(body, ["saleId", "id_venta"], "Venta"),
     remittanceId: optionalUuid(body, ["remittanceId", "id_remito"], "Remito"),
     className,
     fiscal: ["1", "true", "si", "sí"].includes(textField(body, "fiscal").toLowerCase()),
+    issueDate,
     reason,
     detail,
   };
@@ -385,6 +396,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
   }
 
   return withCompanyContext(session.companyId, async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock(83030, $1::int)", [session.companyId]);
     let reference: { nombre_cliente: string; estado_pedido?: string; client_id?: string | null; vat_rate?: string } | undefined;
 
     if (input.saleId) {
@@ -431,6 +443,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
                    WHERE doc.empresa_id = si.empresa_id
                      AND doc.sale_id = si.sale_id
                      AND doc.class_name = 'NC'
+                     AND (doc.fiscal = false OR doc.operational_document_id IS NULL)
                      AND entry->>'id' = si.product_id::text
                  ), 0)::text AS returned_quantity
           FROM sale_items si
@@ -467,6 +480,31 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
         }
         return { ...item, name: productNames.get(item.id) ?? item.name, subtotal: Number((item.quantity * item.unitPrice).toFixed(2)) };
       });
+
+      if (input.className === "ND") {
+        const stockResult = await client.query<{ id: string; available: string }>(
+          `
+            SELECT p.id::text,
+                   COALESCE(SUM(
+                     CASE WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo')
+                       THEN sm.quantity ELSE -sm.quantity END
+                   ), 0)::text AS available
+            FROM products p
+            LEFT JOIN stock_movements sm
+              ON sm.product_id = p.id AND sm.empresa_id = p.empresa_id
+            WHERE p.empresa_id = $1 AND p.id = ANY($2::uuid[])
+            GROUP BY p.id
+          `,
+          [session.companyId, requestedIds],
+        );
+        const stockByProduct = new Map(stockResult.rows.map((item) => [item.id, Number(item.available)]));
+        for (const item of input.detail) {
+          const available = stockByProduct.get(item.id) ?? 0;
+          if (item.quantity > available) {
+            throw new ApiError(400, `Stock insuficiente para ${item.name}: disponible ${available}`);
+          }
+        }
+      }
     } else {
       const referenceResult = await client.query<{ nombre_cliente: string; client_id: string | null }>(
         `
@@ -486,7 +524,6 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
       input.detail.reduce((total, item) => total + item.subtotal, 0).toFixed(2),
     );
     const amount = vatAmountsFromNet(netAmount, normalizeStoredVatRate(reference.vat_rate)).total;
-    await client.query("SELECT pg_advisory_xact_lock(83030, $1::int)", [session.companyId]);
     const nextNumber = await client.query<{ valor: number }>(
       "SELECT COALESCE(MAX(receipt_number), 0) + 1 AS valor FROM sales_internal_documents WHERE empresa_id = $1",
       [session.companyId],
@@ -498,9 +535,10 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
       `
         INSERT INTO sales_internal_documents (
           sale_id, delivery_id, class_name, fiscal, receipt_type, receipt_number,
-          amount, detail_json, reason, stock_adjusted, created_by, created_by_name, empresa_id
+          amount, detail_json, reason, issue_date, stock_adjusted, account_adjusted,
+          created_by, created_by_name, empresa_id
         )
-        VALUES ($1::uuid, $2::uuid, $3, false, 0, $4, $5, $6, $7, false, $8::uuid, $9, $10)
+        VALUES ($1::uuid, $2::uuid, $3, false, 0, $4, $5, $6, $7, $8::date, false, false, $9::uuid, $10, $11)
         RETURNING id::text AS id
       `,
       [
@@ -511,6 +549,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
         amount,
         JSON.stringify(input.detail),
         input.reason,
+        input.issueDate,
         session.userId,
         session.username,
         session.companyId,
@@ -523,14 +562,15 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
       if (!item.id) continue;
       await client.query(
         `
-          INSERT INTO stock_movements (product_id, movement_type, quantity, sale_id, notes, empresa_id)
-          VALUES ($1::uuid, $2::stock_movement_type, $3, $4::uuid, $5, $6)
+          INSERT INTO stock_movements (product_id, movement_type, quantity, sale_id, movement_date, notes, empresa_id)
+          VALUES ($1::uuid, $2::stock_movement_type, $3, $4::uuid, $5::date, $6, $7)
         `,
         [
           item.id,
           sign > 0 ? "ajuste_positivo" : "ajuste_negativo",
           item.quantity,
           input.saleId || null,
+          input.issueDate,
           `${input.className === "NC" ? "Nota de credito" : "Nota de debito"} interna #${receiptNumber}`,
           session.companyId,
         ],
@@ -551,7 +591,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
             client_id, sale_id, entity_type, entity_name, description,
             debit, credit, movement_date, empresa_id
           )
-          VALUES ($1::uuid, $2::uuid, 'cliente', $3, $4, $5, $6, CURRENT_DATE, $7)
+          VALUES ($1::uuid, $2::uuid, 'cliente', $3, $4, $5, $6, $7::date, $8)
         `,
         [
           reference.client_id ?? null,
@@ -560,8 +600,13 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
           `${input.className === "NC" ? "Nota de credito" : "Nota de debito"} interna #${receiptNumber}`,
           debit,
           credit,
+          input.issueDate,
           session.companyId,
         ],
+      );
+      await client.query(
+        "UPDATE sales_internal_documents SET account_adjusted = true WHERE id = $1::uuid AND empresa_id = $2",
+        [documentId, session.companyId],
       );
     }
 

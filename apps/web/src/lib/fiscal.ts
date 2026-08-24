@@ -12,6 +12,7 @@ import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { invoiceSaleOrderDocument, normalizeDesiredDocument, receiptTypeCode } from "@/lib/receipt-types";
 import { isFinalTotalConsistent, isSaleVatRate } from "@/lib/vat-calculation";
+import { localDateIso } from "@/lib/timezone";
 
 export type FiscalProviderName = "disabled" | "arca";
 export type FiscalEnvironmentMode = "disabled" | "testing" | "production";
@@ -720,6 +721,10 @@ async function markSaleFiscalApproved(
               NULLIF($10::text, '')::date,
               (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
             ),
+            issue_date = COALESCE(
+              NULLIF($10::text, '')::date,
+              (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
+            ),
             fiscal_authorized_at = now(),
             fiscal_last_attempt_at = now(),
             fiscal_error_code = '',
@@ -796,6 +801,28 @@ async function prepareSaleFiscalNoteDocument(
 ) {
   const className = fiscalNoteClass(kind);
   return withCompanyContext(session.companyId, async (client) => {
+    const operational = await client.query<{ id: string }>(
+      `
+        SELECT internal.id::text
+        FROM sales_internal_documents internal
+        WHERE internal.empresa_id = $1
+          AND internal.sale_id = $2::uuid
+          AND internal.class_name = $3
+          AND internal.fiscal = false
+          AND internal.amount = $4::numeric
+          AND NOT EXISTS (
+            SELECT 1
+            FROM sales_internal_documents fiscal_note
+            WHERE fiscal_note.empresa_id = internal.empresa_id
+              AND fiscal_note.operational_document_id = internal.id
+          )
+        ORDER BY internal.issue_date DESC, internal.created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [session.companyId, sale.id, className, noteAmount],
+    );
+    const operationalDocumentId = operational.rows[0]?.id ?? null;
     const existing = await client.query<{
       id: string;
       fiscal_status: FiscalAuthorizationStatus;
@@ -815,13 +842,14 @@ async function prepareSaleFiscalNoteDocument(
           AND sale_id = $2::uuid
           AND class_name = $3
           AND fiscal = true
+          AND amount = $4::numeric
         ORDER BY
           CASE WHEN fiscal_status = 'aprobado' AND COALESCE(cae, '') <> '' THEN 0 ELSE 1 END,
           created_at DESC
         LIMIT 1
         FOR UPDATE
       `,
-      [session.companyId, sale.id, className],
+      [session.companyId, sale.id, className, noteAmount],
     );
     const current = existing.rows[0];
     if (current && isFiscalApproved(current.fiscal_status, current.cae)) {
@@ -859,7 +887,8 @@ async function prepareSaleFiscalNoteDocument(
               fiscal_receipt_type = $4::integer,
               receipt_type = $4::integer,
               amount = $5::numeric,
-              reason = $6
+              reason = $6,
+              operational_document_id = COALESCE(operational_document_id, $10::uuid)
           WHERE id = $7::uuid AND empresa_id = $8
         `,
         [
@@ -872,6 +901,7 @@ async function prepareSaleFiscalNoteDocument(
           current.id,
           session.companyId,
           kind,
+          operationalDocumentId,
         ],
       );
       return {
@@ -898,13 +928,14 @@ async function prepareSaleFiscalNoteDocument(
           sale_id, delivery_id, class_name, fiscal, receipt_type, receipt_number,
           amount, detail_json, reason, stock_adjusted, created_by, created_by_name,
           fiscal_status, fiscal_provider, fiscal_mode, fiscal_document_source, fiscal_document_kind,
-          fiscal_point_of_sale, fiscal_receipt_type, fiscal_last_attempt_at, empresa_id
+          fiscal_point_of_sale, fiscal_receipt_type, fiscal_last_attempt_at,
+          operational_document_id, empresa_id
         )
         VALUES (
           $1::uuid, NULL, $12, true, $2::integer, NULL,
           $3::numeric, $4::jsonb, $5, false, $6::uuid, $7,
           'pendiente', $8, $9, 'sales_document', $13,
-          $10::integer, $2::integer, now(), $11
+          $10::integer, $2::integer, now(), $14::uuid, $11
         )
         RETURNING id::text AS id
       `,
@@ -922,6 +953,7 @@ async function prepareSaleFiscalNoteDocument(
         session.companyId,
         className,
         kind,
+        operationalDocumentId,
       ],
     );
 
@@ -1040,23 +1072,49 @@ async function markSaleFiscalNoteApproved(
       ],
     );
 
-    await client.query(
+    const adjustmentState = await client.query<{
+      account_adjusted: boolean;
+      operational_account_adjusted: boolean;
+    }>(
       `
-      INSERT INTO current_account_movements (
-        client_id, sale_id, entity_type, entity_name, description,
-        debit, credit, movement_date, empresa_id
-      )
-      VALUES ($1::uuid, $2::uuid, 'cliente', $3, $4, $5::numeric, $6::numeric, CURRENT_DATE, $7)
+        SELECT sid.account_adjusted,
+               COALESCE(operational.account_adjusted, false) AS operational_account_adjusted
+        FROM sales_internal_documents sid
+        LEFT JOIN sales_internal_documents operational
+          ON operational.id = sid.operational_document_id
+         AND operational.empresa_id = sid.empresa_id
+        WHERE sid.id = $1::uuid AND sid.empresa_id = $2
+        LIMIT 1
       `,
-      [
-        sale.clientId,
-        sale.id,
-        sale.customerName,
-        `${isCreditNote ? "Nota de credito" : "Nota de debito"} fiscal ${formatFiscalReceipt(result.pointOfSale, result.receiptNumber)}`,
-        isCreditNote ? 0 : noteAmount,
-        isCreditNote ? noteAmount : 0,
-        session.companyId,
-      ],
+      [documentId, session.companyId],
+    );
+    const financialAlreadyAdjusted = Boolean(
+      adjustmentState.rows[0]?.account_adjusted || adjustmentState.rows[0]?.operational_account_adjusted,
+    );
+    if (!financialAlreadyAdjusted) {
+      await client.query(
+        `
+        INSERT INTO current_account_movements (
+          client_id, sale_id, entity_type, entity_name, description,
+          debit, credit, movement_date, empresa_id
+        )
+        VALUES ($1::uuid, $2::uuid, 'cliente', $3, $4, $5::numeric, $6::numeric, $7::date, $8)
+        `,
+        [
+          sale.clientId,
+          sale.id,
+          sale.customerName,
+          `${isCreditNote ? "Nota de credito" : "Nota de debito"} fiscal ${formatFiscalReceipt(result.pointOfSale, result.receiptNumber)}`,
+          isCreditNote ? 0 : noteAmount,
+          isCreditNote ? noteAmount : 0,
+          result.issueDate || localDateIso(),
+          session.companyId,
+        ],
+      );
+    }
+    await client.query(
+      "UPDATE sales_internal_documents SET account_adjusted = true WHERE id = $1::uuid AND empresa_id = $2",
+      [documentId, session.companyId],
     );
 
     await client.query(

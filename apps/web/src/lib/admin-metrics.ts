@@ -91,31 +91,60 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
   }>(
     companyId,
     `
-      WITH sales_summary AS (
+      WITH sales_events AS (
+        SELECT s.sale_date AS event_date,
+               ${netSalesAmountSql("s.total_amount", "s")} AS net_amount,
+               s.total_amount AS gross_amount,
+               COALESCE(s.source_cost_amount, line_totals.item_cost, 0) AS cost_amount
+        FROM sales s
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(si.quantity * COALESCE(p.cost, 0)), 0) AS item_cost
+          FROM sale_items si
+          LEFT JOIN products p ON p.id = si.product_id AND p.empresa_id = si.empresa_id
+          WHERE si.sale_id = s.id AND si.empresa_id = s.empresa_id
+        ) line_totals ON true
+        WHERE s.empresa_id = $4
+          AND ${canonicalSalesSourceSql("s")}
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
+
+        UNION ALL
+
+        SELECT sid.issue_date AS event_date,
+               ${netSalesAmountSql("CASE WHEN sid.class_name = 'ND' THEN sid.amount ELSE -sid.amount END", "s")} AS net_amount,
+               CASE WHEN sid.class_name = 'ND' THEN sid.amount ELSE -sid.amount END AS gross_amount,
+               CASE WHEN sid.class_name = 'ND' THEN note_cost.item_cost ELSE -note_cost.item_cost END AS cost_amount
+        FROM sales_internal_documents sid
+        JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM((entry->>'quantity')::numeric * COALESCE(p.cost, 0)), 0) AS item_cost
+          FROM jsonb_array_elements(sid.detail_json) entry
+          LEFT JOIN products p
+            ON p.id = NULLIF(entry->>'id', '')::uuid
+           AND p.empresa_id = sid.empresa_id
+        ) note_cost ON true
+        WHERE sid.empresa_id = $4
+          AND (sid.fiscal = false OR sid.operational_document_id IS NULL)
+          AND ${canonicalSalesSourceSql("s")}
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
+      ),
+      sales_summary AS (
         SELECT
-          COALESCE(SUM(${netSalesAmountSql(adjustedSalesAmountSql("s.total_amount", "s"), "s")}) FILTER (
-            WHERE sale_date >= $2 AND sale_date < $3
-              AND ${normalizedOrderStatusSql("s")} = 'entregado'
-          ), 0) AS sales_current,
-          COALESCE(SUM(${netSalesAmountSql(adjustedSalesAmountSql("s.total_amount", "s"), "s")}) FILTER (
-            WHERE sale_date >= $1 AND sale_date < $2
-              AND ${normalizedOrderStatusSql("s")} = 'entregado'
-          ), 0) AS sales_previous,
-          COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}) FILTER (
-            WHERE sale_date >= $2 AND sale_date < $3
-              AND ${normalizedOrderStatusSql("s")} = 'entregado'
-          ), 0) AS sales_current_gross,
-          COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}) FILTER (
-            WHERE sale_date >= $1 AND sale_date < $2
-              AND ${normalizedOrderStatusSql("s")} = 'entregado'
-          ), 0) AS sales_previous_gross,
-          COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}) FILTER (
-            WHERE COALESCE(collection_status,'pendiente') IN ('pendiente','vencido','pendiente_aprobacion','en_proceso')
-              AND ${normalizedOrderStatusSql("s")} = 'entregado'
-          ), 0) AS open_sales_total
+          COALESCE(SUM(net_amount) FILTER (WHERE event_date >= $2 AND event_date < $3), 0) AS sales_current,
+          COALESCE(SUM(net_amount) FILTER (WHERE event_date >= $1 AND event_date < $2), 0) AS sales_previous,
+          COALESCE(SUM(gross_amount) FILTER (WHERE event_date >= $2 AND event_date < $3), 0) AS sales_current_gross,
+          COALESCE(SUM(gross_amount) FILTER (WHERE event_date >= $1 AND event_date < $2), 0) AS sales_previous_gross,
+          COALESCE(SUM(cost_amount) FILTER (WHERE event_date >= $2 AND event_date < $3), 0) AS gross_cost_current,
+          COALESCE(SUM(cost_amount) FILTER (WHERE event_date >= $1 AND event_date < $2), 0) AS gross_cost_previous
+        FROM sales_events
+      ),
+      open_sales AS (
+        SELECT COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}) FILTER (
+          WHERE COALESCE(s.collection_status,'pendiente') IN ('pendiente','vencido','pendiente_aprobacion','en_proceso')
+        ), 0) AS open_sales_total
         FROM sales s
         WHERE s.empresa_id = $4
           AND ${canonicalSalesSourceSql("s")}
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
       ),
       payments_summary AS (
         SELECT
@@ -129,26 +158,6 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
           ), 0) AS collections_previous
         FROM payments
         WHERE empresa_id = $4
-      ),
-      costs AS (
-        SELECT
-          COALESCE(SUM(COALESCE(v.source_cost_amount, line_totals.item_cost, 0)) FILTER (
-            WHERE v.sale_date >= $2 AND v.sale_date < $3
-              AND ${normalizedOrderStatusSql("v")} = 'entregado'
-          ), 0) AS gross_cost_current,
-          COALESCE(SUM(COALESCE(v.source_cost_amount, line_totals.item_cost, 0)) FILTER (
-            WHERE v.sale_date >= $1 AND v.sale_date < $2
-              AND ${normalizedOrderStatusSql("v")} = 'entregado'
-          ), 0) AS gross_cost_previous
-        FROM sales v
-        LEFT JOIN LATERAL (
-          SELECT COALESCE(SUM(dv.quantity * COALESCE(p.cost, 0)), 0) AS item_cost
-          FROM sale_items dv
-          LEFT JOIN products p ON p.id = dv.product_id AND p.empresa_id = dv.empresa_id
-          WHERE dv.sale_id = v.id AND dv.empresa_id = v.empresa_id
-        ) line_totals ON true
-        WHERE v.empresa_id = $4
-          AND ${canonicalSalesSourceSql("v")}
       ),
       stock AS (
         SELECT COALESCE(SUM(current_stock * COALESCE(cost, 0)) FILTER (WHERE current_stock > 0), 0) AS stock_value,
@@ -201,7 +210,7 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
              (operating_costs_current + salaries_current)::text AS operating_costs_current,
              purchases_current::text,
              open_sales_total::text, open_purchases_total::text
-      FROM sales_summary, payments_summary, costs, stock, operating, salaries, purchases
+      FROM sales_summary, open_sales, payments_summary, stock, operating, salaries, purchases
     `,
     [bounds.previousStart, bounds.currentStart, bounds.nextStart, companyId],
   );
@@ -250,9 +259,19 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
 export async function getEarliestSalesMonth(companyId: number): Promise<string> {
   const result = await queryWithCompanyContext<{ month_key: string | null }>(
     companyId,
-    `SELECT to_char(MIN(sale_date), 'YYYY-MM') AS month_key
-       FROM sales s
-      WHERE s.empresa_id = $1 AND ${canonicalSalesSourceSql("s")}`,
+    `SELECT to_char(MIN(event_date), 'YYYY-MM') AS month_key
+       FROM (
+         SELECT s.sale_date AS event_date
+         FROM sales s
+         WHERE s.empresa_id = $1 AND ${canonicalSalesSourceSql("s")}
+         UNION ALL
+         SELECT sid.issue_date
+         FROM sales_internal_documents sid
+         JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
+         WHERE sid.empresa_id = $1
+           AND (sid.fiscal = false OR sid.operational_document_id IS NULL)
+           AND ${canonicalSalesSourceSql("s")}
+       ) events`,
     [companyId],
   );
   return result.rows[0]?.month_key ?? currentMonth(new Date());
@@ -270,7 +289,7 @@ export async function getMonthlySeries(companyId: number, year: string): Promise
     `
       WITH ventas AS (
         SELECT to_char(s.sale_date, 'YYYY-MM') AS month_key,
-               ${netSalesAmountSql(adjustedSalesAmountSql("s.total_amount", "s"), "s")} AS neto,
+               ${netSalesAmountSql("s.total_amount", "s")} AS neto,
                COALESCE(s.source_cost_amount, line_totals.item_cost, 0) AS costo
         FROM sales s
         LEFT JOIN LATERAL (
@@ -283,6 +302,26 @@ export async function getMonthlySeries(companyId: number, year: string): Promise
           AND ${canonicalSalesSourceSql("s")}
           AND ${normalizedOrderStatusSql("s")} = 'entregado'
           AND s.sale_date >= $2 AND s.sale_date < $3
+
+        UNION ALL
+
+        SELECT to_char(sid.issue_date, 'YYYY-MM') AS month_key,
+               ${netSalesAmountSql("CASE WHEN sid.class_name = 'ND' THEN sid.amount ELSE -sid.amount END", "s")} AS neto,
+               CASE WHEN sid.class_name = 'ND' THEN note_cost.item_cost ELSE -note_cost.item_cost END AS costo
+        FROM sales_internal_documents sid
+        JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM((entry->>'quantity')::numeric * COALESCE(p.cost, 0)), 0) AS item_cost
+          FROM jsonb_array_elements(sid.detail_json) entry
+          LEFT JOIN products p
+            ON p.id = NULLIF(entry->>'id', '')::uuid
+           AND p.empresa_id = sid.empresa_id
+        ) note_cost ON true
+        WHERE sid.empresa_id = $1
+          AND (sid.fiscal = false OR sid.operational_document_id IS NULL)
+          AND ${canonicalSalesSourceSql("s")}
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
+          AND sid.issue_date >= $2 AND sid.issue_date < $3
       )
       SELECT month_key,
              COALESCE(SUM(neto), 0)::text AS facturacion,

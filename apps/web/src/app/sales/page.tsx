@@ -196,9 +196,9 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                               {document.className} #{String(document.receiptNumber).padStart(8, "0")}
                             </a>
                           ) : (
-                            <span key={document.id} className={`${tableActionItemClass} cursor-default text-[color:var(--muted)] hover:bg-transparent hover:text-[color:var(--muted)]`}>
+                            <a key={document.id} className={tableActionItemClass} href={`/api/pdfs/sales/notes/${document.id}`} rel="noreferrer" target="_blank">
                               {document.className} interna #{String(document.receiptNumber).padStart(8, "0")}
-                            </span>
+                            </a>
                           ))}
                           <div className="mt-1 border-t border-[#dbe7f8] px-2.5 pb-1 pt-2 text-left text-[10px] font-black uppercase tracking-[0.08em] text-[color:var(--muted)]">
                             Operaciones

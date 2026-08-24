@@ -977,6 +977,85 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
   });
 }
 
+export async function buildInternalSalesNotePdf(companyId: number, noteId: string) {
+  const result = await queryWithCompanyContext<{
+    id: string;
+    class_name: "NC" | "ND";
+    receipt_number: number;
+    amount: string;
+    detail_json: unknown;
+    reason: string;
+    issue_date: string;
+    customer_name: string;
+    customer_document: string;
+    sale_number: string;
+  }>(
+    companyId,
+    `
+      SELECT sid.id::text,
+             sid.class_name,
+             COALESCE(sid.receipt_number, 0)::int AS receipt_number,
+             COALESCE(sid.amount, 0)::text AS amount,
+             sid.detail_json,
+             COALESCE(sid.reason, '') AS reason,
+             sid.issue_date::text,
+             COALESCE(s.client_name, c.display_name, '') AS customer_name,
+             COALESCE(s.client_document, c.tax_id, '') AS customer_document,
+             COALESCE(s.sale_number, s.commercial_number::text, '') AS sale_number
+      FROM sales_internal_documents sid
+      LEFT JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
+      LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      WHERE sid.id = $1::uuid
+        AND sid.empresa_id = $2
+        AND sid.fiscal = false
+      LIMIT 1
+    `,
+    [noteId, companyId],
+  );
+  const note = result.rows[0];
+  if (!note) throw new ApiError(404, "Nota interna no encontrada");
+  const detail = asFiscalDetail(note.detail_json);
+  if (!detail.length) throw new ApiError(409, "La nota interna no tiene detalle");
+
+  const title = note.class_name === "NC" ? "Nota de credito interna" : "Nota de debito interna";
+  const code = note.class_name;
+  const number = String(note.receipt_number).padStart(8, "0");
+  const total = Number(note.amount);
+  return createPdfFile(`${note.class_name.toLowerCase()}_interna_${number}.pdf`, ({ pdf }) => {
+    pdf.drawHeader({
+      title,
+      code,
+      number,
+      date: pdfDate(note.issue_date),
+      extra: [note.sale_number ? `Venta asociada: ${note.sale_number}` : ""].filter(Boolean),
+      variant: "internal",
+      footerLeft: "Documento interno no fiscal",
+      footerRight: `Total ${pdfMoney(total)}`,
+    });
+    pdf.section("Cliente");
+    pdf.title(note.customer_name || "Sin cliente", 12);
+    pdf.muted(note.customer_document || "Sin CUIT/DNI");
+    pdf.doc.y += 12;
+    pdf.table(
+      [
+        { label: "Descripcion", width: 252 },
+        { label: "Cant.", width: 64, align: "right" },
+        { label: "Unitario", width: 94, align: "right" },
+        { label: "Subtotal", width: 94, align: "right" },
+      ],
+      detail.map((item) => [
+        item.name,
+        pdfNumber(item.quantity),
+        pdfMoney(item.unitPrice),
+        pdfMoney(item.subtotal),
+      ]),
+    );
+    pdf.totals([], "Total ajuste", pdfMoney(total));
+    pdf.note(`Motivo: ${note.reason || "Sin detalle"}. Documento interno no valido como comprobante fiscal.`);
+    pdf.signatures("Emitido por Starlim", "Conformidad / recepcion");
+  });
+}
+
 export async function buildPurchaseOrderPdf(companyId: number, purchaseId: string) {
   const purchase = await getPurchase(companyId, purchaseId);
   const purchaseNumber = `OC-${String(purchase.id).slice(0, 8).toUpperCase()}`;

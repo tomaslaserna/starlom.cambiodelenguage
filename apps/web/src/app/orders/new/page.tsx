@@ -15,6 +15,7 @@ import { requirePagePermission } from "@/lib/page-auth";
 import { getBreakEvenStatus } from "@/lib/profitability";
 import { ORDERS_CREATE_PERMISSION } from "@/lib/route-auth";
 import { listSalesAdjustmentReferences } from "@/lib/sales-documents";
+import { localDateIso } from "@/lib/timezone";
 
 type NewOrderPageProps = {
   searchParams: Promise<{ tipo?: string; venta?: string }>;
@@ -46,7 +47,7 @@ export default async function NewOrderPage({ searchParams }: NewOrderPageProps) 
             <ButtonLink href="/orders/new?tipo=nota_debito" size="sm" variant={adjustmentClass === "ND" ? "primary" : "secondary"}>Nota de debito / agregado</ButtonLink>
           </div>
           <OrderEntryForm action={createSalesAdjustmentAction} className="grid gap-4 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel)] p-5">
-            <SalesAdjustmentFields className={adjustmentClass} initialSaleId={query.venta} products={formData.products} references={references} />
+            <SalesAdjustmentFields className={adjustmentClass} initialSaleId={query.venta} issueDate={localDateIso()} products={formData.products} references={references} />
           </OrderEntryForm>
         </div>
       </ModulePage>

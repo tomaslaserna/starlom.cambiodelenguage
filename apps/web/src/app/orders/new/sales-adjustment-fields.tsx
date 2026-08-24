@@ -19,11 +19,13 @@ export function SalesAdjustmentFields({
   products,
   references,
   initialSaleId = "",
+  issueDate,
 }: {
   className: "NC" | "ND";
   products: OrderFormProduct[];
   references: SalesAdjustmentReference[];
   initialSaleId?: string;
+  issueDate: string;
 }) {
   const [saleId, setSaleId] = useState(() => references.some((sale) => sale.id === initialSaleId) ? initialSaleId : "");
   const [productId, setProductId] = useState("");
@@ -89,6 +91,10 @@ export function SalesAdjustmentFields({
       <input name="saleId" type="hidden" value={saleId} />
       <input name="detail" type="hidden" value={JSON.stringify(payload)} />
       <input name="reason" type="hidden" value={reason} />
+
+      <Field htmlFor="adjustment-date" label="Fecha de la nota" required>
+        <Input defaultValue={issueDate} id="adjustment-date" name="issueDate" required type="date" />
+      </Field>
 
       <Field htmlFor="adjustment-sale" label="Venta/remito entregado vinculado" required>
         <SearchableSelect
