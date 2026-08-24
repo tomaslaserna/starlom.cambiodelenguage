@@ -94,7 +94,7 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
     `
       WITH sales_events AS (
         SELECT s.sale_date AS event_date,
-               ${netSalesAmountSql("s.total_amount", "s")} AS net_amount,
+               COALESCE(s.source_net_amount, ${netSalesAmountSql("s.total_amount", "s")}) AS net_amount,
                s.total_amount AS gross_amount,
                COALESCE(s.source_cost_amount, line_totals.item_cost, 0) AS cost_amount
         FROM sales s
@@ -290,7 +290,7 @@ export async function getMonthlySeries(companyId: number, year: string): Promise
     `
       WITH ventas AS (
         SELECT to_char(s.sale_date, 'YYYY-MM') AS month_key,
-               ${netSalesAmountSql("s.total_amount", "s")} AS neto,
+               COALESCE(s.source_net_amount, ${netSalesAmountSql("s.total_amount", "s")}) AS neto,
                COALESCE(s.source_cost_amount, line_totals.item_cost, 0) AS costo
         FROM sales s
         LEFT JOIN LATERAL (

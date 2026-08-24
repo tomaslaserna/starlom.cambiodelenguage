@@ -213,40 +213,64 @@ export default async function RentabilidadPage({ searchParams }: RentabilidadPag
           <StatCard
             className="min-h-[128px] px-5 py-4"
             icon={<RentabilidadIcon name="margin" />}
-            label="Margen acumulado"
+            label={status.complete ? "Margen acumulado" : "Margen comprobable"}
             tone={status.accumulatedMargin >= 0 ? "success" : "danger"}
             value={formatCurrency(status.accumulatedMargin)}
           />
           <StatCard
             className="min-h-[128px] px-5 py-4"
             icon={<RentabilidadIcon name="target" />}
-            label={status.reached ? "Punto de equilibrio" : "Faltante para PE"}
-            tone={status.reached ? "success" : "warning"}
-            value={status.reached ? "Alcanzado" : formatCurrency(status.remaining)}
+            label={status.complete ? (status.reached ? "Punto de equilibrio" : "Faltante para PE") : "Punto de equilibrio"}
+            tone={status.complete && status.reached ? "success" : "warning"}
+            value={!status.complete ? "No calculable" : status.reached ? "Alcanzado" : formatCurrency(status.remaining)}
           />
           <StatCard
             className="min-h-[128px] px-5 py-4"
             icon={<RentabilidadIcon name="loss" />}
-            label="Rentabilidad del mes"
-            tone={status.profit >= 0 ? "success" : "danger"}
-            value={formatCurrency(status.profit)}
+            label={status.complete ? "Rentabilidad del mes" : "Resultado parcial"}
+            tone={!status.complete ? "warning" : status.profit >= 0 ? "success" : "danger"}
+            value={status.complete ? formatCurrency(status.profit) : "Datos incompletos"}
           />
         </div>
 
         <Card>
           <CardContent className="flex min-h-[72px] flex-wrap items-center gap-x-5 gap-y-3 px-5 py-4">
-            <StatusBadge className="min-h-8 gap-2 px-3.5" tone={status.reached ? "success" : "warning"}>
+            <StatusBadge className="min-h-8 gap-2 px-3.5" tone={status.complete && status.reached ? "success" : "warning"}>
               <span className="block h-4 w-4 [&>svg]:h-full [&>svg]:w-full">
-                <RentabilidadIcon name={status.reached ? "target" : "warning"} />
+                <RentabilidadIcon name={status.complete && status.reached ? "target" : "warning"} />
               </span>
-              {status.reached ? "PE alcanzado — ofertas habilitables" : "PE no alcanzado"}
+              {!status.complete
+                ? "Rentabilidad parcial — faltan costos"
+                : status.reached
+                  ? "PE alcanzado — ofertas habilitables"
+                  : "PE no alcanzado"}
             </StatusBadge>
-            <span className="erp-text-body-sm font-medium text-[color:var(--muted)]">
-              Ingresos {formatCurrency(status.revenue)} − COGS {formatCurrency(status.cogs)} = Margen{" "}
-              {formatCurrency(status.accumulatedMargin)}
-            </span>
+            <div className="grid gap-1 erp-text-body-sm font-medium text-[color:var(--muted)]">
+              <span>
+                Ventas con IVA {formatCurrency(status.grossRevenue)} · Ventas netas {formatCurrency(status.revenue)}
+              </span>
+              <span>
+                Ventas netas con costo conocido {formatCurrency(status.revenue - status.missingCostRevenue)} − Costo de mercadería conocido {formatCurrency(status.cogs)} = Margen comprobable {formatCurrency(status.accumulatedMargin)}
+              </span>
+            </div>
           </CardContent>
         </Card>
+
+        {!status.complete ? (
+          <Card className="border-amber-300 bg-amber-50/70">
+            <CardContent className="flex flex-wrap items-start gap-3 px-5 py-4 text-amber-950">
+              <span className="mt-0.5 block h-5 w-5 shrink-0 [&>svg]:h-full [&>svg]:w-full">
+                <RentabilidadIcon name="warning" />
+              </span>
+              <div className="grid gap-1">
+                <strong>Faltan costos en {status.missingCostSales} ventas del mes.</strong>
+                <span className="erp-text-body-sm">
+                  Afectan {formatCurrency(status.missingCostRevenue)} de ventas netas. La cobertura de costos es {status.costCoveragePercent.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%. Hasta completar esos costos no se puede afirmar la rentabilidad total ni el punto de equilibrio.
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader className="border-b-0 bg-white px-5 pb-2 pt-5">
