@@ -34,7 +34,10 @@ const DUPLICATE_INVOICES: IncidentInvoice[] = [
 ];
 
 function assertAdministrator(session: AuthSession) {
-  if (normalizeRole(session.role) !== "administrador") throw new ApiError(403, "Solo Administrador puede ejecutar esta conciliacion.");
+  const role = normalizeRole(session.role);
+  if (role !== "administrador" && role !== "jefe") {
+    throw new ApiError(403, "Solo Administrador o Jefe pueden ejecutar esta conciliacion.");
+  }
 }
 
 function moneyMatches(left: number, right: number) {
