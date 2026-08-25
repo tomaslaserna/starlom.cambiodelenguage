@@ -1848,3 +1848,10 @@ test("editing blocks historical zero-rate orders and derives VAT from the select
   assert.match(orders, /hasConsistentOrderVatSnapshot/);
   assert.match(orders, /COALESCE\(s\.vat_rate, 0\)::text AS vat_rate/);
 });
+
+test("CRM navigation highlights only the route currently open", () => {
+  const navigation = read("apps/web/src/components/shell-navigation.tsx");
+  assert.match(navigation, /className=\{navigationRowClass\(groupCurrent\)\}/);
+  assert.match(navigation, /<Badge active=\{groupCurrent\} value=\{groupBadge\} \/>/);
+  assert.doesNotMatch(navigation, /navigationRowClass\(groupCurrent \|\| activeGroup\)/);
+});
