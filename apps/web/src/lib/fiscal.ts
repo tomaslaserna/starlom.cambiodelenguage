@@ -124,6 +124,7 @@ type SaleFiscalCandidate = {
   fiscalReceiptType: number | null;
   fiscalReceiptNumber: number | null;
   hasItemDetail: boolean;
+  fiscalErrorMessage: string;
 };
 
 export type SaleCreditNotePreview = {
@@ -500,6 +501,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
     fiscal_receipt_type: number | null;
     fiscal_receipt_number: number | null;
     has_item_detail: boolean;
+    fiscal_error_message: string | null;
   }>(
     companyId,
     `
@@ -525,6 +527,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
              s.fiscal_point_of_sale,
              s.fiscal_receipt_type,
              s.fiscal_receipt_number,
+             COALESCE(s.fiscal_error_message, '') AS fiscal_error_message,
              (
                EXISTS (
                  SELECT 1
@@ -583,6 +586,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
     fiscalReceiptType: row.fiscal_receipt_type,
     fiscalReceiptNumber: row.fiscal_receipt_number,
     hasItemDetail: Boolean(row.has_item_detail),
+    fiscalErrorMessage: row.fiscal_error_message ?? "",
   } satisfies SaleFiscalCandidate;
 }
 
@@ -1266,7 +1270,47 @@ async function markSaleFiscalNoteApproved(
 }
 
 function isPostAuthorizationPersistenceError(message: string) {
-  return /inconsistent types deduced|fiscal_receipt_number|receipt_number|42P08/i.test(message);
+  return /inconsistent types deduced|fiscal_receipt_number|receipt_number|issue_date|42P08|42703/i.test(message);
+}
+
+function fiscalReceiptMatchesSaleInvoice(receipt: ArcaAuthorizedReceipt, sale: SaleFiscalCandidate, receiptType: number) {
+  return receipt.receiptType === receiptType
+    && digitsOnly(receipt.customerDocument) === digitsOnly(sale.customerDocument)
+    && Math.abs(receipt.totalAmount - sale.totalAmount) < 0.01;
+}
+
+async function recoverSaleFiscalInvoiceApproval(
+  session: AuthSession,
+  sale: SaleFiscalCandidate,
+  receiptType: number,
+) {
+  let receipt: ArcaAuthorizedReceipt | null = null;
+  try {
+    receipt = await findLastArcaAuthorizedReceipt(receiptType);
+  } catch (error) {
+    throw new ApiError(
+      409,
+      `La factura pudo haber sido aprobada en ARCA, pero no pude consultarla para reconciliarla: ${fiscalErrorMessage(error)}`,
+    );
+  }
+  if (!receipt || !fiscalReceiptMatchesSaleInvoice(receipt, sale, receiptType)) {
+    throw new ApiError(
+      409,
+      "La factura pudo haber sido aprobada en ARCA, pero el ultimo comprobante no coincide con esta venta. No se reemitio para evitar un duplicado.",
+    );
+  }
+  const result: FiscalAuthorizationResult = {
+    documentId: sale.id,
+    pointOfSale: receipt.pointOfSale,
+    receiptType: receipt.receiptType,
+    receiptNumber: receipt.receiptNumber,
+    issueDate: receipt.issueDate,
+    cae: receipt.cae,
+    caeExpiresAt: receipt.caeExpiresAt,
+    observations: receipt.observations,
+  };
+  await markSaleFiscalApproved(session, sale.id, result, sale.vatRate);
+  return result;
 }
 
 function fiscalReceiptMatchesSaleNote(
@@ -1490,6 +1534,13 @@ export async function authorizeSaleFiscalDocument(session: AuthSession, saleId: 
   assertFiscalVatRate(receiptType, sale.vatRate);
   assertSaleFinalTotal(sale);
   const fiscal = getFiscalStatus();
+  if (
+    fiscal.provider === "arca"
+    && sale.fiscalStatus === "error"
+    && isPostAuthorizationPersistenceError(sale.fiscalErrorMessage)
+  ) {
+    return recoverSaleFiscalInvoiceApproval(session, sale, receiptType);
+  }
   await markSaleFiscalPending(session, sale, receiptType, fiscal);
 
   try {
