@@ -65,7 +65,9 @@ export async function approveApprovalAction(formData: FormData) {
       case "request": {
         const id = positiveId(rawId, "Solicitud");
         await resolveGenericApproval(session, id, "aprobada");
-        revalidatePath("/admin/approvals");
+        for (const path of ["/admin/approvals", "/sales", "/billing", "/treasury/current-accounts", "/metrics", "/balance"]) {
+          revalidatePath(path);
+        }
         return;
       }
       case "purchase":

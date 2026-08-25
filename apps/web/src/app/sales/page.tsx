@@ -28,7 +28,7 @@ import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { SALES_READ_PERMISSION, sessionCanDeleteOperationalRecords } from "@/lib/route-auth";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
-import { deleteSaleAction } from "@/app/sales/actions";
+import { deleteSaleAction, requestFiscalNoteAction } from "@/app/sales/actions";
 
 type SalesPageProps = {
   searchParams: Promise<{ q?: string; page?: string; error?: string; message?: string }>;
@@ -196,9 +196,24 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                               {document.className} #{String(document.receiptNumber).padStart(8, "0")}
                             </a>
                           ) : (
-                            <a key={document.id} className={tableActionItemClass} href={`/api/pdfs/sales/notes/${document.id}`} rel="noreferrer" target="_blank">
-                              {document.className} interna #{String(document.receiptNumber).padStart(8, "0")}
-                            </a>
+                            <div key={document.id}>
+                              <a className={tableActionItemClass} href={`/api/pdfs/sales/notes/${document.id}`} rel="noreferrer" target="_blank">
+                                {document.className} interna #{String(document.receiptNumber).padStart(8, "0")}
+                              </a>
+                              {sale.fiscalStatus === "aprobado" && !document.hasFiscalDocument && !document.hasPendingFiscalRequest ? (
+                                <form action={requestFiscalNoteAction}>
+                                  <input name="saleId" type="hidden" value={sale.id} />
+                                  <input name="documentId" type="hidden" value={document.id} />
+                                  <button className={`${tableActionItemClass} w-full pl-5 text-[color:var(--brand)]`} type="submit">
+                                    Solicitar admision fiscal
+                                  </button>
+                                </form>
+                              ) : document.hasPendingFiscalRequest ? (
+                                <span className={`${tableActionItemClass} cursor-default pl-5 text-[color:var(--muted)] hover:bg-transparent hover:text-[color:var(--muted)]`}>
+                                  Admision fiscal solicitada
+                                </span>
+                              ) : null}
+                            </div>
                           ))}
                           <div className="mt-1 border-t border-[#dbe7f8] px-2.5 pb-1 pt-2 text-left text-[10px] font-black uppercase tracking-[0.08em] text-[color:var(--muted)]">
                             Operaciones

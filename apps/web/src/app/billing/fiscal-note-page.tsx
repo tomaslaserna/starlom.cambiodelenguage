@@ -33,6 +33,7 @@ type FiscalNotePageProps = {
   searchParams: Promise<{
     status?: string;
     message?: string;
+    documento?: string;
   }>;
 };
 
@@ -66,15 +67,17 @@ export async function FiscalNotePage({ kind, params, searchParams }: FiscalNoteP
   await requirePagePermission(session, [SALES_READ_PERMISSION]);
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const saleId = uuidParam(id, "Venta");
+  const operationalDocumentId = query.documento ? uuidParam(query.documento, "Nota operativa") : "";
   const preview =
     kind === "credit_note"
-      ? await getSaleCreditNotePreview(session.companyId, saleId)
-      : await getSaleDebitNotePreview(session.companyId, saleId);
+      ? await getSaleCreditNotePreview(session.companyId, saleId, operationalDocumentId)
+      : await getSaleDebitNotePreview(session.companyId, saleId, operationalDocumentId);
   const copy = noteCopy(kind);
   const role = normalizeRole(session.role);
   const canIssue = role === "administrador" || role === "jefe";
   const alreadyApproved = preview.creditNoteStatus === "aprobado" && preview.creditNoteCae.trim() !== "";
-  const defaultReason = `${copy.label} factura ${preview.invoiceReceipt}`;
+  const defaultReason = preview.operationalReason || `${copy.label} factura ${preview.invoiceReceipt}`;
+  const noteAmount = preview.operationalAmount ?? preview.totalAmount;
   const action = kind === "credit_note" ? issueCreditNoteAction : issueDebitNoteAction;
 
   return (
@@ -167,6 +170,7 @@ export async function FiscalNotePage({ kind, params, searchParams }: FiscalNoteP
             ) : canIssue ? (
               <form action={action} className="grid gap-3 md:grid-cols-[160px_1fr_auto]">
                 <input name="saleId" type="hidden" value={preview.saleId} />
+                <input name="operationalDocumentId" type="hidden" value={preview.operationalDocumentId} />
                 <Field htmlFor={`${copy.route}-amount`} label="Monto">
                   <Input
                     id={`${copy.route}-amount`}
@@ -174,7 +178,8 @@ export async function FiscalNotePage({ kind, params, searchParams }: FiscalNoteP
                     name="amount"
                     step="0.01"
                     type="number"
-                    defaultValue={preview.totalAmount.toFixed(2)}
+                    defaultValue={noteAmount.toFixed(2)}
+                    readOnly={Boolean(preview.operationalDocumentId)}
                   />
                 </Field>
                 <Field htmlFor={`${copy.route}-reason`} label="Motivo">

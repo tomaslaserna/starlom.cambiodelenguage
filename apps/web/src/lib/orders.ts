@@ -72,6 +72,8 @@ export type OrderSummary = {
     fiscal: boolean;
     receiptNumber: number;
     amount: number;
+    hasFiscalDocument: boolean;
+    hasPendingFiscalRequest: boolean;
   }>;
   collectedAmount: number;
   outstandingAmount: number;
@@ -173,7 +175,7 @@ function mapOrder(row: {
   has_pending_fiscal_request: boolean;
   credit_note_amount: string;
   debit_note_amount: string;
-  adjustment_documents: Array<{ id: string; className: "NC" | "ND"; fiscal: boolean; receiptNumber: number; amount: number }> | null;
+  adjustment_documents: Array<{ id: string; className: "NC" | "ND"; fiscal: boolean; receiptNumber: number; amount: number; hasFiscalDocument: boolean; hasPendingFiscalRequest: boolean }> | null;
 }): OrderSummary {
   const vatRate = normalizeStoredVatRate(Number(row.vat_rate));
   const storedAmounts = splitStoredOrderTotal(Number(row.monto), vatRate);
@@ -366,7 +368,18 @@ export async function listOrders(input: ListInput = {}) {
                  'className', doc.class_name,
                  'fiscal', doc.fiscal,
                  'receiptNumber', COALESCE(doc.fiscal_receipt_number, doc.receipt_number, 0),
-                 'amount', doc.amount
+                 'amount', doc.amount,
+                 'hasFiscalDocument', EXISTS (
+                   SELECT 1 FROM sales_internal_documents fiscal_doc
+                   WHERE fiscal_doc.empresa_id = doc.empresa_id
+                     AND fiscal_doc.operational_document_id = doc.id
+                 ),
+                 'hasPendingFiscalRequest', EXISTS (
+                   SELECT 1 FROM app_solicitudes request
+                   WHERE request.empresa_id = doc.empresa_id AND request.estado = 'pendiente'
+                     AND request.metadata->>'action' = 'fiscal_note'
+                     AND request.metadata->>'operationalDocumentId' = doc.id::text
+                 )
                ) ORDER BY doc.created_at) AS documents
         FROM sales_internal_documents doc
         WHERE doc.empresa_id = s.empresa_id AND doc.sale_id = s.id
@@ -461,7 +474,18 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
                  'className', doc.class_name,
                  'fiscal', doc.fiscal,
                  'receiptNumber', COALESCE(doc.fiscal_receipt_number, doc.receipt_number, 0),
-                 'amount', doc.amount
+                 'amount', doc.amount,
+                 'hasFiscalDocument', EXISTS (
+                   SELECT 1 FROM sales_internal_documents fiscal_doc
+                   WHERE fiscal_doc.empresa_id = doc.empresa_id
+                     AND fiscal_doc.operational_document_id = doc.id
+                 ),
+                 'hasPendingFiscalRequest', EXISTS (
+                   SELECT 1 FROM app_solicitudes request
+                   WHERE request.empresa_id = doc.empresa_id AND request.estado = 'pendiente'
+                     AND request.metadata->>'action' = 'fiscal_note'
+                     AND request.metadata->>'operationalDocumentId' = doc.id::text
+                 )
                ) ORDER BY doc.created_at) AS documents
         FROM sales_internal_documents doc
         WHERE doc.empresa_id = s.empresa_id AND doc.sale_id = s.id

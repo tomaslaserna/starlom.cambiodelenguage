@@ -42,10 +42,17 @@ test("ventas y metricas asignan ajustes a la fecha de la nota y muestran sus PDF
 
 test("la fiscalizacion vinculada no duplica el impacto financiero", () => {
   const fiscal = read("src/lib/fiscal.ts");
+  const approvals = read("src/lib/approvals.ts");
   const migration = read("../../supabase/migrations/20260824132533_sales_adjustment_accounting_integrity.sql");
   assert.match(fiscal, /operational_document_id/);
   assert.match(fiscal, /financialAlreadyAdjusted/);
   assert.match(fiscal, /operational_account_adjusted/);
+  assert.match(fiscal, /requestedOperationalDocumentId/);
+  assert.match(fiscal, /requestSaleFiscalNote/);
+  assert.match(fiscal, /metadata->>'operationalDocumentId'/);
+  assert.match(approvals, /metadata\.action === "fiscal_note"/);
+  assert.match(approvals, /operationalDocumentId/);
+  assert.doesNotMatch(fiscal, /UPDATE sales[\s\S]{0,1000}\n\s*issue_date\s*=/);
   assert.match(migration, /sales_internal_documents_operational_fiscal_uidx/);
 });
 

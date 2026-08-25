@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/api-response";
 import { listPendingCollections } from "@/lib/collections";
 import { listPendingCustomerPayments } from "@/lib/customer-accounts";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
-import { authorizeSaleFiscalDocument } from "@/lib/fiscal";
+import { authorizeSaleCreditNote, authorizeSaleDebitNote, authorizeSaleFiscalDocument } from "@/lib/fiscal";
 import { executeSupplierPayment, purchaseIdFromParam } from "@/lib/purchases";
 import { COLLECTIONS_APPROVE_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
@@ -339,6 +339,17 @@ export async function resolveGenericApproval(
   // falla, lanza y la solicitud queda pendiente para reintentar.
   if (nextState === "aprobada" && metadata.action === "fiscal_invoice") {
     await authorizeSaleFiscalDocument(session, String(metadata.saleId ?? ""));
+  }
+  if (nextState === "aprobada" && metadata.action === "fiscal_note") {
+    const saleId = String(metadata.saleId ?? "");
+    const operationalDocumentId = String(metadata.operationalDocumentId ?? "");
+    if (metadata.kind === "credit_note") {
+      await authorizeSaleCreditNote(session, saleId, "", undefined, operationalDocumentId);
+    } else if (metadata.kind === "debit_note") {
+      await authorizeSaleDebitNote(session, saleId, "", undefined, operationalDocumentId);
+    } else {
+      throw new ApiError(400, "Tipo de nota fiscal invalido.");
+    }
   }
 
   await withCompanyContext(session.companyId, async (client) => {

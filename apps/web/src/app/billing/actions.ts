@@ -48,11 +48,13 @@ async function issueFiscalNoteAction(formData: FormData, kind: FiscalNoteActionK
     saleId = uuidParam(rawSaleId, "Venta");
     const reason = String(formData.get("reason") ?? "").trim();
     const amount = noteAmountFromFormData(formData);
+    const operationalDocumentIdRaw = String(formData.get("operationalDocumentId") ?? "").trim();
+    const operationalDocumentId = operationalDocumentIdRaw ? uuidParam(operationalDocumentIdRaw, "Nota operativa") : "";
 
     if (kind === "credit_note") {
-      await authorizeSaleCreditNote(session, saleId, reason, amount);
+      await authorizeSaleCreditNote(session, saleId, reason, amount, operationalDocumentId);
     } else {
-      await authorizeSaleDebitNote(session, saleId, reason, amount);
+      await authorizeSaleDebitNote(session, saleId, reason, amount, operationalDocumentId);
     }
     revalidatePath("/billing");
     revalidatePath(`/billing/${route}/${saleId}`);
@@ -60,10 +62,12 @@ async function issueFiscalNoteAction(formData: FormData, kind: FiscalNoteActionK
     revalidatePath("/treasury/current-accounts");
   } catch (error) {
     const message = encodeURIComponent(actionErrorMessage(error).slice(0, 900));
-    redirect(`/billing/${route}/${fallbackId}?status=error&message=${message}`);
+    const documentQuery = String(formData.get("operationalDocumentId") ?? "").trim();
+    redirect(`/billing/${route}/${fallbackId}?status=error&message=${message}${documentQuery ? `&documento=${encodeURIComponent(documentQuery)}` : ""}`);
   }
 
-  redirect(`/billing/${route}/${saleId}?status=approved`);
+  const documentQuery = String(formData.get("operationalDocumentId") ?? "").trim();
+  redirect(`/billing/${route}/${saleId}?status=approved${documentQuery ? `&documento=${encodeURIComponent(documentQuery)}` : ""}`);
 }
 
 export async function issueCreditNoteAction(formData: FormData) {

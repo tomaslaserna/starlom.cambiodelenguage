@@ -142,6 +142,9 @@ export type SaleCreditNotePreview = {
   creditNoteReceipt: string;
   creditNoteCae: string;
   creditNoteErrorMessage: string;
+  operationalDocumentId: string;
+  operationalAmount: number | null;
+  operationalReason: string;
 };
 
 function selectedProviderName(): FiscalProviderName {
@@ -350,6 +353,84 @@ export async function requestSaleFiscalInvoice(session: AuthSession, saleId: str
   return result;
 }
 
+export async function requestSaleFiscalNote(session: AuthSession, saleId: string, operationalDocumentId: string) {
+  const result = await withCompanyContext(session.companyId, async (client) => {
+    const noteResult = await client.query<{
+      class_name: "NC" | "ND";
+      amount: string;
+      reason: string;
+      client_name: string;
+      fiscal_status: FiscalAuthorizationStatus;
+      cae: string;
+    }>(
+      `
+        SELECT note.class_name, note.amount::text, COALESCE(note.reason, '') AS reason,
+               COALESCE(s.client_name, c.display_name, '') AS client_name,
+               COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
+               COALESCE(s.cae, '') AS cae
+        FROM sales_internal_documents note
+        JOIN sales s ON s.id = note.sale_id AND s.empresa_id = note.empresa_id
+        LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+        WHERE note.id = $1::uuid AND note.empresa_id = $2
+          AND note.sale_id = $3::uuid AND note.fiscal = false
+          AND note.class_name IN ('NC', 'ND')
+        LIMIT 1
+      `,
+      [operationalDocumentId, session.companyId, saleId],
+    );
+    const note = noteResult.rows[0];
+    if (!note) throw new ApiError(404, "La nota operativa no existe o no pertenece a esta venta.");
+    if (!isFiscalApproved(note.fiscal_status, note.cae)) {
+      throw new ApiError(409, "Primero debe existir una factura aprobada con CAE para esta venta.");
+    }
+
+    const metadata = {
+      action: "fiscal_note",
+      saleId,
+      operationalDocumentId,
+      kind: note.class_name === "NC" ? "credit_note" : "debit_note",
+    };
+    const request = await client.query<{ id: string }>(
+      `
+        INSERT INTO app_solicitudes (tipo, titulo, detalle, monto, solicitante, estado, metadata, empresa_id)
+        SELECT 'factura', $4, $5, $6::numeric, $7, 'pendiente', $8::jsonb, $2
+        WHERE NOT EXISTS (
+          SELECT 1 FROM app_solicitudes
+          WHERE empresa_id = $2 AND estado = 'pendiente'
+            AND metadata->>'action' = 'fiscal_note'
+            AND metadata->>'operationalDocumentId' = $1
+        )
+        RETURNING id::text
+      `,
+      [
+        operationalDocumentId,
+        session.companyId,
+        saleId,
+        `${note.class_name} fiscal · ${note.client_name}`,
+        `${note.class_name} operativa vinculada a la venta. ${note.reason}`.trim(),
+        Number(note.amount),
+        session.username,
+        JSON.stringify(metadata),
+      ],
+    );
+    if (!request.rows[0]) throw new ApiError(409, "Ya existe una solicitud fiscal pendiente para esta nota.");
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
+      [
+        session.userId,
+        "fiscal.note_requested",
+        "sales_internal_documents",
+        operationalDocumentId,
+        JSON.stringify({ requestId: request.rows[0].id, ...metadata }),
+        session.companyId,
+      ],
+    );
+    return { id: request.rows[0].id };
+  });
+  clearReadQueryCache();
+  return result;
+}
+
 function fiscalErrorMessage(error: unknown) {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
@@ -509,6 +590,7 @@ export async function getSaleFiscalNotePreview(
   companyId: number,
   saleId: string,
   kind: Exclude<FiscalDocumentKind, "invoice">,
+  operationalDocumentId = "",
 ): Promise<SaleCreditNotePreview> {
   const className = fiscalNoteClass(kind);
   const result = await queryWithCompanyContext<{
@@ -527,6 +609,9 @@ export async function getSaleFiscalNotePreview(
     note_fiscal_point_of_sale: number | null;
     note_fiscal_receipt_number: number | null;
     note_fiscal_error_message: string | null;
+    operational_document_id: string | null;
+    operational_amount: string | null;
+    operational_reason: string | null;
   }>(
     companyId,
     `
@@ -545,6 +630,9 @@ export async function getSaleFiscalNotePreview(
              nc.fiscal_point_of_sale AS note_fiscal_point_of_sale,
              nc.fiscal_receipt_number AS note_fiscal_receipt_number,
              COALESCE(nc.fiscal_error_message, '') AS note_fiscal_error_message
+             , operational.id::text AS operational_document_id
+             , operational.amount::text AS operational_amount
+             , COALESCE(operational.reason, '') AS operational_reason
       FROM sales s
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
       LEFT JOIN LATERAL (
@@ -554,15 +642,22 @@ export async function getSaleFiscalNotePreview(
           AND sid.sale_id = s.id
           AND sid.class_name = $3
           AND sid.fiscal = true
+          AND ($4::text = '' OR sid.operational_document_id = $4::uuid)
         ORDER BY
           CASE WHEN sid.fiscal_status = 'aprobado' AND COALESCE(sid.cae, '') <> '' THEN 0 ELSE 1 END,
           sid.created_at DESC
         LIMIT 1
       ) nc ON true
+      LEFT JOIN sales_internal_documents operational
+        ON operational.id = NULLIF($4, '')::uuid
+       AND operational.empresa_id = s.empresa_id
+       AND operational.sale_id = s.id
+       AND operational.class_name = $3
+       AND operational.fiscal = false
       WHERE s.id = $1::uuid AND s.empresa_id = $2
       LIMIT 1
     `,
-    [saleId, companyId, className],
+    [saleId, companyId, className, operationalDocumentId],
   );
   const row = result.rows[0];
   if (!row) throw new ApiError(404, "Venta no encontrada");
@@ -571,6 +666,9 @@ export async function getSaleFiscalNotePreview(
   }
   if (!row.fiscal_point_of_sale || !row.fiscal_receipt_type || !row.fiscal_receipt_number) {
     throw new ApiError(400, "La factura aprobada no tiene punto de venta, tipo o numero fiscal.");
+  }
+  if (operationalDocumentId && !row.operational_document_id) {
+    throw new ApiError(404, "La nota operativa no existe o no pertenece a esta venta.");
   }
 
   const creditNoteReceiptType = fiscalNoteReceiptTypeForInvoice(row.fiscal_receipt_type, kind);
@@ -590,15 +688,18 @@ export async function getSaleFiscalNotePreview(
     creditNoteReceipt: formatFiscalReceipt(row.note_fiscal_point_of_sale, row.note_fiscal_receipt_number),
     creditNoteCae: row.note_cae ?? "",
     creditNoteErrorMessage: row.note_fiscal_error_message ?? "",
+    operationalDocumentId: row.operational_document_id ?? "",
+    operationalAmount: row.operational_amount === null ? null : Number(row.operational_amount),
+    operationalReason: row.operational_reason ?? "",
   };
 }
 
-export async function getSaleCreditNotePreview(companyId: number, saleId: string) {
-  return getSaleFiscalNotePreview(companyId, saleId, "credit_note");
+export async function getSaleCreditNotePreview(companyId: number, saleId: string, operationalDocumentId = "") {
+  return getSaleFiscalNotePreview(companyId, saleId, "credit_note", operationalDocumentId);
 }
 
-export async function getSaleDebitNotePreview(companyId: number, saleId: string) {
-  return getSaleFiscalNotePreview(companyId, saleId, "debit_note");
+export async function getSaleDebitNotePreview(companyId: number, saleId: string, operationalDocumentId = "") {
+  return getSaleFiscalNotePreview(companyId, saleId, "debit_note", operationalDocumentId);
 }
 
 async function markSaleFiscalPending(
@@ -721,10 +822,6 @@ async function markSaleFiscalApproved(
               NULLIF($10::text, '')::date,
               (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
             ),
-            issue_date = COALESCE(
-              NULLIF($10::text, '')::date,
-              (now() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
-            ),
             fiscal_authorized_at = now(),
             fiscal_last_attempt_at = now(),
             fiscal_error_code = '',
@@ -798,6 +895,7 @@ async function prepareSaleFiscalNoteDocument(
   noteAmount: number,
   fiscal: FiscalStatus,
   reason: string,
+  requestedOperationalDocumentId = "",
 ) {
   const className = fiscalNoteClass(kind);
   return withCompanyContext(session.companyId, async (client) => {
@@ -810,19 +908,23 @@ async function prepareSaleFiscalNoteDocument(
           AND internal.class_name = $3
           AND internal.fiscal = false
           AND internal.amount = $4::numeric
-          AND NOT EXISTS (
+          AND ($5::text = '' OR internal.id = $5::uuid)
+          AND ($5::text <> '' OR NOT EXISTS (
             SELECT 1
             FROM sales_internal_documents fiscal_note
             WHERE fiscal_note.empresa_id = internal.empresa_id
               AND fiscal_note.operational_document_id = internal.id
-          )
+          ))
         ORDER BY internal.issue_date DESC, internal.created_at DESC
         LIMIT 1
         FOR UPDATE
       `,
-      [session.companyId, sale.id, className, noteAmount],
+      [session.companyId, sale.id, className, noteAmount, requestedOperationalDocumentId],
     );
     const operationalDocumentId = operational.rows[0]?.id ?? null;
+    if (requestedOperationalDocumentId && !operationalDocumentId) {
+      throw new ApiError(409, "La nota operativa no esta disponible para fiscalizar o ya tiene un comprobante fiscal asociado.");
+    }
     const existing = await client.query<{
       id: string;
       fiscal_status: FiscalAuthorizationStatus;
@@ -843,13 +945,14 @@ async function prepareSaleFiscalNoteDocument(
           AND class_name = $3
           AND fiscal = true
           AND amount = $4::numeric
+          AND ($5::text = '' OR operational_document_id = $5::uuid)
         ORDER BY
           CASE WHEN fiscal_status = 'aprobado' AND COALESCE(cae, '') <> '' THEN 0 ELSE 1 END,
           created_at DESC
         LIMIT 1
         FOR UPDATE
       `,
-      [session.companyId, sale.id, className, noteAmount],
+      [session.companyId, sale.id, className, noteAmount, requestedOperationalDocumentId],
     );
     const current = existing.rows[0];
     if (current && isFiscalApproved(current.fiscal_status, current.cae)) {
@@ -1242,6 +1345,7 @@ export async function authorizeSaleFiscalNote(
   kind: Exclude<FiscalDocumentKind, "invoice">,
   reason = "",
   requestedAmount?: number,
+  operationalDocumentId = "",
 ) {
   const sale = await getSaleFiscalCandidate(session.companyId, saleId);
   if (!isFiscalApproved(sale.fiscalStatus, sale.cae)) {
@@ -1263,9 +1367,28 @@ export async function authorizeSaleFiscalNote(
     );
   }
 
+  let operationalAmount: number | null = null;
+  let operationalReason = "";
+  if (operationalDocumentId) {
+    const operational = await queryWithCompanyContext<{ amount: string; reason: string }>(
+      session.companyId,
+      `
+        SELECT amount::text, COALESCE(reason, '') AS reason
+        FROM sales_internal_documents
+        WHERE id = $1::uuid AND empresa_id = $2 AND sale_id = $3::uuid
+          AND class_name = $4 AND fiscal = false
+        LIMIT 1
+      `,
+      [operationalDocumentId, session.companyId, sale.id, fiscalNoteClass(kind)],
+    );
+    if (!operational.rows[0]) throw new ApiError(404, "La nota operativa no existe o no pertenece a esta venta.");
+    operationalAmount = Number(operational.rows[0].amount);
+    operationalReason = operational.rows[0].reason;
+  }
+
   const receiptType = fiscalNoteReceiptTypeForInvoice(sale.fiscalReceiptType, kind);
   assertFiscalVatRate(receiptType, sale.fiscalVatRate);
-  const noteAmount = normalizeFiscalNoteAmount(requestedAmount, sale.totalAmount, kind);
+  const noteAmount = normalizeFiscalNoteAmount(operationalAmount ?? requestedAmount, sale.totalAmount, kind);
   const fiscal = getFiscalStatus();
   const document = await prepareSaleFiscalNoteDocument(
     session,
@@ -1274,7 +1397,8 @@ export async function authorizeSaleFiscalNote(
     receiptType,
     noteAmount,
     fiscal,
-    reason.trim() || `${fiscalNoteLabel(kind)} factura ${formatFiscalReceipt(sale.fiscalPointOfSale, sale.fiscalReceiptNumber)}`,
+    operationalReason || reason.trim() || `${fiscalNoteLabel(kind)} factura ${formatFiscalReceipt(sale.fiscalPointOfSale, sale.fiscalReceiptNumber)}`,
+    operationalDocumentId,
   );
   if (document.alreadyApproved && document.result) return document.result;
 
@@ -1323,12 +1447,12 @@ export async function authorizeSaleFiscalNote(
   }
 }
 
-export async function authorizeSaleCreditNote(session: AuthSession, saleId: string, reason = "", amount?: number) {
-  return authorizeSaleFiscalNote(session, saleId, "credit_note", reason, amount);
+export async function authorizeSaleCreditNote(session: AuthSession, saleId: string, reason = "", amount?: number, operationalDocumentId = "") {
+  return authorizeSaleFiscalNote(session, saleId, "credit_note", reason, amount, operationalDocumentId);
 }
 
-export async function authorizeSaleDebitNote(session: AuthSession, saleId: string, reason = "", amount?: number) {
-  return authorizeSaleFiscalNote(session, saleId, "debit_note", reason, amount);
+export async function authorizeSaleDebitNote(session: AuthSession, saleId: string, reason = "", amount?: number, operationalDocumentId = "") {
+  return authorizeSaleFiscalNote(session, saleId, "debit_note", reason, amount, operationalDocumentId);
 }
 
 export async function authorizeSaleFiscalDocument(session: AuthSession, saleId: string) {
