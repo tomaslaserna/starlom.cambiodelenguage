@@ -67,6 +67,24 @@ async function findCancellation(invoiceNumber: number) {
   return null;
 }
 
+async function findIncidentCancellations() {
+  const pending = new Set(DUPLICATE_INVOICES.map((item) => item.invoiceNumber));
+  const found = new Map<number, NonNullable<Awaited<ReturnType<typeof consultArcaAuthorizedReceipt>>>>();
+  const last = await findLastArcaAuthorizedReceipt(CREDIT_NOTE_TYPE);
+  if (!last) return found;
+  const first = Math.max(1, last.receiptNumber - 60);
+  for (let number = last.receiptNumber; number >= first && pending.size; number -= 1) {
+    const receipt = number === last.receiptNumber ? last : await consultArcaAuthorizedReceipt(CREDIT_NOTE_TYPE, number);
+    for (const associated of receipt?.associatedReceipts ?? []) {
+      if (associated.pointOfSale === POINT_OF_SALE && associated.receiptType === INVOICE_TYPE && pending.has(associated.receiptNumber)) {
+        found.set(associated.receiptNumber, receipt!);
+        pending.delete(associated.receiptNumber);
+      }
+    }
+  }
+  return found;
+}
+
 export async function inspectFiscalIncident(session: AuthSession) {
   assertAdministrator(session);
   const valid = [];
@@ -81,9 +99,10 @@ export async function inspectFiscalIncident(session: AuthSession) {
   for (const item of valid) item.linked = linked.get(item.saleId)?.fiscal_receipt_number === item.invoiceNumber && linked.get(item.saleId)?.cae === item.receipt.cae;
 
   const duplicates = [];
+  const cancellations = await findIncidentCancellations();
   for (const item of DUPLICATE_INVOICES) {
     validateInvoice(await consultArcaAuthorizedReceipt(INVOICE_TYPE, item.invoiceNumber), item);
-    duplicates.push({ ...item, cancellation: await findCancellation(item.invoiceNumber) });
+    duplicates.push({ ...item, cancellation: cancellations.get(item.invoiceNumber) ?? null });
   }
   return { incidentCode: INCIDENT_CODE, valid, duplicates };
 }
