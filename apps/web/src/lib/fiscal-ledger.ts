@@ -1,5 +1,6 @@
 import { queryWithCompanyContext } from "@/lib/db";
 import { currentMonth, monthRange } from "@/lib/month-range";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
 
 export type FiscalVatSummary = {
   period: string;
@@ -11,6 +12,56 @@ export type FiscalVatSummary = {
   fiscalSalesTotal: number;
   purchaseWithVatTotal: number;
 };
+
+export type InvoiceCoverageSummary = {
+  loaded: number;
+  delivered: number;
+  invoiced: number;
+  pending: number;
+};
+
+export async function getInvoiceCoverageSummary(companyId: number): Promise<InvoiceCoverageSummary> {
+  const result = await queryWithCompanyContext<{
+    loaded: string;
+    delivered: string;
+    invoiced: string;
+    pending: string;
+  }>(
+    companyId,
+    `
+      WITH invoice_customers AS (
+        SELECT s.*
+        FROM sales s
+        JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+        WHERE s.empresa_id = $1
+          AND regexp_replace(lower(BTRIM(COALESCE(c.receipt_type, ''))), '[^a-z0-9]+', '', 'g')
+            IN ('facturaa', 'facturab', 'facturac')
+      ), coverage AS (
+        SELECT
+          ${normalizedOrderStatusSql("s")} AS order_status,
+          (
+            COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
+            AND COALESCE(s.cae, '') <> ''
+          ) AS invoiced
+        FROM invoice_customers s
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE order_status <> 'cancelado')::text AS loaded,
+        COUNT(*) FILTER (WHERE order_status = 'entregado')::text AS delivered,
+        COUNT(*) FILTER (WHERE order_status = 'entregado' AND invoiced)::text AS invoiced,
+        COUNT(*) FILTER (WHERE order_status = 'entregado' AND NOT invoiced)::text AS pending
+      FROM coverage
+    `,
+    [companyId],
+  );
+  const row = result.rows[0];
+  return {
+    loaded: Number(row?.loaded ?? 0),
+    delivered: Number(row?.delivered ?? 0),
+    invoiced: Number(row?.invoiced ?? 0),
+    pending: Number(row?.pending ?? 0),
+  };
+}
 
 function vatFromGrossSql(amountExpression: string, receiptTypeExpression: string, vatRateExpression: string) {
   return `CASE
