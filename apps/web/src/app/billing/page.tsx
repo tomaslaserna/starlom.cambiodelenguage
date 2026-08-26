@@ -22,7 +22,7 @@ import {
   type StatusBadgeTone,
 } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { getFiscalVatSummary } from "@/lib/fiscal-ledger";
+import { getFiscalVatSummary, getInvoiceCoverageSummary } from "@/lib/fiscal-ledger";
 import { fiscalStatusLabel } from "@/lib/fiscal";
 import { orderStatusLabel } from "@/lib/order-status";
 import { listSalesLedger } from "@/lib/sales-admin";
@@ -71,9 +71,10 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   await requirePagePermission(session, [SALES_READ_PERMISSION]);
   const params = await searchParams;
   const search = paramsToUrlSearchParams(params);
-  const [ledger, vatSummary] = await Promise.all([
+  const [ledger, vatSummary, invoiceCoverage] = await Promise.all([
     listSalesLedger(session.companyId, search),
     getFiscalVatSummary(session.companyId),
+    getInvoiceCoverageSummary(session.companyId),
   ]);
 
   return (
@@ -90,7 +91,14 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
           moduleIntro
         />
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <StatCard
+            detail={`${invoiceCoverage.invoiced} de ${invoiceCoverage.delivered} entregados facturados · ${invoiceCoverage.loaded} pedidos no cancelados`}
+            icon={<MetricIcon name="receipt" />}
+            label="Pendientes de facturar"
+            tone={invoiceCoverage.pending > 0 ? "danger" : "success"}
+            value={invoiceCoverage.pending}
+          />
           <StatCard
             detail={`Periodo ${vatSummary.period} - ventas ARCA`}
             icon={<MetricIcon name="sales" />}

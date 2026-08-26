@@ -1136,6 +1136,18 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.doesNotMatch(pdfRenderer, /Starlim - documento operativo/);
 });
 
+test("Fiscal muestra pendientes de facturar solo para clientes con factura habitual", () => {
+  const billingPage = read("apps/web/src/app/billing/page.tsx");
+  const fiscalLedger = read("apps/web/src/lib/fiscal-ledger.ts");
+  assert.match(billingPage, /getInvoiceCoverageSummary/);
+  assert.match(billingPage, /Pendientes de facturar/);
+  assert.match(billingPage, /invoiceCoverage\.invoiced.*invoiceCoverage\.delivered/);
+  assert.match(fiscalLedger, /IN \('facturaa', 'facturab', 'facturac'\)/);
+  assert.match(fiscalLedger, /order_status = 'entregado' AND NOT invoiced/);
+  assert.match(fiscalLedger, /COALESCE\(s\.fiscal_status, 'no_enviado'\) = 'aprobado'/);
+  assert.match(fiscalLedger, /COALESCE\(s\.cae, ''\) <> ''/);
+});
+
 test("order confirmation message supports optional prices and iva", () => {
   const oc = read("apps/web/src/lib/order-confirmation.ts");
   assert.match(oc, /export type IvaRate = 0 \| 21 \| 10\.5/);
