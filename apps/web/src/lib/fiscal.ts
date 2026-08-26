@@ -394,7 +394,7 @@ export async function requestSaleFiscalNote(session: AuthSession, saleId: string
     const request = await client.query<{ id: string }>(
       `
         INSERT INTO app_solicitudes (tipo, titulo, detalle, monto, solicitante, estado, metadata, empresa_id)
-        SELECT 'factura', $4, $5, $6::numeric, $7, 'pendiente', $8::jsonb, $2
+        SELECT 'factura', $3, $4, $5::numeric, $6, 'pendiente', $7::jsonb, $2
         WHERE NOT EXISTS (
           SELECT 1 FROM app_solicitudes
           WHERE empresa_id = $2 AND estado = 'pendiente'
@@ -406,7 +406,6 @@ export async function requestSaleFiscalNote(session: AuthSession, saleId: string
       [
         operationalDocumentId,
         session.companyId,
-        saleId,
         `${note.class_name} fiscal · ${note.client_name}`,
         `${note.class_name} operativa vinculada a la venta. ${note.reason}`.trim(),
         Number(note.amount),
