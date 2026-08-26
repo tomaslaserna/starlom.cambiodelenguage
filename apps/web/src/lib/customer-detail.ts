@@ -1,6 +1,7 @@
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizeOrderStatusValue } from "@/lib/order-status";
 import { summarizePurchases, type PurchaseSummary } from "@/lib/customer-purchase-summary";
+import { adjustedSalesAmountSql } from "@/lib/sales-vat";
 
 export type CustomerOrder = {
   id: string;
@@ -34,7 +35,7 @@ export async function getCustomerPurchaseHistory(
         SELECT s.id::text AS id,
                COALESCE(NULLIF(s.commercial_number::text, ''), s.sale_number, '') AS number,
                s.sale_date::text AS date,
-               COALESCE(s.total_amount, 0)::text AS amount,
+               ${adjustedSalesAmountSql("COALESCE(s.total_amount, 0)", "s")}::text AS amount,
                COALESCE(s.order_status, '') AS order_status,
                COALESCE(s.collection_status, 'pendiente') AS collection_status
           FROM sales s

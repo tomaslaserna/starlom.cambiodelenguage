@@ -1,6 +1,7 @@
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
+import { adjustedSalesAmountSql } from "@/lib/sales-vat";
 
 export async function getVendorManagement(companyId: number) {
   const result = await queryWithCompanyContext<{
@@ -42,7 +43,7 @@ export async function getVendorManagement(companyId: number) {
       sales AS (
         SELECT BTRIM(s.seller_name) AS vendor,
                COUNT(*) AS sales_count,
-               COALESCE(SUM(s.total_amount), 0) AS sales_total
+               COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}), 0) AS sales_total
         FROM sales s
         WHERE s.empresa_id = $1
           AND ${canonicalSalesSourceSql("s")}

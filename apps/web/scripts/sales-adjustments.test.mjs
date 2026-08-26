@@ -23,7 +23,31 @@ test("las notas exigen una venta entregada y ajustan stock y cuenta corriente", 
   assert.match(source, /Stock insuficiente para/);
   assert.match(source, /input\.issueDate/);
   assert.match(source, /account_adjusted = true/);
+  assert.match(source, /sales_internal_document_id/);
+  assert.match(source, /invalidateAdminMetricsCache/);
   assert.match(source, /COALESCE\(MAX\(si\.description\), p\.name, '\(producto\)'\) AS name/);
+});
+
+test("cuenta corriente vincula la nota interna y su nota fiscal aprobada", () => {
+  const accounts = read("src/lib/customer-accounts.ts");
+  const page = read("src/app/payments/accounts/[id]/page.tsx");
+  const migration = read("../../supabase/migrations/20260826173928_link_account_movements_to_sales_documents.sql");
+  assert.match(accounts, /m\.sales_internal_document_id/);
+  assert.match(accounts, /fiscal\.operational_document_id = internal_note\.id/);
+  assert.match(accounts, /fiscal\.fiscal_status = 'aprobado'/);
+  assert.match(page, /Ver nota interna/);
+  assert.match(page, /Ver nota de crédito fiscal/);
+  assert.match(migration, /FOREIGN KEY \(sales_internal_document_id\)/);
+  assert.match(migration, /UPDATE public\.current_account_movements/);
+});
+
+test("totales comerciales descuentan devoluciones y refrescan metricas", () => {
+  const metrics = read("src/lib/admin-metrics.ts");
+  const vendors = read("src/lib/vendors-management.ts");
+  const customer = read("src/lib/customer-detail.ts");
+  assert.match(metrics, /invalidateAdminMetricsCache/);
+  assert.match(vendors, /adjustedSalesAmountSql/);
+  assert.match(customer, /adjustedSalesAmountSql/);
 });
 
 test("ventas y metricas asignan ajustes a la fecha de la nota y muestran sus PDF", () => {

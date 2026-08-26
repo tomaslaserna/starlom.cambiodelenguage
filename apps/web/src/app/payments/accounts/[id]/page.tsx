@@ -211,6 +211,26 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
                     <DataTableCell className="px-2 py-2 text-xs">
                       <div className="grid gap-1">
                         <span>{line.description || "-"}</span>
+                        {line.internalDocumentId ? (
+                          <Link
+                            className="font-semibold text-[color:var(--accent)] hover:underline"
+                            href={`/api/pdfs/sales/notes/${line.internalDocumentId}`}
+                            prefetch={false}
+                            target="_blank"
+                          >
+                            Ver nota interna #{line.internalDocumentNumber ?? "-"}
+                          </Link>
+                        ) : null}
+                        {line.fiscalDocumentId ? (
+                          <Link
+                            className="font-semibold text-[color:var(--accent)] hover:underline"
+                            href={`/api/pdfs/fiscal/notes/${line.fiscalDocumentId}`}
+                            prefetch={false}
+                            target="_blank"
+                          >
+                            Ver nota de crédito fiscal{line.fiscalDocumentNumber ? ` #${line.fiscalDocumentNumber}` : ""}
+                          </Link>
+                        ) : null}
                         {line.debit > 0 && line.saleId ? (
                           line.hasPricedItems && line.deliveryNumber ? (
                             <Link

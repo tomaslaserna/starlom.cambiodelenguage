@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api-response";
+import { invalidateAdminMetricsCache } from "@/lib/admin-metrics";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
@@ -589,9 +590,9 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
         `
           INSERT INTO current_account_movements (
             client_id, sale_id, entity_type, entity_name, description,
-            debit, credit, movement_date, empresa_id
+            debit, credit, movement_date, sales_internal_document_id, empresa_id
           )
-          VALUES ($1::uuid, $2::uuid, 'cliente', $3, $4, $5, $6, $7::date, $8)
+          VALUES ($1::uuid, $2::uuid, 'cliente', $3, $4, $5, $6, $7::date, $8::uuid, $9)
         `,
         [
           reference.client_id ?? null,
@@ -601,6 +602,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
           debit,
           credit,
           input.issueDate,
+          documentId,
           session.companyId,
         ],
       );
@@ -628,6 +630,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
     );
 
     clearReadQueryCache();
+    invalidateAdminMetricsCache(session.companyId);
     return {
       id: documentId,
       className: input.className,

@@ -21,6 +21,10 @@ export type StatementMovement = {
   saleNumber?: string | null;
   deliveryNumber?: number | null;
   hasPricedItems?: boolean;
+  internalDocumentId?: string | null;
+  internalDocumentNumber?: number | null;
+  fiscalDocumentId?: string | null;
+  fiscalDocumentNumber?: number | null;
 };
 export type AccountMovementRow = StatementMovement & { paymentId?: string | null };
 export type StatementLine = StatementMovement & { balance: number };
@@ -254,6 +258,8 @@ export async function getCustomerStatement(
   const rows = await queryWithCompanyContext<{
     id: string; movement_date: string; description: string; debit: string; credit: string; payment_id: string | null;
     sale_id: string | null; sale_number: string | null; delivery_number: number | null; has_priced_items: boolean;
+    internal_document_id: string | null; internal_document_number: number | null;
+    fiscal_document_id: string | null; fiscal_document_number: number | null;
   }>(
     companyId,
     `
@@ -273,9 +279,28 @@ export async function getCustomerStatement(
                FROM sale_items si
                WHERE si.empresa_id = m.empresa_id AND si.sale_id = m.sale_id
                  AND si.quantity > 0 AND si.unit_price >= 0
-             ) AS has_priced_items
+             ) AS has_priced_items,
+             internal_note.id::text AS internal_document_id,
+             internal_note.receipt_number::int AS internal_document_number,
+             fiscal_note.id::text AS fiscal_document_id,
+             fiscal_note.fiscal_receipt_number::int AS fiscal_document_number
       FROM current_account_movements m
       LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
+      LEFT JOIN sales_internal_documents internal_note
+        ON internal_note.id = m.sales_internal_document_id
+       AND internal_note.empresa_id = m.empresa_id
+       AND internal_note.fiscal = false
+      LEFT JOIN LATERAL (
+        SELECT fiscal.id, fiscal.fiscal_receipt_number
+        FROM sales_internal_documents fiscal
+        WHERE fiscal.empresa_id = internal_note.empresa_id
+          AND fiscal.operational_document_id = internal_note.id
+          AND fiscal.fiscal = true
+          AND fiscal.fiscal_status = 'aprobado'
+          AND COALESCE(fiscal.cae, '') <> ''
+        ORDER BY fiscal.fiscal_authorized_at DESC NULLS LAST, fiscal.created_at DESC
+        LIMIT 1
+      ) fiscal_note ON true
       WHERE m.empresa_id = $1 AND m.client_id = $2::uuid
         AND ${activeAccountMovementWhereSql("m", "s")}
       ORDER BY m.movement_date ASC, m.created_at ASC
@@ -295,6 +320,10 @@ export async function getCustomerStatement(
     saleNumber: row.sale_number,
     deliveryNumber: row.delivery_number === null ? null : Number(row.delivery_number),
     hasPricedItems: row.has_priced_items,
+    internalDocumentId: row.internal_document_id,
+    internalDocumentNumber: row.internal_document_number === null ? null : Number(row.internal_document_number),
+    fiscalDocumentId: row.fiscal_document_id,
+    fiscalDocumentNumber: row.fiscal_document_number === null ? null : Number(row.fiscal_document_number),
   })));
 
   const pendingRows = await queryWithCompanyContext<{

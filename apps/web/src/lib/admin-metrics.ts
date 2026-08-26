@@ -55,6 +55,12 @@ type AdminMetrics = {
 const ADMIN_METRICS_CACHE_TTL_MS = 120_000;
 const adminMetricsCache = new Map<string, { expiresAt: number; value: AdminMetrics }>();
 
+export function invalidateAdminMetricsCache(companyId: number) {
+  for (const key of adminMetricsCache.keys()) {
+    if (key.startsWith(`${companyId}:`)) adminMetricsCache.delete(key);
+  }
+}
+
 export async function getAdminMetrics(companyId: number, period?: Period): Promise<AdminMetrics> {
   const bounds = period ? periodBounds(period) : monthBounds();
   const cacheKey = `${companyId}:${period ? period.key : "__current__"}`;
