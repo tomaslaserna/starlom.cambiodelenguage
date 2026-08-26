@@ -232,6 +232,26 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
                             Ver factura
                           </Link>
                         ) : null}
+                        {line.internalDocumentId ? (
+                          <Link
+                            className="font-semibold text-[color:var(--accent)] hover:underline"
+                            href={`/api/pdfs/sales/notes/${line.internalDocumentId}`}
+                            prefetch={false}
+                            target="_blank"
+                          >
+                            Ver nota interna #{line.internalDocumentNumber ?? "-"}
+                          </Link>
+                        ) : null}
+                        {line.fiscalDocumentId ? (
+                          <Link
+                            className="font-semibold text-[color:var(--accent)] hover:underline"
+                            href={`/api/pdfs/fiscal/notes/${line.fiscalDocumentId}`}
+                            prefetch={false}
+                            target="_blank"
+                          >
+                            Ver nota de crédito fiscal{line.fiscalDocumentNumber ? ` #${line.fiscalDocumentNumber}` : ""}
+                          </Link>
+                        ) : null}
                       </div>
                     </DataTableCell>
                     <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
