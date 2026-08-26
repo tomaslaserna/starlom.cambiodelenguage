@@ -433,7 +433,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
       }>(
         `
           SELECT si.product_id::text,
-                 COALESCE(si.description, p.name, '(producto)') AS name,
+                 COALESCE(MAX(si.description), p.name, '(producto)') AS name,
                  SUM(si.quantity)::text AS quantity,
                  MAX(si.unit_price)::text AS unit_price,
                  COALESCE((

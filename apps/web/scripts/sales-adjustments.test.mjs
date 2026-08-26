@@ -23,6 +23,7 @@ test("las notas exigen una venta entregada y ajustan stock y cuenta corriente", 
   assert.match(source, /Stock insuficiente para/);
   assert.match(source, /input\.issueDate/);
   assert.match(source, /account_adjusted = true/);
+  assert.match(source, /COALESCE\(MAX\(si\.description\), p\.name, '\(producto\)'\) AS name/);
 });
 
 test("ventas y metricas asignan ajustes a la fecha de la nota y muestran sus PDF", () => {
