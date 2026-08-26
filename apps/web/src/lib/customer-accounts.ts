@@ -21,6 +21,7 @@ export type StatementMovement = {
   saleNumber?: string | null;
   deliveryNumber?: number | null;
   hasPricedItems?: boolean;
+  hasFiscalPdf?: boolean;
 };
 export type AccountMovementRow = StatementMovement & { paymentId?: string | null };
 export type StatementLine = StatementMovement & { balance: number };
@@ -254,6 +255,7 @@ export async function getCustomerStatement(
   const rows = await queryWithCompanyContext<{
     id: string; movement_date: string; description: string; debit: string; credit: string; payment_id: string | null;
     sale_id: string | null; sale_number: string | null; delivery_number: number | null; has_priced_items: boolean;
+    has_fiscal_pdf: boolean;
   }>(
     companyId,
     `
@@ -273,7 +275,12 @@ export async function getCustomerStatement(
                FROM sale_items si
                WHERE si.empresa_id = m.empresa_id AND si.sale_id = m.sale_id
                  AND si.quantity > 0 AND si.unit_price >= 0
-             ) AS has_priced_items
+             ) AS has_priced_items,
+             (COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
+               AND COALESCE(s.cae, '') NOT IN ('', 'manual')
+               AND s.fiscal_point_of_sale IS NOT NULL
+               AND s.fiscal_receipt_type IS NOT NULL
+               AND s.fiscal_receipt_number IS NOT NULL) AS has_fiscal_pdf
       FROM current_account_movements m
       LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
       WHERE m.empresa_id = $1 AND m.client_id = $2::uuid
@@ -295,6 +302,7 @@ export async function getCustomerStatement(
     saleNumber: row.sale_number,
     deliveryNumber: row.delivery_number === null ? null : Number(row.delivery_number),
     hasPricedItems: row.has_priced_items,
+    hasFiscalPdf: row.has_fiscal_pdf,
   })));
 
   const pendingRows = await queryWithCompanyContext<{
