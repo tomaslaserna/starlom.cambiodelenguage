@@ -24,7 +24,12 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
   const [clearingHistory, setClearingHistory] = useState(false);
   const [memoryError, setMemoryError] = useState("");
   const transport = useMemo(
-    () => new DefaultChatTransport<StarlimSupervisorMessage>({ api: "/api/supervisor-lab/chat" }),
+    () => new DefaultChatTransport<StarlimSupervisorMessage>({
+      api: "/api/supervisor-lab/chat",
+      prepareSendMessagesRequest: ({ messages }) => ({
+        body: { messages: messages.slice(-30) },
+      }),
+    }),
     [],
   );
   const { messages, sendMessage, status, error, stop, setMessages } = useChat<StarlimSupervisorMessage>({

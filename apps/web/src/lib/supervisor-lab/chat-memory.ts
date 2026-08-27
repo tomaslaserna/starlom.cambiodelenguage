@@ -6,7 +6,7 @@ import { withCompanyContext } from "@/lib/db";
 import type { StarlimSupervisorMessage } from "@/lib/supervisor-lab/agent";
 
 export const SUPERVISOR_MEMORY_HOURS = 48;
-export const SUPERVISOR_MEMORY_MAX_MESSAGES = 30;
+export const SUPERVISOR_MEMORY_MAX_MESSAGES = 200;
 
 type StoredMessageRow = {
   message: unknown;
@@ -42,7 +42,7 @@ export async function getSupervisorChatMemory(session: AuthSession) {
        WHERE empresa_id = $1
          AND user_id = $2::uuid
          AND expires_at > NOW()
-       ORDER BY sequence_index ASC
+       ORDER BY updated_at ASC, sequence_index ASC
        LIMIT $3`,
       [session.companyId, session.userId, SUPERVISOR_MEMORY_MAX_MESSAGES],
     );
@@ -94,13 +94,16 @@ export async function saveSupervisorChatMemory(
       );
     }
 
-    const messageIds = bounded.map((message) => message.id);
     await client.query(
       `DELETE FROM supervisor_chat_messages
-       WHERE empresa_id = $1
-         AND user_id = $2::uuid
-         AND NOT (message_id = ANY($3::text[]))`,
-      [session.companyId, session.userId, messageIds],
+       WHERE id IN (
+         SELECT id
+         FROM supervisor_chat_messages
+         WHERE empresa_id = $1 AND user_id = $2::uuid
+         ORDER BY updated_at DESC, sequence_index DESC
+         OFFSET $3
+       )`,
+      [session.companyId, session.userId, SUPERVISOR_MEMORY_MAX_MESSAGES],
     );
   });
 }

@@ -85,11 +85,13 @@ test("la conversación se conserva 48 horas por empresa y operador", () => {
   assert.match(route, /originalMessages: uiMessages/);
   assert.match(route, /onEnd: async \(\{ messages \}\)/);
   assert.match(memory, /SUPERVISOR_MEMORY_HOURS = 48/);
+  assert.match(memory, /SUPERVISOR_MEMORY_MAX_MESSAGES = 200/);
   assert.match(memory, /empresa_id = \$1/);
   assert.match(memory, /user_id = \$2::uuid/);
   assert.match(memory, /expires_at <= NOW\(\)/);
   assert.match(memory, /pg_advisory_xact_lock/);
   assert.match(chat, /method: "DELETE"/);
+  assert.match(chat, /messages\.slice\(-30\)/);
   assert.match(chat, /Recuperando tu conversación de las últimas 48 horas/);
   assert.match(migration, /INTERVAL '48 hours'/);
   assert.match(migration, /UNIQUE \(empresa_id, user_id, message_id\)/);
