@@ -1,5 +1,5 @@
 import type { AppIconName } from "@/components/ui/app-icon";
-import { normalizeRole, type AuthSession } from "@/lib/auth";
+import { type AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import {
@@ -15,6 +15,7 @@ import {
   CUSTOMERS_READ_PERMISSION,
   EMPLOYEES_READ_PERMISSION,
   ORDERS_CREATE_PERMISSION,
+  ORDERS_MANAGE_PERMISSION,
   ORDERS_READ_PERMISSION,
   PRODUCTS_READ_PERMISSION,
   PURCHASES_READ_PERMISSION,
@@ -23,6 +24,7 @@ import {
   STOCK_EDIT_PERMISSION,
   SUPPLIERS_READ_PERMISSION,
   sessionAllows,
+  sessionAllowedPermissionKeys,
   sessionCanApproveCollections,
   sessionCanReadCollections,
   type Permission,
@@ -236,6 +238,7 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "messages",
   },
   { href: "/bank", label: "Banco", active: "bank" },
+  { href: "/supervisor-lab", label: "LA TIRRA ia.01", active: "supervisor-lab", permission: CRM_READ_PERMISSION },
   // CRM (segundo mundo para vendedores). active: "crm" agrupa estos en la seccion CRM.
   { href: "/crm/perfil", label: "Perfil", active: "crm", permission: CRM_READ_PERMISSION },
   { href: "/crm/clientes", label: "Clientes", active: "crm", permission: CRM_READ_PERMISSION },
@@ -261,7 +264,13 @@ export const navigationSections: NavigationSection[] = [
   {
     label: "Inicio",
     icon: "chart",
-    groups: [groupByLabel("Escritorio"), groupByLabel("Calendario"), groupByLabel("Mensajes"), groupByLabel("Banco")],
+    groups: [
+      groupByLabel("Escritorio"),
+      groupByLabel("LA TIRRA ia.01"),
+      groupByLabel("Calendario"),
+      groupByLabel("Mensajes"),
+      groupByLabel("Banco"),
+    ],
   },
   {
     label: "CRM",
@@ -363,13 +372,9 @@ export async function getNavigationAuthorization(session: AuthSession): Promise<
   const cached = authorizationCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const allowedPermissionKeys = new Set<string>();
-  await Promise.all(
-    collectRequiredNavigationPermissions().map(async (permission) => {
-      if (await sessionAllows(session, [permission])) {
-        allowedPermissionKeys.add(navigationPermissionKey(permission));
-      }
-    }),
+  const allowedPermissionKeys = await sessionAllowedPermissionKeys(
+    session,
+    collectRequiredNavigationPermissions(),
   );
 
   const authorization = { allowedPermissionKeys };
@@ -451,8 +456,7 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     sessionCanReadCollections(session),
     sessionCanApproveCollections(session),
   ]);
-  const role = normalizeRole(session.role);
-  const canResolveRequests = role === "administrador" || role === "jefe";
+  const canResolveRequests = await sessionAllows(session, [ORDERS_MANAGE_PERMISSION]);
   const shouldCountCollectionApprovals = canReadCollections || canApproveCollections;
   const collectionApprovalsSelect = shouldCountCollectionApprovals
     ? `(SELECT COUNT(*) FROM sales

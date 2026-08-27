@@ -90,7 +90,7 @@ test("jefe is a full-access role while legacy employee shortcuts stay removed", 
   assert.match(routeAuth, /normalized === "administrador" \|\| normalized === "jefe"/);
   assert.match(routeAuth, /if \(isFullAccessRole\(role\)\) return true/);
   assert.match(routeAuth, /if \(!isFullAccessRole\(session\.role\)\) throw new ApiError\(403, "Solo Administrador o Jefe"\)/);
-  assert.match(routeAuth, /JOIN app_permissions ap ON ap\.key = pp\.permission_key AND ap\.sensitive = FALSE/);
+  assert.match(routeAuth, /JOIN app_permissions ap ON ap\.key = pp\.permission_key\s+WHERE pp\.profile_id/);
   assert.match(routeAuth, /JOIN app_permissions ap ON ap\.key = rp\.permission_key AND ap\.sensitive = FALSE/);
 });
 
@@ -113,9 +113,9 @@ test("jefe can edit employee profiles and see all profile permissions", () => {
   const employeesPage = read("apps/web/src/app/employees/page.tsx");
   assert.match(employeesPage, /function canEditEmployee\(actorRole: string, targetRole: string\)/);
   assert.match(employeesPage, /currentRole === "administrador" \|\| currentRole === "jefe"/);
-  assert.match(employeesPage, /defaultChecked=\{employee\.permissionIds\.includes\(permission\.key\)\}/);
+  assert.match(employeesPage, /selectedKeys=\{employee\.permissionIds\}/);
   assert.match(employeesPage, /Modificar/);
-  assert.match(employeesPage, /Accesos y permisos/);
+  assert.match(employeesPage, /Accesos efectivos por bloques/);
   assert.match(employeesPage, /Borrar acceso/);
   assert.match(employeesPage, /name="confirmDelete"/);
   assert.doesNotMatch(employeesPage, /DataTableCell colSpan=\{9\}/);
@@ -562,7 +562,8 @@ test("future orders use the registered receipt as a suggestion and allow an expl
 
   const quoteEntryFields = read("apps/web/src/app/quotes/quote-entry-fields.tsx");
   assert.match(quoteEntryFields, /name="customerId"/);
-  assert.doesNotMatch(quoteEntryFields, /Cliente ocasional|name="customerName"/);
+  assert.match(quoteEntryFields, /Cliente nuevo \/ prospecto/);
+  assert.match(quoteEntryFields, /name="customerName"/);
   assert.match(quoteEntryFields, /name="productsJson"/);
   assert.match(quoteEntryFields, /priceForList/);
   assert.match(quoteEntryFields, /priceLists/);
@@ -577,7 +578,7 @@ test("future orders use the registered receipt as a suggestion and allow an expl
   assert.match(quotes, /price_list_name/);
   assert.match(quotes, /client_legal_name/);
   assert.match(quotes, /vatAmountsFromNet/);
-  assert.match(quotes, /Selecciona un cliente registrado/);
+  assert.match(quotes, /nombre del prospecto/);
   assert.doesNotMatch(quotes, /if \(!clientId\)[\s\S]*INSERT INTO clients/);
 });
 
@@ -715,7 +716,7 @@ test("Escritorio is listed first in the Inicio menu and links to the home page",
   assert.match(navigation, /href: "\/",\s*label: "Escritorio",\s*active: "home",/);
   assert.match(
     navigation,
-    /label: "Inicio"[\s\S]*groups: \[groupByLabel\("Escritorio"\), groupByLabel\("Calendario"\), groupByLabel\("Mensajes"\), groupByLabel\("Banco"\)\]/,
+    /label: "Inicio"[\s\S]*groups: \[[\s\S]*groupByLabel\("Escritorio"\)[\s\S]*groupByLabel\("LA TIRRA ia\.01"\)[\s\S]*groupByLabel\("Calendario"\)[\s\S]*groupByLabel\("Mensajes"\)[\s\S]*groupByLabel\("Banco"\)[\s\S]*\]/,
   );
 });
 
@@ -1080,7 +1081,7 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   const billingActions = read("apps/web/src/app/billing/actions.ts");
   assert.match(billingActions, /issueCreditNoteAction/);
   assert.match(billingActions, /issueDebitNoteAction/);
-  assert.match(billingActions, /Solo Administrador o Jefe/);
+  assert.match(billingActions, /requireApiSession\(\[SALES_OPERATE_PERMISSION\]\)/);
 
   const fiscalNotePage = read("apps/web/src/app/billing/fiscal-note-page.tsx");
   assert.match(fiscalNotePage, /Emitir NC en ARCA/);
@@ -1134,6 +1135,16 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.match(pdfRenderer, /fiscalItemsTable/);
   assert.match(pdfRenderer, /qrImage/);
   assert.doesNotMatch(pdfRenderer, /Starlim - documento operativo/);
+});
+
+test("navigation waits for permissions long enough and resolves them in one batch", () => {
+  const modulePage = read("apps/web/src/components/module-page.tsx");
+  const navigation = read("apps/web/src/lib/navigation.ts");
+
+  assert.match(modulePage, /NAVIGATION_AUTHORIZATION_TIMEOUT_MS = 5_000/);
+  assert.doesNotMatch(modulePage, /getNavigationAuthorization\(session\), 60,/);
+  assert.match(navigation, /sessionAllowedPermissionKeys\(\s*session,\s*collectRequiredNavigationPermissions\(\)/s);
+  assert.doesNotMatch(navigation, /collectRequiredNavigationPermissions\(\)\.map\(async/);
 });
 
 test("Fiscal muestra pendientes de facturar solo para clientes con factura habitual", () => {
