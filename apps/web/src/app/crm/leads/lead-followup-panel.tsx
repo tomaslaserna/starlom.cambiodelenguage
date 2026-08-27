@@ -18,7 +18,7 @@ export function LeadFollowupPanel({ agenda, recordAction }: { agenda: LeadFollow
   const completed = agenda.filter((lead) => lead.contactedToday).length;
   const target = agenda.length;
   const percentage = target === 0 ? 100 : Math.round((completed / target) * 100);
-  const nextDate = useMemo(() => futureDate(delay), [delay, selected]);
+  const nextDate = useMemo(() => futureDate(delay), [delay]);
 
   return (
     <Card className="overflow-hidden">

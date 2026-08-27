@@ -14,7 +14,6 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import { issueCreditNoteAction, issueDebitNoteAction } from "@/app/billing/actions";
-import { normalizeRole } from "@/lib/auth";
 import {
   fiscalStatusLabel,
   getSaleCreditNotePreview,

@@ -23,7 +23,6 @@ export function SellerMobileNavigation() {
   const pathname = usePathname();
   const [quickOpen, setQuickOpen] = useState(false);
 
-  useEffect(() => setQuickOpen(false), [pathname]);
   useEffect(() => {
     if (!quickOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -45,7 +44,7 @@ export function SellerMobileNavigation() {
             </div>
             <div className="grid gap-2">
               {QUICK_ACTIONS.map((action) => (
-                <Link className="seller-mobile-navigation__quick-action" href={action.href} key={action.href}>
+                <Link className="seller-mobile-navigation__quick-action" href={action.href} key={action.href} onClick={() => setQuickOpen(false)}>
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#eaf2ff] text-[#075ac7]"><AppIcon className="h-5 w-5" name={action.icon} /></span>
                   <span className="min-w-0"><strong className="block text-sm text-[#0f172a]">{action.label}</strong><span className="block text-xs font-medium text-[#64748b]">{action.description}</span></span>
                 </Link>
@@ -69,7 +68,7 @@ export function SellerMobileNavigation() {
       {ITEMS.slice(2).map((item) => {
         const current = pathname.startsWith(item.href);
         return (
-          <Link aria-current={current ? "page" : undefined} className={cn("seller-mobile-navigation__item", current && "is-current")} href={item.href} key={item.href}>
+          <Link aria-current={current ? "page" : undefined} className={cn("seller-mobile-navigation__item", current && "is-current")} href={item.href} key={item.href} onClick={() => setQuickOpen(false)}>
             <AppIcon className="h-5 w-5" name={item.icon} />
             <span>{item.label}</span>
           </Link>

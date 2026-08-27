@@ -139,7 +139,7 @@ const navSource = readFileSync(new URL("../src/lib/navigation.ts", import.meta.u
 test("navegacion apunta a los nuevos submenus de Cobros y pagos", () => {
   assert.match(navSource, /href: "\/payments"/);
   assert.match(navSource, /href: "\/payments\/accounts"/);
-  assert.match(navSource, /Registro de pagos/i);
+  assert.match(navSource, /Resumen de cobranzas/i);
 });
 
 test("voidCustomerPayment marca anulado y compensa el credito con un debito", async () => {
