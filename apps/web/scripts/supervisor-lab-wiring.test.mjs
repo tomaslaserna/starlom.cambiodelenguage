@@ -74,6 +74,28 @@ test("la ruta experimental exige sesion, configuracion y limites", () => {
   assert.match(guard, /MAX_BODY_CHARACTERS = 60_000/);
 });
 
+test("la conversación se conserva 48 horas por empresa y operador", () => {
+  const route = read("src/app/api/supervisor-lab/chat/route.ts");
+  const memory = read("src/lib/supervisor-lab/chat-memory.ts");
+  const chat = read("src/app/supervisor-lab/supervisor-chat.tsx");
+  const migration = read("../../supabase/migrations/20260827120000_supervisor_chat_memory.sql");
+
+  assert.match(route, /export async function GET/);
+  assert.match(route, /export async function DELETE/);
+  assert.match(route, /originalMessages: uiMessages/);
+  assert.match(route, /onEnd: async \(\{ messages \}\)/);
+  assert.match(memory, /SUPERVISOR_MEMORY_HOURS = 48/);
+  assert.match(memory, /empresa_id = \$1/);
+  assert.match(memory, /user_id = \$2::uuid/);
+  assert.match(memory, /expires_at <= NOW\(\)/);
+  assert.match(memory, /pg_advisory_xact_lock/);
+  assert.match(chat, /method: "DELETE"/);
+  assert.match(chat, /Recuperando tu conversación de las últimas 48 horas/);
+  assert.match(migration, /INTERVAL '48 hours'/);
+  assert.match(migration, /UNIQUE \(empresa_id, user_id, message_id\)/);
+  assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
+});
+
 test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   const page = fs.readFileSync(path.join(root, "src/app/supervisor-lab/page.tsx"), "utf8");
   const chat = fs.readFileSync(path.join(root, "src/app/supervisor-lab/supervisor-chat.tsx"), "utf8");
