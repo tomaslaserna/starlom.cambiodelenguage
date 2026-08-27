@@ -963,10 +963,10 @@ test("message center groups messages into WhatsApp-style contact conversations w
 test("shared button variants keep a consistent action hierarchy", () => {
   const button = read("apps/web/src/components/ui/button.tsx");
   assert.match(button, /const primaryButtonClass =[\s\S]*bg-\[color:var\(--accent\)\]/);
-  assert.match(button, /const secondaryButtonClass =[\s\S]*bg-\[#1d4ed8\]/);
-  assert.match(button, /const outlineButtonClass =[\s\S]*bg-white[\s\S]*text-\[#1755b8\]/);
+  assert.match(button, /const secondaryButtonClass =[\s\S]*bg-white[\s\S]*text-\[#0a55bd\]/);
+  assert.match(button, /const outlineButtonClass =[\s\S]*bg-white[\s\S]*text-\[#33445f\]/);
   assert.match(button, /const ghostButtonClass =[\s\S]*bg-transparent[\s\S]*text-\[#334155\]/);
-  assert.match(button, /const dangerButtonClass =[\s\S]*bg-\[#b91c1c\]/);
+  assert.match(button, /const dangerButtonClass =[\s\S]*bg-\[#fff1f2\][\s\S]*text-\[#b4232f\]/);
   assert.match(button, /primary: primaryButtonClass/);
   assert.match(button, /secondary: secondaryButtonClass/);
   assert.match(button, /ghost: ghostButtonClass/);
@@ -1135,6 +1135,22 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.match(pdfRenderer, /fiscalItemsTable/);
   assert.match(pdfRenderer, /qrImage/);
   assert.doesNotMatch(pdfRenderer, /Starlim - documento operativo/);
+});
+
+test("Cobros y pagos es un resumen y Cuentas corrientes conserva la operatoria", () => {
+  const paymentsPage = read("apps/web/src/app/payments/page.tsx");
+  const accountsPage = read("apps/web/src/app/payments/accounts/[id]/page.tsx");
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.match(paymentsPage, /Resumen de cobranzas/);
+  assert.match(paymentsPage, /Clientes con cuentas abiertas/);
+  assert.match(paymentsPage, /Clientes en mora/);
+  assert.match(paymentsPage, /Clientes por vencer/);
+  assert.match(paymentsPage, /Ir a Cuentas corrientes/);
+  assert.doesNotMatch(paymentsPage, /RegisterPaymentDialog/);
+  assert.doesNotMatch(paymentsPage, /voidCustomerPaymentAction/);
+  assert.match(accountsPage, /RegisterPaymentDialog/);
+  assert.match(navigation, /href: "\/payments",\s*label: "Resumen de cobranzas"/);
+  assert.match(navigation, /href: "\/payments\/accounts",\s*label: "Cuentas corrientes"/);
 });
 
 test("navigation waits for permissions long enough and resolves them in one batch", () => {

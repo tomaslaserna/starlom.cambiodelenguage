@@ -188,7 +188,7 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       {
         href: "/payments",
-        label: "Registro de pagos",
+        label: "Resumen de cobranzas",
         active: "collections",
         badge: "collectionApprovals",
         permission: COLLECTIONS_READ_PERMISSION,
