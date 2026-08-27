@@ -3,8 +3,6 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
-import { MessageNotifications } from "@/components/message-notifications";
-import { MessageNotifier } from "@/components/message-notifier";
 import { PresenceIndicator } from "@/components/presence-indicator";
 import { SessionKeepAlive } from "@/components/session-keep-alive";
 import { ShellNavigation } from "@/components/shell-navigation";
@@ -115,13 +113,6 @@ export async function ModulePage({
   return (
     <div className={cn("min-h-screen overflow-visible bg-[#f5f7fb] text-foreground lg:grid lg:h-screen lg:grid-cols-[260px_minmax(0,1fr)] lg:overflow-hidden lg:overscroll-none", sellerMobile && "seller-mobile-shell")}>
       <SessionKeepAlive />
-      <MessageNotifier />
-      <MessageNotifications
-        currentUsername={session.username}
-        initialLatestMessage={null}
-        initialUnread={0}
-        initialRevision=""
-      />
       <aside className="erp-sidebar-texture sticky top-0 hidden h-screen overflow-hidden overscroll-none border-r border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_48%,#073f94_100%)] text-white shadow-[8px_0_30px_rgba(7,63,148,0.22)] lg:flex lg:flex-col">
         <div className="border-b border-white/14 px-4 py-4">
           <BrandBlock />

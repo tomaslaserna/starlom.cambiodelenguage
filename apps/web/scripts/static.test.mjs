@@ -296,7 +296,7 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
 
   const orderStatusPage = read("apps/web/src/app/orders/page.tsx");
   assert.match(orderStatusPage, /sessionAllows/);
-  assert.match(orderStatusPage, /const \[result, canEditOrders\] = await Promise\.all/);
+  assert.match(orderStatusPage, /const \[result, canEditOrders, canCreateOrders\] = await Promise\.all/);
   assert.match(orderStatusPage, /isOpenOrder && canEditOrders/);
   assert.match(orderStatusPage, /params\.error/);
   assert.match(orderStatusPage, /No se pudo actualizar el estado del pedido/);
@@ -454,7 +454,8 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
   // El registro ofrece un link de impresión "Factura" (gateado por datos fiscales), pero
   // no los viejos controles inline de confirmación de comprobante.
   assert.doesNotMatch(ordersPage, /Remito sin factura|name="confirmationDocument"/);
-  assert.doesNotMatch(ordersPage, /StatCard|getOrdersDashboard|Cargar pedido/);
+  assert.doesNotMatch(ordersPage, /StatCard|getOrdersDashboard/);
+  assert.match(ordersPage, /href="\/orders\/new"[\s\S]*Cargar pedido/);
 
   const homePage = read("apps/web/src/app/page.tsx");
   assert.match(homePage, /listTasks/);
@@ -716,7 +717,7 @@ test("Escritorio is listed first in the Inicio menu and links to the home page",
   assert.match(navigation, /href: "\/",\s*label: "Escritorio",\s*active: "home",/);
   assert.match(
     navigation,
-    /label: "Inicio"[\s\S]*groups: \[[\s\S]*groupByLabel\("Escritorio"\)[\s\S]*groupByLabel\("LA TIRRA ia\.01"\)[\s\S]*groupByLabel\("Calendario"\)[\s\S]*groupByLabel\("Mensajes"\)[\s\S]*groupByLabel\("Banco"\)[\s\S]*\]/,
+    /label: "Inicio"[\s\S]*groups: \[[\s\S]*groupByLabel\("Escritorio"\)[\s\S]*groupByLabel\("LA TIRRA ia\.01"\)[\s\S]*groupByLabel\("Calendario"\)[\s\S]*groupByLabel\("Banco"\)[\s\S]*\]/,
   );
 });
 
@@ -808,30 +809,33 @@ test("form controls tolerate browser extension attributes during hydration", () 
   }
 });
 
-test("Escritorio previews up to 5 unread messages alongside pending tasks", () => {
+test("Mensajería interna queda retirada de la experiencia visible", () => {
   const home = read("apps/web/src/app/page.tsx");
-  assert.match(home, /listMessageCenter/);
-  assert.match(home, /unreadMessages/);
-  assert.match(home, /\.filter\(\(message\) => !message\.read\)/);
-  assert.match(home, /\.slice\(0, 5\)/);
-  assert.match(home, /Mensajes sin leer/);
-  assert.match(home, /href=\{`\/messages\?message=\$\{message\.id\}`\}/);
-  // El inbox del Escritorio se organiza en pestañas (Para vos / Delegadas / Mensajes / Pizarrón).
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  const modulePage = read("apps/web/src/components/module-page.tsx");
+  const presence = read("apps/web/src/components/presence-indicator.tsx");
+  assert.doesNotMatch(home, /listMessageCenter|Mensajes sin leer|href="\/messages"|label: "Mensajes"/);
+  assert.doesNotMatch(navigation, /href: "\/messages"|label: "Mensajes"|badge: "messages"/);
+  assert.doesNotMatch(modulePage, /MessageNotifier|MessageNotifications/);
+  assert.doesNotMatch(presence, /href=\{`\/messages/);
   assert.match(home, /InicioTabs/);
   assert.match(home, /label: "Delegadas"/);
-  assert.match(home, /label: "Mensajes"/);
+  assert.match(home, /label="Notas en pizarrón"/);
   assert.match(home, /Delegada a \$\{task\.assignedTo\}/);
 });
 
-test("Mensajes is a single navigation entry without obsolete inbox or sent menus", () => {
+test("Pedidos concentra carga y registro en un único módulo visible", () => {
   const navigation = read("apps/web/src/lib/navigation.ts");
-  assert.match(
-    navigation,
-    /href: "\/messages",\s*label: "Mensajes",\s*active: "messages",\s*badge: "messages"/,
-  );
-  assert.doesNotMatch(navigation, /label: "Recibidos"/);
-  assert.doesNotMatch(navigation, /label: "Enviados"/);
-  assert.doesNotMatch(navigation, /messages\?box=/);
+  const orders = read("apps/web/src/app/orders/page.tsx");
+  const newOrder = read("apps/web/src/app/orders/new/page.tsx");
+  assert.match(navigation, /href: "\/orders",\s*label: "Pedidos",\s*active: "orders"/);
+  assert.doesNotMatch(navigation, /label: "Cargar pedido"|label: "Registro de pedidos"/);
+  assert.match(orders, /href="\/orders\/new"/);
+  assert.match(orders, /aria-label="Vistas de pedidos"/);
+  assert.match(orders, />\s*Registro\s*</);
+  assert.match(orders, />\s*Pendientes\s*</);
+  assert.match(orders, />\s*Entregados\s*</);
+  assert.match(newOrder, /href="\/orders"[^>]*>\s*Registro de pedidos/);
 });
 
 test("desktop sidebar contains wheel scrolling without moving the page", () => {

@@ -43,7 +43,8 @@ export default async function NewOrderPage({ searchParams }: NewOrderPageProps) 
         title="Cargar pedido"
       >
         <div className="grid gap-4">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <ButtonLink href="/orders" size="sm" variant="outline">Registro de pedidos</ButtonLink>
             <ButtonLink href="/orders/new" size="sm" variant="secondary">Pedido / venta</ButtonLink>
             <ButtonLink href="/orders/new?tipo=nota_credito" size="sm" variant={adjustmentClass === "NC" ? "primary" : "secondary"}>Nota de credito / devolucion</ButtonLink>
             <ButtonLink href="/orders/new?tipo=nota_debito" size="sm" variant={adjustmentClass === "ND" ? "primary" : "secondary"}>Nota de debito / agregado</ButtonLink>
@@ -74,7 +75,8 @@ export default async function NewOrderPage({ searchParams }: NewOrderPageProps) 
       title="Cargar pedido"
     >
       <div className="grid gap-4">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ButtonLink href="/orders" size="sm" variant="outline">Registro de pedidos</ButtonLink>
           <ButtonLink href="/orders/new" size="sm">Pedido / venta</ButtonLink>
           {canOperateSales ? (
             <>

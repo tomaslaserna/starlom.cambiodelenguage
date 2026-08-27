@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { cn } from "@/components/ui";
 import type { OnlineUser, PresenceSnapshot } from "@/lib/presence";
 
@@ -126,15 +125,6 @@ export function PresenceIndicator({ compact = false }: { compact?: boolean }) {
                     {user.isSelf ? <span className="font-medium text-[color:var(--muted)]"> (vos)</span> : null}
                   </span>
                 </span>
-                {user.isSelf ? null : (
-                  <Link
-                    className="shrink-0 rounded-md bg-[#eaf2ff] px-2.5 py-1 text-xs font-bold text-[#2563eb] hover:bg-[#dbe8ff]"
-                    href={`/messages?contact=${encodeURIComponent(user.username)}`}
-                    onClick={() => setOpen(false)}
-                  >
-                    Mensaje
-                  </Link>
-                )}
               </li>
             ))}
           </ul>
