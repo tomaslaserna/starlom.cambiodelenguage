@@ -348,6 +348,39 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
   };
 }
 
+export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
+  const result = await queryWithCompanyContext<{
+    id: string;
+    code: string;
+    category: string | null;
+    supplier: string | null;
+    name: string;
+    image_path: string | null;
+  }>(
+    companyId,
+    `SELECT p.id::text AS id,
+            COALESCE(p.sku, p.category_code, '') AS code,
+            p.category,
+            s.display_name AS supplier,
+            p.name,
+            p.image_path
+       FROM products p
+       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+      WHERE p.empresa_id = $1 AND p.active = true
+      ORDER BY p.name ASC, p.id ASC`,
+    [companyId],
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    code: row.code,
+    category: row.category ?? "",
+    supplier: row.supplier ?? "",
+    name: row.name,
+    imageUrl: row.image_path ? publicProductImageUrl(row.image_path) : null,
+  }));
+}
+
 export async function listProducts(input: ListInput = {}): Promise<ProductsResult> {
   const companyId = input.companyId ?? DEFAULT_COMPANY_ID;
   const query = input.query?.trim() ?? "";

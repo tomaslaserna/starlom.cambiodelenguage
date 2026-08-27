@@ -1,21 +1,14 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { listSalePrices } from "@/lib/catalog";
+import { listStorefrontProducts } from "@/lib/catalog";
 import { Storefront } from "./storefront";
 
 export const metadata: Metadata = { title: "Tienda | Starlim", description: "Armá tu pedido de productos Starlim. Un comercial te enviará la cotización." };
 export const dynamic = "force-dynamic";
 
 export default async function StorePage() {
-  const firstPage = await listSalePrices({ companyId: 1, page: "1", pageSize: "100" });
-  const remainingPages = await Promise.all(
-    Array.from({ length: Math.max(0, firstPage.meta.totalPages - 1) }, (_, index) =>
-      listSalePrices({ companyId: 1, page: String(index + 2), pageSize: "100" }),
-    ),
-  );
-  const products = [firstPage, ...remainingPages]
-    .flatMap((page) => page.data)
+  const products = (await listStorefrontProducts(1))
     .map(({ id, name, code, category, supplier, imageUrl }) => ({ id, name, code, category, brand: supplier, imageUrl }));
   return <main className="min-h-screen bg-[#f4f8fc] text-[#172033]">
     <header className="sticky top-0 z-30 border-b border-[#dbe5f1] bg-white/95 px-4 py-3 shadow-sm backdrop-blur sm:px-8"><div className="mx-auto flex max-w-[1380px] items-center justify-between gap-4"><Link href="/login"><Image alt="Starlim" className="h-auto w-[145px]" height={66} priority src="/starlim-logo.png" width={145} /></Link><Link className="rounded-[10px] border border-[#cbd8e8] px-4 py-2 text-sm font-bold text-[#315170] hover:bg-[#f4f8fc]" href="/login">Volver</Link></div></header>
