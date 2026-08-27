@@ -349,12 +349,17 @@ export function productCreateInputFromBody(body: RequestBody) {
   if (!code) throw new ApiError(400, "Debes seleccionar una categoria de precio");
   if (cost <= 0) throw new ApiError(400, "El costo debe ser mayor a 0");
   const stock = Math.max(0, Math.trunc(numberField(body, "stock", 0)));
+  const presentationUnits = Math.trunc(numberField(body, "presentationUnits", 1));
+  if (presentationUnits < 1 || presentationUnits > 9999) {
+    throw new ApiError(400, "La presentacion debe tener entre 1 y 9999 unidades");
+  }
   return {
     name,
     code,
     sku,
     cost,
     stock,
+    presentationUnits,
     imagePath: textField(body, "imagePath"),
     provider: textField(body, "provider") || textField(body, "proveedor"),
   };
@@ -396,9 +401,9 @@ export async function createCatalogProduct(
     const created = await client.query<{ id: string }>(
       `
         INSERT INTO products (
-          category, category_code, sku, supplier_id, name, cost, image_path, empresa_id
+          category, category_code, sku, supplier_id, name, cost, image_path, presentation_units, empresa_id
         )
-        VALUES ($1, $2, $3, $4::uuid, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4::uuid, $5, $6, $7, $8, $9)
         RETURNING id::text AS id
       `,
       [
@@ -409,6 +414,7 @@ export async function createCatalogProduct(
         input.name,
         input.cost,
         imagePath,
+        input.presentationUnits,
         session.companyId,
       ],
     );

@@ -43,6 +43,7 @@ export type Product = {
   stockReal: number;
   reserved: number;
   available: number;
+  presentationUnits: number;
   prices: ProductPrice[];
 };
 
@@ -54,6 +55,7 @@ export type ProductSalePrice = {
   name: string;
   cost: number;
   imageUrl: string | null;
+  presentationUnits: number;
   prices: Record<string, number>;
 };
 
@@ -279,6 +281,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
     name: string;
     cost: string | null;
     image_path: string | null;
+    presentation_units: number;
     list_prices: Record<string, string | number> | null;
   }>(
     companyId,
@@ -290,6 +293,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
              p.name,
              p.cost,
              p.image_path,
+             p.presentation_units,
              COALESCE(price_map.list_prices, '{}'::jsonb) AS list_prices
       FROM products p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
@@ -333,6 +337,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
       name: row.name,
       cost: Number(row.cost ?? 0),
       imageUrl: row.image_path ? publicProductImageUrl(row.image_path) : null,
+      presentationUnits: Number(row.presentation_units ?? 1),
       prices: Object.fromEntries(
         Object.entries(row.list_prices ?? {}).map(([name, value]) => [name, Number(value)]),
       ),
@@ -427,6 +432,7 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
     stock_real: string;
     reserved: string;
     available: string;
+    presentation_units: number;
     list_prices: unknown;
     fallback_price: string;
   }>(
@@ -439,6 +445,7 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
         s.display_name AS supplier,
         p.name,
         p.cost,
+        p.presentation_units,
         COALESCE(stock.stock_real, 0)::text AS stock_real,
         0::text AS reserved,
         COALESCE(stock.stock_real, 0)::text AS available,
@@ -502,6 +509,7 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
       stockReal: Number(row.stock_real),
       reserved: Number(row.reserved),
       available: Number(row.available),
+      presentationUnits: Number(row.presentation_units ?? 1),
       prices: mapProductPrices(row.list_prices, row.fallback_price, Number(row.cost ?? 0)),
     })),
     meta: {
@@ -514,4 +522,14 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
     },
     stockTotals,
   };
+}
+
+export async function updateProductPresentation(companyId: number, productId: string, presentationUnits: number) {
+  const result = await queryWithCompanyContext<{ id: string }>(
+    companyId,
+    `UPDATE products SET presentation_units = $3, updated_at = now()
+      WHERE empresa_id = $1 AND id = $2::uuid RETURNING id::text AS id`,
+    [companyId, productId, presentationUnits],
+  );
+  if (!result.rows[0]) throw new Error("Producto no encontrado");
 }

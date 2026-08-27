@@ -17,7 +17,8 @@ import {
   Select,
 } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { DEFAULT_PRICE_LIST_NAME, lineSubtotal, priceForList, resolvePriceListName } from "@/lib/order-pricing";
+import { DEFAULT_PRICE_LIST_NAME, priceForList, resolvePriceListName } from "@/lib/order-pricing";
+import { presentationPriceForLine, presentationSuggestion } from "@/lib/presentation-pricing";
 import { offerLineDiscount } from "@/lib/offer-status";
 import type { PriceOffer } from "@/lib/price-offers";
 import { localDateIso } from "@/lib/timezone";
@@ -124,7 +125,7 @@ export function OrderEntryFields({
       products.map((product) => ({
         value: product.id,
         label: product.name,
-        description: `${product.code || "Sin codigo"} - Disponible: ${formatNumber(product.available)} - Precio neto: ${formatCurrency(priceForList(product.prices, activePriceList))}`,
+        description: `${product.code || "Sin codigo"} - Presentación: ${product.presentationUnits} u. - Disponible: ${formatNumber(product.available)} - Precio neto: ${formatCurrency(priceForList(product.prices, activePriceList))}`,
         searchText: product.code,
       })),
     [activePriceList, products],
@@ -136,14 +137,15 @@ export function OrderEntryFields({
       if (!product) return null;
       const quantity = Math.max(0, Math.trunc(numericInput(line.quantity, 0)));
       const discount = Math.min(100, Math.max(0, numericInput(line.discount, 0)));
-      const unitPrice = priceForList(product.prices, activePriceList);
+      const pricing = presentationPriceForLine({ prices: product.prices, priceListName: activePriceList, presentationUnits: product.presentationUnits, quantity, discount });
       return {
         ...line,
         product,
         quantity,
         discount,
-        unitPrice,
-        subtotal: lineSubtotal(unitPrice, quantity, discount),
+        unitPrice: pricing.effectiveUnitPrice,
+        subtotal: pricing.subtotal,
+        presentationPricing: pricing,
       };
     })
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
@@ -158,11 +160,16 @@ export function OrderEntryFields({
       unitPrice: line.unitPrice,
       subtotal: line.subtotal,
     }));
+  const pricingSuggestions = calculatedLines.flatMap((line) => {
+    const suggestion = presentationSuggestion(line.product.name, line.presentationPricing);
+    return suggestion ? [suggestion] : [];
+  });
   const draftProduct = productMap.get(draftLine.productId) ?? null;
   const draftQuantity = Math.max(0, Math.trunc(numericInput(draftLine.quantity, 0)));
   const draftDiscount = Math.min(100, Math.max(0, numericInput(draftLine.discount, 0)));
-  const draftUnitPrice = draftProduct ? priceForList(draftProduct.prices, activePriceList) : 0;
-  const draftSubtotal = draftProduct ? lineSubtotal(draftUnitPrice, draftQuantity, draftDiscount) : 0;
+  const draftPricing = draftProduct ? presentationPriceForLine({ prices: draftProduct.prices, priceListName: activePriceList, presentationUnits: draftProduct.presentationUnits, quantity: draftQuantity, discount: draftDiscount }) : null;
+  const draftUnitPrice = draftPricing?.effectiveUnitPrice ?? 0;
+  const draftSubtotal = draftPricing?.subtotal ?? 0;
   const draftHasPrice = draftUnitPrice > 0;
   const missingDraftPrice = Boolean(draftProduct && !draftHasPrice);
   const canAddLine = Boolean(selectedClient && draftProduct && draftQuantity > 0 && draftHasPrice);
@@ -387,6 +394,7 @@ export function OrderEntryFields({
             </div>
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-[color:var(--muted)]">
               <span>Disponible: {draftProduct ? formatNumber(draftProduct.available) : "-"}</span>
+              <span>Presentación: {draftProduct ? `${draftProduct.presentationUnits} u.` : "-"}</span>
               <span>Lista: {activePriceList}</span>
               <span>Enter en cantidad o descuento agrega el producto.</span>
             </div>
@@ -452,8 +460,13 @@ export function OrderEntryFields({
                       <DataTableCell>
                         <div className="max-w-[360px] truncate font-semibold">{line.product.name}</div>
                         <div className="text-xs text-[color:var(--muted)]">
-                          {line.product.code || "-"} - Disp. {formatNumber(line.product.available)}
+                          {line.product.code || "-"} - Presentación {line.product.presentationUnits} u. - Disp. {formatNumber(line.product.available)}
                         </div>
+                        {line.presentationPricing.appliesImprovedPrice ? (
+                          <div className="mt-1 text-xs font-semibold text-emerald-700">
+                            {line.presentationPricing.improvedQuantity} u. a L1{line.presentationPricing.regularQuantity > 0 ? ` + ${line.presentationPricing.regularQuantity} u. a L2` : ""}
+                          </div>
+                        ) : null}
                       </DataTableCell>
                       <DataTableCell align="right">
                         <Input
@@ -558,6 +571,7 @@ export function OrderEntryFields({
         ready={canSubmit}
         ivaRate={vatRate}
         desiredDocument={desiredDocument}
+        pricingSuggestions={pricingSuggestions}
       />
 
       <Button disabled={!canSubmit} type="submit">

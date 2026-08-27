@@ -11,6 +11,7 @@ import {
   type PriceListOption,
   type ProductPriceMap,
 } from "@/lib/order-pricing";
+import { presentationPriceForLine } from "@/lib/presentation-pricing";
 import { parsePagination } from "@/lib/pagination";
 import { dynamicPriceSqlExpression, productMarginCodeExpression } from "@/lib/product-pricing-sql";
 import { listPriceLists } from "@/lib/pricing";
@@ -126,6 +127,7 @@ export type OrderFormProduct = {
   code: string;
   name: string;
   available: number;
+  presentationUnits: number;
   prices: ProductPriceMap;
 };
 
@@ -664,6 +666,7 @@ async function resolveBasicOrderDetail(
   const discounts = input.lines.map((line) => line.discount);
   const sortOrders = input.lines.map((_, index) => index);
   const unitPriceExpression = dynamicPriceSqlExpression(priceListKey);
+  const improvedUnitPriceExpression = dynamicPriceSqlExpression("1", "l1_margin");
 
   const products = await client.query<{
     product_id: string;
@@ -671,6 +674,8 @@ async function resolveBasicOrderDetail(
     quantity: string;
     discount: string;
     unit_price: string;
+    improved_unit_price: string;
+    presentation_units: number;
     sort_order: number;
   }>(
     `
@@ -684,6 +689,8 @@ async function resolveBasicOrderDetail(
              request.quantity::text,
              request.discount::text,
              COALESCE(NULLIF(${unitPriceExpression}, 0), p.sale_price, p.cost, 0)::text AS unit_price,
+             COALESCE(NULLIF(${improvedUnitPriceExpression}, 0), p.sale_price, p.cost, 0)::text AS improved_unit_price,
+             p.presentation_units,
              request.sort_order
       FROM requested request
       JOIN products p ON p.id = request.product_id AND p.empresa_id = $5 AND p.active = true
@@ -698,6 +705,19 @@ async function resolveBasicOrderDetail(
         ON selected_margin.empresa_id = p.empresa_id
        AND selected_margin.lista_id = selected_list.id
        AND selected_margin.codigo = ${productMarginCodeExpression("p")}
+      LEFT JOIN LATERAL (
+        SELECT lp.id
+        FROM listas_precio lp
+        WHERE lp.empresa_id = p.empresa_id
+          AND lp.activa = 1
+          AND (lp.nombre ILIKE 'L1%' OR lp.nombre = '1')
+        ORDER BY CASE WHEN lp.nombre ILIKE 'L1%' THEN 0 ELSE 1 END, lp.orden ASC
+        LIMIT 1
+      ) l1_list ON true
+      LEFT JOIN margenes_listas l1_margin
+        ON l1_margin.empresa_id = p.empresa_id
+       AND l1_margin.lista_id = l1_list.id
+       AND l1_margin.codigo = ${productMarginCodeExpression("p")}
       ORDER BY request.sort_order ASC
     `,
     [productIds, quantities, discounts, sortOrders, companyId, priceListName],
@@ -710,7 +730,15 @@ async function resolveBasicOrderDetail(
   const detail = products.rows.map<ResolvedOrderDetailLine>((product) => {
     const quantity = Number(product.quantity);
     const discount = Number(product.discount);
-    const unitPrice = money(Number(product.unit_price));
+    const regularUnitPrice = money(Number(product.unit_price));
+    const pricing = presentationPriceForLine({
+      prices: { [priceListName]: regularUnitPrice, "L1 - suave": Number(product.improved_unit_price) },
+      priceListName,
+      presentationUnits: product.presentation_units,
+      quantity,
+      discount,
+    });
+    const unitPrice = pricing.effectiveUnitPrice;
     if (unitPrice <= 0) {
       throw new ApiError(400, `El producto ${product.description} no tiene precio para la lista del cliente`);
     }
@@ -720,7 +748,7 @@ async function resolveBasicOrderDetail(
       quantity,
       discount,
       unitPrice,
-      subtotal: lineSubtotal(unitPrice, quantity, discount),
+      subtotal: pricing.subtotal,
     };
   });
 
@@ -815,6 +843,7 @@ export async function getOrderFormData(
     code: string;
     name: string;
     available: string;
+    presentation_units: number;
     list_prices: Record<string, string | number> | null;
     fallback_price: string;
   }>(
@@ -823,6 +852,7 @@ export async function getOrderFormData(
       SELECT p.id::text AS id,
              COALESCE(p.sku, p.category_code, '') AS code,
              p.name,
+             p.presentation_units,
              GREATEST(COALESCE(stock.stock_real, 0) - COALESCE(reserved.reserved, 0), 0)::text AS available,
              COALESCE(price_map.list_prices, '{}'::jsonb) AS list_prices,
              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0), p.sale_price, p.cost, 0)::text AS fallback_price
@@ -898,6 +928,7 @@ export async function getOrderFormData(
       code: row.code,
       name: row.name,
       available: Number(row.available),
+      presentationUnits: Number(row.presentation_units ?? 1),
       prices: Object.fromEntries(
         Object.entries(row.list_prices ?? { General: row.fallback_price }).map(([name, value]) => [
           name,

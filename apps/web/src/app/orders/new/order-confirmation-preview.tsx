@@ -25,6 +25,7 @@ type OrderConfirmationPreviewProps = {
   offersRemaining: number;
   ivaRate: IvaRate;
   desiredDocument: SaleOrderDocument | null;
+  pricingSuggestions: string[];
 };
 
 export function OrderConfirmationPreview({
@@ -40,6 +41,7 @@ export function OrderConfirmationPreview({
   offersRemaining,
   ivaRate,
   desiredDocument,
+  pricingSuggestions,
 }: OrderConfirmationPreviewProps) {
   const [offerText, setOfferText] = useState("");
   const [showPrices, setShowPrices] = useState(false);
@@ -79,6 +81,14 @@ export function OrderConfirmationPreview({
   return (
     <div className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-white p-4">
       <h3 className="erp-text-body font-black">Confirmación para WhatsApp</h3>
+      {pricingSuggestions.length > 0 ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950" role="status">
+          <div className="font-black">Oportunidad de mejor precio</div>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            {pricingSuggestions.map((suggestion) => <li key={suggestion}>{suggestion}</li>)}
+          </ul>
+        </div>
+      ) : null}
 
       {offersEnabled ? (
         <>

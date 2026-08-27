@@ -21,6 +21,7 @@ import { formatCurrency, formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { ProductPriceDetails } from "@/app/products/product-price-details";
 import { sessionCanReadProducts } from "@/lib/route-auth";
+import { updateProductPresentationAction } from "@/app/products/actions";
 
 type ProductsPageProps = {
   searchParams: Promise<{
@@ -267,7 +268,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
           <DataTable
             caption="Listado paginado de productos con cantidad, costo, precios y márgenes"
             className="rounded-none border-0 shadow-none"
-            minWidth="1080px"
+            minWidth="1180px"
             tableLabel="Productos"
           >
             <DataTableHeader className="bg-[#f8fafc] text-[#58677d]">
@@ -277,6 +278,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                 <DataTableHead className="px-4 py-2.5">Categoría</DataTableHead>
                 <DataTableHead className="px-4 py-2.5">Proveedor</DataTableHead>
                 <DataTableHead align="center" className="px-4 py-2.5">Cantidad</DataTableHead>
+                <DataTableHead align="center" className="px-4 py-2.5">Presentación</DataTableHead>
                 <DataTableHead align="right" className="px-4 py-2.5">Costo</DataTableHead>
                 <DataTableHead align="center" className="px-4 py-2.5">Precios y margen</DataTableHead>
               </DataTableRow>
@@ -284,7 +286,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={7}>
+                  <DataTableCell colSpan={8}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -336,6 +338,13 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                       >
                         {formatNumber(product.stockReal)}
                       </span>
+                    </DataTableCell>
+                    <DataTableCell align="center" className="px-4 py-2">
+                      <form action={updateProductPresentationAction} className="flex items-center justify-center gap-1">
+                        <input name="productId" type="hidden" value={product.id} />
+                        <Input aria-label={`Presentación de ${product.name}`} className="h-8 w-16 px-2 text-center" defaultValue={product.presentationUnits} max="9999" min="1" name="presentationUnits" required step="1" type="number" />
+                        <Button className="h-8 min-h-8 px-2 text-xs" type="submit" variant="secondary">Guardar</Button>
+                      </form>
                     </DataTableCell>
                     <DataTableCell align="right" className="whitespace-nowrap px-4 py-2 font-mono text-xs font-semibold">
                       {formatCurrency(product.cost)}

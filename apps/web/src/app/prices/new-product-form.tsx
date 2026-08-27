@@ -68,6 +68,13 @@ export function NewProductForm({
       <Field htmlFor="product-stock" label="Stock inicial" description="Primera carga de stock del producto. Puede ser 0.">
         <Input defaultValue="0" id="product-stock" inputMode="numeric" min="0" name="stock" step="1" type="number" />
       </Field>
+      <Field
+        htmlFor="product-presentation"
+        label="Presentación"
+        description="Unidades por bulto o paquete. Ej.: 12 para una rejilla que viene de a 12."
+      >
+        <Input defaultValue="1" id="product-presentation" inputMode="numeric" max="9999" min="1" name="presentationUnits" required step="1" type="number" />
+      </Field>
       <Field htmlFor="product-provider" label="Proveedor">
         <Input id="product-provider" maxLength={255} name="provider" />
       </Field>

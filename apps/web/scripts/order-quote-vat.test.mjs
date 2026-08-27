@@ -34,12 +34,16 @@ const requestBody = loadTypeScriptModule("../src/lib/request-body.ts", {
   "@/lib/api-response": { ApiError },
 });
 const orderPricing = loadTypeScriptModule("../src/lib/order-pricing.ts");
+const presentationPricing = loadTypeScriptModule("../src/lib/presentation-pricing.ts", {
+  "@/lib/order-pricing": orderPricing,
+});
 const orderStatus = loadTypeScriptModule("../src/lib/order-status.ts");
 const commonAliases = {
   "@/lib/api-response": { ApiError },
   "@/lib/client-reactivation": {},
   "@/lib/db": {},
   "@/lib/order-pricing": orderPricing,
+  "@/lib/presentation-pricing": presentationPricing,
   "@/lib/product-pricing-sql": {},
   "@/lib/receipt-types": receiptTypes,
   "@/lib/request-body": requestBody,
