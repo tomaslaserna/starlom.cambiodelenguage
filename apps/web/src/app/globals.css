@@ -173,6 +173,28 @@ body::before {
   }
 }
 
+@keyframes storefront-brand-drift {
+  0%,
+  100% {
+    transform: rotate(90deg) translate3d(-2%, 1%, 0) scale(1.04);
+  }
+
+  50% {
+    transform: rotate(90deg) translate3d(2%, -2%, 0) scale(1.08);
+  }
+}
+
+.storefront-brand-float {
+  animation: storefront-brand-drift 13s ease-in-out infinite;
+  filter: blur(1.5px) saturate(0.7);
+  opacity: 0.16;
+  right: -5rem;
+  top: -19rem;
+  transform-origin: center;
+  width: min(62vw, 52rem);
+  will-change: transform;
+}
+
 .auth-floating-products {
   animation: auth-product-float 9s ease-in-out infinite;
   filter: saturate(0.92) contrast(1.02);
@@ -196,6 +218,20 @@ body::before {
   .auth-floating-products {
     animation: none;
     transform: scale(1.06);
+  }
+
+  .storefront-brand-float {
+    animation: none;
+    transform: rotate(90deg) scale(1.04);
+  }
+}
+
+@media (max-width: 639px) {
+  .storefront-brand-float {
+    opacity: 0.12;
+    right: -15rem;
+    top: -10rem;
+    width: 46rem;
   }
 }
 
