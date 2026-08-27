@@ -68,7 +68,9 @@ test("Leads muestra círculos de progreso y conserva el embudo de prospectos", (
   assert.match(activityPanel, /recuperados esta semana/);
   assert.match(leadsPage, /<SalesActivityPanel/);
   assert.match(leadsPage, /<LeadsBoard/);
-  assert.match(leadsPage, /normalizeRole\(session\.role\) !== "vendedor"/);
+  assert.match(leadsPage, /sessionCanUseCrm\(session\)/);
+  assert.match(leadsPage, /isSeller \? getVendorClients/);
+  assert.doesNotMatch(leadsPage, /normalizeRole\(session\.role\) !== "vendedor".*redirect/);
 });
 
 test("el CRM conserva su contexto y el calendario programa contactos de leads", () => {
