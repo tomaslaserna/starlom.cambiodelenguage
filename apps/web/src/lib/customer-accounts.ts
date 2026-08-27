@@ -21,6 +21,7 @@ export type StatementMovement = {
   saleNumber?: string | null;
   deliveryNumber?: number | null;
   hasPricedItems?: boolean;
+  hasFiscalPdf?: boolean;
   internalDocumentId?: string | null;
   internalDocumentNumber?: number | null;
   fiscalDocumentId?: string | null;
@@ -258,6 +259,7 @@ export async function getCustomerStatement(
   const rows = await queryWithCompanyContext<{
     id: string; movement_date: string; description: string; debit: string; credit: string; payment_id: string | null;
     sale_id: string | null; sale_number: string | null; delivery_number: number | null; has_priced_items: boolean;
+    has_fiscal_pdf: boolean;
     internal_document_id: string | null; internal_document_number: number | null;
     fiscal_document_id: string | null; fiscal_document_number: number | null;
   }>(
@@ -280,10 +282,15 @@ export async function getCustomerStatement(
                WHERE si.empresa_id = m.empresa_id AND si.sale_id = m.sale_id
                  AND si.quantity > 0 AND si.unit_price >= 0
              ) AS has_priced_items,
-             internal_note.id::text AS internal_document_id,
-             internal_note.receipt_number::int AS internal_document_number,
-             fiscal_note.id::text AS fiscal_document_id,
-             fiscal_note.fiscal_receipt_number::int AS fiscal_document_number
+             (COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
+               AND COALESCE(s.cae, '') NOT IN ('', 'manual')
+               AND s.fiscal_point_of_sale IS NOT NULL
+               AND s.fiscal_receipt_type IS NOT NULL
+               AND s.fiscal_receipt_number IS NOT NULL) AS has_fiscal_pdf,
+              internal_note.id::text AS internal_document_id,
+              internal_note.receipt_number::int AS internal_document_number,
+              fiscal_note.id::text AS fiscal_document_id,
+              fiscal_note.fiscal_receipt_number::int AS fiscal_document_number
       FROM current_account_movements m
       LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
       LEFT JOIN sales_internal_documents internal_note
@@ -320,6 +327,7 @@ export async function getCustomerStatement(
     saleNumber: row.sale_number,
     deliveryNumber: row.delivery_number === null ? null : Number(row.delivery_number),
     hasPricedItems: row.has_priced_items,
+    hasFiscalPdf: row.has_fiscal_pdf,
     internalDocumentId: row.internal_document_id,
     internalDocumentNumber: row.internal_document_number === null ? null : Number(row.internal_document_number),
     fiscalDocumentId: row.fiscal_document_id,

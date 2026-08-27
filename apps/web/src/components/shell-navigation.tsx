@@ -195,11 +195,11 @@ function NavigationGroupBlock({
     return (
       <Link
         aria-current={groupCurrent ? "page" : undefined}
-        className={navigationRowClass(groupCurrent || activeGroup)}
+        className={navigationRowClass(groupCurrent)}
         href={group.href}
       >
         <span className="min-w-0 flex-1 truncate">{group.label}</span>
-        <Badge active={groupCurrent || activeGroup} value={groupBadge} />
+        <Badge active={groupCurrent} value={groupBadge} />
       </Link>
     );
   }

@@ -160,12 +160,18 @@ test("voidCustomerPayment marca anulado y compensa el credito con un debito", as
   assert.ok(queries.some((q) => /UPDATE sales s/i.test(q.sql) && /collection_status/i.test(q.sql)));
 });
 
-test("el estado de cuenta expone el remito con precios sin fabricar detalle historico", () => {
+test("el estado de cuenta linkea el remito con precios y la factura", () => {
   const page = readFileSync(new URL("../src/app/payments/accounts/[id]/page.tsx", import.meta.url), "utf8");
   assert.match(source, /delivery_documents/);
   assert.match(source, /has_priced_items/);
-  assert.match(page, /Abrir Remito/);
-  assert.match(page, /detalle de productos no disponible en la migraci[oó]n/i);
+  assert.match(source, /has_fiscal_pdf/);
+  // La descripcion "Remito #XXXX" es el unico hipervinculo, y abre el remito con precios.
+  assert.match(page, /remito\?precios=si/);
+  assert.doesNotMatch(page, /Abrir Remito/);
+  assert.doesNotMatch(page, /con productos y precios/);
+  // Ademas, cuando corresponde, se puede ver la factura.
+  assert.match(page, /\/api\/pdfs\/fiscal\/sales\/\$\{line\.saleId\}/);
+  assert.match(page, /Ver factura/);
 });
 
 test("el estado de cuenta muestra pagos registrados pendientes de aplicar", () => {

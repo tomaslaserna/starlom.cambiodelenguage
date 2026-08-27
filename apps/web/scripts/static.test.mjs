@@ -1145,7 +1145,7 @@ test("public store creates a price-free cart and hands it to CRM as a lead plus 
   const route = read("apps/web/src/app/api/storefront/requests/route.ts");
 
   assert.match(login, /href="\/tienda"[^>]*>TIENDA/);
-  assert.match(page, /listSalePrices/);
+  assert.match(page, /listStorefrontProducts/);
   assert.match(client, /Tu carrito/);
   assert.match(client, /\+\{products\.length\} artículos en lista/);
   assert.match(client, /Continuar · \{totalUnits\}/);
