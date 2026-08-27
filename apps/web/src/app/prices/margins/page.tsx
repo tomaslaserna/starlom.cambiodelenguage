@@ -29,13 +29,13 @@ export default async function MarginsPage() {
   return (
     <ModulePage
       active="prices"
-      description="Categorías de margen y su margen base."
+      description="Margen ideal de Lista 2 y variaciones derivadas."
       session={session}
       title="Márgenes"
     >
       <div className="grid gap-4">
         <PageHeader
-          description="Editá el nombre, el margen base y el multiplicador final de cada categoría para cada lista. Solo se puede eliminar una categoría sin productos asociados."
+          description="Definí el multiplicador ideal sobre costo para Lista 2 (ANCLA). Las demás listas se calculan automáticamente como variaciones porcentuales del ancla."
           moduleIntro
           title="Márgenes"
         />
@@ -44,7 +44,7 @@ export default async function MarginsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Nueva categoría de margen</CardTitle>
-              <CardDescription>Código, nombre y margen base (multiplicador sobre el costo).</CardDescription>
+              <CardDescription>Código, nombre y multiplicador ideal de Lista 2 sobre el costo.</CardDescription>
             </CardHeader>
             <CardContent>
               <form action={createMarginAction} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
@@ -54,7 +54,7 @@ export default async function MarginsPage() {
                 <Field htmlFor="margin-name" label="Nombre">
                   <Input id="margin-name" maxLength={100} name="name" placeholder="Ej: Limpieza" required />
                 </Field>
-                <Field htmlFor="margin-base" label="Margen base">
+                <Field htmlFor="margin-base" label="Multiplicador ancla">
                   <Input id="margin-base" inputMode="decimal" name="precio_1" placeholder="Ej: 1.45" required step="0.01" type="number" />
                 </Field>
                 <Button type="submit">Agregar</Button>
@@ -71,24 +71,33 @@ export default async function MarginsPage() {
               <Card key={margin.code}>
                 <CardHeader>
                   <CardTitle>{margin.name}</CardTitle>
-                  <CardDescription>Código de categoría y SKU: {margin.code}</CardDescription>
+                  <CardDescription>Código de categoría y SKU: {margin.code} · Lista 2 es la referencia ideal</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {canEdit ? (
-                    <form action={updateMarginAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <form action={updateMarginAction} className="grid gap-4">
                       <input name="code" type="hidden" value={margin.code} />
-                      <Field htmlFor={`name-${margin.code}`} label="Nombre">
-                        <Input defaultValue={margin.name} id={`name-${margin.code}`} name="name" required />
-                      </Field>
-                      <Field htmlFor={`base-${margin.code}`} label="Margen base">
-                        <Input defaultValue={margin.price1} id={`base-${margin.code}`} min="0.01" name="precio_1" step="0.01" type="number" />
-                      </Field>
-                      {margin.multipliers.map((list) => (
-                        <Field htmlFor={`list-${margin.code}-${list.listId}`} key={list.listId} label={list.listName}>
-                          <Input defaultValue={list.multiplier} id={`list-${margin.code}-${list.listId}`} min="0.01" name={`list_${list.listId}`} step="0.01" type="number" />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field htmlFor={`name-${margin.code}`} label="Nombre">
+                          <Input defaultValue={margin.name} id={`name-${margin.code}`} name="name" required />
                         </Field>
-                      ))}
-                      <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
+                        <Field htmlFor={`base-${margin.code}`} label="Lista 2 · multiplicador ideal" description={`Equivale a ${((1 - 1 / margin.price1) * 100).toFixed(1)}% de margen sobre la venta.`}>
+                          <Input defaultValue={margin.price1} id={`base-${margin.code}`} min="1" name="precio_1" step="0.01" type="number" />
+                        </Field>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                        {margin.multipliers.map((list) => {
+                          const variation = margin.price1 > 0 ? (list.multiplier / margin.price1 - 1) * 100 : 0;
+                          return (
+                            <div className={`rounded-[10px] border p-3 ${list.listName.includes("ANCLA") ? "border-[#2563eb] bg-[#eff6ff]" : "border-[#e2e8f0] bg-[#f8fafc]"}`} key={list.listId}>
+                              <div className="text-xs font-bold text-[#64748b]">{list.listName}</div>
+                              <div className="mt-1 text-lg font-black">× {list.multiplier.toFixed(2)}</div>
+                              <div className="text-xs text-[#64748b]">{variation === 0 ? "ANCLA" : `${variation > 0 ? "+" : ""}${variation.toFixed(0)}% sobre ancla`}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="flex gap-2">
                         <Button type="submit">Guardar cambios</Button>
                         <Button formAction={deleteMarginAction} type="submit" variant="danger">Eliminar categoría</Button>
                       </div>

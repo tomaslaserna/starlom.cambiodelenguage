@@ -10,7 +10,6 @@ import {
   recomputeListMultipliers,
   savePriceListParameters,
   updateMargin,
-  updatePriceListMultiplier,
 } from "@/lib/pricing";
 import { PRODUCTS_CREATE_PERMISSION, requireAdminApiSession, requireApiSession } from "@/lib/route-auth";
 import { stringFieldsFromFormData } from "@/lib/storage";
@@ -62,14 +61,7 @@ export async function updateMarginAction(formData: FormData) {
   const body = stringFieldsFromFormData(formData);
   const code = String(body.code ?? body.codigo ?? "");
   await updateMargin(session.companyId, code, marginInputFromBody(body, true));
-  for (const [key, value] of formData.entries()) {
-    if (!key.startsWith("list_")) continue;
-    const listId = Number(key.slice(5));
-    const multiplier = Number(value);
-    if (Number.isInteger(listId) && listId > 0 && Number.isFinite(multiplier)) {
-      await updatePriceListMultiplier(session.companyId, { code: code.toUpperCase(), listId, multiplier });
-    }
-  }
+  await recomputeListMultipliers(session.companyId);
   revalidatePath("/prices/margins");
   revalidatePath("/prices");
   redirect("/prices/margins?updated=1");
