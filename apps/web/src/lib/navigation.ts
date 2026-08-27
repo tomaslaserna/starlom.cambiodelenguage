@@ -198,12 +198,10 @@ export const navigationGroups: NavigationGroup[] = [
     ],
   },
   {
-    label: "RR.HH",
+    href: "/employees",
+    label: "RR.HH.",
     active: "employees",
-    items: [
-      { href: "/employees", label: "Empleados", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
-      { href: "/employees/vendors", label: "Gestion de vendedores", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
-    ],
+    permission: EMPLOYEES_READ_PERMISSION,
   },
   { href: "/metrics", label: "Metricas", active: "metrics", permission: ADMIN_METRICS_READ_PERMISSION },
   { href: "/rentabilidad", label: "Rentabilidad", active: "admin", permission: ADMIN_METRICS_READ_PERMISSION },
@@ -213,12 +211,6 @@ export const navigationGroups: NavigationGroup[] = [
     active: "admin",
     badge: "approvals",
     permission: COLLECTIONS_APPROVE_PERMISSION,
-  },
-  {
-    href: "/admin/audit",
-    label: "Auditoria",
-    active: "audit",
-    permission: ADMIN_MOVEMENTS_READ_PERMISSION,
   },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   { href: "/bank", label: "Banco", active: "bank" },
@@ -285,12 +277,15 @@ export const navigationSections: NavigationSection[] = [
     icon: "trend",
     groups: [
       groupByLabel("Balance"),
-      groupByLabel("RR.HH"),
       groupByLabel("Metricas"),
       groupByLabel("Rentabilidad"),
       groupByLabel("Solicitudes y aprobaciones"),
-      groupByLabel("Auditoria"),
     ],
+  },
+  {
+    label: "RR.HH.",
+    icon: "trend",
+    groups: [groupByLabel("RR.HH.")],
   },
   {
     label: "Finanzas",

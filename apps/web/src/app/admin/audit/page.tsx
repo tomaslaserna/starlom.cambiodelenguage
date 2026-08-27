@@ -1,4 +1,5 @@
 import { ModulePage } from "@/components/module-page";
+import { HrNavigation } from "@/components/hr-navigation";
 import { PaginationLinks } from "@/components/pagination-links";
 import {
   Button,
@@ -12,6 +13,7 @@ import {
   DataTableRow,
   EmptyState,
   Field,
+  PageHeader,
   Select,
   Toolbar,
 } from "@/components/ui";
@@ -19,7 +21,7 @@ import { formatDate } from "@/lib/format";
 import { listAuditActions, listAuditLog } from "@/lib/audit";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
-import { ADMIN_MOVEMENTS_READ_PERMISSION } from "@/lib/route-auth";
+import { ADMIN_MOVEMENTS_READ_PERMISSION, sessionCanReadEmployees } from "@/lib/route-auth";
 
 type AuditPageProps = {
   searchParams: Promise<{
@@ -32,7 +34,7 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [ADMIN_MOVEMENTS_READ_PERMISSION]);
   const params = await searchParams;
-  const [result, actions] = await Promise.all([
+  const [result, actions, canReadEmployees] = await Promise.all([
     listAuditLog({
       companyId: session.companyId,
       action: params.action,
@@ -40,16 +42,25 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
       pageSize: "25",
     }),
     listAuditActions(session.companyId),
+    sessionCanReadEmployees(session),
   ]);
 
   return (
     <ModulePage
-      active="audit"
+      active="employees"
       description="Registro de movimientos de empleados: quien hizo cada accion, cuando y sobre que."
       session={session}
       title="Auditoria"
     >
       <div className="grid gap-5">
+        <PageHeader
+          description="Consulta quién realizó cada movimiento, cuándo y sobre qué registro."
+          eyebrow="Recursos Humanos"
+          title="Auditoría"
+        />
+
+        <HrNavigation active="audit" canAudit canReadEmployees={canReadEmployees} />
+
         <Toolbar ariaLabel="Filtro de auditoria">
           <form
             action="/admin/audit"

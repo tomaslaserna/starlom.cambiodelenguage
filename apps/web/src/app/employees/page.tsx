@@ -1,4 +1,5 @@
 import { ModulePage } from "@/components/module-page";
+import { HrNavigation } from "@/components/hr-navigation";
 import { redirect } from "next/navigation";
 import {
   Button,
@@ -32,7 +33,7 @@ import { PermissionBlocks } from "@/app/employees/permission-blocks";
 import { listEmployeePermissions, listEmployees } from "@/lib/employees";
 import { formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
-import { sessionCanReadEmployees } from "@/lib/route-auth";
+import { ADMIN_MOVEMENTS_READ_PERMISSION, sessionAllows, sessionCanReadEmployees } from "@/lib/route-auth";
 
 type EmployeesPageProps = {
   searchParams: Promise<{
@@ -103,9 +104,10 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
   const params = await searchParams;
   const query = params.q?.trim().toLowerCase() ?? "";
 
-  const [allEmployees, permissions] = await Promise.all([
+  const [allEmployees, permissions, canAudit] = await Promise.all([
     listEmployees(session.companyId),
     listEmployeePermissions(session.companyId),
+    sessionAllows(session, [ADMIN_MOVEMENTS_READ_PERMISSION]),
   ]);
 
   const employees = allEmployees.filter((item) => matchesQuery(item, query));
@@ -127,10 +129,12 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
     >
       <div className="grid gap-5">
         <PageHeader
-          title="Empleados"
-          description="Gestiona el directorio interno, rangos, cargos y permisos disponibles del personal."
-          moduleIntro
+          title="Recursos Humanos"
+          description="Administra el equipo, los accesos, la gestión comercial y la trazabilidad interna desde un único módulo."
+          eyebrow="Módulo unificado"
         />
+
+        <HrNavigation active="employees" canAudit={canAudit} />
 
         {canCreateEmployees ? (
           <Card>

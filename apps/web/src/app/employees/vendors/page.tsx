@@ -1,4 +1,5 @@
 import { ModulePage } from "@/components/module-page";
+import { HrNavigation } from "@/components/hr-navigation";
 import {
   Button,
   Card,
@@ -16,7 +17,7 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { getVendorManagement } from "@/lib/vendors-management";
 import { requireStaffSession } from "@/lib/auth";
-import { sessionCanReadEmployees } from "@/lib/route-auth";
+import { ADMIN_MOVEMENTS_READ_PERMISSION, sessionAllows, sessionCanReadEmployees } from "@/lib/route-auth";
 import { saveVendorCommissionAction, saveVendorGoalAction } from "@/app/employees/vendors/actions";
 import { redirect } from "next/navigation";
 
@@ -24,7 +25,10 @@ export default async function VendorsManagementPage() {
   const session = await requireStaffSession();
   if (!(await sessionCanReadEmployees(session))) redirect("/");
 
-  const data = await getVendorManagement(session.companyId);
+  const [data, canAudit] = await Promise.all([
+    getVendorManagement(session.companyId),
+    sessionAllows(session, [ADMIN_MOVEMENTS_READ_PERMISSION]),
+  ]);
 
   return (
     <ModulePage
@@ -35,9 +39,12 @@ export default async function VendorsManagementPage() {
     >
       <div className="grid gap-5">
         <PageHeader
-          title="Vendedores"
-          description="Gestiona metas comerciales, clientes asignados, presupuestos y tasa de cierre."
+          title="Gestión de vendedores"
+          description="Supervisa metas comerciales, clientes asignados, presupuestos y tasa de cierre."
+          eyebrow="Recursos Humanos"
         />
+
+        <HrNavigation active="vendors" canAudit={canAudit} />
 
         <div className="grid gap-3 md:grid-cols-3">
           <StatCard label="Vendedores" value={data.meta.count} />

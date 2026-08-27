@@ -341,9 +341,14 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
   assert.match(read("apps/web/src/app/balance/dividends/page.tsx"), /redirect\("\/balance\/remunerations"\)/);
   assert.match(
     navigation,
-    /label: "Administracion"[\s\S]*groupByLabel\("Balance"\)[\s\S]*groupByLabel\("RR\.HH"\)/,
+    /label: "Administracion"[\s\S]*groupByLabel\("Balance"\)/,
     "Balance must live under the Administracion menu section",
   );
+  const administrationStart = navigation.indexOf('label: "Administracion"');
+  const hrSectionStart = navigation.indexOf('label: "RR.HH."', administrationStart);
+  const administrationSection = navigation.slice(administrationStart, hrSectionStart);
+  assert.doesNotMatch(administrationSection, /groupByLabel\("RR\.HH\."\)/, "RR.HH. must no longer live under Administracion");
+  assert.match(navigation, /label: "RR\.HH\."[\s\S]*groups: \[groupByLabel\("RR\.HH\."\)\]/);
   assert.doesNotMatch(
     navigation,
     /label: "Finanzas"[\s\S]*groupByLabel\("Balance"\)/,
@@ -1501,8 +1506,12 @@ test("Auditoria screen surfaces the operational audit log", () => {
   assert.match(page, /ADMIN_MOVEMENTS_READ_PERMISSION/);
 
   const navigation = read("apps/web/src/lib/navigation.ts");
-  assert.match(navigation, /href: "\/admin\/audit",\s*label: "Auditoria"/);
-  assert.match(navigation, /groupByLabel\("Auditoria"\)/);
+  assert.doesNotMatch(navigation, /href: "\/admin\/audit",\s*label: "Auditoria"/);
+  const hrNavigation = read("apps/web/src/components/hr-navigation.tsx");
+  assert.match(hrNavigation, /href="\/admin\/audit"/);
+  assert.match(hrNavigation, /Empleados/);
+  assert.match(hrNavigation, /Gestión de vendedores/);
+  assert.match(page, /<HrNavigation active="audit"/);
 });
 
 test("Recompra MRP groups by supplier and preserves both purchase request paths", () => {
