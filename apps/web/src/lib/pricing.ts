@@ -148,6 +148,7 @@ export async function listMargins(companyId: number) {
       ORDER BY codigo ASC
     `,
     [companyId],
+    { cache: false },
   );
 
   const multiplierRows = await queryWithCompanyContext<{
@@ -166,6 +167,7 @@ export async function listMargins(companyId: number) {
       ORDER BY ml.codigo ASC, lp.orden ASC, lp.nombre ASC
     `,
     [companyId],
+    { cache: false },
   );
 
   const multiplierMap = new Map<string, { listId: number; listName: string; multiplier: number }[]>();

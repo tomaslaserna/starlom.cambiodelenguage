@@ -23,6 +23,8 @@ import { isAdminRole, requireStaffSession } from "@/lib/auth";
 import { sessionCanReadProducts } from "@/lib/route-auth";
 import { createMarginAction, deleteMarginAction, updateMarginAction } from "@/app/prices/actions";
 
+export const dynamic = "force-dynamic";
+
 export default async function MarginsPage() {
   const session = await requireStaffSession();
   if (!(await sessionCanReadProducts(session))) redirect("/");
