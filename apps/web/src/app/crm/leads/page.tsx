@@ -20,13 +20,14 @@ import { getSalesActivityDashboard } from "@/lib/sales-activity";
 
 export default async function CrmLeadsPage({ searchParams }: { searchParams: Promise<{ nuevo?: string }> }) {
   const session = await requireStaffSession();
-  if (normalizeRole(session.role) !== "vendedor" || !(await sessionCanUseCrm(session))) redirect("/");
+  if (!(await sessionCanUseCrm(session))) redirect("/");
+  const isSeller = normalizeRole(session.role) === "vendedor";
   const [leads, clients, leadAgenda] = await Promise.all([
     getVendorLeads(session),
-    getVendorClients(session),
+    isSeller ? getVendorClients(session) : Promise.resolve(null),
     getLeadFollowupAgenda(session),
   ]);
-  const dashboard = await getSalesActivityDashboard(session, clients);
+  const dashboard = clients ? await getSalesActivityDashboard(session, clients) : null;
   const { active, closed, counts } = leads;
   const params = await searchParams;
 
@@ -38,7 +39,7 @@ export default async function CrmLeadsPage({ searchParams }: { searchParams: Pro
       title="CRM · Leads"
     >
       <div className="grid gap-7">
-        <SalesActivityPanel dashboard={dashboard} recordAction={recordSalesActivityAction} />
+        {dashboard ? <SalesActivityPanel dashboard={dashboard} recordAction={recordSalesActivityAction} /> : null}
         <LeadFollowupPanel agenda={leadAgenda} recordAction={recordLeadContactAction} />
         <div>
           <h2 className="erp-text-title-md font-black">Prospectos nuevos</h2>
