@@ -55,6 +55,8 @@ function logSupervisorStreamError(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  const requestId = randomUUID();
+  const startedAt = Date.now();
   try {
     const session = await requireApiSession();
     try {
@@ -68,6 +70,7 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null);
     const uiMessages = parseSupervisorRequestBody(body) as StarlimSupervisorMessage[];
+    console.info(JSON.stringify({ level: "info", event: "Supervisor request started", requestId, messageCount: uiMessages.length }));
     await saveSupervisorChatMemory(session, uiMessages);
     const summary = await getSupervisorLandingSummary(session);
     return createAgentUIStreamResponse({
@@ -76,10 +79,11 @@ export async function POST(request: Request) {
       originalMessages: uiMessages,
       generateMessageId: randomUUID,
       abortSignal: request.signal,
-      timeout: { totalMs: 45_000 },
+      timeout: { totalMs: 28_000 },
       sendSources: true,
       onEnd: async ({ messages }) => {
         await saveSupervisorChatMemory(session, messages);
+        console.info(JSON.stringify({ level: "info", event: "Supervisor request completed", requestId, durationMs: Date.now() - startedAt }));
       },
       onError: logSupervisorStreamError,
     });

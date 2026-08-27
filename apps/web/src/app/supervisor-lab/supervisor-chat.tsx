@@ -11,6 +11,9 @@ function toolLabel(toolName: string) {
   return {
     searchCustomers: "Buscando clientes",
     getCustomerHistory: "Consultando historial",
+    getCustomerAccountBalance: "Consultando cuenta corriente",
+    getCustomerInvoices: "Buscando facturas",
+    getInvoiceByNumber: "Buscando comprobante fiscal",
     getCustomerProductPattern: "Analizando patrón de compra",
     getOperationalSnapshot: "Revisando pendientes",
     getWorkPriorities: "Preparando tus prioridades",
@@ -24,7 +27,12 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
   const [clearingHistory, setClearingHistory] = useState(false);
   const [memoryError, setMemoryError] = useState("");
   const transport = useMemo(
-    () => new DefaultChatTransport<StarlimSupervisorMessage>({ api: "/api/supervisor-lab/chat" }),
+    () => new DefaultChatTransport<StarlimSupervisorMessage>({
+      api: "/api/supervisor-lab/chat",
+      prepareSendMessagesRequest: ({ messages }) => ({
+        body: { messages: messages.slice(-30) },
+      }),
+    }),
     [],
   );
   const { messages, sendMessage, status, error, stop, setMessages } = useChat<StarlimSupervisorMessage>({
@@ -69,7 +77,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
     const timeoutId = window.setTimeout(() => {
       setTimedOut(true);
       void stop();
-    }, 48_000);
+    }, 32_000);
     return () => window.clearTimeout(timeoutId);
   }, [busy, stop]);
 
@@ -187,7 +195,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
           ) : null}
           {timedOut ? (
             <div className="rounded-lg border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm font-semibold text-[#92400e]">
-              La consulta superó los 48 segundos y fue detenida. Probá nuevamente o usá el enlace sugerido; LA TIRRA ia.01 no debe quedar pensando indefinidamente.
+              La consulta superó los 32 segundos y fue detenida. Probá nuevamente; LA TIRRA ia.01 no debe quedar pensando indefinidamente.
             </div>
           ) : null}
           {memoryError ? (

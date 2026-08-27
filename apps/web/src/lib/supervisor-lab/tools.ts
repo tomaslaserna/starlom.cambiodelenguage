@@ -7,6 +7,9 @@ import { isAdminRole, normalizeRole } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import {
   getSupervisorCustomerHistory,
+  getSupervisorCustomerBalances,
+  getSupervisorCustomerInvoices,
+  getSupervisorInvoiceByNumber,
   getSupervisorOperationalSnapshot,
   getSupervisorSalesMetrics,
   searchSupervisorCustomers,
@@ -105,6 +108,34 @@ export function createSupervisorTools(session: AuthSession) {
           source: { label: history?.customerName ?? "Cliente", href: `/customers/${customerId}` },
         };
       },
+    }),
+    getCustomerAccountBalance: tool({
+      description: "Consulta directamente el saldo real de cuenta corriente de uno o varios clientes por nombre, razon social o CUIT. Usar siempre para preguntas como cuanto debe, saldo a cobrar, deuda o cuenta corriente; no reconstruir el saldo desde ventas o historial.",
+      inputSchema: z.object({ search: z.string().trim().min(2).max(120) }),
+      execute: async ({ search }) => executeOnce(`getCustomerAccountBalance:${search.trim().toLocaleLowerCase("es")}`, async () => ({
+        matches: await getSupervisorCustomerBalances(session, search),
+        interpretation: "balance positivo es deuda del cliente; balance cero es cuenta cancelada; balance negativo es saldo a favor del cliente.",
+        source: { label: "Cuentas corrientes", href: "/payments/accounts" },
+      })),
+    }),
+    getCustomerInvoices: tool({
+      description: "Obtiene las ultimas facturas fiscales aprobadas de un cliente por nombre, razon social o CUIT. Usar para preguntas como ultimas facturas, facturas de un cliente o mostrame sus comprobantes. Cada resultado incluye PDF y cuenta corriente.",
+      inputSchema: z.object({
+        search: z.string().trim().min(2).max(120),
+        limit: z.number().int().min(1).max(10).default(3),
+      }),
+      execute: async ({ search, limit }) => executeOnce(`getCustomerInvoices:${search.trim().toLocaleLowerCase("es")}:${limit}`, async () => ({
+        invoices: await getSupervisorCustomerInvoices(session, search, limit),
+        clarification: "Estas son facturas emitidas y aprobadas. Su importe no equivale necesariamente al saldo a cobrar porque puede haber pagos, notas de credito o notas de debito. Para cobrar, verificar el enlace de cuenta corriente del cliente.",
+      })),
+    }),
+    getInvoiceByNumber: tool({
+      description: "Busca una factura fiscal aprobada por numero de comprobante, con o sin punto de venta. Usar cuando el operador pregunta por una factura particular.",
+      inputSchema: z.object({ number: z.string().trim().min(1).max(40) }),
+      execute: async ({ number }) => executeOnce(`getInvoiceByNumber:${number.replace(/\s+/g, "")}`, async () => ({
+        invoices: await getSupervisorInvoiceByNumber(session, number),
+        clarification: "El importe corresponde al comprobante emitido, no al saldo actual del cliente. Para saber cuanto cobrar, abrir su cuenta corriente.",
+      })),
     }),
     getCustomerProductPattern: tool({
       description: "Resume la frecuencia y cantidad promedio de productos comprados por uno o varios registros del mismo cliente. Usar para interpretar y pasar en limpio pedidos informales; prioriza el patron completo y no un unico remito.",

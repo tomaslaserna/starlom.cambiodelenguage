@@ -4,7 +4,6 @@ import {
   Button,
   ButtonLink,
   Card,
-  CardContent,
   EmptyState,
   StatCard,
   StatusBadge,
@@ -16,8 +15,8 @@ import { InicioTabs } from "@/app/inicio-tabs";
 import { PizarronBoard } from "@/app/pizarron-board";
 import { boardCoworkers, listBoardNotes } from "@/lib/board";
 import { requireStaffSession } from "@/lib/auth";
-import { formatDate, formatDateTime } from "@/lib/format";
-import { listMessageCenter, listTasks } from "@/lib/messages";
+import { formatDateTime } from "@/lib/format";
+import { listTasks } from "@/lib/messages";
 import {
   ORDERS_CREATE_PERMISSION,
   PRODUCTS_READ_PERMISSION,
@@ -31,8 +30,6 @@ type Shortcut = { href: string; label: string; icon: AppIconName };
 type TaskList = Awaited<ReturnType<typeof listTasks>>;
 type PendingTask = TaskList["personal"][number] | TaskList["received"][number];
 type AssignedTask = TaskList["assigned"][number];
-type MessageCenter = Awaited<ReturnType<typeof listMessageCenter>>;
-type MessagePreview = MessageCenter["inbox"][number];
 
 function statusTone(status: string): StatusBadgeTone {
   const normalized = status.toLowerCase();
@@ -146,37 +143,15 @@ function AssignedTaskRow({ task }: { task: AssignedTask }) {
   );
 }
 
-function UnreadMessageRow({ message }: { message: MessagePreview }) {
-  return (
-    <li className="border-t border-[#e5ebf4] first:border-t-0">
-      <a
-        className="grid gap-1 px-4 py-3 transition-colors hover:bg-[#f8fafc]"
-        href={`/messages?message=${message.id}`}
-      >
-        <span className="flex items-center justify-between gap-2">
-          <span className="erp-text-body-sm min-w-0 truncate font-black text-[#0f172a]">
-            {message.subject || "(Sin asunto)"}
-          </span>
-          <span className="erp-text-caption shrink-0 font-semibold text-[#64748b]">{formatDate(message.date)}</span>
-        </span>
-        <span className="erp-text-caption font-medium text-[#475569]">De {message.from} · Abrir mensaje</span>
-      </a>
-    </li>
-  );
-}
-
 export default async function Home() {
   const session = await requireStaffSession();
-  const [tasks, center, boardNotes, coworkers] = await Promise.all([
+  const [tasks, boardNotes, coworkers] = await Promise.all([
     listTasks(session),
-    listMessageCenter(session),
     listBoardNotes(session),
     boardCoworkers(session),
   ]);
   const pendingTasks = [...tasks.personal, ...tasks.received].sort((a, b) => urgencyRank(a) - urgencyRank(b));
   const openAssignedTasks = tasks.assigned.filter((task) => !task.completed);
-  const allUnread = center.inbox.filter((message) => !message.read);
-  const unreadMessages = allUnread.slice(0, 5);
   const overdueCount = pendingTasks.filter((task) => task.status.toLowerCase().includes("venc")).length;
 
   const [canCreateOrders, canReadQuotes, canReadProducts, canReadCollections] = await Promise.all([
@@ -190,7 +165,6 @@ export default async function Home() {
     canReadQuotes ? { href: "/quotes", label: "Presupuestos", icon: "quote" } : null,
     canReadProducts ? { href: "/prices", label: "Lista de precios", icon: "package" } : null,
     canReadCollections ? { href: "/collections", label: "Cobranzas", icon: "wallet" } : null,
-    { href: "/messages", label: "Mensajes", icon: "receipt" },
     { href: "/calendar", label: "Calendario", icon: "calendar" },
   ].filter((item): item is Shortcut => item !== null);
 
@@ -206,7 +180,7 @@ export default async function Home() {
           <StatCard icon={<AppIcon className="h-5 w-5" name="warning" />} label="Vencidos" tone="danger" value={overdueCount} />
           <StatCard icon={<AppIcon className="h-5 w-5" name="clock" />} label="Pendientes para vos" tone="accent" value={pendingTasks.length} />
           <StatCard icon={<AppIcon className="h-5 w-5" name="units" />} label="Delegadas abiertas" tone="info" value={openAssignedTasks.length} />
-          <StatCard icon={<AppIcon className="h-5 w-5" name="receipt" />} label="Mensajes sin leer" tone="warning" value={allUnread.length} />
+          <StatCard icon={<AppIcon className="h-5 w-5" name="receipt" />} label="Notas en pizarrón" tone="warning" value={boardNotes.length} />
         </section>
 
         <section className="seller-mobile-optional-shortcuts">
@@ -260,28 +234,6 @@ export default async function Home() {
                         <AssignedTaskRow key={`delegada-${task.id}`} task={task} />
                       ))}
                     </ul>
-                  </Card>
-                ),
-            },
-            {
-              key: "mensajes",
-              label: "Mensajes",
-              count: allUnread.length,
-              content:
-                unreadMessages.length === 0 ? (
-                  <EmptyState title="Sin mensajes sin leer" description="No tenes mensajes internos pendientes de leer." />
-                ) : (
-                  <Card className="overflow-hidden">
-                    <ul className="grid lg:grid-cols-2">
-                      {unreadMessages.map((message) => (
-                        <UnreadMessageRow key={`mensaje-${message.id}`} message={message} />
-                      ))}
-                    </ul>
-                    <CardContent>
-                      <ButtonLink href="/messages" size="sm" variant="secondary">
-                        Ver todos los mensajes
-                      </ButtonLink>
-                    </CardContent>
                   </Card>
                 ),
             },

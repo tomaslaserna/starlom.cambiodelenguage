@@ -17,6 +17,7 @@ export type AppIconName =
   | "search"
   | "trend"
   | "units"
+  | "user"
   | "wallet"
   | "warning";
 
@@ -106,6 +107,12 @@ export function AppIcon({ className, name, ...props }: AppIconProps) {
         <rect height="8" rx="1" width="3" x="4" y="12" />
         <rect height="13" rx="1" width="3" x="10.5" y="7" />
         <rect height="17" rx="1" width="3" x="17" y="3" />
+      </>
+    ),
+    user: (
+      <>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4.5 21a7.5 7.5 0 0 1 15 0" />
       </>
     ),
     wallet: (

@@ -14,7 +14,6 @@ import {
   CRM_READ_PERMISSION,
   CUSTOMERS_READ_PERMISSION,
   EMPLOYEES_READ_PERMISSION,
-  ORDERS_CREATE_PERMISSION,
   ORDERS_MANAGE_PERMISSION,
   ORDERS_READ_PERMISSION,
   PRODUCTS_READ_PERMISSION,
@@ -33,7 +32,6 @@ import {
 export type NavigationBadgeKey =
   | "approvals"
   | "collectionApprovals"
-  | "messages"
   | "tasks"
   | "ordersLoaded"
   | "ordersConfirmed"
@@ -100,19 +98,11 @@ export const navigationGroups: NavigationGroup[] = [
     permission: ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION,
   },
   {
+    href: "/orders",
     label: "Pedidos",
     active: "orders",
     badge: "ordersConfirmed",
-    items: [
-      { href: "/orders/new", label: "Cargar pedido", active: "orders", permission: ORDERS_CREATE_PERMISSION },
-      {
-        href: "/orders",
-        label: "Registro de pedidos",
-        active: "orders",
-        badge: "ordersConfirmed",
-        permission: ORDERS_READ_PERMISSION,
-      },
-    ],
+    permission: ORDERS_READ_PERMISSION,
   },
   {
     href: "/sales",
@@ -208,12 +198,10 @@ export const navigationGroups: NavigationGroup[] = [
     ],
   },
   {
-    label: "RR.HH",
+    href: "/employees",
+    label: "RR.HH.",
     active: "employees",
-    items: [
-      { href: "/employees", label: "Empleados", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
-      { href: "/employees/vendors", label: "Gestion de vendedores", active: "employees", permission: EMPLOYEES_READ_PERMISSION },
-    ],
+    permission: EMPLOYEES_READ_PERMISSION,
   },
   { href: "/metrics", label: "Metricas", active: "metrics", permission: ADMIN_METRICS_READ_PERMISSION },
   { href: "/rentabilidad", label: "Rentabilidad", active: "admin", permission: ADMIN_METRICS_READ_PERMISSION },
@@ -224,19 +212,7 @@ export const navigationGroups: NavigationGroup[] = [
     badge: "approvals",
     permission: COLLECTIONS_APPROVE_PERMISSION,
   },
-  {
-    href: "/admin/audit",
-    label: "Auditoria",
-    active: "audit",
-    permission: ADMIN_MOVEMENTS_READ_PERMISSION,
-  },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
-  {
-    href: "/messages",
-    label: "Mensajes",
-    active: "messages",
-    badge: "messages",
-  },
   { href: "/bank", label: "Banco", active: "bank" },
   { href: "/supervisor-lab", label: "LA TIRRA ia.01", active: "supervisor-lab", permission: CRM_READ_PERMISSION },
   // CRM (segundo mundo para vendedores). active: "crm" agrupa estos en la seccion CRM.
@@ -250,6 +226,7 @@ export const navigationGroups: NavigationGroup[] = [
 
 export type NavigationSection = {
   label: string;
+  href?: string;
   icon?: AppIconName;
   groups: NavigationGroup[];
 };
@@ -268,7 +245,6 @@ export const navigationSections: NavigationSection[] = [
       groupByLabel("Escritorio"),
       groupByLabel("LA TIRRA ia.01"),
       groupByLabel("Calendario"),
-      groupByLabel("Mensajes"),
       groupByLabel("Banco"),
     ],
   },
@@ -302,12 +278,16 @@ export const navigationSections: NavigationSection[] = [
     icon: "trend",
     groups: [
       groupByLabel("Balance"),
-      groupByLabel("RR.HH"),
       groupByLabel("Metricas"),
       groupByLabel("Rentabilidad"),
       groupByLabel("Solicitudes y aprobaciones"),
-      groupByLabel("Auditoria"),
     ],
+  },
+  {
+    label: "RR.HH.",
+    href: "/employees",
+    icon: "user",
+    groups: [groupByLabel("RR.HH.")],
   },
   {
     label: "Finanzas",
@@ -437,7 +417,6 @@ export function emptyNavigationIndicators(): NavigationIndicators {
   return {
     approvals: 0,
     collectionApprovals: 0,
-    messages: 0,
     tasks: 0,
     ordersLoaded: 0,
     ordersConfirmed: 0,
@@ -467,7 +446,6 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
 
   const result = await queryWithCompanyContext<{
     collection_approvals: string;
-    messages: string;
     personal_tasks: string;
     assigned_tasks: string;
     orders_loaded: string;
@@ -482,8 +460,6 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     `
       SELECT
         ${collectionApprovalsSelect} AS collection_approvals,
-        (SELECT COUNT(*) FROM mensajes
-         WHERE empresa_id = $1 AND para = $2 AND leido = 0)::text AS messages,
         (SELECT COUNT(*) FROM recordatorios
          WHERE empresa_id = $1
            AND completado = 0
@@ -530,7 +506,6 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
   const indicators = {
     approvals: (canApproveCollections ? collectionApprovals : 0) + requestApprovals,
     collectionApprovals: canReadCollections ? collectionApprovals : 0,
-    messages: Number(row.messages),
     tasks: Number(row.personal_tasks) + Number(row.assigned_tasks),
     ordersLoaded: Number(row.orders_loaded),
     ordersConfirmed: Number(row.orders_confirmed),

@@ -29,7 +29,7 @@ import { listOrders } from "@/lib/orders";
 import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
-import { ORDERS_READ_PERMISSION, sessionAllows } from "@/lib/route-auth";
+import { ORDERS_CREATE_PERMISSION, ORDERS_READ_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { requestFiscalInvoiceAction, updateOrderStatusAction } from "@/app/orders/actions";
 
 type OrdersPageProps = {
@@ -58,7 +58,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [ORDERS_READ_PERMISSION]);
   const params = await searchParams;
-  const [result, canEditOrders] = await Promise.all([
+  const [result, canEditOrders, canCreateOrders] = await Promise.all([
     listOrders({
       companyId: session.companyId,
       query: params.q,
@@ -67,6 +67,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
       pageSize: "25",
     }),
     sessionAllows(session, [{ resource: "pedidos", action: "editar" }]),
+    sessionAllows(session, [ORDERS_CREATE_PERMISSION]),
   ]);
 
   return (
@@ -78,10 +79,30 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
     >
       <div className="grid gap-5">
         <PageHeader
-          description="Carga, entrega, cancelacion y apertura de cobro."
-          moduleIntro
-          title="Gestion de pedidos"
+          actions={canCreateOrders ? (
+            <ButtonLink href="/orders/new" leadingIcon={<AppIcon name="cart" />}>
+              Cargar pedido
+            </ButtonLink>
+          ) : null}
+          description="Carga una operación nueva o revisa el registro completo desde un único módulo."
+          eyebrow="Módulo unificado"
+          title="Gestión de pedidos"
         />
+
+        <nav aria-label="Vistas de pedidos" className="flex flex-wrap gap-2">
+          <ButtonLink href="/orders" size="sm" variant={!result.meta.status ? "primary" : "secondary"}>
+            Registro
+          </ButtonLink>
+          <ButtonLink href="/orders?status=cargado" size="sm" variant={result.meta.status === "cargado" ? "primary" : "secondary"}>
+            Pendientes
+          </ButtonLink>
+          <ButtonLink href="/orders?status=confirmado" size="sm" variant={result.meta.status === "confirmado" ? "primary" : "secondary"}>
+            Confirmados
+          </ButtonLink>
+          <ButtonLink href="/orders?status=entregado" size="sm" variant={result.meta.status === "entregado" ? "primary" : "secondary"}>
+            Entregados
+          </ButtonLink>
+        </nav>
 
         {params.error ? (
           <div
