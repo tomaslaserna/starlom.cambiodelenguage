@@ -1876,13 +1876,15 @@ test("order comprobante flow separates the commercial remito from stock", () => 
   assert.match(documents, /includePrices \? "remito_con_precios" : "remito_sin_precios"/);
   assert.match(documents, /copia \? "COPIA" : "ORIGINAL"/);
   assert.doesNotMatch(documents, /buildOrderRemitoPdf[\s\S]*INSERT INTO/, "the commercial remito must not write to the database");
-  // El remito valorizado usa el helper compartido y muestra neto, IVA y final por renglon.
+  // El remito valorizado conserva el precio de lista y hace visible el descuento y el total final por renglon.
   assert.match(documents, /COALESCE\(s\.vat_rate, 0\)::text AS vat_rate/);
   assert.match(documents, /requireValuedRemittanceVatRate/);
   assert.match(documents, /valuedDocumentLines/);
-  for (const label of ["Unit. neto", "IVA %", "IVA unit.", "Unit. final", "Imp. neto", "Imp. final"]) {
+  for (const label of ["P. lista neto", "Desc. %", "Unit. neto", "IVA %", "Unit. final", "Subtotal final"]) {
     assert.match(documents, new RegExp(label.replace(".", "\\.")));
   }
+  assert.match(documents, /pdfMoney\(Number\(row\.precio_unit\)\)/);
+  assert.match(documents, /Number\(row\.descuento\) > 0 \? `\$\{pdfNumber\(Number\(row\.descuento\)\)\}%` : "-"/);
   assert.match(documents, /\["Subtotal neto", pdfMoney\(valuedSummary\.net\)\]/);
   assert.match(documents, /includePrices \? "Total final" : "Control"/);
 
