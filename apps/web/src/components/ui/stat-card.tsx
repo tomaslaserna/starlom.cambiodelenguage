@@ -58,7 +58,7 @@ export function StatCard({ className, detail, footer, icon, label, tone = "neutr
   return (
     <section
       className={cn(
-        "relative flex min-h-[6.75rem] items-center rounded-[var(--radius-lg)] border px-4 py-3.5 shadow-[var(--shadow-xs)]",
+        "relative flex min-h-[7.5rem] items-center overflow-hidden rounded-[var(--radius-xl)] border px-4 py-4 shadow-[var(--shadow-sm)] after:pointer-events-none after:absolute after:-right-10 after:-top-12 after:h-28 after:w-28 after:rounded-full after:bg-[#1769e8]/[0.045]",
         toneClass.card,
         className,
       )}
@@ -77,8 +77,8 @@ export function StatCard({ className, detail, footer, icon, label, tone = "neutr
           )}
         </span>
         <div className="flex min-w-0 flex-col justify-center">
-          <div className="erp-text-caption truncate font-semibold leading-[1.15] text-[#526177]">{label}</div>
-          <div className="mt-1 whitespace-nowrap font-mono text-[clamp(1.15rem,1.55vw,1.7rem)] font-black leading-none tracking-[-0.04em] text-[color:var(--foreground)] tabular-nums">
+          <div className="erp-display-font erp-text-caption truncate font-semibold uppercase leading-[1.15] tracking-[0.035em] text-[#526177]">{label}</div>
+          <div className="erp-display-font mt-1 whitespace-nowrap text-[clamp(1.15rem,1.55vw,1.7rem)] font-bold leading-none tracking-[-0.04em] text-[color:var(--foreground)] tabular-nums">
             {value}
           </div>
           <div

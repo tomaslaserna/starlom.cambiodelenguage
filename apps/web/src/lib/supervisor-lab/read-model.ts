@@ -1,0 +1,356 @@
+import type { AuthSession } from "@/lib/auth";
+import { isStaffRole, normalizeRole } from "@/lib/auth";
+import { hasAllCustomerAccess, sellerCandidates } from "@/lib/crm";
+import { queryWithCompanyContext } from "@/lib/db";
+import { normalizedOrderStatusSql } from "@/lib/order-status";
+import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
+import { currentMonth, monthRange } from "@/lib/month-range";
+import { netSalesAmountSql } from "@/lib/sales-vat";
+
+export type SupervisorPurchaseItem = {
+  productId: string | null;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+};
+
+export type SupervisorPurchase = {
+  saleId: string;
+  saleNumber: string;
+  date: string;
+  total: number;
+  items: SupervisorPurchaseItem[];
+};
+
+export type SupervisorCustomerHistory = {
+  customerId: string;
+  customerName: string;
+  seller: string;
+  purchases: SupervisorPurchase[];
+};
+
+export type SupervisorCustomerMatch = {
+  customerId: string;
+  customerName: string;
+  taxId: string;
+  seller: string;
+  sourceHref: string;
+};
+
+export type SupervisorOperationalSnapshot = {
+  orders: Array<{
+    id: string;
+    number: string;
+    customerName: string;
+    status: "pending_approval" | "authorized";
+    deliveryDate: string | null;
+  }>;
+  sales: Array<{
+    id: string;
+    number: string;
+    customerName: string;
+    saleDate: string;
+    status: "delivered";
+    fiscalDecision: "pending";
+  }>;
+};
+
+export type SupervisorSalesMetrics = {
+  period: string;
+  saleCount: number;
+  grossAmount: number;
+  netAmount: number;
+  adjustmentAmount: number;
+  sourceHref: string;
+};
+
+function assertSupervisorReader(session: AuthSession) {
+  if (!isStaffRole(session.role)) throw new Error("SUPERVISOR_FORBIDDEN");
+}
+
+async function sellerScope(session: AuthSession, alias: string, firstParam: number) {
+  if (normalizeRole(session.role) !== "vendedor") return { sql: "", params: [] as unknown[] };
+  if (await hasAllCustomerAccess(session)) return { sql: "", params: [] as unknown[] };
+  return {
+    sql: `AND (
+      UPPER(BTRIM(COALESCE(${alias}.seller_name, ''))) = ANY($${firstParam}::text[])
+      OR UPPER(BTRIM(COALESCE(c.assigned_seller, ''))) = ANY($${firstParam}::text[])
+    )`,
+    params: [sellerCandidates(session)],
+  };
+}
+
+export async function getSupervisorCustomerHistory(
+  session: AuthSession,
+  customerId: string,
+): Promise<SupervisorCustomerHistory | null> {
+  assertSupervisorReader(session);
+  const scope = await sellerScope(session, "c", 3);
+  const result = await queryWithCompanyContext<{
+    customer_id: string;
+    customer_name: string;
+    seller: string;
+    sale_id: string | null;
+    sale_number: string;
+    sale_date: string | null;
+    total: string;
+    product_id: string | null;
+    product_name: string | null;
+    quantity: string | null;
+    unit_price: string | null;
+  }>(
+    session.companyId,
+    `
+      SELECT c.id::text AS customer_id,
+             c.display_name AS customer_name,
+             COALESCE(c.seller_name, '') AS seller,
+             s.id::text AS sale_id,
+             COALESCE(NULLIF(s.sale_number, ''), 'P-' || COALESCE(s.commercial_number::text, '')) AS sale_number,
+             s.sale_date::text AS sale_date,
+             COALESCE(s.total_amount, 0)::text AS total,
+             si.product_id::text AS product_id,
+             COALESCE(si.description, p.name) AS product_name,
+             si.quantity::text AS quantity,
+             si.unit_price::text AS unit_price
+        FROM clients c
+        LEFT JOIN sales s
+          ON s.client_id = c.id
+         AND s.empresa_id = c.empresa_id
+         AND ${normalizedOrderStatusSql("s")} = 'entregado'
+         AND ${canonicalSalesSourceSql("s")}
+        LEFT JOIN sale_items si
+          ON si.sale_id = s.id
+         AND si.empresa_id = s.empresa_id
+        LEFT JOIN products p
+          ON p.id = si.product_id
+         AND p.empresa_id = si.empresa_id
+       WHERE c.id = $1::uuid
+         AND c.empresa_id = $2
+         ${scope.sql}
+       ORDER BY s.sale_date ASC, s.id ASC, si.id ASC
+    `,
+    [customerId, session.companyId, ...scope.params],
+    { cache: false },
+  );
+
+  const first = result.rows[0];
+  if (!first) return null;
+  const purchases = new Map<string, SupervisorPurchase>();
+  for (const row of result.rows) {
+    if (!row.sale_id || !row.sale_date) continue;
+    const purchase = purchases.get(row.sale_id) ?? {
+      saleId: row.sale_id,
+      saleNumber: row.sale_number,
+      date: row.sale_date,
+      total: Number(row.total),
+      items: [],
+    };
+    if (row.product_name) {
+      purchase.items.push({
+        productId: row.product_id,
+        name: row.product_name,
+        quantity: Number(row.quantity ?? 0),
+        unitPrice: Number(row.unit_price ?? 0),
+      });
+    }
+    purchases.set(row.sale_id, purchase);
+  }
+
+  return {
+    customerId: first.customer_id,
+    customerName: first.customer_name,
+    seller: first.seller,
+    purchases: [...purchases.values()],
+  };
+}
+
+export async function searchSupervisorCustomers(
+  session: AuthSession,
+  search: string,
+  limit = 8,
+): Promise<SupervisorCustomerMatch[]> {
+  assertSupervisorReader(session);
+  const term = search.trim();
+  if (term.length < 2) return [];
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 20);
+  const scope = await sellerScope(session, "c", 4);
+  const result = await queryWithCompanyContext<{
+    id: string;
+    display_name: string;
+    tax_id: string;
+    seller_name: string;
+  }>(
+    session.companyId,
+    `
+      SELECT c.id::text AS id,
+             c.display_name,
+             COALESCE(c.tax_id, '') AS tax_id,
+             COALESCE(c.seller_name, c.assigned_seller, '') AS seller_name
+        FROM clients c
+       WHERE c.empresa_id = $1
+         AND (
+           c.display_name ILIKE '%' || $2 || '%'
+           OR COALESCE(c.legal_name, '') ILIKE '%' || $2 || '%'
+           OR COALESCE(c.tax_id, '') ILIKE '%' || $2 || '%'
+         )
+         ${scope.sql}
+       ORDER BY
+         CASE WHEN UPPER(c.display_name) = UPPER($2) THEN 0 ELSE 1 END,
+         c.display_name ASC
+       LIMIT $3
+    `,
+    [session.companyId, term, safeLimit, ...scope.params],
+    { cache: false },
+  );
+
+  return result.rows.map((row) => ({
+    customerId: row.id,
+    customerName: row.display_name,
+    taxId: row.tax_id,
+    seller: row.seller_name,
+    sourceHref: `/customers/${row.id}`,
+  }));
+}
+
+export async function getSupervisorOperationalSnapshot(
+  session: AuthSession,
+): Promise<SupervisorOperationalSnapshot> {
+  assertSupervisorReader(session);
+  const scope = await sellerScope(session, "s", 2);
+  const result = await queryWithCompanyContext<{
+    id: string;
+    number: string;
+    customer_name: string;
+    sale_date: string;
+    delivery_date: string | null;
+    order_status: string;
+    fiscal_status: string;
+    has_pending_fiscal_request: boolean;
+  }>(
+    session.companyId,
+    `
+      SELECT s.id::text,
+             COALESCE(NULLIF(s.sale_number, ''), 'P-' || COALESCE(s.commercial_number::text, '')) AS number,
+             COALESCE(c.display_name, 'Cliente sin identificar') AS customer_name,
+             s.sale_date::text AS sale_date,
+             COALESCE(dd.delivery_date, s.sale_date)::text AS delivery_date,
+             ${normalizedOrderStatusSql("s")} AS order_status,
+             COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
+             EXISTS (
+               SELECT 1
+                 FROM app_solicitudes request
+                WHERE request.empresa_id = s.empresa_id
+                  AND request.estado = 'pendiente'
+                  AND request.metadata->>'action' = 'fiscal_invoice'
+                  AND request.metadata->>'saleId' = s.id::text
+             ) AS has_pending_fiscal_request
+        FROM sales s
+        LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+        LEFT JOIN delivery_documents dd ON dd.sale_id = s.id AND dd.empresa_id = s.empresa_id
+       WHERE s.empresa_id = $1
+         AND ${canonicalSalesSourceSql("s")}
+         ${scope.sql}
+       ORDER BY s.sale_date DESC, s.created_at DESC
+       LIMIT 500
+    `,
+    [session.companyId, ...scope.params],
+    { cache: false },
+  );
+
+  const snapshot: SupervisorOperationalSnapshot = { orders: [], sales: [] };
+  for (const row of result.rows) {
+    if (row.order_status === "cargado") {
+      snapshot.orders.push({
+        id: row.id,
+        number: row.number,
+        customerName: row.customer_name,
+        status: "pending_approval",
+        deliveryDate: row.delivery_date,
+      });
+    } else if (row.order_status === "confirmado") {
+      snapshot.orders.push({
+        id: row.id,
+        number: row.number,
+        customerName: row.customer_name,
+        status: "authorized",
+        deliveryDate: row.delivery_date,
+      });
+    } else if (row.order_status === "entregado") {
+      const fiscalDecisionHandled =
+        row.fiscal_status === "aprobado" || row.has_pending_fiscal_request;
+      if (!fiscalDecisionHandled) {
+        snapshot.sales.push({
+          id: row.id,
+          number: row.number,
+          customerName: row.customer_name,
+          saleDate: row.sale_date,
+          status: "delivered",
+          fiscalDecision: "pending",
+        });
+      }
+    }
+  }
+  return snapshot;
+}
+
+export async function getSupervisorSalesMetrics(
+  session: AuthSession,
+  requestedPeriod = currentMonth(),
+): Promise<SupervisorSalesMetrics> {
+  assertSupervisorReader(session);
+  const range = monthRange(requestedPeriod);
+  const scope = await sellerScope(session, "s", 4);
+  const result = await queryWithCompanyContext<{
+    sale_count: string;
+    gross_amount: string;
+    net_amount: string;
+    adjustment_amount: string;
+  }>(
+    session.companyId,
+    `
+      WITH delivered_sales AS (
+        SELECT s.id,
+               COALESCE(s.total_amount, 0) AS gross_amount,
+               ${netSalesAmountSql("COALESCE(s.total_amount, 0)", "s")} AS net_amount
+          FROM sales s
+          LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+         WHERE s.empresa_id = $1
+           AND s.sale_date >= $2::date
+           AND s.sale_date < $3::date
+           AND ${canonicalSalesSourceSql("s")}
+           AND ${normalizedOrderStatusSql("s")} = 'entregado'
+           ${scope.sql}
+      ), adjustments AS (
+        SELECT COALESCE(SUM(CASE WHEN sid.class_name = 'ND' THEN sid.amount ELSE -sid.amount END), 0) AS amount
+          FROM sales_internal_documents sid
+          JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
+          LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+         WHERE sid.empresa_id = $1
+           AND sid.issue_date >= $2::date
+           AND sid.issue_date < $3::date
+           AND (sid.fiscal = false OR sid.operational_document_id IS NULL)
+           AND ${canonicalSalesSourceSql("s")}
+           AND ${normalizedOrderStatusSql("s")} = 'entregado'
+           ${scope.sql}
+      )
+      SELECT COUNT(*)::text AS sale_count,
+             (COALESCE(SUM(ds.gross_amount), 0) + a.amount)::text AS gross_amount,
+             (COALESCE(SUM(ds.net_amount), 0) + a.amount)::text AS net_amount,
+             a.amount::text AS adjustment_amount
+        FROM delivered_sales ds
+        CROSS JOIN adjustments a
+       GROUP BY a.amount
+    `,
+    [session.companyId, range.start, range.endExclusive, ...scope.params],
+    { cache: false },
+  );
+  const row = result.rows[0];
+  return {
+    period: range.month,
+    saleCount: Number(row?.sale_count ?? 0),
+    grossAmount: Number(row?.gross_amount ?? 0),
+    netAmount: Number(row?.net_amount ?? 0),
+    adjustmentAmount: Number(row?.adjustment_amount ?? 0),
+    sourceHref: `/sales?month=${range.month}`,
+  };
+}

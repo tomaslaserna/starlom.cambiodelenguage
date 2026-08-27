@@ -21,6 +21,11 @@ export const CUSTOMERS_READ_PERMISSION = {
   action: "ver",
 } satisfies Permission;
 
+export const CUSTOMERS_ALL_READ_PERMISSION = {
+  resource: "clientes",
+  action: "ver_todos",
+} satisfies Permission;
+
 export const SUPPLIERS_READ_PERMISSION = {
   resource: "proveedores",
   action: "ver",
@@ -76,6 +81,26 @@ export const SALES_READ_PERMISSION = {
   action: "ver",
 } satisfies Permission;
 
+export const ORDERS_MANAGE_PERMISSION = {
+  resource: "pedidos",
+  action: "administrar",
+} satisfies Permission;
+
+export const SALES_READ_ONLY_PERMISSION = {
+  resource: "ventas",
+  action: "ver_solo_lectura",
+} satisfies Permission;
+
+export const SALES_OPERATE_PERMISSION = {
+  resource: "ventas",
+  action: "operar",
+} satisfies Permission;
+
+export const COLLECTIONS_READ_ONLY_PERMISSION = {
+  resource: "cobranzas",
+  action: "ver_solo_lectura",
+} satisfies Permission;
+
 export const QUOTES_READ_PERMISSION = {
   resource: "presupuestos",
   action: "ver",
@@ -109,6 +134,11 @@ export const PURCHASES_CREATE_PERMISSION = {
 export const PURCHASES_EDIT_PERMISSION = {
   resource: "compras",
   action: "editar",
+} satisfies Permission;
+
+export const PURCHASES_APPROVE_PERMISSION = {
+  resource: "compras",
+  action: "aprobar",
 } satisfies Permission;
 
 export const OPERATIONAL_RECORDS_DELETE_PERMISSION = {
@@ -236,6 +266,12 @@ function permissionKey(permission: Permission) {
 function permissionKeyAliases(permission: Permission) {
   const key = permissionKey(permission);
   const resource = permission.resource.trim();
+  if (key === permissionKey(SALES_READ_PERMISSION)) {
+    return [key, permissionKey(SALES_READ_ONLY_PERMISSION)];
+  }
+  if (key === permissionKey(COLLECTIONS_READ_PERMISSION)) {
+    return [key, permissionKey(COLLECTIONS_READ_ONLY_PERMISSION)];
+  }
   if (resource.startsWith("admin.") && permission.action.trim() === "ver") {
     return [key, resource];
   }
@@ -288,7 +324,7 @@ export async function sessionAllowedPermissionKeys(session: AuthSession, permiss
         FROM (
           SELECT pp.permission_key
           FROM profile_permissions pp
-          JOIN app_permissions ap ON ap.key = pp.permission_key AND ap.sensitive = FALSE
+          JOIN app_permissions ap ON ap.key = pp.permission_key
           WHERE pp.profile_id = $1::uuid
             AND pp.empresa_id = $2
             AND pp.permission_key = ANY($4)

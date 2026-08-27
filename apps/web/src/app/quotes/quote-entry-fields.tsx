@@ -39,6 +39,13 @@ type QuoteEntryFieldsProps = {
   vendors: { id: string; name: string }[];
   initialValues?: {
     customerId: string;
+    customerName?: string;
+    customerBusinessName?: string;
+    customerTaxId?: string;
+    customerVatCondition?: string;
+    customerPhone?: string;
+    customerAddress?: string;
+    desiredDocument?: "remito" | "factura_a" | "factura_b";
     validityDays: string;
     priceListOverride: string;
     assignedSellerId?: string;
@@ -77,6 +84,14 @@ export function QuoteEntryFields({
 }: QuoteEntryFieldsProps) {
   const isEdit = mode === "edit";
   const [customerId, setCustomerId] = useState(initialValues?.customerId ?? "");
+  const [customerMode, setCustomerMode] = useState<"registered" | "prospect">(initialValues?.customerId ? "registered" : "prospect");
+  const [prospectName, setProspectName] = useState(initialValues?.customerName ?? "");
+  const [prospectBusinessName, setProspectBusinessName] = useState(initialValues?.customerBusinessName ?? "");
+  const [prospectTaxId, setProspectTaxId] = useState(initialValues?.customerTaxId ?? "");
+  const [prospectVatCondition, setProspectVatCondition] = useState(initialValues?.customerVatCondition ?? "");
+  const [prospectPhone, setProspectPhone] = useState(initialValues?.customerPhone ?? "");
+  const [prospectAddress, setProspectAddress] = useState(initialValues?.customerAddress ?? "");
+  const [documentOverride, setDocumentOverride] = useState(initialValues?.desiredDocument ?? "remito");
   const [validityDays, setValidityDays] = useState(initialValues?.validityDays ?? "15");
   const [priceListOverride, setPriceListOverride] = useState(initialValues?.priceListOverride ?? "");
   const [assignedSellerId, setAssignedSellerId] = useState(initialValues?.assignedSellerId ?? "");
@@ -114,13 +129,14 @@ export function QuoteEntryFields({
     [products],
   );
   const priceListOptions = priceLists.length ? priceLists : [{ name: DEFAULT_PRICE_LIST_NAME }];
+  const isProspect = customerMode === "prospect";
   const activePriceList = resolvePriceListName(priceListOverride || selectedClient?.priceList, priceListOptions);
-  const desiredDocument = saleOrderDocument(selectedClient?.receiptType);
-  const vatRate = saleVatRateForDocument(selectedClient?.receiptType);
+  const desiredDocument = saleOrderDocument(documentOverride || selectedClient?.receiptType);
+  const vatRate = saleVatRateForDocument(desiredDocument);
   const hasConfiguredDocument = desiredDocument !== null && vatRate !== null;
-  const customerReady = Boolean(selectedClient) && hasConfiguredDocument;
-  const quoteCustomerName = selectedClient?.name ?? "";
-  const quoteCustomerPhone = selectedClient?.phone ?? "";
+  const customerReady = (isProspect ? Boolean(prospectName.trim()) : Boolean(selectedClient)) && hasConfiguredDocument;
+  const quoteCustomerName = isProspect ? prospectName.trim() : (selectedClient?.name ?? "");
+  const quoteCustomerPhone = isProspect ? prospectPhone : (selectedClient?.phone ?? "");
 
   const calculatedLines = lines
     .map((line) => {
@@ -217,8 +233,18 @@ export function QuoteEntryFields({
       <input name="productsJson" type="hidden" value={JSON.stringify(payload)} />
       <input name="priceListOverride" type="hidden" value={activePriceList} />
       <input name="validityDays" type="hidden" value={validityDays} />
+      <input name="desiredDocument" type="hidden" value={desiredDocument ?? "remito"} />
+      {isProspect ? <input name="customerId" type="hidden" value="" /> : null}
+      <div className="flex flex-wrap justify-center gap-2">
+        <Button type="button" variant={customerMode === "registered" ? "primary" : "secondary"} onClick={() => setCustomerMode("registered")}>
+          Cliente registrado
+        </Button>
+        <Button type="button" variant={customerMode === "prospect" ? "primary" : "secondary"} onClick={() => setCustomerMode("prospect")}>
+          Cliente nuevo / prospecto
+        </Button>
+      </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(280px,1fr)_150px_210px]">
-        <Field htmlFor="quote-customer" label="Cliente cargado" required>
+        {customerMode === "registered" ? <Field htmlFor="quote-customer" label="Cliente cargado" required>
           <SearchableSelect
             id="quote-customer"
             name="customerId"
@@ -230,9 +256,12 @@ export function QuoteEntryFields({
               const nextClient = clients.find((client) => client.id === nextCustomerId) ?? null;
               setCustomerId(nextCustomerId);
               setPriceListOverride(resolvePriceListName(nextClient?.priceList, priceListOptions));
+              setDocumentOverride(saleOrderDocument(nextClient?.receiptType) ?? "remito");
             }}
           />
-        </Field>
+        </Field> : <Field htmlFor="quote-prospect-name" label="Nombre del prospecto" required>
+          <Input id="quote-prospect-name" name="customerName" placeholder="Nombre o comercio" required value={prospectName} onChange={(event) => setProspectName(event.target.value)} />
+        </Field>}
         <Field htmlFor="quote-validity" label="Vigencia">
           <Input
             id="quote-validity"
@@ -246,11 +275,11 @@ export function QuoteEntryFields({
         </Field>
         <div className="rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-subtle)] px-3 py-2">
           <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Comprobante e IVA</div>
-          <div className="erp-text-body-sm font-bold">
-            {desiredDocument && vatRate
-              ? `${desiredDocumentLabel(desiredDocument)} · IVA ${String(vatRate).replace(".", ",")}%`
-              : "Sin configurar"}
-          </div>
+          <Select aria-label="Comprobante estimado" value={desiredDocument ?? "remito"} onChange={(event) => setDocumentOverride(event.target.value as "remito" | "factura_a" | "factura_b")}>
+            <option value="remito">Remito · IVA 10,5%</option>
+            <option value="factura_a">Factura A · IVA 21%</option>
+            <option value="factura_b">Factura B · IVA 21%</option>
+          </Select>
         </div>
       </div>
 
@@ -271,7 +300,16 @@ export function QuoteEntryFields({
         </Select>
       </Field>
 
-      {selectedClient ? (
+      {isProspect ? (
+        <div className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4 md:grid-cols-2 xl:grid-cols-3">
+          <Field htmlFor="quote-prospect-business" label="Razón social (opcional)"><Input id="quote-prospect-business" name="customerBusinessName" value={prospectBusinessName} onChange={(event) => setProspectBusinessName(event.target.value)} /></Field>
+          <Field htmlFor="quote-prospect-tax" label="CUIT/DNI (opcional)"><Input id="quote-prospect-tax" name="customerTaxId" value={prospectTaxId} onChange={(event) => setProspectTaxId(event.target.value)} /></Field>
+          <Field htmlFor="quote-prospect-vat" label="Condición IVA (opcional)"><Input id="quote-prospect-vat" name="customerVatCondition" value={prospectVatCondition} onChange={(event) => setProspectVatCondition(event.target.value)} /></Field>
+          <Field htmlFor="quote-prospect-phone" label="Teléfono (opcional)"><Input id="quote-prospect-phone" name="customerPhone" value={prospectPhone} onChange={(event) => setProspectPhone(event.target.value)} /></Field>
+          <Field htmlFor="quote-prospect-address" label="Dirección (opcional)"><Input id="quote-prospect-address" name="customerAddress" value={prospectAddress} onChange={(event) => setProspectAddress(event.target.value)} /></Field>
+          <Field htmlFor="quote-prospect-price-list" label="Lista de precios"><Select id="quote-prospect-price-list" value={activePriceList} onChange={(event) => setPriceListOverride(event.target.value)}>{priceListOptions.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}</Select></Field>
+        </div>
+      ) : selectedClient ? (
         <div className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4 md:grid-cols-2 xl:grid-cols-4">
           <div>
             <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Razon social</div>
@@ -318,12 +356,6 @@ export function QuoteEntryFields({
             ) : null}
           </Field>
         </div>
-      ) : null}
-
-      {selectedClient && !hasConfiguredDocument ? (
-        <p className="rounded-md border border-[color:var(--danger)]/30 bg-white p-3 text-sm font-semibold text-[color:var(--danger)]">
-          Configurá al cliente con Remito, Factura A o Factura B antes de crear el presupuesto.
-        </p>
       ) : null}
 
       <div className="grid gap-4 rounded-lg border border-[color:var(--border)] bg-white p-4">

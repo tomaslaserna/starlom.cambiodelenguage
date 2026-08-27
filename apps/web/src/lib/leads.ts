@@ -11,6 +11,7 @@ import {
   type LeadStage,
 } from "@/lib/leads-domain";
 import type { AuthSession } from "@/lib/auth";
+import { localDateIso } from "@/lib/timezone";
 
 type LeadRow = {
   id: string;
@@ -61,6 +62,53 @@ export type VendorLeadsResult = {
   closed: Lead[];
   counts: Record<LeadStage, number>;
 };
+
+export type LeadFollowupAgendaItem = Lead & {
+  contactedToday: boolean;
+  lastContactAt: string | null;
+};
+
+type LeadAgendaRow = LeadRow & {
+  contacted_today: boolean;
+  last_contact_at: string | null;
+};
+
+export async function getLeadFollowupAgenda(session: AuthSession): Promise<LeadFollowupAgendaItem[]> {
+  const candidates = sellerCandidates(session);
+  const today = localDateIso();
+  const rows = await queryWithCompanyContext<LeadAgendaRow>(
+    session.companyId,
+    `WITH contacted_today AS (
+       SELECT DISTINCT ON (lead_id) lead_id, occurred_at
+         FROM crm_sales_activities
+        WHERE empresa_id = $1 AND seller_id = $2::uuid AND lead_id IS NOT NULL
+          AND occurred_at >= ($4::date::timestamp AT TIME ZONE 'America/Argentina/Buenos_Aires')
+        ORDER BY lead_id, occurred_at DESC
+     )
+     SELECT l.id::text AS id, l.name, COALESCE(l.phone,'') AS phone, COALESCE(l.email,'') AS email,
+            COALESCE(l.locality,'') AS locality, COALESCE(l.source,'') AS source, l.stage,
+            l.next_followup::text AS next_followup, COALESCE(l.notes,'') AS notes,
+            COALESCE(l.assigned_seller,'') AS assigned_seller,
+            l.converted_client_id::text AS converted_client_id, l.created_at::text AS created_at,
+            (ct.lead_id IS NOT NULL) AS contacted_today,
+            ct.occurred_at::text AS last_contact_at
+       FROM crm_leads l
+       LEFT JOIN contacted_today ct ON ct.lead_id = l.id
+      WHERE l.empresa_id = $1
+        AND UPPER(BTRIM(COALESCE(l.assigned_seller,''))) = ANY($3::text[])
+        AND l.stage IN ('nuevo', 'contactado', 'interesado')
+        AND (l.next_followup IS NULL OR l.next_followup <= $4::date OR ct.lead_id IS NOT NULL)
+      ORDER BY COALESCE(l.next_followup, l.created_at::date), l.created_at, l.id
+      LIMIT 10`,
+    [session.companyId, session.userId, candidates, today],
+    { cache: false },
+  );
+  return rows.rows.map((row) => ({
+    ...mapLead(row),
+    contactedToday: row.contacted_today,
+    lastContactAt: row.last_contact_at,
+  }));
+}
 
 export async function getVendorLeads(session: AuthSession): Promise<VendorLeadsResult> {
   const candidates = sellerCandidates(session);
@@ -144,6 +192,32 @@ export async function moveLeadStage(session: AuthSession, id: string, stage: Lea
 
 export async function discardLead(session: AuthSession, id: string): Promise<void> {
   await moveLeadStage(session, id, "descartado");
+}
+
+export async function recordLeadContact(
+  session: AuthSession,
+  id: string,
+  nextFollowup: string,
+  notes: string,
+): Promise<void> {
+  await getScopedLead(session, id);
+  await queryWithCompanyContext(
+    session.companyId,
+    `WITH updated AS (
+       UPDATE crm_leads
+          SET stage = CASE WHEN stage = 'nuevo' THEN 'contactado' ELSE stage END,
+              next_followup = $1::date,
+              notes = CASE WHEN $2 = '' THEN notes ELSE CONCAT_WS(E'\\n', NULLIF(notes, ''), $2) END,
+              updated_at = now()
+        WHERE id = $3::uuid AND empresa_id = $4
+        RETURNING id
+     )
+     INSERT INTO crm_sales_activities
+       (empresa_id, seller_id, lead_id, activity_type, outcome, source_bucket, notes, next_followup)
+     SELECT $4, $5::uuid, id, 'seguimiento', 'contactado', 'lead', $2, $1::date
+       FROM updated`,
+    [nextFollowup, notes, id, session.companyId, session.userId],
+  );
 }
 
 export async function convertLeadToClient(

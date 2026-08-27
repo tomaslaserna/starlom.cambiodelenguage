@@ -13,7 +13,7 @@ import { listPriceOffers } from "@/lib/price-offers";
 import { listPriceListParameters } from "@/lib/pricing";
 import { requirePagePermission } from "@/lib/page-auth";
 import { getBreakEvenStatus } from "@/lib/profitability";
-import { ORDERS_CREATE_PERMISSION } from "@/lib/route-auth";
+import { ORDERS_CREATE_PERMISSION, SALES_OPERATE_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { listSalesAdjustmentReferences } from "@/lib/sales-documents";
 import { localDateIso } from "@/lib/timezone";
 
@@ -27,8 +27,10 @@ export default async function NewOrderPage({ searchParams }: NewOrderPageProps) 
   const query = await searchParams;
   const operation = query.tipo;
   const adjustmentClass = operation === "nota_credito" ? "NC" : operation === "nota_debito" ? "ND" : null;
+  const canOperateSales = await sessionAllows(session, [SALES_OPERATE_PERMISSION]);
 
   if (adjustmentClass) {
+    await requirePagePermission(session, [SALES_OPERATE_PERMISSION]);
     const [formData, references] = await Promise.all([
       getOrderFormData(session.companyId),
       listSalesAdjustmentReferences(session.companyId),
@@ -74,8 +76,12 @@ export default async function NewOrderPage({ searchParams }: NewOrderPageProps) 
       <div className="grid gap-4">
         <div className="flex flex-wrap gap-2">
           <ButtonLink href="/orders/new" size="sm">Pedido / venta</ButtonLink>
-          <ButtonLink href="/orders/new?tipo=nota_credito" size="sm" variant="secondary">Nota de credito / devolucion</ButtonLink>
-          <ButtonLink href="/orders/new?tipo=nota_debito" size="sm" variant="secondary">Nota de debito / agregado</ButtonLink>
+          {canOperateSales ? (
+            <>
+              <ButtonLink href="/orders/new?tipo=nota_credito" size="sm" variant="secondary">Nota de credito / devolucion</ButtonLink>
+              <ButtonLink href="/orders/new?tipo=nota_debito" size="sm" variant="secondary">Nota de debito / agregado</ButtonLink>
+            </>
+          ) : null}
         </div>
         <OrderEntryForm
           action={createOrderAction}

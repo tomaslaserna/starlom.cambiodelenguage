@@ -96,7 +96,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
         ) : null}
 
         {canCreateCustomers ? (
-          <Card className="p-4">
+          <Card className="scroll-mt-24 p-4" id="crear-cliente">
             <form action={createCustomerAction} className="grid gap-3">
               <div className="grid gap-3 lg:grid-cols-5">
                 <Field htmlFor="customer-name" label="Cliente" required>

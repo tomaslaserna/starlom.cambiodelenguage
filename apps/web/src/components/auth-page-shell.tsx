@@ -12,16 +12,13 @@ type AuthPageShellProps = {
 export function AuthPageShell({ children, description, eyebrow, title }: AuthPageShellProps) {
   return (
     <main className="grid min-h-screen overflow-x-hidden bg-[#f3f6fb] text-[#172033] lg:grid-cols-[minmax(360px,40%)_minmax(0,60%)]">
-      <section className="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-[linear-gradient(180deg,#0b6cff_0%,#0346a6_58%,#07357f_100%)] p-5 text-white sm:p-6 lg:min-h-screen lg:justify-between lg:p-8">
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.08)_0_1px,transparent_1px_100%),linear-gradient(0deg,rgba(255,255,255,0.08)_0_1px,transparent_1px_100%)] bg-[length:56px_56px] opacity-30" />
-        <div className="pointer-events-none absolute -bottom-36 -right-44 h-[420px] w-[420px] rounded-full bg-white/10" />
+      <section className="relative flex min-h-0 min-w-0 flex-col overflow-hidden p-5 text-white sm:p-6 lg:min-h-screen lg:justify-between lg:p-8">
+        <Image alt="Productos de limpieza Starlim" className="auth-floating-products object-cover object-center" fill priority sizes="(max-width: 1023px) 100vw, 40vw" src="/starlim-floating-products.webp" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,rgba(3,41,99,0.95)_0%,rgba(4,75,172,0.84)_52%,rgba(2,48,112,0.72)_100%)]" />
 
         <div className="relative z-10 flex items-center justify-between gap-4">
-          <Link className="inline-flex items-center gap-3 font-black text-white" href="/">
-            <span className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-white/30 bg-white/15 p-1.5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)]">
-              <Image alt="Starlim" height={30} priority src="/starlim-logo.png" width={30} />
-            </span>
-            <span>Starlim</span>
+          <Link aria-label="Starlim" className="inline-flex" href="/">
+            <Image alt="Starlim" className="h-auto w-[180px] object-contain" height={81} priority src="/starlim-logo-white.png" width={180} />
           </Link>
           <Link
             className="inline-flex min-h-10 items-center rounded-[10px] border border-white/25 bg-white/10 px-4 font-extrabold text-white/90 hover:bg-white/15"

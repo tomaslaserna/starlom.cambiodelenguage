@@ -1,11 +1,16 @@
-import { normalizeRole, type AuthSession } from "@/lib/auth";
+import { type AuthSession } from "@/lib/auth";
 import { ApiError } from "@/lib/api-response";
 import { listPendingCollections } from "@/lib/collections";
 import { listPendingCustomerPayments } from "@/lib/customer-accounts";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { authorizeSaleCreditNote, authorizeSaleDebitNote, authorizeSaleFiscalDocument } from "@/lib/fiscal";
 import { executeSupplierPayment, purchaseIdFromParam } from "@/lib/purchases";
-import { COLLECTIONS_APPROVE_PERMISSION, sessionAllows } from "@/lib/route-auth";
+import {
+  COLLECTIONS_APPROVE_PERMISSION,
+  ORDERS_MANAGE_PERMISSION,
+  PURCHASES_APPROVE_PERMISSION,
+  sessionAllows,
+} from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
 
 export const COLLECTION_APPROVAL_PERMISSION = COLLECTIONS_APPROVE_PERMISSION;
@@ -68,15 +73,14 @@ export function parseApprovalSource(value: FormDataEntryValue | null): ApprovalS
   }
 }
 
-export function canResolveGenericApproval(session: AuthSession) {
-  const role = normalizeRole(session.role);
-  return role === "administrador" || role === "jefe";
+export async function canResolveGenericApproval(session: AuthSession) {
+  return sessionAllows(session, [ORDERS_MANAGE_PERMISSION, PURCHASES_APPROVE_PERMISSION]);
 }
 
 export async function approvalCenterAccessForSession(session: AuthSession): Promise<ApprovalCenterAccess> {
   return {
     collections: await sessionAllows(session, [COLLECTION_APPROVAL_PERMISSION]),
-    requests: canResolveGenericApproval(session),
+    requests: await canResolveGenericApproval(session),
   };
 }
 
@@ -207,7 +211,7 @@ export async function resolvePurchaseApproval(
   nextState: "aprobada" | "rechazada",
   reason = "",
 ) {
-  if (!canResolveGenericApproval(session)) {
+  if (!(await canResolveGenericApproval(session))) {
     throw new ApiError(403, "Sin permiso para resolver solicitudes");
   }
 
@@ -300,7 +304,7 @@ export async function resolveGenericApproval(
   nextState: "aprobada" | "rechazada",
   reason = "",
 ) {
-  if (!canResolveGenericApproval(session)) {
+  if (!(await canResolveGenericApproval(session))) {
     throw new ApiError(403, "Sin permiso para resolver solicitudes");
   }
 

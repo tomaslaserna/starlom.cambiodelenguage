@@ -16,7 +16,7 @@ export function Field({ children, className, description, error, htmlFor, label,
 
   return (
     <div className={cn("grid min-w-0 content-start gap-1.5", className)}>
-      <LabelTag className="erp-text-body-sm min-h-[1.125rem] font-semibold text-[#263246]" htmlFor={htmlFor}>
+      <LabelTag className="erp-display-font erp-text-body-sm min-h-[1.125rem] font-semibold text-[#263246]" htmlFor={htmlFor}>
         {label}
         {required ? <span className="ml-1 text-[color:var(--danger)]">*</span> : null}
       </LabelTag>

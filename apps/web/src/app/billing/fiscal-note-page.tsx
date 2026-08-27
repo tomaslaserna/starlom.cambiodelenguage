@@ -25,7 +25,7 @@ import { formatCurrency } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { uuidParam } from "@/lib/request-body";
-import { SALES_READ_PERMISSION } from "@/lib/route-auth";
+import { SALES_OPERATE_PERMISSION, SALES_READ_PERMISSION, sessionAllows } from "@/lib/route-auth";
 
 type FiscalNotePageProps = {
   kind: Exclude<FiscalDocumentKind, "invoice">;
@@ -73,8 +73,7 @@ export async function FiscalNotePage({ kind, params, searchParams }: FiscalNoteP
       ? await getSaleCreditNotePreview(session.companyId, saleId, operationalDocumentId)
       : await getSaleDebitNotePreview(session.companyId, saleId, operationalDocumentId);
   const copy = noteCopy(kind);
-  const role = normalizeRole(session.role);
-  const canIssue = role === "administrador" || role === "jefe";
+  const canIssue = await sessionAllows(session, [SALES_OPERATE_PERMISSION]);
   const alreadyApproved = preview.creditNoteStatus === "aprobado" && preview.creditNoteCae.trim() !== "";
   const defaultReason = preview.operationalReason || `${copy.label} factura ${preview.invoiceReceipt}`;
   const noteAmount = preview.operationalAmount ?? preview.totalAmount;

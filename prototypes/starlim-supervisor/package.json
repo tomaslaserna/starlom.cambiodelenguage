@@ -1,0 +1,10 @@
+{
+  "name": "starlim-supervisor-lab",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check app.js"
+  }
+}

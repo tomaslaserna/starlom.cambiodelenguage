@@ -14,6 +14,7 @@ import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { parsePagination } from "@/lib/pagination";
 import { listPriceListParameters } from "@/lib/pricing";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
+import { adjustedSalesAmountSql } from "@/lib/sales-vat";
 
 // El vínculo vendedor <-> ventas/clientes es por texto (seller_name), igual que
 // vendors-management.ts. Devolvemos los nombres candidatos (usuario, nombre y
@@ -31,6 +32,25 @@ export function sellerCandidates(session: AuthSession): string[] {
   return [...set];
 }
 
+export async function hasAllCustomerAccess(session: AuthSession): Promise<boolean> {
+  const result = await queryWithCompanyContext<{ allowed: number }>(
+    session.companyId,
+    `
+      SELECT 1 AS allowed
+      FROM profile_permissions pp
+      JOIN app_permissions ap
+        ON ap.key = pp.permission_key
+       AND ap.sensitive = FALSE
+      WHERE pp.profile_id = $1::uuid
+        AND pp.empresa_id = $2
+        AND pp.permission_key = 'clientes.ver_todos'
+      LIMIT 1
+    `,
+    [session.userId, session.companyId],
+  );
+  return Boolean(result.rows[0]);
+}
+
 export type VendorProfile = {
   vendor: string;
   clientsInCharge: number;
@@ -41,6 +61,8 @@ export type VendorProfile = {
   commissionRate: number;
   accruedCommission: number;
   activeQuotes: number;
+  goalSales: number;
+  topClients: Array<{ clientId: string | null; name: string; total: number; salesCount: number }>;
 };
 
 export async function getVendorProfile(session: AuthSession): Promise<VendorProfile> {
@@ -55,6 +77,7 @@ export async function getVendorProfile(session: AuthSession): Promise<VendorProf
     ventas_30d_total: string;
     commission_rate: string;
     presupuestos_vigentes: string;
+    goal_sales: string;
   }>(
     session.companyId,
     `
@@ -65,19 +88,21 @@ export async function getVendorProfile(session: AuthSession): Promise<VendorProf
         (SELECT COUNT(*) FROM clients c
            WHERE c.empresa_id = $1
              AND UPPER(BTRIM(COALESCE(c.seller_name, ''))) = ANY($2::text[])) AS propios,
-        (SELECT COALESCE(SUM(s.total_amount), 0) FROM sales s
+        (SELECT COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}), 0) FROM sales s
            WHERE s.empresa_id = $1 AND ${sellerMatch} AND ${canonicalSalesSourceSql("s")}
              AND ${normalizedOrderStatusSql("s")} = 'entregado'
-             AND s.sale_date >= date_trunc('month', CURRENT_DATE)::date) AS ventas_mes_total,
+             AND s.sale_date >= date_trunc('month', CURRENT_DATE)::date
+             AND s.sale_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date) AS ventas_mes_total,
         (SELECT COUNT(*) FROM sales s
            WHERE s.empresa_id = $1 AND ${sellerMatch} AND ${canonicalSalesSourceSql("s")}
              AND ${normalizedOrderStatusSql("s")} = 'entregado'
-             AND s.sale_date >= date_trunc('month', CURRENT_DATE)::date) AS ventas_mes_count,
+             AND s.sale_date >= date_trunc('month', CURRENT_DATE)::date
+             AND s.sale_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date) AS ventas_mes_count,
         (SELECT COUNT(*) FROM sales s
            WHERE s.empresa_id = $1 AND ${sellerMatch} AND ${canonicalSalesSourceSql("s")}
              AND ${normalizedOrderStatusSql("s")} = 'entregado'
              AND s.sale_date >= CURRENT_DATE - 30) AS cerradas_30d,
-        (SELECT COALESCE(SUM(s.total_amount), 0) FROM sales s
+        (SELECT COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}), 0) FROM sales s
            WHERE s.empresa_id = $1 AND ${sellerMatch} AND ${canonicalSalesSourceSql("s")}
              AND ${normalizedOrderStatusSql("s")} = 'entregado'
              AND s.sale_date >= CURRENT_DATE - 30) AS ventas_30d_total,
@@ -86,7 +111,11 @@ export async function getVendorProfile(session: AuthSession): Promise<VendorProf
         (SELECT COUNT(*) FROM quotes q
            JOIN profiles p ON p.id = q.seller_id
            WHERE q.empresa_id = $1 AND q.status = 'pendiente'
-             AND UPPER(BTRIM(COALESCE(p.username, p.full_name, ''))) = ANY($2::text[])) AS presupuestos_vigentes
+             AND UPPER(BTRIM(COALESCE(p.username, p.full_name, ''))) = ANY($2::text[])) AS presupuestos_vigentes,
+        (SELECT COALESCE(MAX(vg.goal_sales), 0) FROM vendor_goals vg
+           WHERE vg.empresa_id = $1
+             AND vg.period = date_trunc('month', CURRENT_DATE)::date
+             AND UPPER(BTRIM(vg.vendor)) = ANY($2::text[])) AS goal_sales
     `,
     [session.companyId, names],
   );
@@ -94,6 +123,30 @@ export async function getVendorProfile(session: AuthSession): Promise<VendorProf
   const row = result.rows[0];
   const rate = Number(row?.commission_rate ?? 0);
   const sales30d = Number(row?.ventas_30d_total ?? 0);
+  const topClientsResult = await queryWithCompanyContext<{
+    client_id: string | null;
+    client_name: string;
+    sales_total: string;
+    sales_count: string;
+  }>(
+    session.companyId,
+    `SELECT s.client_id::text AS client_id,
+            COALESCE(NULLIF(BTRIM(s.client_name), ''), c.display_name, c.legal_name, 'Cliente sin nombre') AS client_name,
+            COALESCE(SUM(${adjustedSalesAmountSql("s.total_amount", "s")}), 0)::text AS sales_total,
+            COUNT(*)::text AS sales_count
+       FROM sales s
+       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      WHERE s.empresa_id = $1
+        AND UPPER(BTRIM(COALESCE(s.seller_name, ''))) = ANY($2::text[])
+        AND ${canonicalSalesSourceSql("s")}
+        AND ${normalizedOrderStatusSql("s")} = 'entregado'
+        AND s.sale_date >= date_trunc('month', CURRENT_DATE)::date
+        AND s.sale_date < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
+      GROUP BY s.client_id, COALESCE(NULLIF(BTRIM(s.client_name), ''), c.display_name, c.legal_name, 'Cliente sin nombre')
+      ORDER BY SUM(${adjustedSalesAmountSql("s.total_amount", "s")}) DESC, client_name
+      LIMIT 5`,
+    [session.companyId, names],
+  );
   return {
     vendor: session.displayName || session.username || "",
     clientsInCharge: Number(row?.a_cargo ?? 0),
@@ -104,6 +157,13 @@ export async function getVendorProfile(session: AuthSession): Promise<VendorProf
     commissionRate: rate,
     accruedCommission: sales30d * (rate / 100),
     activeQuotes: Number(row?.presupuestos_vigentes ?? 0),
+    goalSales: Number(row?.goal_sales ?? 0),
+    topClients: topClientsResult.rows.map((client) => ({
+      clientId: client.client_id,
+      name: client.client_name,
+      total: Number(client.sales_total),
+      salesCount: Number(client.sales_count),
+    })),
   };
 }
 
@@ -131,6 +191,7 @@ const STATE_KEYS = ["al_dia", "contactar", "riesgo", "perdido", "sin_historial"]
 // clientes del vendedor (propios ∪ a cargo), enriqueciendo con zona y relacion.
 export async function getVendorClients(session: AuthSession): Promise<CrmClientsResult> {
   const names = new Set(sellerCandidates(session));
+  const allCustomers = await hasAllCustomerAccess(session);
   const followUp = await getCustomerFollowUp(session.companyId);
 
   const infoRows = (
@@ -154,7 +215,7 @@ export async function getVendorClients(session: AuthSession): Promise<CrmClients
       if (!info) continue;
       const propio = names.has(info.sn);
       const aCargo = names.has(info.asg);
-      if (!propio && !aCargo) continue;
+      if (!allCustomers && !propio && !aCargo) continue;
       const zona = info.loc || info.prov || "Sin zona";
       zonas.add(zona);
       groups[key]!.push({
@@ -317,11 +378,15 @@ export async function getVendorCustomers(
   input: { query?: string | null; page?: string | null; pageSize?: string | null } = {},
 ) {
   const names = sellerCandidates(session);
+  const allCustomers = await hasAllCustomerAccess(session);
   const query = input.query?.trim() ?? "";
   const pagination = parsePagination(input);
   const params: unknown[] = [session.companyId, names];
-  const sellerFilter =
-    "(UPPER(BTRIM(COALESCE(seller_name,''))) = ANY($2::text[]) OR UPPER(BTRIM(COALESCE(assigned_seller,''))) = ANY($2::text[]))";
+  const sellerFilter = allCustomers
+    // Keep $2 referenced because the same parameter list is reused by the
+    // count query and the paginated rows query below.
+    ? "$2::text[] IS NOT NULL"
+    : "(UPPER(BTRIM(COALESCE(seller_name,''))) = ANY($2::text[]) OR UPPER(BTRIM(COALESCE(assigned_seller,''))) = ANY($2::text[]))";
   const filters = ["empresa_id = $1", sellerFilter];
   if (query) {
     params.push(`%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
@@ -392,11 +457,15 @@ export async function getVendorCustomers(
 // Cuentas abiertas (saldo corrido) de los clientes del vendedor (propios ∪ a cargo).
 // Delega en listOpenCustomerAccounts (customer-accounts.ts) filtrando por seller_name.
 export async function getVendorOpenAccounts(session: AuthSession) {
-  return listOpenCustomerAccounts(session.companyId, { sellerNames: sellerCandidates(session) });
+  const allCustomers = await hasAllCustomerAccess(session);
+  return listOpenCustomerAccounts(session.companyId, {
+    sellerNames: allCustomers ? undefined : sellerCandidates(session),
+  });
 }
 
 // Guard: el cliente debe ser propio o a cargo del vendedor, si no 403.
 export async function assertVendorOwnsClient(session: AuthSession, clientId: string): Promise<void> {
+  if (await hasAllCustomerAccess(session)) return;
   const names = sellerCandidates(session);
   const result = await queryWithCompanyContext<{ ok: number }>(
     session.companyId,

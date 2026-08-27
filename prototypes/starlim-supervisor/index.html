@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Starlim Supervisor · Prototipo aislado</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="prototype-banner">PROTOTIPO AISLADO · DATOS SIMULADOS · SIN CONEXIÓN AL ERP</div>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">S</div>
+          <div><strong>STARLIM</strong><span>Supervisor</span></div>
+        </div>
+
+        <nav aria-label="Navegación del prototipo">
+          <button class="nav-item active" data-view="assistant"><span>✦</span> Asistente</button>
+          <button class="nav-item" data-view="opportunities"><span>◎</span> Oportunidades <b>5</b></button>
+          <button class="nav-item" data-view="interpreter"><span>⌁</span> Interpretar pedido</button>
+          <button class="nav-item" data-view="tasks"><span>✓</span> Mis tareas <b id="navTaskCount">4</b></button>
+          <button class="nav-item" data-view="history"><span>↺</span> Historial</button>
+        </nav>
+
+        <div class="scope-card">
+          <span class="eyebrow">Alcance de acceso</span>
+          <strong>Fran · Vendedor</strong>
+          <p>Clientes, pedidos y ventas asignadas. Sin acceso a costos ni rentabilidad.</p>
+        </div>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Asistente operativo</p>
+            <h1>Buen día, Fran</h1>
+            <p id="headline">Tenés 4 asuntos para revisar hoy.</p>
+          </div>
+          <div class="status-pill"><i></i> Supervisor activo</div>
+        </header>
+
+        <section id="assistantView" class="view active">
+          <div class="summary-grid">
+            <article class="summary-card urgent"><span>Facturación</span><strong id="billingCount">2</strong><p>ventas sin decisión fiscal</p></article>
+            <article class="summary-card"><span>Entregas</span><strong id="deliveryCount">1</strong><p>entrega para confirmar</p></article>
+            <article class="summary-card"><span>Pedidos</span><strong id="orderCount">1</strong><p>pedido sin autorizar</p></article>
+          </div>
+
+          <div class="assistant-grid">
+            <section class="chat-card">
+              <div class="card-header">
+                <div><strong>Consultale a Starlim</strong><span>Respuestas basadas en información del ERP</span></div>
+                <button id="clearChat" class="icon-button" title="Limpiar conversación">↺</button>
+              </div>
+              <div id="chatMessages" class="messages" aria-live="polite"></div>
+              <div id="suggestions" class="suggestions">
+                <button>¿Qué tengo que hacer hoy?</button>
+                <button>¿Qué ventas faltan facturar?</button>
+                <button>¿Cuánto debe ATILRA?</button>
+              </div>
+              <form id="chatForm" class="composer">
+                <input id="chatInput" autocomplete="off" placeholder="Preguntá por clientes, ventas, entregas o procesos…" />
+                <button type="submit" aria-label="Enviar consulta">➜</button>
+              </form>
+              <p class="disclaimer">El asistente puede equivocarse. Verificá los comprobantes antes de realizar acciones fiscales o financieras.</p>
+            </section>
+
+            <aside class="attention-card">
+              <div class="card-header"><div><strong>Requieren tu atención</strong><span>Priorizadas por impacto operativo</span></div></div>
+              <div id="taskPreview" class="task-list"></div>
+              <button class="secondary-button full" data-open-tasks>Ver todas las tareas</button>
+            </aside>
+          </div>
+        </section>
+
+        <section id="opportunitiesView" class="view">
+          <div class="section-heading"><div><p class="eyebrow">Inteligencia comercial</p><h2>¿A quién conviene contactar hoy?</h2><p>Recomendaciones explicables basadas en frecuencia, última compra y actividad reciente.</p></div><button id="refreshOpportunities" class="secondary-button">Actualizar análisis</button></div>
+          <div class="insight-banner"><div class="insight-icon">◎</div><div><strong>5 oportunidades detectadas</strong><p>Dos clientes ya superaron ampliamente su intervalo habitual de compra. Priorizalos antes del mediodía.</p></div></div>
+          <div id="opportunityList" class="opportunity-list"></div>
+        </section>
+
+        <section id="interpreterView" class="view">
+          <div class="section-heading"><div><p class="eyebrow">Asistente de carga</p><h2>Interpretar mensaje de WhatsApp</h2><p>Pegá el mensaje tal como lo escribió el cliente. El resultado siempre será un borrador revisable.</p></div></div>
+          <div class="interpreter-grid">
+            <section class="paste-card">
+              <label for="customerContext">Cliente conocido</label>
+              <select id="customerContext"><option value="italy">IT Italy N2</option><option value="cascada">La Cascada</option><option value="atilra">ATILRA</option><option value="unknown">No estoy seguro</option></select>
+              <label for="whatsappMessage">Mensaje recibido</label>
+              <textarea id="whatsappMessage" rows="9">hola fran mandame lo mismo de la otra vez pero 2 lavandinas más y las bolsas grandes no las chicas y si tenés el coso del baño también</textarea>
+              <div class="privacy-note"><strong>Antes de analizar</strong><span>No pegues datos bancarios, contraseñas ni información personal innecesaria.</span></div>
+              <button id="interpretButton" class="primary-button">Interpretar mensaje</button>
+            </section>
+            <section id="interpretationResult" class="result-card empty-result">
+              <div><span class="result-placeholder">⌁</span><strong>El borrador aparecerá acá</strong><p>Mostraremos productos sugeridos, evidencia y cualquier dato que necesite confirmación.</p></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="tasksView" class="view">
+          <div class="section-heading"><div><p class="eyebrow">Seguimiento diario</p><h2>Mis tareas</h2><p>Respondé, posponé o abrí el registro relacionado.</p></div><select id="taskFilter"><option value="pending">Pendientes</option><option value="all">Todas</option><option value="done">Resueltas</option></select></div>
+          <div id="taskBoard" class="task-board"></div>
+        </section>
+
+        <section id="historyView" class="view">
+          <div class="section-heading"><div><p class="eyebrow">Auditoría</p><h2>Historial de actividad</h2><p>Cada respuesta queda registrada con usuario, fecha y origen.</p></div></div>
+          <div class="history-card"><div id="historyList" class="history-list"></div></div>
+        </section>
+      </section>
+    </main>
+    <div id="toast" class="toast" role="status"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

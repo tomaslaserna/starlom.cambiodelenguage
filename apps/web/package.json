@@ -9,23 +9,33 @@
     "lint": "eslint",
     "env:check": "node scripts/check-env.mjs",
     "security:scan": "node scripts/security-scan.mjs",
+    "test:supervisor-evaluation": "node --test scripts/supervisor-evaluation-plan.test.mjs scripts/supervisor-lab-wiring.test.mjs scripts/supervisor-product-pattern.test.mjs",
+    "test:principal-seller": "node --test scripts/principal-seller-access.test.mjs scripts/crm-vendor.test.mjs",
     "test": "node --test scripts/sales-adjustments.test.mjs scripts/static.test.mjs scripts/domain-behavior.test.mjs scripts/product-pricing-sql.test.mjs scripts/order-confirmation.test.mjs scripts/month-range.test.mjs scripts/timezone.test.mjs scripts/presence.test.mjs scripts/bank.test.mjs scripts/crm-quotes.test.mjs scripts/period-range.test.mjs scripts/metrics-series.test.mjs scripts/customer-rhythm.test.mjs scripts/delivery-times.test.mjs scripts/offer-status.test.mjs scripts/price-list-derivation.test.mjs scripts/price-list-export.test.mjs scripts/product-image.test.mjs scripts/board-mentions.test.mjs scripts/client-reactivation.test.mjs scripts/inactive-clients-sql.test.mjs scripts/collection-methods.test.mjs scripts/customer-admin.test.mjs scripts/customers-admin-wiring.test.mjs scripts/crm-leads-wiring.test.mjs scripts/leads-domain.test.mjs scripts/fiscal-invoice-guard.test.mjs scripts/customer-edit-seller.test.mjs scripts/customer-purchase-summary.test.mjs scripts/customer-detail-wiring.test.mjs scripts/order-quote-vat.test.mjs scripts/customer-receipt-type.test.mjs scripts/collections-final-total.test.mjs scripts/vat-calculation.test.mjs scripts/wsfe-vat.test.mjs scripts/quote-update.test.mjs scripts/quote-delete.test.mjs scripts/quotes-edit-wiring.test.mjs scripts/crm-vendor.test.mjs scripts/crm-vendor-wiring.test.mjs scripts/quote-assignment.test.mjs scripts/quotes-assign-wiring.test.mjs scripts/customer-accounts.test.mjs scripts/customer-accounts-wiring.test.mjs scripts/orders-cc-debit.test.mjs",
     "test:smoke": "node --test scripts/smoke.mjs"
   },
   "dependencies": {
+    "@ai-sdk/react": "^4.0.82",
+    "@streamdown/cjk": "^1.0.3",
+    "@streamdown/code": "^1.1.1",
+    "@streamdown/math": "^1.0.2",
+    "@streamdown/mermaid": "^1.0.2",
     "@supabase/supabase-js": "2.110.7",
     "@types/node-forge": "^1.3.14",
     "@types/qrcode": "^1.5.6",
+    "ai": "^7.0.79",
     "bcryptjs": "^3.0.3",
     "csv-parse": "^7.0.0",
     "iconv-lite": "^0.7.2",
-    "next": "16.2.12",
+    "next": "16.3.3",
     "node-forge": "^1.4.0",
     "pdfkit": "^0.19.1",
     "pg": "^8.22.0",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "streamdown": "^2.6.0",
+    "zod": "^4.4.3"
   },
   "overrides": {
     "postcss": "^8.5.15"
@@ -38,7 +48,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "16.3.3",
     "supabase": "^2.109.1",
     "tailwindcss": "^4",
     "typescript": "^5"

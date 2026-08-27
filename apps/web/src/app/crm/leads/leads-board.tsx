@@ -15,6 +15,7 @@ type LeadsBoardProps = {
   moveAction: Action;
   discardAction: Action;
   convertAction: Action;
+  initialCreating?: boolean;
 };
 
 const COLUMNS: { key: string; label: string }[] = [
@@ -47,8 +48,9 @@ export function LeadsBoard({
   moveAction,
   discardAction,
   convertAction,
+  initialCreating = false,
 }: LeadsBoardProps) {
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(initialCreating);
   const [showClosed, setShowClosed] = useState(false);
 
   return (

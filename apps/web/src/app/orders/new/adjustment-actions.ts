@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { ApiError } from "@/lib/api-response";
 import { createSalesNote, salesNoteInputFromBody } from "@/lib/sales-documents";
-import { ORDERS_CREATE_PERMISSION, requireApiSession } from "@/lib/route-auth";
+import { requireApiSession, SALES_OPERATE_PERMISSION } from "@/lib/route-auth";
 import type { OrderEntryActionState } from "@/app/orders/order-entry-action-state";
 
 export async function createSalesAdjustmentAction(
@@ -12,7 +12,7 @@ export async function createSalesAdjustmentAction(
 ): Promise<OrderEntryActionState> {
   let className = "NC";
   try {
-    const session = await requireApiSession([ORDERS_CREATE_PERMISSION, { resource: "ventas", action: "editar" }]);
+    const session = await requireApiSession([SALES_OPERATE_PERMISSION]);
     const input = salesNoteInputFromBody(Object.fromEntries(formData.entries()));
     className = input.className;
     input.remittanceId = "";

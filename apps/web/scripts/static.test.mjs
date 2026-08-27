@@ -1137,6 +1137,58 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.doesNotMatch(pdfRenderer, /Starlim - documento operativo/);
 });
 
+test("public store creates a price-free cart and hands it to CRM as a lead plus draft quote", () => {
+  const login = read("apps/web/src/app/login/page.tsx");
+  const page = read("apps/web/src/app/tienda/page.tsx");
+  const client = read("apps/web/src/app/tienda/storefront.tsx");
+  const storefront = read("apps/web/src/lib/storefront.ts");
+  const route = read("apps/web/src/app/api/storefront/requests/route.ts");
+
+  assert.match(login, /href="\/tienda"[^>]*>TIENDA/);
+  assert.match(page, /listSalePrices/);
+  assert.match(client, /Tu carrito/);
+  assert.match(client, /\+\{products\.length\} artículos en lista/);
+  assert.match(client, /Continuar · \{totalUnits\}/);
+  assert.match(client, /Papelería/);
+  assert.match(client, /Descartables/);
+  assert.match(client, /Todas las marcas/);
+  assert.match(client, /groupedProducts/);
+  assert.match(client, /Observación para el vendedor/);
+  assert.match(client, /\(opcional\)/);
+  assert.match(client, /Los precios serán definidos por el comercial/);
+  assert.match(client, /Hemos recibido tu pedido/);
+  assert.match(client, /A la brevedad un comercial se contactará con usted/);
+  assert.match(client, /navigator\.geolocation/);
+  assert.match(client, /Dirección completa/);
+  assert.doesNotMatch(client, /formatCurrency|unitPrice|precio[^s]/i);
+  assert.match(storefront, /INSERT INTO crm_leads/);
+  assert.match(storefront, /INSERT INTO quotes/);
+  assert.match(storefront, /INSERT INTO quote_items/);
+  assert.match(storefront, /withCompanyContext/);
+  assert.match(route, /parseStorefrontRequest/);
+  assert.doesNotMatch(route, /requireApiSession/);
+});
+
+test("seller mobile CRM has an elevated quick-sale button and a viewport-safe drawer", () => {
+  const navigation = read("apps/web/src/components/seller-mobile-navigation.tsx");
+  const modulePage = read("apps/web/src/components/module-page.tsx");
+  const styles = read("apps/web/src/app/globals.css");
+  const leadsPage = read("apps/web/src/app/crm/leads/page.tsx");
+  const leadsBoard = read("apps/web/src/app/crm/leads/leads-board.tsx");
+
+  assert.match(navigation, /Crear cliente/);
+  assert.match(navigation, /Crear lead/);
+  assert.match(navigation, /Hacer presupuesto/);
+  assert.match(navigation, /seller-mobile-navigation__create/);
+  assert.match(navigation, /aria-expanded=\{quickOpen\}/);
+  assert.match(styles, /seller-mobile-navigation__create/);
+  assert.match(styles, /border-radius: 999px/);
+  assert.match(modulePage, /bottom-\[calc\(4\.25rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.doesNotMatch(modulePage, /max-h-\[72vh\]/);
+  assert.match(leadsPage, /params\.nuevo === "1"/);
+  assert.match(leadsBoard, /initialCreating/);
+});
+
 test("Cobros y pagos es un resumen y Cuentas corrientes conserva la operatoria", () => {
   const paymentsPage = read("apps/web/src/app/payments/page.tsx");
   const accountsPage = read("apps/web/src/app/payments/accounts/[id]/page.tsx");

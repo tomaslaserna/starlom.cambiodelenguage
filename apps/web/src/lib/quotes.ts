@@ -43,6 +43,7 @@ type QuoteProduct = {
 type QuoteInput = {
   customerId: string;
   customer: QuoteCustomer;
+  desiredDocument: SaleOrderDocument;
   products: QuoteProduct[];
   discountPercent: number;
   activePriceList: number;
@@ -227,6 +228,7 @@ export function quoteInputFromBody(body: RequestBody): QuoteInput {
   return {
     customerId,
     customer,
+    desiredDocument: saleOrderDocument(textField(body, "desiredDocument")) ?? "remito",
     products,
     discountPercent: clamp(numberField(body, "discountPercent", numberField(body, "descuento", 0)), 0, 100),
     activePriceList: intField(body, "activePriceList", intField(body, "lista_activa", 0)),
@@ -543,12 +545,6 @@ export async function buildQuoteDraft(
   session: AuthSession,
   input: QuoteInput,
 ): Promise<QuoteDraft> {
-  if (!input.customerId) {
-    throw new ApiError(
-      400,
-      "Selecciona un cliente registrado con comprobante configurado para crear el presupuesto.",
-    );
-  }
   type QuoteClientRow = {
     id: string | null;
     display_name: string;
@@ -561,7 +557,7 @@ export async function buildQuoteDraft(
     seller_name: string | null;
     receipt_type: string | null;
   };
-  const customerResult = await client.query<QuoteClientRow>(
+  const customerResult = input.customerId ? await client.query<QuoteClientRow>(
     `
       SELECT id::text, display_name, legal_name, tax_id, fiscal_condition,
              phone, address, price_list_name, seller_name, receipt_type
@@ -570,16 +566,34 @@ export async function buildQuoteDraft(
       LIMIT 1
     `,
     [input.customerId, session.companyId],
-  );
-  const customer = customerResult.rows[0];
-  if (!customer) throw new ApiError(404, "Cliente no encontrado");
-  await reactivateClientIfInactive(client, session.companyId, input.customerId);
-  const desiredDocument = saleOrderDocument(customer.receipt_type);
-  const vatRate = saleVatRateForDocument(customer.receipt_type);
+  ) : { rows: [] as QuoteClientRow[] };
+  const registeredCustomer = customerResult.rows[0];
+  if (input.customerId && !registeredCustomer) throw new ApiError(404, "Cliente no encontrado");
+  if (registeredCustomer) await reactivateClientIfInactive(client, session.companyId, input.customerId);
+  const prospectName = (input.customer.name ?? "").trim();
+  if (!registeredCustomer && !prospectName) {
+    throw new ApiError(400, "Ingresa el nombre del prospecto o selecciona un cliente registrado.");
+  }
+  const customer: QuoteClientRow = registeredCustomer ?? {
+    id: null,
+    display_name: prospectName,
+    legal_name: input.customer.businessName || null,
+    tax_id: input.customer.taxId || null,
+    fiscal_condition: input.customer.vatCondition || null,
+    phone: input.customer.phone || null,
+    address: input.customer.address || null,
+    price_list_name: null,
+    seller_name: null,
+    receipt_type: input.desiredDocument,
+  };
+  const desiredDocument = registeredCustomer
+    ? (input.desiredDocument || saleOrderDocument(customer.receipt_type))
+    : input.desiredDocument;
+  const vatRate = saleVatRateForDocument(desiredDocument);
   if (!desiredDocument || !vatRate) {
     throw new ApiError(
       400,
-      "El cliente no tiene un comprobante valido. Configuralo como Remito, Factura A o Factura B antes de crear el presupuesto.",
+      "Selecciona Remito, Factura A o Factura B para calcular el presupuesto.",
     );
   }
   const activePriceLists = await getActivePriceListNames(client, session.companyId);
@@ -614,7 +628,7 @@ export async function buildQuoteDraft(
   if (total <= 0) throw new ApiError(400, "El presupuesto no tiene importe calculable");
   return {
     customer: {
-      id: customer.id ?? input.customerId,
+      id: customer.id ?? "",
       display_name: customer.display_name,
       legal_name: customer.legal_name,
       tax_id: customer.tax_id,
@@ -696,7 +710,7 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
       `,
       [
         quoteNumber,
-        draft.customer.id,
+        draft.customer.id || null,
         assignment.sellerId,
         draft.total,
         input.validityDays,
@@ -797,7 +811,7 @@ export async function updateQuote(session: AuthSession, id: string, input: Quote
         WHERE id = $20::uuid AND empresa_id = $21
       `,
       [
-        draft.customer.id,
+        draft.customer.id || null,
         draft.total,
         input.validityDays,
         true,
