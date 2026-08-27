@@ -191,9 +191,22 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
   }
 
   return (
-    <div className="grid gap-3 rounded-[var(--radius-md)] border border-[color:var(--border)] bg-white p-3">
+    <div className="grid gap-5 rounded-[var(--radius-md)] border border-[color:var(--border)] bg-white p-4">
       <input name="productsJson" type="hidden" value={JSON.stringify(payload)} />
       <input name="total" type="hidden" value={purchaseTotal.toFixed(2)} />
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--border)] pb-3">
+        {[
+          ["1", "Proveedor"],
+          ["2", "Mercadería"],
+          ["3", "IVA y confirmación"],
+        ].map(([step, label]) => (
+          <span className="inline-flex items-center gap-2 rounded-full bg-[color:var(--panel-subtle)] px-3 py-1.5 erp-text-caption font-bold text-[color:var(--foreground)]" key={step}>
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-[color:var(--accent)] text-white">{step}</span>
+            {label}
+          </span>
+        ))}
+      </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
         <Field className="min-w-0 xl:col-span-10" htmlFor="purchase-supplier" label="Proveedor">
@@ -212,6 +225,14 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
         <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-date" label="Fecha">
           <Input className="w-full min-w-0" defaultValue={defaultDate} id="purchase-date" name="date" type="date" />
         </Field>
+      </div>
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 className="erp-text-title-sm font-black">Mercadería recibida</h3>
+          <p className="erp-text-caption mt-1 text-[color:var(--muted)]">Buscá dentro del catálogo completo del proveedor o agregá un artículo nuevo.</p>
+        </div>
+        <ButtonLink href="/prices/new" target="_blank" variant="outline">+ Agregar producto nuevo</ButtonLink>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12 xl:items-end">
@@ -250,15 +271,13 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
       {selectedSupplier ? <p className="erp-text-body-sm font-semibold text-[color:var(--muted)]">Vencimiento automático: {selectedSupplier.paymentTermDays === 0 ? "pago al recibir" : `${selectedSupplier.paymentTermDays} días desde la fecha de compra`}.</p> : null}
 
       {draftProduct ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-[10px] bg-[color:var(--panel-subtle)] p-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-[#bfdbfe] bg-[#eff6ff] p-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {draftProduct.imageUrl ? <img alt={draftProduct.name} className="h-20 w-20 rounded-[9px] bg-white object-contain" src={draftProduct.imageUrl} /> : <div className="grid h-20 w-20 place-items-center rounded-[9px] border border-dashed border-[color:var(--border)] bg-white text-center text-xs text-[color:var(--muted)]">Sin imagen</div>}
-          <div><div className="font-bold">{draftProduct.name}</div><div className="erp-text-caption text-[color:var(--muted)]">Costo actual: {formatCurrency(draftProduct.cost)}</div></div>
-          <ButtonLink className="ml-auto" href={`/prices/${draftProduct.id}/edit`} size="sm" target="_blank" variant="secondary">Revisar imagen</ButtonLink>
+          <div><div className="font-bold">{draftProduct.name}</div><div className="erp-text-caption mt-1 text-[color:var(--muted)]">Costo registrado: <strong className="text-[color:var(--foreground)]">{formatCurrency(draftProduct.cost)}</strong></div></div>
+          <ButtonLink className="ml-auto" href={`/prices/${draftProduct.id}/edit`} size="sm" target="_blank" variant="secondary">Imagen y ficha</ButtonLink>
         </div>
       ) : null}
-
-      <div className="flex justify-end"><ButtonLink href="/prices/new" target="_blank" variant="outline">+ Agregar producto nuevo</ButtonLink></div>
 
       {lines.length ? (
         <div className="overflow-hidden rounded-[var(--radius-md)] border border-[color:var(--border)]">
@@ -321,11 +340,22 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
         </div>
       )}
 
-      <div className="grid gap-3 rounded-[10px] border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-3 md:grid-cols-[1fr_180px_160px] md:items-end">
+      <div className="grid gap-3 rounded-[10px] border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4 md:grid-cols-[1fr_180px_160px] md:items-end">
         <div className="erp-text-body-sm text-[color:var(--muted)]">El costo se toma del remito. Si cambió, actualizará automáticamente la ficha del producto.</div>
         <Field htmlFor="purchase-tax-mode" label="IVA"><Select id="purchase-tax-mode" name="taxMode" value={taxMode} onChange={(event) => setTaxMode(event.target.value)}><option value="con_iva">Con IVA</option><option value="sin_iva">Sin IVA</option></Select></Field>
         <Field htmlFor="purchase-vat-rate" label="Alícuota"><Select disabled={taxMode === "sin_iva"} id="purchase-vat-rate" name="vatRate" value={vatRate} onChange={(event) => setVatRate(event.target.value)}><option value="21">21%</option><option value="10.5">10,5%</option><option value="0">0%</option></Select></Field>
-        <div className="md:col-span-3 grid gap-2 text-right sm:grid-cols-3"><span>Neto <strong>{formatCurrency(netTotal)}</strong></span><span>IVA <strong>{formatCurrency(vatAmount)}</strong></span><span>Total <strong>{formatCurrency(purchaseTotal)}</strong></span></div>
+        <div className="md:col-span-3 grid overflow-hidden rounded-[9px] border border-[color:var(--border)] bg-white text-right sm:grid-cols-3">
+          <span className="px-4 py-3">Neto <strong className="ml-2 tabular-nums">{formatCurrency(netTotal)}</strong></span>
+          <span className="border-y border-[color:var(--border)] px-4 py-3 sm:border-x sm:border-y-0">IVA <strong className="ml-2 tabular-nums">{formatCurrency(vatAmount)}</strong></span>
+          <span className="bg-[color:var(--accent-subtle)] px-4 py-3 font-bold text-[color:var(--accent-strong)]">Total <strong className="ml-2 tabular-nums">{formatCurrency(purchaseTotal)}</strong></span>
+        </div>
+      </div>
+
+      <div className="grid gap-3 border-t border-[color:var(--border)] pt-4 md:grid-cols-[minmax(0,1fr)_240px] md:items-end">
+        <Field className="min-w-0" htmlFor="purchase-description" label="Comprobante del proveedor / observaciones">
+          <Input className="w-full min-w-0" id="purchase-description" name="description" placeholder="Ej.: Remito 4581 · entrega completa" />
+        </Field>
+        <Button className="w-full" disabled={payload.length === 0} type="submit">Registrar compra e ingreso</Button>
       </div>
     </div>
   );

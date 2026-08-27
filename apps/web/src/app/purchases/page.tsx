@@ -225,12 +225,6 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
             </div>
             <form action={createPurchaseAction} className="grid gap-4">
               <PurchaseEntryFields defaultDate={today} initialLines={initialLines} initialSupplierId={initialSupplierId} />
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px] md:items-end">
-                <Field className="min-w-0" htmlFor="purchase-description" label="Número de remito / observaciones">
-                  <Input className="w-full min-w-0" id="purchase-description" name="description" placeholder="Detalle o referencia interna" />
-                </Field>
-                <Button className="w-full" type="submit">Registrar compra e ingreso</Button>
-              </div>
             </form>
           </Card>
         ) : null}
