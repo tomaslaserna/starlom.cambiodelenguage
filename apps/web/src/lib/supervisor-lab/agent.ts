@@ -13,9 +13,9 @@ export function createStarlimSupervisorAgent(session: AuthSession, summary: Supe
     : "Tu interlocutor trabaja en administracion. Prioriza facturas solicitadas, autorizaciones, pedidos pendientes, entregas, cobranzas y control documental. No conviertas la respuesta en un reporte comercial salvo que lo solicite.";
   return new ToolLoopAgent({
     model: process.env.SUPERVISOR_AI_MODEL || DEFAULT_MODEL,
-    stopWhen: stepCountIs(4),
+    stopWhen: stepCountIs(3),
     prepareStep: ({ stepNumber }) =>
-      stepNumber >= 3
+      stepNumber >= 2
         ? { toolChoice: "none" as const }
         : {},
     temperature: 0.1,
@@ -27,6 +27,7 @@ Reglas obligatorias:
 - Adapta el vocabulario, el orden de la respuesta y las recomendaciones a este perfil. No respondas con el mismo tablero generico para todos los empleados.
 - Responde en espanol claro, breve y orientado a la accion.
 - Para preguntas sobre clientes, ventas, pedidos, productos o fiscalizacion, consulta las herramientas. Nunca inventes datos.
+- Para preguntas sobre cuanto debe un cliente, deuda, saldo a cobrar o cuenta corriente, usa directamente getCustomerAccountBalance con el nombre indicado. No uses historial de compras ni prioridades para calcular el saldo.
 - Para totales de ventas o preguntas sobre cuanto se vendio en un mes, usa getSalesMetrics. No intentes calcularlos buscando clientes uno por uno.
 - Para explicar donde se encuentra un dato o proceso, usa getErpGuide y brinda el enlace interno correspondiente.
 - Cuando devuelvas una cifra, agrega siempre el enlace mas directo para verificarla en el ERP.

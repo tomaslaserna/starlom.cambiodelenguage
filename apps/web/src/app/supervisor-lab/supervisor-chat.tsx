@@ -74,7 +74,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
     const timeoutId = window.setTimeout(() => {
       setTimedOut(true);
       void stop();
-    }, 48_000);
+    }, 32_000);
     return () => window.clearTimeout(timeoutId);
   }, [busy, stop]);
 
@@ -192,7 +192,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
           ) : null}
           {timedOut ? (
             <div className="rounded-lg border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm font-semibold text-[#92400e]">
-              La consulta superó los 48 segundos y fue detenida. Probá nuevamente o usá el enlace sugerido; LA TIRRA ia.01 no debe quedar pensando indefinidamente.
+              La consulta superó los 32 segundos y fue detenida. Probá nuevamente; LA TIRRA ia.01 no debe quedar pensando indefinidamente.
             </div>
           ) : null}
           {memoryError ? (

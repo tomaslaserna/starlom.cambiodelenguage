@@ -6,6 +6,7 @@ import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { currentMonth, monthRange } from "@/lib/month-range";
 import { netSalesAmountSql } from "@/lib/sales-vat";
+import { activeAccountMovementWhereSql } from "@/lib/accounts";
 
 export type SupervisorPurchaseItem = {
   productId: string | null;
@@ -34,6 +35,18 @@ export type SupervisorCustomerMatch = {
   customerName: string;
   taxId: string;
   seller: string;
+  sourceHref: string;
+};
+
+export type SupervisorCustomerBalance = {
+  customerId: string;
+  customerName: string;
+  taxId: string;
+  seller: string;
+  debit: number;
+  credit: number;
+  balance: number;
+  lastMovementDate: string | null;
   sourceHref: string;
 };
 
@@ -210,6 +223,73 @@ export async function searchSupervisorCustomers(
     seller: row.seller_name,
     sourceHref: `/customers/${row.id}`,
   }));
+}
+
+export async function getSupervisorCustomerBalances(
+  session: AuthSession,
+  search: string,
+  limit = 5,
+): Promise<SupervisorCustomerBalance[]> {
+  assertSupervisorReader(session);
+  const term = search.trim();
+  if (term.length < 2) return [];
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 10);
+  const scope = await sellerScope(session, "c", 4);
+  const activeMovement = activeAccountMovementWhereSql("m", "s");
+  const result = await queryWithCompanyContext<{
+    id: string;
+    display_name: string;
+    tax_id: string;
+    seller_name: string;
+    total_debit: string;
+    total_credit: string;
+    last_movement: string | null;
+  }>(
+    session.companyId,
+    `
+      SELECT c.id::text AS id,
+             c.display_name,
+             COALESCE(c.tax_id, '') AS tax_id,
+             COALESCE(c.seller_name, c.assigned_seller, '') AS seller_name,
+             COALESCE(SUM(m.debit) FILTER (WHERE ${activeMovement}), 0)::text AS total_debit,
+             COALESCE(SUM(m.credit) FILTER (WHERE ${activeMovement}), 0)::text AS total_credit,
+             MAX(m.movement_date) FILTER (WHERE ${activeMovement})::text AS last_movement
+        FROM clients c
+        LEFT JOIN current_account_movements m
+          ON m.client_id = c.id
+         AND m.empresa_id = c.empresa_id
+         AND m.entity_type = 'cliente'
+        LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
+       WHERE c.empresa_id = $1
+         AND (
+           c.display_name ILIKE '%' || $2 || '%'
+           OR COALESCE(c.legal_name, '') ILIKE '%' || $2 || '%'
+           OR COALESCE(c.tax_id, '') ILIKE '%' || $2 || '%'
+         )
+         ${scope.sql}
+       GROUP BY c.id, c.display_name, c.tax_id, c.seller_name, c.assigned_seller
+       ORDER BY CASE WHEN UPPER(c.display_name) = UPPER($2) THEN 0 ELSE 1 END, c.display_name ASC
+       LIMIT $3
+    `,
+    [session.companyId, term, safeLimit, ...scope.params],
+    { cache: false },
+  );
+
+  return result.rows.map((row) => {
+    const debit = Number(row.total_debit);
+    const credit = Number(row.total_credit);
+    return {
+      customerId: row.id,
+      customerName: row.display_name,
+      taxId: row.tax_id,
+      seller: row.seller_name,
+      debit,
+      credit,
+      balance: Math.round((debit - credit) * 100) / 100,
+      lastMovementDate: row.last_movement,
+      sourceHref: `/payments/accounts/${row.id}`,
+    };
+  });
 }
 
 export async function getSupervisorOperationalSnapshot(

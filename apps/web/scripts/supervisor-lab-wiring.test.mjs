@@ -47,6 +47,8 @@ test("el agente usa herramientas tipadas, de servidor y solo lectura", () => {
   assert.match(tools, /summarizeCustomerProductPatterns/);
   assert.match(tools, /getWorkPriorities/);
   assert.match(tools, /getSalesMetrics/);
+  assert.match(tools, /getCustomerAccountBalance/);
+  assert.match(tools, /getSupervisorCustomerBalances/);
   assert.match(tools, /getErpGuide/);
   assert.match(tools, /executedCalls/);
   assert.match(agent, /toolChoice: "none"/);
@@ -65,7 +67,9 @@ test("la ruta experimental exige sesion, configuracion y limites", () => {
   assert.match(route, /requireApiSession\(\)/);
   assert.match(route, /assertSupervisorAiConfigured\(\)/);
   assert.match(route, /createAgentUIStreamResponse/);
-  assert.match(route, /timeout: \{ totalMs: 45_000 \}/);
+  assert.match(route, /timeout: \{ totalMs: 28_000 \}/);
+  assert.match(route, /Supervisor request started/);
+  assert.match(route, /Supervisor request completed/);
   assert.match(availability, /SUPERVISOR_AI_ENABLED/);
   assert.match(availability, /AI_GATEWAY_API_KEY/);
   assert.match(availability, /process\.env\.VERCEL === "1"/);
@@ -111,8 +115,8 @@ test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   assert.match(chat, /DefaultChatTransport<StarlimSupervisorMessage>/);
   assert.match(chat, /sendMessage\(\{ text: value \}\)/);
   assert.match(chat, /quickPrompts\.map/);
-  assert.match(chat, /48_000/);
-  assert.match(chat, /La consulta superó los 48 segundos/);
+  assert.match(chat, /32_000/);
+  assert.match(chat, /La consulta superó los 32 segundos/);
   assert.match(chat, /<MessageResponse[^>]*>\{part\.text\}<\/MessageResponse>/);
   assert.doesNotMatch(chat, /dangerouslySetInnerHTML/);
   assert.match(navigation, /href: "\/supervisor-lab"/);
@@ -128,6 +132,8 @@ test("el supervisor resuelve métricas mensuales con una consulta agregada y enl
   const guide = read("src/lib/supervisor-lab/system-guide.ts");
 
   assert.match(readModel, /getSupervisorSalesMetrics/);
+  assert.match(readModel, /getSupervisorCustomerBalances/);
+  assert.match(readModel, /activeAccountMovementWhereSql/);
   assert.match(readModel, /monthRange\(requestedPeriod\)/);
   assert.match(readModel, /netSalesAmountSql/);
   assert.match(readModel, /normalizedOrderStatusSql\("s"\).*'entregado'/s);
