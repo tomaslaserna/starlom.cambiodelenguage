@@ -191,7 +191,6 @@ export async function listPurchaseFormProducts(companyId: number, supplierId?: s
       FROM products
       WHERE empresa_id = $1 AND active = true ${supplierFilter}
       ORDER BY name ASC, id ASC
-      LIMIT 300
     `,
     params,
   );

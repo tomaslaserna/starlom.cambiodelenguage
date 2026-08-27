@@ -73,8 +73,8 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
       filteredProducts.map((product) => ({
         value: product.id,
         label: product.name,
-        description: product.code || "Sin codigo",
-        searchText: product.code,
+        description: `${product.code || "Sin código"} · Costo actual ${formatCurrency(product.cost)}`,
+        searchText: `${product.code} ${product.name}`,
       })),
     [filteredProducts],
   );
@@ -220,6 +220,8 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
             className="w-full min-w-0"
             disabled={!supplierId || productsLoading}
             id="purchase-product-draft"
+            emptyMessage="No se encontró ese producto dentro del catálogo completo del proveedor"
+            maxResults={60}
             options={productOptions}
             placeholder={supplierId ? (productsLoading ? "Cargando productos..." : "Seleccionar producto") : "Primero selecciona proveedor"}
             value={draftLine.productId}
@@ -239,6 +241,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
         </Field>
         <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-cost-draft" label="Costo unitario s/IVA">
           <Input id="purchase-cost-draft" min="0" step="0.01" type="number" value={draftLine.unitCost} onChange={(event) => updateDraftLine({ unitCost: event.target.value })} />
+          <span className="erp-text-caption text-[color:var(--muted)]">Se completa con el costo actual y queda disponible para corregirlo.</span>
         </Field>
         <Button className="w-full xl:col-span-2" disabled={!canAddLine} type="button" onClick={addDraftLine}>
           Agregar producto

@@ -28,6 +28,9 @@ test("el formulario filtra productos, muestra imagen, costo, IVA y efectos", () 
   assert.match(entry, /Agregar producto nuevo/);
   assert.match(page, /Una carga actualiza cuatro sectores/);
   assert.match(page, /cuenta por pagar/);
+  assert.match(entry, /Se completa con el costo actual y queda disponible para corregirlo/);
+  const productQuery = purchases.slice(purchases.indexOf("export async function listPurchaseFormProducts"), purchases.indexOf("export async function listPurchases"));
+  assert.doesNotMatch(productQuery, /LIMIT 300/);
 });
 
 test("proveedores guardan plazo y las compras calculan su vencimiento", () => {
