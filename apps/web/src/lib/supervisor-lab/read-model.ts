@@ -50,6 +50,58 @@ export type SupervisorCustomerBalance = {
   sourceHref: string;
 };
 
+export type SupervisorFiscalInvoice = {
+  saleId: string;
+  customerId: string;
+  customerName: string;
+  type: string;
+  number: string;
+  issueDate: string;
+  total: number;
+  cae: string;
+  caeExpiresAt: string | null;
+  pdfHref: string;
+  accountHref: string;
+};
+
+function fiscalInvoiceTypeLabel(receiptType: number) {
+  if (receiptType === 1) return "Factura A";
+  if (receiptType === 6) return "Factura B";
+  if (receiptType === 11) return "Factura C";
+  return `Factura (${receiptType})`;
+}
+
+function fiscalInvoiceNumber(pointOfSale: number, receiptNumber: number) {
+  return `${String(pointOfSale).padStart(4, "0")}-${String(receiptNumber).padStart(8, "0")}`;
+}
+
+function mapSupervisorInvoice(row: {
+  sale_id: string;
+  customer_id: string;
+  customer_name: string;
+  fiscal_receipt_type: number;
+  fiscal_point_of_sale: number;
+  fiscal_receipt_number: number;
+  issue_date: string;
+  total: string;
+  cae: string;
+  cae_expires_at: string | null;
+}): SupervisorFiscalInvoice {
+  return {
+    saleId: row.sale_id,
+    customerId: row.customer_id,
+    customerName: row.customer_name,
+    type: fiscalInvoiceTypeLabel(Number(row.fiscal_receipt_type)),
+    number: fiscalInvoiceNumber(Number(row.fiscal_point_of_sale), Number(row.fiscal_receipt_number)),
+    issueDate: row.issue_date,
+    total: Number(row.total),
+    cae: row.cae,
+    caeExpiresAt: row.cae_expires_at,
+    pdfHref: `/api/pdfs/fiscal/sales/${row.sale_id}`,
+    accountHref: `/payments/accounts/${row.customer_id}`,
+  };
+}
+
 export type SupervisorOperationalSnapshot = {
   orders: Array<{
     id: string;
@@ -290,6 +342,101 @@ export async function getSupervisorCustomerBalances(
       sourceHref: `/payments/accounts/${row.id}`,
     };
   });
+}
+
+export async function getSupervisorCustomerInvoices(
+  session: AuthSession,
+  search: string,
+  limit = 3,
+): Promise<SupervisorFiscalInvoice[]> {
+  assertSupervisorReader(session);
+  const term = search.trim();
+  if (term.length < 2) return [];
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 10);
+  const scope = await sellerScope(session, "c", 4);
+  const result = await queryWithCompanyContext<{
+    sale_id: string; customer_id: string; customer_name: string; fiscal_receipt_type: number;
+    fiscal_point_of_sale: number; fiscal_receipt_number: number; issue_date: string;
+    total: string; cae: string; cae_expires_at: string | null;
+  }>(
+    session.companyId,
+    `
+      SELECT s.id::text AS sale_id,
+             c.id::text AS customer_id,
+             c.display_name AS customer_name,
+             s.fiscal_receipt_type,
+             s.fiscal_point_of_sale,
+             s.fiscal_receipt_number,
+             COALESCE(s.fiscal_issue_date, (s.fiscal_authorized_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, s.sale_date)::text AS issue_date,
+             COALESCE(s.total_amount, 0)::text AS total,
+             s.cae,
+             s.cae_expires_at::text
+        FROM sales s
+        JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+       WHERE s.empresa_id = $1
+         AND COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
+         AND COALESCE(s.cae, '') NOT IN ('', 'manual')
+         AND s.fiscal_receipt_type IN (1, 6, 11)
+         AND s.fiscal_point_of_sale IS NOT NULL
+         AND s.fiscal_receipt_number IS NOT NULL
+         AND (
+           c.display_name ILIKE '%' || $2 || '%'
+           OR COALESCE(c.legal_name, '') ILIKE '%' || $2 || '%'
+           OR COALESCE(c.tax_id, '') ILIKE '%' || $2 || '%'
+         )
+         ${scope.sql}
+       ORDER BY issue_date DESC, s.fiscal_receipt_number DESC
+       LIMIT $3
+    `,
+    [session.companyId, term, safeLimit, ...scope.params],
+    { cache: false },
+  );
+  return result.rows.map(mapSupervisorInvoice);
+}
+
+export async function getSupervisorInvoiceByNumber(
+  session: AuthSession,
+  requestedNumber: string,
+): Promise<SupervisorFiscalInvoice[]> {
+  assertSupervisorReader(session);
+  const numericParts = requestedNumber.match(/\d+/g) ?? [];
+  const receiptNumber = Number(numericParts.at(-1));
+  const pointOfSale = numericParts.length > 1 ? Number(numericParts.at(-2)) : null;
+  if (!Number.isSafeInteger(receiptNumber) || receiptNumber <= 0) return [];
+  const scope = await sellerScope(session, "c", 4);
+  const result = await queryWithCompanyContext<{
+    sale_id: string; customer_id: string; customer_name: string; fiscal_receipt_type: number;
+    fiscal_point_of_sale: number; fiscal_receipt_number: number; issue_date: string;
+    total: string; cae: string; cae_expires_at: string | null;
+  }>(
+    session.companyId,
+    `
+      SELECT s.id::text AS sale_id,
+             c.id::text AS customer_id,
+             c.display_name AS customer_name,
+             s.fiscal_receipt_type,
+             s.fiscal_point_of_sale,
+             s.fiscal_receipt_number,
+             COALESCE(s.fiscal_issue_date, (s.fiscal_authorized_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, s.sale_date)::text AS issue_date,
+             COALESCE(s.total_amount, 0)::text AS total,
+             s.cae,
+             s.cae_expires_at::text
+        FROM sales s
+        JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+       WHERE s.empresa_id = $1
+         AND COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
+         AND COALESCE(s.cae, '') NOT IN ('', 'manual')
+         AND s.fiscal_receipt_type IN (1, 6, 11)
+         AND s.fiscal_receipt_number = $2
+         AND ($3::integer IS NULL OR s.fiscal_point_of_sale = $3)
+         ${scope.sql}
+       ORDER BY s.fiscal_point_of_sale DESC, s.fiscal_receipt_type ASC
+       LIMIT 10
+    `,
+    [session.companyId, receiptNumber, pointOfSale, ...scope.params],
+    { cache: false },
+  );
+  return result.rows.map(mapSupervisorInvoice);
 }
 
 export async function getSupervisorOperationalSnapshot(

@@ -49,6 +49,10 @@ test("el agente usa herramientas tipadas, de servidor y solo lectura", () => {
   assert.match(tools, /getSalesMetrics/);
   assert.match(tools, /getCustomerAccountBalance/);
   assert.match(tools, /getSupervisorCustomerBalances/);
+  assert.match(tools, /getCustomerInvoices/);
+  assert.match(tools, /getInvoiceByNumber/);
+  assert.match(tools, /getSupervisorCustomerInvoices/);
+  assert.match(tools, /getSupervisorInvoiceByNumber/);
   assert.match(tools, /getErpGuide/);
   assert.match(tools, /executedCalls/);
   assert.match(agent, /toolChoice: "none"/);
@@ -134,6 +138,10 @@ test("el supervisor resuelve métricas mensuales con una consulta agregada y enl
   assert.match(readModel, /getSupervisorSalesMetrics/);
   assert.match(readModel, /getSupervisorCustomerBalances/);
   assert.match(readModel, /activeAccountMovementWhereSql/);
+  assert.match(readModel, /getSupervisorCustomerInvoices/);
+  assert.match(readModel, /getSupervisorInvoiceByNumber/);
+  assert.match(readModel, /fiscal_receipt_type IN \(1, 6, 11\)/);
+  assert.match(readModel, /\/api\/pdfs\/fiscal\/sales\/\$\{row\.sale_id\}/);
   assert.match(readModel, /monthRange\(requestedPeriod\)/);
   assert.match(readModel, /netSalesAmountSql/);
   assert.match(readModel, /normalizedOrderStatusSql\("s"\).*'entregado'/s);

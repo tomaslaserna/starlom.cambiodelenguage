@@ -11,6 +11,9 @@ function toolLabel(toolName: string) {
   return {
     searchCustomers: "Buscando clientes",
     getCustomerHistory: "Consultando historial",
+    getCustomerAccountBalance: "Consultando cuenta corriente",
+    getCustomerInvoices: "Buscando facturas",
+    getInvoiceByNumber: "Buscando comprobante fiscal",
     getCustomerProductPattern: "Analizando patrón de compra",
     getOperationalSnapshot: "Revisando pendientes",
     getWorkPriorities: "Preparando tus prioridades",
