@@ -7,12 +7,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  DataTable,
-  DataTableBody,
-  DataTableCell,
-  DataTableHead,
-  DataTableHeader,
-  DataTableRow,
   EmptyState,
   Field,
   Input,
@@ -69,75 +63,42 @@ export default async function MarginsPage() {
           </Card>
         ) : null}
 
-        <Card className="overflow-hidden">
-          <DataTable
-            caption="Categorías de margen"
-            className="rounded-none border-0 shadow-none"
-            minWidth="640px"
-            tableLabel="Márgenes"
-          >
-            <DataTableHeader>
-              <DataTableRow className="hover:bg-transparent">
-                <DataTableHead>Código</DataTableHead>
-                <DataTableHead>Categoría</DataTableHead>
-                <DataTableHead align="right">Margen base y listas</DataTableHead>
-                {canEdit ? <DataTableHead align="right">Acciones</DataTableHead> : null}
-              </DataTableRow>
-            </DataTableHeader>
-            <DataTableBody>
-              {margins.length === 0 ? (
-                <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={canEdit ? 4 : 3}>
-                    <EmptyState
-                      description="Cuando cargues categorías de margen aparecerán acá."
-                      title="No hay categorías de margen"
-                    />
-                  </DataTableCell>
-                </DataTableRow>
-              ) : (
-                margins.map((margin) => (
-                  <DataTableRow key={margin.code}>
-                    <DataTableCell className="whitespace-nowrap font-mono text-xs font-bold">{margin.code}</DataTableCell>
-                    <DataTableCell>{margin.name}</DataTableCell>
-                    {canEdit ? (
-                      <DataTableCell colSpan={2}>
-                        <form action={updateMarginAction} className="grid gap-3 lg:grid-cols-[minmax(160px,1fr)_repeat(3,minmax(100px,0.6fr))_auto] lg:items-end">
-                          <input name="code" type="hidden" value={margin.code} />
-                          <Field htmlFor={`name-${margin.code}`} label="Nombre">
-                            <Input defaultValue={margin.name} id={`name-${margin.code}`} name="name" required />
-                          </Field>
-                          <Field htmlFor={`base-${margin.code}`} label="Base">
-                          <Input
-                            defaultValue={margin.price1}
-                            id={`base-${margin.code}`}
-                            inputMode="decimal"
-                            name="precio_1"
-                            step="0.01"
-                            type="number"
-                          />
-                          </Field>
-                          {margin.multipliers.map((list) => (
-                            <Field htmlFor={`list-${margin.code}-${list.listId}`} key={list.listId} label={list.listName}>
-                              <Input defaultValue={list.multiplier} id={`list-${margin.code}-${list.listId}`} min="0.01" name={`list_${list.listId}`} step="0.01" type="number" />
-                            </Field>
-                          ))}
-                          <div className="flex gap-2">
-                          <Button size="sm" type="submit" variant="secondary">
-                            Guardar
-                          </Button>
-                          <Button formAction={deleteMarginAction} size="sm" type="submit" variant="danger">
-                            Eliminar
-                          </Button>
-                          </div>
-                        </form>
-                      </DataTableCell>
-                    ) : <DataTableCell align="right">{margin.price1.toFixed(2)}</DataTableCell>}
-                  </DataTableRow>
-                ))
-              )}
-            </DataTableBody>
-          </DataTable>
-        </Card>
+        {margins.length === 0 ? (
+          <Card><CardContent><EmptyState description="Cuando cargues categorías de margen aparecerán acá." title="No hay categorías de margen" /></CardContent></Card>
+        ) : (
+          <div className="grid gap-4">
+            {margins.map((margin) => (
+              <Card key={margin.code}>
+                <CardHeader>
+                  <CardTitle>{margin.name}</CardTitle>
+                  <CardDescription>Código de categoría y SKU: {margin.code}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {canEdit ? (
+                    <form action={updateMarginAction} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <input name="code" type="hidden" value={margin.code} />
+                      <Field htmlFor={`name-${margin.code}`} label="Nombre">
+                        <Input defaultValue={margin.name} id={`name-${margin.code}`} name="name" required />
+                      </Field>
+                      <Field htmlFor={`base-${margin.code}`} label="Margen base">
+                        <Input defaultValue={margin.price1} id={`base-${margin.code}`} min="0.01" name="precio_1" step="0.01" type="number" />
+                      </Field>
+                      {margin.multipliers.map((list) => (
+                        <Field htmlFor={`list-${margin.code}-${list.listId}`} key={list.listId} label={list.listName}>
+                          <Input defaultValue={list.multiplier} id={`list-${margin.code}-${list.listId}`} min="0.01" name={`list_${list.listId}`} step="0.01" type="number" />
+                        </Field>
+                      ))}
+                      <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
+                        <Button type="submit">Guardar cambios</Button>
+                        <Button formAction={deleteMarginAction} type="submit" variant="danger">Eliminar categoría</Button>
+                      </div>
+                    </form>
+                  ) : <p className="text-sm">Margen base: {margin.price1.toFixed(2)}</p>}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </ModulePage>
   );
