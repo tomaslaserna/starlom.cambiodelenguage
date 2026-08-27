@@ -124,6 +124,17 @@ test("buildQuoteDraft permite un prospecto sin alta de cliente", async () => {
   assert.equal(draft.vatRate, 10.5);
 });
 
+test("buildQuoteDraft conserva el precio congelado recibido", async () => {
+  const client = draftClient();
+  const session = { companyId: 1, userId: "u1", username: "user" };
+  const draft = await quotes.buildQuoteDraft(client, session, baseInput, {
+    frozenPrices: new Map([["p1", 750]]),
+  });
+  assert.equal(draft.detail[0].unitPrice, 750);
+  assert.equal(draft.netAmount, 1500);
+  assert.equal(draft.total, 1815);
+});
+
 // Cliente para updateQuote: agrega SELECT ... FOR UPDATE, UPDATE, DELETE items, INSERT items, y getQuote final.
 function updateClient(status) {
   const base = draftClient();
@@ -132,6 +143,9 @@ function updateClient(status) {
     base.writes.push({ sql, params });
     if (/FROM quotes q[\s\S]*FOR UPDATE/i.test(sql)) {
       return { rows: [{ id: "q1", status }], rowCount: 1 };
+    }
+    if (/FROM quote_items/i.test(sql)) {
+      return { rows: [{ product_id: "p1", unit_price: "750" }], rowCount: 1 };
     }
     if (/^\s*UPDATE quotes/i.test(sql)) return { rows: [], rowCount: 1 };
     if (/DELETE FROM quote_items/i.test(sql)) return { rows: [], rowCount: 1 };
@@ -152,7 +166,7 @@ function updateClient(status) {
   return base;
 }
 
-test("updateQuote recalcula y reemplaza items de un pendiente", async () => {
+test("updateQuote conserva el precio original y reemplaza items de un pendiente", async () => {
   const client = updateClient("pendiente");
   const session = { companyId: 1, userId: "u1", username: "user" };
   quotesDb.withCompanyContext = async (cb) => cb(client);
@@ -164,6 +178,8 @@ test("updateQuote recalcula y reemplaza items de un pendiente", async () => {
   assert.ok(client.writes.some((w) => /^\s*UPDATE quotes/i.test(w.sql)));
   assert.ok(client.writes.some((w) => /DELETE FROM quote_items/i.test(w.sql)));
   assert.ok(client.writes.some((w) => /INSERT INTO quote_items/i.test(w.sql)));
+  const insert = client.writes.find((w) => /INSERT INTO quote_items/i.test(w.sql));
+  assert.equal(insert.params[4], 750);
   // No cambia el número ni el estado en el UPDATE:
   const upd = client.writes.find((w) => /^\s*UPDATE quotes/i.test(w.sql));
   assert.doesNotMatch(upd.sql, /quote_number\s*=/i);

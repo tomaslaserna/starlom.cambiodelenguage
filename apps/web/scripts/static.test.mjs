@@ -593,7 +593,9 @@ test("future orders use the registered receipt as a suggestion and allow an expl
   assert.match(quotes, /client_legal_name/);
   assert.match(quotes, /vatAmountsFromNet/);
   assert.match(quotes, /nombre del prospecto/);
-  assert.doesNotMatch(quotes, /if \(!clientId\)[\s\S]*INSERT INTO clients/);
+  assert.match(quotes, /if \(!clientId\)[\s\S]*INSERT INTO clients/);
+  assert.match(quotes, /Creado al confirmar el presupuesto/);
+  assert.match(quotes, /existingCustomerId/);
 });
 
 test("price lists and sale items stay net while orders and quotes store final VAT totals", () => {

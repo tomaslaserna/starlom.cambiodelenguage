@@ -50,6 +50,7 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
         productId: String(product.id),
         quantity: String(product.quantity ?? 1),
         discount: String(product.discount ?? 0),
+        unitPrice: String(product.unitPrice ?? 0),
       })),
   };
 

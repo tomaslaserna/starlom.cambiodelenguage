@@ -28,6 +28,8 @@ test("QuoteEntryFields soporta modo edicion (initialValues, quoteId, boton Guard
   assert.match(src, /mode\?:/);
   assert.match(src, /name="quoteId"/);
   assert.match(src, /Guardar cambios/);
+  assert.match(src, /precios originales permanecen congelados/i);
+  assert.match(src, /frozenUnitPrice/);
 });
 
 test("existe la pagina de edicion y usa updateQuoteAction en modo edit", () => {
@@ -46,8 +48,21 @@ test("la lista de presupuestos ofrece Editar y Eliminar con guardas de estado y 
   assert.match(page, /canDeleteQuotes/);
   assert.match(page, /QuoteDeleteButton/);
   assert.match(page, /updated|deleted/); // banner de exito
+  assert.match(page, /\/quotes\/\$\{quote\.id\}\/confirm/);
   const del = read("../src/app/quotes/quote-delete-button.tsx");
   assert.match(del, /"use client"/);
   assert.match(del, /deleteQuoteAction|action/);
   assert.match(del, /name="id"/);
+});
+
+test("la confirmacion permite vincular o crear el cliente antes de enviar a pedidos", () => {
+  const page = read("../src/app/quotes/[id]/confirm/page.tsx");
+  const form = read("../src/app/quotes/quote-confirmation-form.tsx");
+  const action = read("../src/app/quotes/actions.ts");
+  assert.match(page, /QuoteConfirmationForm/);
+  assert.match(form, /Vincular cliente cargado/);
+  assert.match(form, /Crear cliente desde prospecto/);
+  assert.match(form, /Confirmar y enviar a Pedidos/);
+  assert.match(action, /existingCustomerId/);
+  assert.match(action, /customerName/);
 });

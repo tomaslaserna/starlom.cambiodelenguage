@@ -24,7 +24,7 @@ import {
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getOrderFormData } from "@/lib/orders";
 import { listVendors } from "@/lib/imports";
-import { hasFiscalCustomerData, listQuotes } from "@/lib/quotes";
+import { listQuotes } from "@/lib/quotes";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import {
@@ -33,7 +33,7 @@ import {
   QUOTES_READ_PERMISSION,
   sessionAllows,
 } from "@/lib/route-auth";
-import { acceptQuoteAction, createQuoteAction, deleteQuoteAction } from "@/app/quotes/actions";
+import { createQuoteAction, deleteQuoteAction } from "@/app/quotes/actions";
 import { QuoteDeleteButton } from "@/app/quotes/quote-delete-button";
 import { QuoteEntryFields } from "@/app/quotes/quote-entry-fields";
 import { QuoteEntryForm } from "@/app/quotes/quote-entry-form";
@@ -300,26 +300,14 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
                             WhatsApp
                           </ButtonLink>
                           {quote.status === "pendiente" && canApproveQuotes ? (
-                            <>
-                              <form action={acceptQuoteAction}>
-                                <input name="id" type="hidden" value={quote.id} />
-                                {(quote.desiredDocument === "factura_a" || quote.desiredDocument === "factura_b")
-                                  && hasFiscalCustomerData(quote.customer.taxId, quote.customer.vatCondition) ? (
-                                  <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-md border border-[color:var(--border)] px-2 py-1.5 text-xs font-semibold text-[color:var(--text)]">
-                                    <input name="requestFiscalInvoice" type="checkbox" value="true" />
-                                    Solicitar factura fiscal
-                                  </label>
-                                ) : null}
-                                <Button
-                                  aria-label={`Aprobar presupuesto ${quote.quoteNumber}`}
-                                  className={quoteActionClassName}
-                                  size="sm"
-                                  type="submit"
-                                >
-                                  Aprobar
-                                </Button>
-                              </form>
-                            </>
+                            <ButtonLink
+                              aria-label={`Confirmar presupuesto ${quote.quoteNumber}`}
+                              className={quoteActionClassName}
+                              href={`/quotes/${quote.id}/confirm`}
+                              size="sm"
+                            >
+                              Confirmar y enviar a pedidos
+                            </ButtonLink>
                           ) : null}
                           {(quote.status === "pendiente" || quote.status === "rechazada") && canDeleteQuotes ? (
                             <QuoteDeleteButton action={deleteQuoteAction} quoteId={quote.id} quoteNumber={quote.quoteNumber} />

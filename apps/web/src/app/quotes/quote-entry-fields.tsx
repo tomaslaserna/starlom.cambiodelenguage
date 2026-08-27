@@ -26,6 +26,7 @@ type QuoteLineDraft = {
   productId: string;
   quantity: string;
   discount: string;
+  unitPrice?: string;
 };
 
 type QuoteLineState = QuoteLineDraft & {
@@ -49,7 +50,7 @@ type QuoteEntryFieldsProps = {
     validityDays: string;
     priceListOverride: string;
     assignedSellerId?: string;
-    lines: { productId: string; quantity: string; discount: string }[];
+    lines: { productId: string; quantity: string; discount: string; unitPrice?: string }[];
   };
   mode?: "create" | "edit";
   quoteId?: string;
@@ -144,7 +145,10 @@ export function QuoteEntryFields({
       if (!product || !customerReady) return null;
       const quantity = Math.max(0, Math.trunc(numericInput(line.quantity, 0)));
       const discount = Math.min(100, Math.max(0, numericInput(line.discount, 0)));
-      const unitPrice = priceForList(product.prices, activePriceList);
+      const frozenUnitPrice = numericInput(line.unitPrice ?? "", 0);
+      const unitPrice = isEdit && frozenUnitPrice > 0
+        ? frozenUnitPrice
+        : priceForList(product.prices, activePriceList);
       return {
         ...line,
         product,
@@ -170,6 +174,7 @@ export function QuoteEntryFields({
     productId: line.product.id,
     quantity: line.quantity,
     discount: line.discount,
+    unitPrice: line.unitPrice,
   }));
   const canComposeQuickQuote = Boolean(customerReady && calculatedLines.length && quoteTotal > 0);
   const generatedQuickQuoteText = customerReady
@@ -214,6 +219,7 @@ export function QuoteEntryFields({
         productId: draftLine.productId,
         quantity: String(draftQuantity),
         discount: String(draftDiscount),
+        unitPrice: String(draftUnitPrice),
       },
     ]);
     setDraftLine(emptyLine());
@@ -234,6 +240,11 @@ export function QuoteEntryFields({
       <input name="priceListOverride" type="hidden" value={activePriceList} />
       <input name="validityDays" type="hidden" value={validityDays} />
       <input name="desiredDocument" type="hidden" value={desiredDocument ?? "remito"} />
+      {isEdit ? (
+        <div className="rounded-lg border border-[color:var(--success)]/35 bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]">
+          Los precios originales permanecen congelados. Cambiar cantidades o datos del cliente no los recalcula; los productos nuevos toman su costo actual.
+        </div>
+      ) : null}
       {isProspect ? <input name="customerId" type="hidden" value="" /> : null}
       <div className="flex flex-wrap justify-center gap-2">
         <Button type="button" variant={customerMode === "registered" ? "primary" : "secondary"} onClick={() => setCustomerMode("registered")}>

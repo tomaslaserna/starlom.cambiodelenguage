@@ -52,6 +52,18 @@ type QuoteInput = {
   assignedSellerId: string;
 };
 
+export type QuoteAcceptanceCustomerInput = {
+  existingCustomerId?: string;
+  name?: string;
+  businessName?: string;
+  taxId?: string;
+  vatCondition?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  province?: string;
+};
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -444,6 +456,7 @@ async function resolveQuoteProductsFromCatalog(
   products: QuoteProduct[],
   priceListKey: PriceListKey,
   priceListName: string,
+  frozenPrices: Map<string, number> = new Map(),
 ) {
   const productIds = products.map((product) => product.id);
   const quantities = products.map((product) => product.quantity);
@@ -497,7 +510,7 @@ async function resolveQuoteProductsFromCatalog(
   return result.rows.map((product) => {
     const quantity = Number(product.quantity);
     const discount = Number(product.discount);
-    const unitPrice = money(Number(product.unit_price));
+    const unitPrice = money(frozenPrices.get(product.product_id) ?? Number(product.unit_price));
     if (unitPrice <= 0) {
       throw new ApiError(400, `El producto ${product.description} no tiene precio para la lista del cliente`);
     }
@@ -545,6 +558,7 @@ export async function buildQuoteDraft(
   client: PoolClient,
   session: AuthSession,
   input: QuoteInput,
+  options: { frozenPrices?: Map<string, number> } = {},
 ): Promise<QuoteDraft> {
   type QuoteClientRow = {
     id: string | null;
@@ -605,7 +619,14 @@ export async function buildQuoteDraft(
   const priceListKey = normalizePriceListKey(priceListName);
   const allProductsHaveIds = input.products.every((product) => Boolean(product.id));
   const detail = allProductsHaveIds
-    ? await resolveQuoteProductsFromCatalog(client, session.companyId, input.products, priceListKey, priceListName)
+    ? await resolveQuoteProductsFromCatalog(
+        client,
+        session.companyId,
+        input.products,
+        priceListKey,
+        priceListName,
+        options.frozenPrices,
+      )
     : input.products.map((product) => {
         const unitPrice = money(Number(product.unitPrice ?? 0));
         if (unitPrice <= 0) {
@@ -768,7 +789,8 @@ export async function updateQuote(session: AuthSession, id: string, input: Quote
   const quoteId = await withCompanyContext(session.companyId, async (client) => {
     const existing = await client.query<{ id: string; status: string }>(
       `
-        SELECT q.id::text, q.status
+        SELECT q.id::text,
+               q.status
         FROM quotes q
         WHERE q.id = $1::uuid AND q.empresa_id = $2
         FOR UPDATE OF q
@@ -781,7 +803,18 @@ export async function updateQuote(session: AuthSession, id: string, input: Quote
       throw new ApiError(409, "Solo se pueden editar presupuestos pendientes");
     }
 
-    const draft = await buildQuoteDraft(client, session, input);
+    const frozenPrices = new Map<string, number>();
+    const frozenItems = await client.query<{ product_id: string; unit_price: string }>(
+      `
+        SELECT product_id::text, unit_price::text
+        FROM quote_items
+        WHERE quote_id = $1::uuid AND empresa_id = $2 AND product_id IS NOT NULL
+      `,
+      [id, session.companyId],
+    );
+    for (const item of frozenItems.rows) frozenPrices.set(item.product_id, Number(item.unit_price));
+
+    const draft = await buildQuoteDraft(client, session, input, { frozenPrices });
     const assignment = await resolveQuoteAssignment(client, session, input.assignedSellerId);
 
     await client.query(
@@ -861,7 +894,7 @@ export async function updateQuote(session: AuthSession, id: string, input: Quote
 export async function acceptQuote(
   session: AuthSession,
   id: string,
-  options: { requestFiscalInvoice?: boolean } = {},
+  options: { requestFiscalInvoice?: boolean; customer?: QuoteAcceptanceCustomerInput } = {},
 ) {
   const result = await withCompanyContext(session.companyId, async (client) => {
     const quoteResult = await client.query<{
@@ -884,6 +917,7 @@ export async function acceptQuote(
       client_phone: string | null;
       client_address: string | null;
       seller_name: string | null;
+      valid: boolean;
     }>(
       `
         SELECT q.id::text,
@@ -904,7 +938,8 @@ export async function acceptQuote(
                COALESCE(NULLIF(q.client_fiscal_condition, ''), c.fiscal_condition, '') AS client_fiscal_condition,
                COALESCE(NULLIF(q.client_phone, ''), c.phone, '') AS client_phone,
                COALESCE(NULLIF(q.client_address, ''), c.address, '') AS client_address,
-               COALESCE(p.username, p.full_name, '') AS seller_name
+               COALESCE(p.username, p.full_name, '') AS seller_name,
+               (q.created_at::date + q.validity_days >= CURRENT_DATE) AS valid
         FROM quotes q
         LEFT JOIN clients c ON c.id = q.client_id AND c.empresa_id = q.empresa_id
         LEFT JOIN profiles p ON p.id = q.seller_id
@@ -928,18 +963,107 @@ export async function acceptQuote(
     if (quote.status !== "pendiente") {
       throw new ApiError(409, "El presupuesto ya no esta pendiente o no puede aceptarse");
     }
+    if (!quote.valid) {
+      throw new ApiError(409, "El presupuesto esta vencido y debe actualizarse antes de confirmarlo");
+    }
     const snapshot = acceptedQuoteVatSnapshot({
       desiredDocument: quote.desired_document,
       vatRate: quote.vat_rate,
       subtotalAmount: quote.subtotal_amount,
       totalAmount: quote.total_amount,
     });
-    if (!quote.client_id) {
-      throw new ApiError(
-        409,
-        "El presupuesto no tiene un cliente registrado asociado y no puede convertirse automaticamente.",
-      );
+
+    type AcceptanceClientRow = {
+      id: string;
+      display_name: string;
+      legal_name: string | null;
+      tax_id: string | null;
+      fiscal_condition: string | null;
+      phone: string | null;
+      address: string | null;
+    };
+    const requestedCustomerId = (options.customer?.existingCustomerId ?? "").trim();
+    let clientId = quote.client_id ?? "";
+
+    if (!clientId && requestedCustomerId) {
+      if (!QUOTE_UUID_RE.test(requestedCustomerId)) throw new ApiError(400, "El cliente seleccionado no es valido");
+      clientId = requestedCustomerId;
     }
+
+    if (!clientId) {
+      const customerInput = options.customer;
+      const name = (customerInput?.name ?? quote.client_name ?? "").trim();
+      const phone = (customerInput?.phone ?? quote.client_phone ?? "").trim();
+      const address = (customerInput?.address ?? quote.client_address ?? "").trim();
+      const taxId = (customerInput?.taxId ?? quote.client_document ?? "").trim();
+      const normalizedTaxId = taxId.replace(/\D/g, "");
+      if (!name) throw new ApiError(400, "Completa el nombre del cliente para confirmar el presupuesto");
+      if (!phone) throw new ApiError(400, "Completa el telefono del cliente para confirmar el presupuesto");
+      if (!address) throw new ApiError(400, "Completa la direccion del cliente para confirmar el presupuesto");
+
+      if (normalizedTaxId) {
+        const duplicate = await client.query<{ id: string }>(
+          `
+            SELECT id::text
+            FROM clients
+            WHERE empresa_id = $1
+              AND regexp_replace(COALESCE(tax_id, ''), '[^0-9]', '', 'g') = $2
+            LIMIT 1
+          `,
+          [session.companyId, normalizedTaxId],
+        );
+        clientId = duplicate.rows[0]?.id ?? "";
+      }
+
+      if (!clientId) {
+        const created = await client.query<{ id: string }>(
+          `
+            INSERT INTO clients (
+              display_name, legal_name, tax_id, fiscal_condition, phone, address,
+              locality, province, price_list_name, receipt_type, seller_name,
+              assigned_seller, active, notes, empresa_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11, true, $12, $13)
+            RETURNING id::text
+          `,
+          [
+            name,
+            (customerInput?.businessName ?? quote.client_legal_name ?? "").trim() || null,
+            taxId || null,
+            (customerInput?.vatCondition ?? quote.client_fiscal_condition ?? "").trim() || null,
+            phone,
+            address,
+            (customerInput?.city ?? "").trim() || null,
+            (customerInput?.province ?? "").trim() || null,
+            quote.price_list_name || priceListNameFromNumber(quote.active_price_list),
+            snapshot.desiredDocument,
+            quote.seller_name || session.username,
+            `Creado al confirmar el presupuesto ${quote.quote_number}`,
+            session.companyId,
+          ],
+        );
+        clientId = created.rows[0].id;
+      }
+    }
+
+    const acceptanceClient = await client.query<AcceptanceClientRow>(
+      `
+        SELECT id::text, display_name, legal_name, tax_id, fiscal_condition, phone, address
+        FROM clients
+        WHERE id = $1::uuid AND empresa_id = $2
+        LIMIT 1
+      `,
+      [clientId, session.companyId],
+    );
+    const resolvedClient = acceptanceClient.rows[0];
+    if (!resolvedClient) throw new ApiError(404, "El cliente seleccionado no existe");
+
+    quote.client_name = resolvedClient.display_name;
+    quote.client_legal_name = resolvedClient.legal_name;
+    quote.client_document = resolvedClient.tax_id;
+    quote.client_fiscal_condition = resolvedClient.fiscal_condition;
+    quote.client_phone = resolvedClient.phone;
+    quote.client_address = resolvedClient.address;
 
     const items = await client.query<{
       product_id: string | null;
@@ -991,7 +1115,6 @@ export async function acceptQuote(
     const priceList = quote.price_list_name || priceListNameFromNumber(quote.active_price_list);
     const receiptType = receiptTypeCode(desiredDocument);
 
-    const clientId = quote.client_id;
     await reactivateClientIfInactive(client, session.companyId, clientId);
 
     const saleResult = await client.query<{ id: string }>(
@@ -1060,10 +1183,27 @@ export async function acceptQuote(
             approved_at = NOW(),
             converted_order_id = $1::uuid,
             client_id = $4::uuid,
+            client_name = $5,
+            client_legal_name = $6,
+            client_document = $7,
+            client_fiscal_condition = $8,
+            client_phone = $9,
+            client_address = $10,
             updated_at = NOW()
         WHERE id = $2::uuid AND empresa_id = $3
       `,
-      [orderId, id, session.companyId, clientId],
+      [
+        orderId,
+        id,
+        session.companyId,
+        clientId,
+        quote.client_name,
+        quote.client_legal_name,
+        quote.client_document,
+        quote.client_fiscal_condition,
+        quote.client_phone,
+        quote.client_address,
+      ],
     );
 
     await client.query(
