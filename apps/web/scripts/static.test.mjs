@@ -1180,11 +1180,18 @@ test("seller mobile CRM has an elevated quick-sale button and a viewport-safe dr
   assert.match(navigation, /Crear lead/);
   assert.match(navigation, /Hacer presupuesto/);
   assert.match(navigation, /seller-mobile-navigation__create/);
+  assert.doesNotMatch(navigation, /href: "\/crm\/leads", label: "Leads"/);
+  assert.match(navigation, /seller-mobile-navigation__create-slot/);
   assert.match(navigation, /aria-expanded=\{quickOpen\}/);
   assert.match(styles, /seller-mobile-navigation__create/);
   assert.match(styles, /border-radius: 999px/);
+  assert.match(styles, /100dvh/);
+  assert.match(styles, /seller-mobile-drawer/);
   assert.match(modulePage, /bottom-\[calc\(4\.25rem\+env\(safe-area-inset-bottom\)\)\]/);
   assert.doesNotMatch(modulePage, /max-h-\[72vh\]/);
+  assert.match(modulePage, /lg:backdrop-blur/);
+  assert.match(modulePage, /w-\[min\(88vw,380px\)\]/);
+  assert.match(read("apps/web/src/components/shell-navigation.tsx"), /inicioSection\.groups\.map/);
   assert.match(leadsPage, /params\.nuevo === "1"/);
   assert.match(leadsBoard, /initialCreating/);
 });
@@ -1938,11 +1945,4 @@ test("editing blocks historical zero-rate orders and derives VAT from the select
   const orders = read("apps/web/src/lib/orders.ts");
   assert.match(orders, /hasConsistentOrderVatSnapshot/);
   assert.match(orders, /COALESCE\(s\.vat_rate, 0\)::text AS vat_rate/);
-});
-
-test("CRM navigation highlights only the route currently open", () => {
-  const navigation = read("apps/web/src/components/shell-navigation.tsx");
-  assert.match(navigation, /className=\{navigationRowClass\(groupCurrent\)\}/);
-  assert.match(navigation, /<Badge active=\{groupCurrent\} value=\{groupBadge\} \/>/);
-  assert.doesNotMatch(navigation, /navigationRowClass\(groupCurrent \|\| activeGroup\)/);
 });

@@ -201,7 +201,7 @@ export const navigationGroups: NavigationGroup[] = [
       },
       {
         href: "/treasury/movements?type=pago",
-        label: "Pagos proveedores",
+        label: "Registro de pagos",
         active: "treasury",
         permission: ADMIN_MOVEMENTS_READ_PERMISSION,
       },

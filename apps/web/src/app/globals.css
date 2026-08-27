@@ -537,6 +537,19 @@ body::after {
   z-index: 48;
 }
 
+.seller-mobile-navigation__create-slot {
+  align-items: center;
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.68rem;
+  font-weight: 700;
+  justify-content: flex-end;
+  min-height: 3.25rem;
+  padding-bottom: 0.35rem;
+  position: relative;
+}
+
 .seller-mobile-navigation__create.is-open {
   background: #073f94;
   transform: translate(-50%, -52%) rotate(45deg);
@@ -576,6 +589,11 @@ body::after {
 
 .seller-mobile-navigation__quick-action:active {
   background: #f4f8fc;
+}
+
+.seller-mobile-drawer {
+  height: calc(100svh - 4rem - 4.25rem - env(safe-area-inset-bottom));
+  max-height: calc(100dvh - 4rem - 4.25rem - env(safe-area-inset-bottom));
 }
 
 @media (max-width: 1023px) {

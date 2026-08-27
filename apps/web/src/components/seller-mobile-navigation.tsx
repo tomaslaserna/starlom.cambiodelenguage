@@ -9,7 +9,6 @@ import type { AppIconName } from "@/components/ui/app-icon";
 const ITEMS: Array<{ href: string; label: string; icon: AppIconName }> = [
   { href: "/crm/perfil", label: "Inicio", icon: "chart" },
   { href: "/crm/clientes", label: "Clientes", icon: "search" },
-  { href: "/crm/leads", label: "Leads", icon: "clock" },
   { href: "/crm/presupuestos", label: "Presup.", icon: "quote" },
   { href: "/crm/listas", label: "Precios", icon: "package" },
 ];
@@ -54,8 +53,20 @@ export function SellerMobileNavigation() {
           </section>
         </>
       ) : null}
-      <button aria-expanded={quickOpen} aria-label="Crear cliente, lead o presupuesto" className={cn("seller-mobile-navigation__create", quickOpen && "is-open")} onClick={() => setQuickOpen((value) => !value)} type="button">+</button>
-      {ITEMS.map((item) => {
+      {ITEMS.slice(0, 2).map((item) => {
+        const current = pathname.startsWith(item.href);
+        return (
+          <Link aria-current={current ? "page" : undefined} className={cn("seller-mobile-navigation__item", current && "is-current")} href={item.href} key={item.href}>
+            <AppIcon className="h-5 w-5" name={item.icon} />
+            <span>{item.label}</span>
+          </Link>
+        );
+      })}
+      <span className="seller-mobile-navigation__create-slot">
+        <button aria-expanded={quickOpen} aria-label="Crear cliente, lead o presupuesto" className={cn("seller-mobile-navigation__create", quickOpen && "is-open")} onClick={() => setQuickOpen((value) => !value)} type="button">+</button>
+        <span>Crear</span>
+      </span>
+      {ITEMS.slice(2).map((item) => {
         const current = pathname.startsWith(item.href);
         return (
           <Link aria-current={current ? "page" : undefined} className={cn("seller-mobile-navigation__item", current && "is-current")} href={item.href} key={item.href} onClick={() => setQuickOpen(false)}>
