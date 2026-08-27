@@ -368,7 +368,7 @@ export async function getAccountsPayable(companyId: number) {
              p.total_amount::text AS total,
              COALESCE(p.paid_amount, 0)::text AS paid,
              GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0)::text AS balance,
-             p.purchase_date::text AS date,
+             COALESCE(p.due_date, p.purchase_date)::text AS date,
              p.status AS status,
              COALESCE(scheduled.scheduled_amount, 0)::text AS scheduled_amount,
              scheduled.scheduled_date
@@ -387,7 +387,7 @@ export async function getAccountsPayable(companyId: number) {
       WHERE p.empresa_id = $1
         AND p.status = 'recibida'
         AND GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0) > 0
-      ORDER BY p.purchase_date ASC NULLS LAST, p.created_at ASC
+      ORDER BY COALESCE(p.due_date, p.purchase_date) ASC NULLS LAST, p.created_at ASC
     `,
     [companyId],
   );

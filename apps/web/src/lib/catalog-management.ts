@@ -72,6 +72,7 @@ export type Supplier = {
   email: string;
   address: string;
   notes: string;
+  paymentTermDays: number;
   createdAt: string;
 };
 
@@ -187,6 +188,7 @@ function mapCustomer(row: {
   province: string | null;
   locality: string | null;
   notes: string | null;
+  payment_term_days: number | null;
 }): CustomerDetail {
   return {
     id: row.id,
@@ -218,6 +220,7 @@ function mapSupplier(row: {
   email: string | null;
   address: string | null;
   notes: string | null;
+  payment_term_days: number | null;
   created_at: string;
 }): Supplier {
   const legacy = splitSupplierNotes(row.notes ?? "");
@@ -230,6 +233,7 @@ function mapSupplier(row: {
     email: row.email ?? "",
     address: row.address ?? "",
     notes: row.rubric ? row.notes ?? "" : legacy.notes,
+    paymentTermDays: Number(row.payment_term_days ?? 0),
     createdAt: row.created_at,
   };
 }
@@ -319,6 +323,7 @@ export function supplierInputFromBody(
     email: firstText(body, ["email"], defaults.email),
     address: firstText(body, ["address", "direccion"], defaults.address),
     notes: firstText(body, ["notes", "notas"], defaults.notes),
+    paymentTermDays: Math.max(0, Math.trunc(firstNumber(body, ["paymentTermDays", "plazo_pago_dias"], defaults.paymentTermDays))),
   };
 
   if (!input.name) throw new ApiError(400, "El nombre es obligatorio");
@@ -519,7 +524,7 @@ export async function listSuppliers(input: ListInput = {}): Promise<ListResult<S
   const rows = await queryWithCompanyContext<Parameters<typeof mapSupplier>[0]>(
     companyId,
     `
-      SELECT id, display_name, legal_name, rubric, phone, email, address, notes, created_at::text
+      SELECT id, display_name, legal_name, rubric, phone, email, address, notes, payment_term_days, created_at::text
       FROM suppliers
       WHERE ${where}
       ORDER BY display_name ASC, id ASC
@@ -547,7 +552,7 @@ export async function getSupplier(companyId: number, id: string) {
   const result = await queryWithCompanyContext<Parameters<typeof mapSupplier>[0]>(
     companyId,
     `
-      SELECT id, display_name, legal_name, rubric, phone, email, address, notes, created_at::text
+      SELECT id, display_name, legal_name, rubric, phone, email, address, notes, payment_term_days, created_at::text
       FROM suppliers
       WHERE id = $1::uuid AND empresa_id = $2 AND active = true
       LIMIT 1
@@ -564,8 +569,8 @@ export async function createSupplier(companyId: number, input: SupplierInput) {
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,
     `
-      INSERT INTO suppliers (display_name, legal_name, rubric, phone, email, address, notes, empresa_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      INSERT INTO suppliers (display_name, legal_name, rubric, phone, email, address, notes, payment_term_days, empresa_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING id::text AS id
     `,
     [
@@ -576,6 +581,7 @@ export async function createSupplier(companyId: number, input: SupplierInput) {
       input.email,
       input.address,
       input.notes,
+      input.paymentTermDays,
       companyId,
     ],
   );
@@ -595,8 +601,9 @@ export async function updateSupplier(companyId: number, id: string, input: Suppl
           email = $5,
           address = $6,
           notes = $7,
+          payment_term_days = $8,
           updated_at = now()
-      WHERE id = $8::uuid AND empresa_id = $9 AND active = true
+      WHERE id = $9::uuid AND empresa_id = $10 AND active = true
       RETURNING id::text AS id
     `,
     [
@@ -607,6 +614,7 @@ export async function updateSupplier(companyId: number, id: string, input: Suppl
       input.email,
       input.address,
       input.notes,
+      input.paymentTermDays,
       id,
       companyId,
     ],

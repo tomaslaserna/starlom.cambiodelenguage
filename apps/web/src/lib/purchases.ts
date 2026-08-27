@@ -9,6 +9,7 @@ import { requireOperationalRecordDeletePermission } from "@/lib/route-auth";
 type PurchaseItem = {
   productId: string;
   quantity: number;
+  unitCost: number;
 };
 
 type PurchaseInput = {
@@ -85,9 +86,10 @@ function bodyItems(body: RequestBody): PurchaseItem[] {
     .map((item) => ({
       productId: String(item.productId ?? item.id_producto ?? item.id ?? "").trim(),
       quantity: Number(item.quantity ?? item.cantidad ?? 0),
+      unitCost: Number(item.unitCost ?? item.unit_cost ?? item.costo ?? 0),
     }))
-    .filter((item) => UUID_PATTERN.test(item.productId) && item.quantity > 0)
-    .map((item) => ({ productId: item.productId, quantity: Math.trunc(item.quantity) }));
+    .filter((item) => UUID_PATTERN.test(item.productId) && item.quantity > 0 && item.unitCost >= 0)
+    .map((item) => ({ productId: item.productId, quantity: Math.trunc(item.quantity), unitCost: Math.round(item.unitCost * 100) / 100 }));
 }
 
 export function purchaseInputFromBody(body: RequestBody): PurchaseInput {
@@ -156,10 +158,11 @@ export async function listPurchaseFormSuppliers(companyId: number) {
   const result = await queryWithCompanyContext<{
     id: string;
     display_name: string;
+    payment_term_days: number | null;
   }>(
     companyId,
     `
-      SELECT id, display_name
+      SELECT id, display_name, payment_term_days
       FROM suppliers
       WHERE empresa_id = $1 AND active = true
       ORDER BY display_name ASC, id ASC
@@ -168,7 +171,7 @@ export async function listPurchaseFormSuppliers(companyId: number) {
     [companyId],
   );
 
-  return result.rows.map((row) => ({ id: row.id, name: row.display_name }));
+  return result.rows.map((row) => ({ id: row.id, name: row.display_name, paymentTermDays: Number(row.payment_term_days ?? 0) }));
 }
 
 export async function listPurchaseFormProducts(companyId: number, supplierId?: string) {
@@ -179,10 +182,12 @@ export async function listPurchaseFormProducts(companyId: number, supplierId?: s
     sku: string | null;
     name: string;
     supplier_id: string | null;
+    cost: string | null;
+    image_path: string | null;
   }>(
     companyId,
     `
-      SELECT id, sku, name, supplier_id::text
+      SELECT id, sku, name, supplier_id::text, cost::text, image_path
       FROM products
       WHERE empresa_id = $1 AND active = true ${supplierFilter}
       ORDER BY name ASC, id ASC
@@ -196,6 +201,8 @@ export async function listPurchaseFormProducts(companyId: number, supplierId?: s
     code: row.sku ?? "",
     name: row.name,
     supplierId: row.supplier_id,
+    cost: Number(row.cost ?? 0),
+    imageUrl: row.image_path ? storageDownloadUrl(row.image_path) : "",
   }));
 }
 
@@ -364,8 +371,9 @@ export async function updatePurchaseReceiptPhoto(
 
 export async function createPurchase(session: AuthSession, input: PurchaseInput) {
   const purchaseId = await withCompanyContext(session.companyId, async (client) => {
-    const supplier = await client.query<{ id: string }>(
-      "SELECT id::text AS id FROM suppliers WHERE id = $1::uuid AND empresa_id = $2 AND active = true LIMIT 1",
+    const isSupplierIntake = input.type.trim().toLowerCase() === "compra";
+    const supplier = await client.query<{ id: string; payment_term_days: number }>(
+      "SELECT id::text AS id, COALESCE(payment_term_days, 0)::int AS payment_term_days FROM suppliers WHERE id = $1::uuid AND empresa_id = $2 AND active = true LIMIT 1",
       [input.supplierId, session.companyId],
     );
     if (!supplier.rows[0]) throw new ApiError(400, "Proveedor invalido o inactivo");
@@ -390,13 +398,24 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
       }
     }
 
+    if (input.items.length === 0) throw new ApiError(400, "Agregá al menos un producto a la compra");
+    if (isSupplierIntake) {
+      const netFromItems = input.items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
+      const calculatedTotal = input.taxMode === "con_iva"
+        ? netFromItems * (1 + input.vatRate / 100)
+        : netFromItems;
+      if (Math.abs(calculatedTotal - input.total) > 0.02) {
+        throw new ApiError(400, "El total de la compra no coincide con los productos, costos e IVA informados");
+      }
+    }
+
     const result = await client.query<{ id: string }>(
       `
         INSERT INTO purchases (
           supplier_id, description, total_amount, purchase_date, status,
-          purchase_type, tax_mode, vat_rate, empresa_id
+          purchase_type, tax_mode, vat_rate, package_status, due_date, empresa_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $4::date + $10::int, $11)
         RETURNING id
       `,
       [
@@ -404,17 +423,18 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
         input.description,
         input.total,
         input.date,
-        input.status,
+        isSupplierIntake ? "recibida" : input.status,
         input.type,
         input.taxMode,
         input.vatRate,
+        isSupplierIntake ? "revisado" : "pendiente",
+        supplier.rows[0].payment_term_days,
         session.companyId,
       ],
     );
     const purchaseId = result.rows[0].id;
 
     for (const item of input.items) {
-      const unitCost = item.quantity > 0 && input.items.length === 1 ? input.total / item.quantity : 0;
       await client.query(
         `
           INSERT INTO purchase_items (
@@ -422,8 +442,22 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
           )
           VALUES ($1, $2, $3, $4, $5, $6)
         `,
-        [purchaseId, item.productId, item.quantity, unitCost, unitCost * item.quantity, session.companyId],
+        [purchaseId, item.productId, item.quantity, item.unitCost, item.unitCost * item.quantity, session.companyId],
       );
+      if (isSupplierIntake) {
+        await client.query(
+          `UPDATE products SET cost = $1, updated_at = now()
+            WHERE id = $2::uuid AND empresa_id = $3 AND cost IS DISTINCT FROM $1`,
+          [item.unitCost, item.productId, session.companyId],
+        );
+        await client.query(
+          `INSERT INTO stock_movements (
+             product_id, movement_type, quantity, purchase_id, notes, created_by, empresa_id, idempotency_key
+           ) VALUES ($1, 'entrada_compra', $2, $3, 'Ingreso automático desde Nueva compra', $4, $5, $6)
+           ON CONFLICT (empresa_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
+          [item.productId, item.quantity, purchaseId, session.userId, session.companyId, `purchase-intake:${purchaseId}:${item.productId}`],
+        );
+      }
     }
 
     await client.query(
@@ -543,13 +577,16 @@ export async function reviewPurchasePackage(
   input: ReturnType<typeof packageReviewFromBody>,
 ) {
   return withCompanyContext(session.companyId, async (client) => {
-    const purchase = await client.query<{ status: string }>(
-      "SELECT status FROM purchases WHERE id = $1 AND empresa_id = $2 LIMIT 1",
+    const purchase = await client.query<{ status: string; package_status: string }>(
+      "SELECT status, package_status FROM purchases WHERE id = $1 AND empresa_id = $2 LIMIT 1",
       [id, session.companyId],
     );
     if (!purchase.rows[0]) throw new ApiError(404, "Compra no encontrada");
     if (purchase.rows[0].status !== "recibida") {
       throw new ApiError(400, "La compra debe estar en estado recibida");
+    }
+    if (purchase.rows[0].package_status === "revisado") {
+      throw new ApiError(409, "La mercadería de esta compra ya fue ingresada al stock");
     }
 
     if (input.action === "marcar_revisado") {

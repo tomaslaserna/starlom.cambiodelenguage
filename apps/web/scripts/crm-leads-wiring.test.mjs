@@ -73,6 +73,11 @@ test("Leads muestra círculos de progreso y conserva el embudo de prospectos", (
   assert.doesNotMatch(leadsPage, /normalizeRole\(session\.role\) !== "vendedor".*redirect/);
 });
 
+test("Leads abre primero su agenda y embudo, sin confundirse con Inicio comercial", () => {
+  assert.ok(leadsPage.indexOf("<LeadFollowupPanel") < leadsPage.indexOf("<LeadsBoard"));
+  assert.ok(leadsPage.indexOf("<LeadsBoard") < leadsPage.indexOf("<SalesActivityPanel"));
+});
+
 test("el CRM conserva su contexto y el calendario programa contactos de leads", () => {
   assert.match(shellNavigation, /href: "\/crm\/perfil", label: "Inicio comercial"/);
   assert.match(shellNavigation, /href: "\/crm\/calendario"/);

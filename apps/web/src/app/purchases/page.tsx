@@ -219,29 +219,17 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
 
         {showCreateForm && canCreatePurchases ? (
           <Card className="p-4">
+            <div className="mb-4 rounded-[10px] border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3">
+              <div className="font-black text-[#075ac7]">Una carga actualiza cuatro sectores</div>
+              <p className="erp-text-body-sm mt-1 text-[#475569]">Al registrar el remito, el sistema guarda la compra y su IVA, genera la cuenta por pagar, ingresa las unidades al stock y actualiza el costo de cada producto.</p>
+            </div>
             <form action={createPurchaseAction} className="grid gap-4">
               <PurchaseEntryFields defaultDate={today} initialLines={initialLines} initialSupplierId={initialSupplierId} />
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12 xl:items-end">
-                <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-total" label="Total">
-                  <Input className="w-full min-w-0" id="purchase-total" min="0" name="total" required step="0.01" type="number" />
-                </Field>
-                <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-tax-mode" label="IVA">
-                  <Select className="w-full min-w-0" id="purchase-tax-mode" name="taxMode" defaultValue="con_iva">
-                    <option value="con_iva">Con IVA</option>
-                    <option value="sin_iva">Sin IVA</option>
-                  </Select>
-                </Field>
-                <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-vat-rate" label="Alicuota">
-                  <Select className="w-full min-w-0" id="purchase-vat-rate" name="vatRate" defaultValue="21">
-                    <option value="21">21%</option>
-                    <option value="10.5">10,5%</option>
-                    <option value="0">0%</option>
-                  </Select>
-                </Field>
-                <Field className="min-w-0 md:col-span-2 xl:col-span-4" htmlFor="purchase-description" label="Descripcion">
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px] md:items-end">
+                <Field className="min-w-0" htmlFor="purchase-description" label="Número de remito / observaciones">
                   <Input className="w-full min-w-0" id="purchase-description" name="description" placeholder="Detalle o referencia interna" />
                 </Field>
-                <Button className="w-full xl:col-span-2" type="submit">Crear compra</Button>
+                <Button className="w-full" type="submit">Registrar compra e ingreso</Button>
               </div>
             </form>
           </Card>

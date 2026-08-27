@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
-import { requireStaffSession } from "@/lib/auth";
-import { normalizeRole } from "@/lib/auth";
+import { normalizeRole, requireStaffSession } from "@/lib/auth";
 import { getVendorClients } from "@/lib/crm";
 import { getLeadFollowupAgenda, getVendorLeads } from "@/lib/leads";
 import { sessionCanUseCrm } from "@/lib/route-auth";
@@ -39,7 +38,6 @@ export default async function CrmLeadsPage({ searchParams }: { searchParams: Pro
       title="CRM · Leads"
     >
       <div className="grid gap-7">
-        {dashboard ? <SalesActivityPanel dashboard={dashboard} recordAction={recordSalesActivityAction} /> : null}
         <LeadFollowupPanel agenda={leadAgenda} recordAction={recordLeadContactAction} />
         <div>
           <h2 className="erp-text-title-md font-black">Prospectos nuevos</h2>
@@ -57,6 +55,7 @@ export default async function CrmLeadsPage({ searchParams }: { searchParams: Pro
             />
           </div>
         </div>
+        {dashboard ? <SalesActivityPanel dashboard={dashboard} recordAction={recordSalesActivityAction} /> : null}
       </div>
     </ModulePage>
   );

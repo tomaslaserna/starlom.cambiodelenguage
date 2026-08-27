@@ -87,7 +87,10 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                   <Input id="supplier-phone" name="phone" />
                 </Field>
               </div>
-              <div className="grid gap-3 lg:grid-cols-[minmax(180px,240px)_minmax(220px,1fr)_minmax(260px,1fr)_auto] lg:items-end">
+              <div className="grid gap-3 lg:grid-cols-[180px_minmax(180px,240px)_minmax(220px,1fr)_minmax(240px,1fr)_auto] lg:items-end">
+                <Field htmlFor="supplier-payment-term" label="Plazo de pago (días)">
+                  <Input defaultValue="0" id="supplier-payment-term" min="0" name="paymentTermDays" step="1" type="number" />
+                </Field>
                 <Field htmlFor="supplier-email" label="Email">
                   <Input id="supplier-email" name="email" type="email" />
                 </Field>
@@ -145,12 +148,13 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 <DataTableHead>Contacto</DataTableHead>
                 <DataTableHead>Telefono</DataTableHead>
                 <DataTableHead>Email</DataTableHead>
+                <DataTableHead>Plazo</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={5}>
+                  <DataTableCell colSpan={6}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -173,6 +177,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                         {supplier.name || "Sin nombre"}
                       </div>
                     </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap">{supplier.paymentTermDays} días</DataTableCell>
                     <DataTableCell className="text-[color:var(--muted)]">
                       <div className="max-w-[180px] break-words">
                         {supplier.rubric || "-"}

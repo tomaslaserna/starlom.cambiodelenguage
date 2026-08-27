@@ -34,6 +34,12 @@ export async function createPurchaseAction(formData: FormData) {
     }),
   );
   revalidatePath("/purchases");
+  revalidatePath("/stock");
+  revalidatePath("/products");
+  revalidatePath("/prices");
+  revalidatePath("/billing");
+  revalidatePath("/treasury/accounts-payable");
+  revalidatePath("/treasury/cash-flow");
 }
 
 export async function updatePurchaseStatusAction(formData: FormData) {
