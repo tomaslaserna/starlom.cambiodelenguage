@@ -72,10 +72,10 @@ function mapMargin(row: MarginRow, multipliers: { listId: number; listName: stri
 
 function mapPriceList(row: PriceListRow) {
   return {
-    id: row.id,
+    id: Number(row.id),
     name: row.nombre,
     active: Number(row.activa) === 1,
-    order: row.orden,
+    order: Number(row.orden),
     multipliersCount: Number(row.multipliers_count),
   };
 }
