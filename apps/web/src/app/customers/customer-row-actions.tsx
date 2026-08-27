@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button, Field, Input, SearchableSelect, Select } from "@/components/ui";
+import { FISCAL_CONDITION_OPTIONS } from "@/lib/fiscal-conditions";
 
 type CustomerLite = { id: string; name: string };
 
@@ -85,7 +86,11 @@ export function CustomerRowActions({
               <Input defaultValue={customer.taxId} id={`edit-taxid-${customer.id}`} name="taxId" />
             </Field>
             <Field htmlFor={`edit-vat-${customer.id}`} label="Cond. IVA">
-              <Input defaultValue={customer.vatCondition} id={`edit-vat-${customer.id}`} name="vatCondition" />
+              <Select defaultValue={customer.vatCondition} id={`edit-vat-${customer.id}`} name="vatCondition">
+                {FISCAL_CONDITION_OPTIONS.map((condition) => (
+                  <option key={condition} value={condition}>{condition}</option>
+                ))}
+              </Select>
             </Field>
             <Field htmlFor={`edit-phone-${customer.id}`} label="Teléfono">
               <Input defaultValue={customer.phone} id={`edit-phone-${customer.id}`} name="phone" />

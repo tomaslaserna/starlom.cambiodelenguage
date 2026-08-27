@@ -21,6 +21,7 @@ import {
   tableActionItemClass,
 } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { hasCompleteFiscalData } from "@/lib/client-fiscal";
 import { listOrders } from "@/lib/orders";
 import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { getSalesSummary } from "@/lib/sales-admin";
@@ -33,7 +34,7 @@ import {
   sessionCanDeleteOperationalRecords,
 } from "@/lib/route-auth";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
-import { deleteSaleAction, requestFiscalNoteAction } from "@/app/sales/actions";
+import { deleteSaleAction, requestFiscalInvoiceAction, requestFiscalNoteAction } from "@/app/sales/actions";
 
 type SalesPageProps = {
   searchParams: Promise<{ q?: string; page?: string; error?: string; message?: string }>;
@@ -151,6 +152,13 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                     deliveryNumber: sale.deliveryNumber,
                     legacyRemittanceNumber: sale.receiptNumber,
                   });
+                  const canRequestInvoice =
+                    hasCompleteFiscalData({
+                      taxId: sale.customerDocument,
+                      fiscalCondition: sale.customerFiscalCondition,
+                    })
+                    && sale.fiscalStatus !== "aprobado"
+                    && !sale.hasPendingFiscalRequest;
 
                   return (
                     <DataTableRow key={sale.id}>
@@ -196,6 +204,15 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                           )}
                           {sale.fiscalStatus === "aprobado" ? (
                             <a className={tableActionItemClass} href={`/api/pdfs/orders/${sale.id}/document`} rel="noreferrer" target="_blank">Factura</a>
+                          ) : sale.hasPendingFiscalRequest ? (
+                            <span className={`${tableActionItemClass} cursor-default text-[color:var(--muted)] hover:bg-transparent hover:text-[color:var(--muted)]`}>
+                              Factura solicitada
+                            </span>
+                          ) : canRequestInvoice ? (
+                            <form action={requestFiscalInvoiceAction}>
+                              <input name="id" type="hidden" value={sale.id} />
+                              <button className={tableActionItemClass} type="submit">Solicitar factura</button>
+                            </form>
                           ) : null}
                           {sale.associatedDocuments.map((document) => document.fiscal ? (
                             <a key={document.id} className={tableActionItemClass} href={`/api/pdfs/fiscal/notes/${document.id}`} rel="noreferrer" target="_blank">
