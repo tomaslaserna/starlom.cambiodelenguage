@@ -5,10 +5,12 @@ import { redirect } from "next/navigation";
 import { createCatalogProduct, productCreateInputFromBody } from "@/lib/imports";
 import {
   createMargin,
+  deleteMargin,
   marginInputFromBody,
   recomputeListMultipliers,
   savePriceListParameters,
   updateMargin,
+  updatePriceListMultiplier,
 } from "@/lib/pricing";
 import { PRODUCTS_CREATE_PERMISSION, requireAdminApiSession, requireApiSession } from "@/lib/route-auth";
 import { stringFieldsFromFormData } from "@/lib/storage";
@@ -38,6 +40,8 @@ export async function savePriceListAction(formData: FormData) {
     requiresAuthorization: boolField(formData, "requiresAuthorization"),
     admitsOffers: boolField(formData, "admitsOffers"),
     floorFactor: floorRaw ? Number(floorRaw) : null,
+    active: boolField(formData, "active"),
+    blockedUntil: String(formData.get("blockedUntil") ?? "").trim() || null,
   });
   revalidatePath("/prices/parameters");
   revalidatePath("/prices");
@@ -58,7 +62,14 @@ export async function updateMarginAction(formData: FormData) {
   const body = stringFieldsFromFormData(formData);
   const code = String(body.code ?? body.codigo ?? "");
   await updateMargin(session.companyId, code, marginInputFromBody(body, true));
-  await recomputeListMultipliers(session.companyId);
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("list_")) continue;
+    const listId = Number(key.slice(5));
+    const multiplier = Number(value);
+    if (Number.isInteger(listId) && listId > 0 && Number.isFinite(multiplier)) {
+      await updatePriceListMultiplier(session.companyId, { code: code.toUpperCase(), listId, multiplier });
+    }
+  }
   revalidatePath("/prices/margins");
   revalidatePath("/prices");
   redirect("/prices/margins?updated=1");
@@ -70,6 +81,14 @@ export async function createPriceProductAction(formData: FormData) {
   revalidatePath("/prices");
   revalidatePath("/products");
   redirect("/prices/new?created=1");
+}
+
+export async function deleteMarginAction(formData: FormData) {
+  const session = await requireAdminApiSession();
+  await deleteMargin(session.companyId, String(formData.get("code") ?? ""));
+  revalidatePath("/prices/margins");
+  revalidatePath("/prices");
+  redirect("/prices/margins?deleted=1");
 }
 
 export async function updatePriceProductAction(formData: FormData) {

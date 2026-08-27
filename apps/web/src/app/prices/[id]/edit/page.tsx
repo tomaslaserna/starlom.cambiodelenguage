@@ -5,7 +5,6 @@ import { requireStaffSession } from "@/lib/auth";
 import { sessionAllows } from "@/lib/route-auth";
 import { getProduct } from "@/lib/catalog-management";
 import { listMargins } from "@/lib/pricing";
-import { listProductCategories } from "@/lib/catalog";
 import { uuidParam } from "@/lib/request-body";
 import { updatePriceProductAction } from "@/app/prices/actions";
 
@@ -16,10 +15,9 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
   if (!(await sessionAllows(session, [{ resource: "productos", action: "editar" }]))) redirect("/prices");
   const { id } = await params;
   const productId = uuidParam(id, "Producto");
-  const [product, margins, categories] = await Promise.all([
+  const [product, margins] = await Promise.all([
     getProduct(session.companyId, productId),
     listMargins(session.companyId),
-    listProductCategories(session.companyId),
   ]);
 
   return (
@@ -35,13 +33,9 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
             <Field htmlFor="edit-product-cost" label="Costo" required>
               <Input defaultValue={product.cost} id="edit-product-cost" min="0" name="cost" required step="0.01" type="number" />
             </Field>
-            <Field htmlFor="edit-product-category" label="Categoría del artículo">
-              <Input defaultValue={product.category} id="edit-product-category" list="edit-product-categories" maxLength={100} name="category" />
-              <datalist id="edit-product-categories">{categories.map((category) => <option key={category} value={category} />)}</datalist>
-            </Field>
-            <Field htmlFor="edit-product-rule" label="Regla de precio" required>
+            <Field htmlFor="edit-product-rule" label="Categoría y margen" description="Si cambiás la categoría se asignará un SKU nuevo y se conservará el anterior." required>
               <Select defaultValue={product.code} id="edit-product-rule" name="code" required>
-                {margins.map((margin) => <option key={margin.code} value={margin.code}>{margin.code} - {margin.name}</option>)}
+                {margins.map((margin) => <option key={margin.code} value={margin.code}>{margin.name} ({margin.code})</option>)}
               </Select>
             </Field>
             <Field htmlFor="edit-product-presentation" label="Presentación" description="Cantidad de unidades por paquete o bulto.">

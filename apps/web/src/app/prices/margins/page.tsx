@@ -21,7 +21,7 @@ import {
 import { listMargins } from "@/lib/pricing";
 import { isAdminRole, requireStaffSession } from "@/lib/auth";
 import { sessionCanReadProducts } from "@/lib/route-auth";
-import { createMarginAction, updateMarginAction } from "@/app/prices/actions";
+import { createMarginAction, deleteMarginAction, updateMarginAction } from "@/app/prices/actions";
 
 export default async function MarginsPage() {
   const session = await requireStaffSession();
@@ -39,7 +39,7 @@ export default async function MarginsPage() {
     >
       <div className="grid gap-4">
         <PageHeader
-          description="Cada categoría tiene un margen base que multiplica el costo. Las diferencias por lista se configuran en Parámetros."
+          description="Editá el nombre, el margen base y el multiplicador final de cada categoría para cada lista. Solo se puede eliminar una categoría sin productos asociados."
           moduleIntro
           title="Márgenes"
         />
@@ -78,8 +78,8 @@ export default async function MarginsPage() {
               <DataTableRow className="hover:bg-transparent">
                 <DataTableHead>Código</DataTableHead>
                 <DataTableHead>Categoría</DataTableHead>
-                <DataTableHead align="right">Margen base</DataTableHead>
-                {canEdit ? <DataTableHead align="right">Modificar</DataTableHead> : null}
+                <DataTableHead align="right">Margen base y listas</DataTableHead>
+                {canEdit ? <DataTableHead align="right">Acciones</DataTableHead> : null}
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
@@ -96,31 +96,40 @@ export default async function MarginsPage() {
                 margins.map((margin) => (
                   <DataTableRow key={margin.code}>
                     <DataTableCell className="whitespace-nowrap font-mono text-xs font-bold">{margin.code}</DataTableCell>
-                    <DataTableCell>
-                      <div className="max-w-[280px] break-words font-medium">{margin.name}</div>
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-sm font-bold">
-                      {margin.price1.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </DataTableCell>
+                    <DataTableCell>{margin.name}</DataTableCell>
                     {canEdit ? (
-                      <DataTableCell align="right">
-                        <form action={updateMarginAction} className="flex items-center justify-end gap-2">
+                      <DataTableCell colSpan={2}>
+                        <form action={updateMarginAction} className="grid gap-3 lg:grid-cols-[minmax(160px,1fr)_repeat(3,minmax(100px,0.6fr))_auto] lg:items-end">
                           <input name="code" type="hidden" value={margin.code} />
+                          <Field htmlFor={`name-${margin.code}`} label="Nombre">
+                            <Input defaultValue={margin.name} id={`name-${margin.code}`} name="name" required />
+                          </Field>
+                          <Field htmlFor={`base-${margin.code}`} label="Base">
                           <Input
-                            aria-label={`Nuevo margen base para ${margin.name}`}
-                            className="w-24 text-right"
                             defaultValue={margin.price1}
+                            id={`base-${margin.code}`}
                             inputMode="decimal"
                             name="precio_1"
                             step="0.01"
                             type="number"
                           />
+                          </Field>
+                          {margin.multipliers.map((list) => (
+                            <Field htmlFor={`list-${margin.code}-${list.listId}`} key={list.listId} label={list.listName}>
+                              <Input defaultValue={list.multiplier} id={`list-${margin.code}-${list.listId}`} min="0.01" name={`list_${list.listId}`} step="0.01" type="number" />
+                            </Field>
+                          ))}
+                          <div className="flex gap-2">
                           <Button size="sm" type="submit" variant="secondary">
                             Guardar
                           </Button>
+                          <Button formAction={deleteMarginAction} size="sm" type="submit" variant="danger">
+                            Eliminar
+                          </Button>
+                          </div>
                         </form>
                       </DataTableCell>
-                    ) : null}
+                    ) : <DataTableCell align="right">{margin.price1.toFixed(2)}</DataTableCell>}
                   </DataTableRow>
                 ))
               )}

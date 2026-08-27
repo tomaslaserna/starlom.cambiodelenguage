@@ -154,7 +154,7 @@ async function getActivePriceListNames(client: PoolClient, companyId: number) {
     `
       SELECT nombre
       FROM listas_precio
-      WHERE empresa_id = $1 AND activa = 1
+      WHERE empresa_id = $1 AND activa = 1 AND (blocked_until IS NULL OR blocked_until < CURRENT_DATE)
       ORDER BY orden ASC, nombre ASC
     `,
     [companyId],
@@ -479,6 +479,7 @@ async function resolveQuoteProductsFromCatalog(
       LEFT JOIN listas_precio selected_list
         ON selected_list.empresa_id = p.empresa_id
        AND selected_list.activa = 1
+       AND (selected_list.blocked_until IS NULL OR selected_list.blocked_until < CURRENT_DATE)
        AND lower(selected_list.nombre) = lower($6)
       LEFT JOIN margenes_listas selected_margin
         ON selected_margin.empresa_id = p.empresa_id

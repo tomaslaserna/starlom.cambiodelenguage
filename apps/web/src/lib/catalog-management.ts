@@ -5,6 +5,7 @@ import { parsePagination } from "@/lib/pagination";
 import { saleOrderDocument, type SaleOrderDocument } from "@/lib/receipt-types";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
+import type { PoolClient } from "pg";
 
 type ListInput = {
   companyId?: number;
@@ -101,6 +102,16 @@ export type ProductUpdateInput = {
 
 const DEFAULT_COMPANY_ID = 1;
 
+async function nextCategorySku(client: PoolClient, companyId: number, categoryCode: string) {
+  const prefix = categoryCode.trim().toUpperCase();
+  await client.query("SELECT pg_advisory_xact_lock($1, hashtext($2))", [companyId, `product-sku:${prefix}`]);
+  const result = await client.query<{ next_number: string }>(
+    "SELECT (COALESCE(MAX(substring(sku from '[0-9]+$')::bigint), 0) + 1)::text AS next_number FROM products WHERE empresa_id = $1 AND sku ~ ('^' || $2 || '-[0-9]+$')",
+    [companyId, prefix],
+  );
+  return `${prefix}-${String(result.rows[0]?.next_number ?? "1").padStart(5, "0")}`;
+}
+
 export const CUSTOMER_RECEIPT_OPTIONS = ["Remito", "Factura A", "Factura B"] as const;
 export type CustomerReceiptType = (typeof CUSTOMER_RECEIPT_OPTIONS)[number];
 
@@ -116,7 +127,7 @@ async function resolveCustomerPriceList(companyId: number, value: string) {
     `
       SELECT nombre
       FROM listas_precio
-      WHERE empresa_id = $1 AND activa = 1
+      WHERE empresa_id = $1 AND activa = 1 AND (blocked_until IS NULL OR blocked_until < CURRENT_DATE)
       ORDER BY orden ASC, nombre ASC
     `,
     [companyId],
@@ -696,6 +707,18 @@ export async function updateProduct(
     const current = currentResult.rows[0];
     if (!current) throw new ApiError(404, "Producto no encontrado");
 
+    const marginResult = await client.query<{ nombre: string }>(
+      "SELECT nombre FROM margenes WHERE codigo = $1 AND empresa_id = $2 LIMIT 1",
+      [input.code, session.companyId],
+    );
+    const categoryName = marginResult.rows[0]?.nombre;
+    if (!categoryName) throw new ApiError(400, "La categoría seleccionada no existe");
+
+    const categoryChanged = (current.category_code ?? "").toUpperCase() !== input.code;
+    const nextSku = categoryChanged
+      ? await nextCategorySku(client, session.companyId, input.code)
+      : current.sku;
+
     const updateResult = await client.query<{ id: string }>(
       `
         UPDATE products
@@ -704,11 +727,13 @@ export async function updateProduct(
             category_code = $3,
             category = $6,
             presentation_units = $7,
+            legacy_sku = CASE WHEN $8::boolean THEN COALESCE(legacy_sku, sku) ELSE legacy_sku END,
+            sku = $9,
             updated_at = now()
         WHERE id = $4::uuid AND empresa_id = $5 AND active = true
         RETURNING id::text AS id
       `,
-      [input.name, input.cost, input.code, id, session.companyId, input.category, input.presentationUnits],
+      [input.name, input.cost, input.code, id, session.companyId, categoryName, input.presentationUnits, categoryChanged, nextSku],
     );
     if (!updateResult.rows[0]) throw new ApiError(404, "Producto no encontrado");
 
@@ -721,7 +746,7 @@ export async function updateProduct(
         after: Number(input.cost).toFixed(2),
       },
       { key: "codigo", label: "Categoria", before: current.category_code ?? "", after: input.code },
-      { key: "categoria", label: "Categoría del artículo", before: current.category ?? "", after: input.category },
+      { key: "categoria", label: "Categoría del artículo", before: current.category ?? "", after: categoryName },
       { key: "presentacion", label: "Presentación", before: String(current.presentation_units ?? 1), after: String(input.presentationUnits) },
     ]
       .filter((change) => change.before !== change.after)
@@ -733,7 +758,7 @@ export async function updateProduct(
         name: input.name,
         cost: String(input.cost),
         category_code: input.code,
-        category: input.category,
+        category: categoryName,
         presentation_units: input.presentationUnits,
       }),
       changedFields: changes.length,

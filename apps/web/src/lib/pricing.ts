@@ -162,6 +162,7 @@ export async function listMargins(companyId: number) {
       FROM margenes_listas ml
       JOIN listas_precio lp ON lp.id = ml.lista_id AND lp.empresa_id = ml.empresa_id
       WHERE ml.empresa_id = $1 AND lp.activa = 1
+        AND (lp.blocked_until IS NULL OR lp.blocked_until < CURRENT_DATE)
       ORDER BY ml.codigo ASC, lp.orden ASC, lp.nombre ASC
     `,
     [companyId],
@@ -286,7 +287,7 @@ export async function listPriceLists(companyId: number, includeInactive = false)
       FROM listas_precio lp
       LEFT JOIN margenes_listas ml ON ml.lista_id = lp.id AND ml.empresa_id = lp.empresa_id
       WHERE lp.empresa_id = $1
-        AND ($2::boolean OR lp.activa = 1)
+        AND ($2::boolean OR (lp.activa = 1 AND (lp.blocked_until IS NULL OR lp.blocked_until < CURRENT_DATE)))
       GROUP BY lp.id, lp.nombre, lp.activa, lp.orden
       ORDER BY lp.orden ASC, lp.nombre ASC
     `,
@@ -359,7 +360,7 @@ export async function updatePriceListMultiplier(
     if (!margin.rows[0]) throw new ApiError(404, `El codigo ${input.code} no existe en margenes`);
 
     const list = await client.query(
-      "SELECT 1 FROM listas_precio WHERE id = $1 AND empresa_id = $2 AND activa = 1",
+      "SELECT 1 FROM listas_precio WHERE id = $1 AND empresa_id = $2 AND activa = 1 AND (blocked_until IS NULL OR blocked_until < CURRENT_DATE)",
       [input.listId, companyId],
     );
     if (!list.rows[0]) throw new ApiError(404, "La lista no existe o esta inactiva");
@@ -420,6 +421,7 @@ export type PriceListParameters = {
   requiresAuthorization: boolean;
   admitsOffers: boolean;
   floorFactor: number | null;
+  blockedUntil: string | null;
 };
 
 export type SavePriceListInput = {
@@ -434,6 +436,8 @@ export type SavePriceListInput = {
   requiresAuthorization: boolean;
   admitsOffers: boolean;
   floorFactor: number | null;
+  active: boolean;
+  blockedUntil: string | null;
 };
 
 type PriceListParametersRow = {
@@ -450,6 +454,7 @@ type PriceListParametersRow = {
   requires_authorization: boolean;
   admits_offers: boolean;
   floor_factor: string | null;
+  blocked_until: string | null;
 };
 
 export async function listPriceListParameters(companyId: number): Promise<PriceListParameters[]> {
@@ -458,7 +463,8 @@ export async function listPriceListParameters(companyId: number): Promise<PriceL
     `
       SELECT id, nombre, activa, orden, derivation_type, parent_list_id, percentage,
              allowed_roles, valid_from::text AS valid_from, valid_to::text AS valid_to,
-             requires_authorization, admits_offers, floor_factor::text AS floor_factor
+             requires_authorization, admits_offers, floor_factor::text AS floor_factor,
+             blocked_until::text AS blocked_until
       FROM listas_precio
       WHERE empresa_id = $1
       ORDER BY orden ASC, nombre ASC
@@ -480,6 +486,7 @@ export async function listPriceListParameters(companyId: number): Promise<PriceL
     requiresAuthorization: Boolean(row.requires_authorization),
     admitsOffers: Boolean(row.admits_offers),
     floorFactor: row.floor_factor === null ? null : Number(row.floor_factor),
+    blockedUntil: row.blocked_until,
   }));
 }
 
@@ -557,8 +564,9 @@ export async function savePriceListParameters(companyId: number, input: SavePric
           UPDATE listas_precio
           SET nombre = $1, derivation_type = $2, parent_list_id = $3, percentage = $4,
               allowed_roles = $5, valid_from = $6, valid_to = $7,
-              requires_authorization = $8, admits_offers = $9, floor_factor = $10
-          WHERE id = $11 AND empresa_id = $12
+              requires_authorization = $8, admits_offers = $9, floor_factor = $10,
+              activa = $11, blocked_until = $12
+          WHERE id = $13 AND empresa_id = $14
         `,
         [
           name,
@@ -571,6 +579,8 @@ export async function savePriceListParameters(companyId: number, input: SavePric
           input.requiresAuthorization,
           input.admitsOffers,
           floor,
+          input.active ? 1 : 0,
+          input.blockedUntil,
           listId,
           companyId,
         ],
@@ -581,13 +591,15 @@ export async function savePriceListParameters(companyId: number, input: SavePric
         `
           INSERT INTO listas_precio (
             nombre, activa, orden, empresa_id, derivation_type, parent_list_id, percentage,
-            allowed_roles, valid_from, valid_to, requires_authorization, admits_offers, floor_factor
+            allowed_roles, valid_from, valid_to, requires_authorization, admits_offers, floor_factor,
+            blocked_until
           )
-          VALUES ($1, 1, 0, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          VALUES ($1, $2, 0, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           RETURNING id
         `,
         [
           name,
+          input.active ? 1 : 0,
           companyId,
           input.derivationType,
           parentId,
@@ -598,6 +610,7 @@ export async function savePriceListParameters(companyId: number, input: SavePric
           input.requiresAuthorization,
           input.admitsOffers,
           floor,
+          input.blockedUntil,
         ],
       );
       listId = Number(created.rows[0].id);
