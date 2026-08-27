@@ -136,13 +136,13 @@ export default async function PriceParametersPage({ searchParams }: ParametersPa
       active="prices"
       description="Definí cómo calcula cada lista, quién la usa y sus reglas."
       session={session}
-      title="Parámetros de precios"
+      title="Gestionar listas"
     >
       <div className="grid gap-4">
         <PageHeader
           description="Creá y configurá las listas: derivación (costo o sobre otra lista + %), acceso por rol y reglas de uso. Al guardar se recalculan los precios."
           moduleIntro
-          title="Parámetros de precios"
+          title="Gestionar listas de precios"
         />
 
         {params.saved ? (
