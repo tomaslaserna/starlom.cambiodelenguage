@@ -27,6 +27,8 @@ import { isAdminRole, requireStaffSession } from "@/lib/auth";
 import { PRODUCTS_CREATE_PERMISSION, sessionAllows, sessionCanReadProducts } from "@/lib/route-auth";
 import { ProductImageCell } from "@/app/prices/product-image-cell";
 
+export const dynamic = "force-dynamic";
+
 type PricesPageProps = {
   searchParams: Promise<{
     q?: string;
