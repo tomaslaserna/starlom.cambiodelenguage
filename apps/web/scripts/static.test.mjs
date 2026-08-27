@@ -348,7 +348,13 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
   const hrSectionStart = navigation.indexOf('label: "RR.HH."', administrationStart);
   const administrationSection = navigation.slice(administrationStart, hrSectionStart);
   assert.doesNotMatch(administrationSection, /groupByLabel\("RR\.HH\."\)/, "RR.HH. must no longer live under Administracion");
-  assert.match(navigation, /label: "RR\.HH\."[\s\S]*groups: \[groupByLabel\("RR\.HH\."\)\]/);
+  assert.match(navigation, /label: "RR\.HH\.",\s*href: "\/employees",\s*icon: "user",\s*groups: \[groupByLabel\("RR\.HH\."\)\]/);
+  const shellNavigation = read("apps/web/src/components/shell-navigation.tsx");
+  assert.match(shellNavigation, /if \(section\.href\)/);
+  assert.match(shellNavigation, /href=\{section\.href\}/);
+  const appIcon = read("apps/web/src/components/ui/app-icon.tsx");
+  assert.match(appIcon, /\| "user"/);
+  assert.match(appIcon, /user: \([\s\S]*<circle cx="12" cy="8" r="4"/);
   assert.doesNotMatch(
     navigation,
     /label: "Finanzas"[\s\S]*groupByLabel\("Balance"\)/,

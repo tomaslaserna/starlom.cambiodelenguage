@@ -226,6 +226,7 @@ export const navigationGroups: NavigationGroup[] = [
 
 export type NavigationSection = {
   label: string;
+  href?: string;
   icon?: AppIconName;
   groups: NavigationGroup[];
 };
@@ -284,7 +285,8 @@ export const navigationSections: NavigationSection[] = [
   },
   {
     label: "RR.HH.",
-    icon: "trend",
+    href: "/employees",
+    icon: "user",
     groups: [groupByLabel("RR.HH.")],
   },
   {
