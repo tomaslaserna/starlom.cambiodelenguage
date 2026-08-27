@@ -1,13 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { AuthSession } from "@/lib/auth";
+import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
 import { MessageNotifications } from "@/components/message-notifications";
 import { MessageNotifier } from "@/components/message-notifier";
 import { PresenceIndicator } from "@/components/presence-indicator";
 import { SessionKeepAlive } from "@/components/session-keep-alive";
 import { ShellNavigation } from "@/components/shell-navigation";
+import { SellerMobileNavigation } from "@/components/seller-mobile-navigation";
 import { ButtonLink, cn } from "@/components/ui";
 import {
   emptyNavigationIndicators,
@@ -27,6 +28,9 @@ type ModulePageProps = {
   lockDesktopScroll?: boolean;
 };
 
+const NAVIGATION_AUTHORIZATION_TIMEOUT_MS = 5_000;
+const NAVIGATION_INDICATORS_TIMEOUT_MS = 2_000;
+
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -42,27 +46,31 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: 
 }
 
 function BrandBlock({ title }: { title?: string }) {
-  // Con título = header mobile (compacto, alineado a la izquierda junto al menú).
   if (title) {
     return (
-      <Link className="flex min-w-0 flex-1 items-center gap-3" href="/">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-[#d9e2ef] bg-white p-2 shadow-[0_8px_18px_rgba(15,23,42,0.07)]">
-          <Image src="/starlim-logo.png" alt="Starlim" width={30} height={30} />
-        </span>
-        <span className="min-w-0">
-          <span className="erp-text-caption block font-semibold uppercase text-white">Starlim</span>
-          <span className="erp-text-title-sm block truncate font-medium text-white/82">{title}</span>
-        </span>
+      <Link aria-label={`Starlim - ${title}`} className="flex min-w-0 flex-1 items-center" href="/">
+        <Image
+          alt="Starlim"
+          className="h-auto w-[108px] object-contain"
+          height={49}
+          priority
+          src="/starlim-logo-white.png"
+          width={108}
+        />
       </Link>
     );
   }
-  // Sin título = marca del sidebar: logo + nombre grande, centrado en el cuadro.
+
   return (
-    <Link className="flex items-center justify-center gap-3 py-1" href="/">
-      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[12px] border border-[#d9e2ef] bg-white p-2 shadow-[0_8px_18px_rgba(15,23,42,0.07)]">
-        <Image src="/starlim-logo.png" alt="Starlim" width={34} height={34} />
-      </span>
-      <span className="text-2xl font-black uppercase tracking-wide text-white">Starlim</span>
+    <Link aria-label="Ir al inicio de Starlim" className="flex items-center justify-center py-1" href="/">
+      <Image
+        alt="Starlim"
+        className="h-auto w-[148px] object-contain"
+        height={67}
+        priority
+        src="/starlim-logo-white.png"
+        width={148}
+      />
     </Link>
   );
 }
@@ -82,15 +90,30 @@ export async function ModulePage({
   };
   const authorization =
     navigationAuthorization ??
-    (await withTimeout(getNavigationAuthorization(session), 60, fallbackAuthorization));
+    (await withTimeout(
+      getNavigationAuthorization(session),
+      NAVIGATION_AUTHORIZATION_TIMEOUT_MS,
+      fallbackAuthorization,
+    ));
   const sections = authorizedNavigationSections(authorization);
+  const sellerMobile = normalizeRole(session.role) === "vendedor";
+  const mobileSections = sellerMobile
+    ? sections
+        .filter((section) => section.label === "Inicio" || section.label === "CRM")
+        .map((section) => section.label === "Inicio"
+          ? { ...section, groups: section.groups.filter((group) => group.active === "supervisor-lab") }
+          : section)
+        .filter((section) => section.groups.length > 0)
+    : sections;
 
-  indicators = await withTimeout(getNavigationIndicators(session), 60, emptyNavigationIndicators()).catch(() =>
+  indicators = await withTimeout(
+    getNavigationIndicators(session),
+    NAVIGATION_INDICATORS_TIMEOUT_MS,
     emptyNavigationIndicators(),
-  );
+  ).catch(() => emptyNavigationIndicators());
 
   return (
-    <div className="min-h-screen overflow-visible bg-[#f5f7fb] text-foreground lg:grid lg:h-screen lg:grid-cols-[260px_minmax(0,1fr)] lg:overflow-hidden lg:overscroll-none">
+    <div className={cn("min-h-screen overflow-visible bg-[#f5f7fb] text-foreground lg:grid lg:h-screen lg:grid-cols-[260px_minmax(0,1fr)] lg:overflow-hidden lg:overscroll-none", sellerMobile && "seller-mobile-shell")}>
       <SessionKeepAlive />
       <MessageNotifier />
       <MessageNotifications
@@ -99,7 +122,7 @@ export async function ModulePage({
         initialUnread={0}
         initialRevision=""
       />
-      <aside className="sticky top-0 hidden h-screen overflow-hidden overscroll-none border-r border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_48%,#073f94_100%)] text-white shadow-[8px_0_30px_rgba(7,63,148,0.22)] lg:flex lg:flex-col">
+      <aside className="erp-sidebar-texture sticky top-0 hidden h-screen overflow-hidden overscroll-none border-r border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_48%,#073f94_100%)] text-white shadow-[8px_0_30px_rgba(7,63,148,0.22)] lg:flex lg:flex-col">
         <div className="border-b border-white/14 px-4 py-4">
           <BrandBlock />
         </div>
@@ -143,8 +166,8 @@ export async function ModulePage({
                 >
                   Menu
                 </summary>
-                <div className="fixed inset-x-0 top-16 z-40 max-h-[72vh] overflow-y-auto overscroll-contain border-b border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_55%,#073f94_100%)] p-4 text-white shadow-[var(--shadow-md)]">
-                  <ShellNavigation active={active} indicators={indicators} sections={sections} />
+                <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] top-16 z-40 overflow-y-auto overscroll-contain border-b border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_55%,#073f94_100%)] p-4 pb-7 text-white shadow-[var(--shadow-md)]">
+                  <ShellNavigation active={active} indicators={indicators} sections={mobileSections} />
                   <div className="mt-5 grid gap-2 border-t border-white/14 pt-4">
                     <ButtonLink className="border-[#60a5fa]/45 bg-[#0b4fc7] text-white shadow-[0_10px_22px_rgba(5,32,85,0.16)] hover:border-[#93c5fd]/60 hover:bg-[#073f94]" href="/" size="sm" variant="secondary">
                       Inicio
@@ -164,6 +187,7 @@ export async function ModulePage({
         <section className="erp-shell-content mx-auto min-w-0 max-w-[1480px] px-4 pb-24 pt-5 sm:px-6 lg:px-7 lg:pb-28 lg:pt-6">
           {children}
         </section>
+        {sellerMobile ? <SellerMobileNavigation /> : null}
       </main>
     </div>
   );

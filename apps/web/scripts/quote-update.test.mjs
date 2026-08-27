@@ -87,6 +87,7 @@ function draftClient() {
 const baseInput = {
   customerId: "c1",
   customer: {},
+  desiredDocument: "factura_a",
   products: [{ id: "p1", name: "Prod 1", quantity: 2, unitPrice: 1000, discount: 0, netUnitPrice: 1000, subtotal: 2000 }],
   discountPercent: 0,
   activePriceList: 2,
@@ -108,13 +109,19 @@ test("buildQuoteDraft resuelve cliente, IVA y totales (Factura A, 21%)", async (
   assert.equal(draft.customer.id, "c1");
 });
 
-test("buildQuoteDraft rechaza sin cliente", async () => {
+test("buildQuoteDraft permite un prospecto sin alta de cliente", async () => {
   const client = draftClient();
   const session = { companyId: 1, userId: "u1", username: "user" };
-  await assert.rejects(
-    () => quotes.buildQuoteDraft(client, session, { ...baseInput, customerId: "" }),
-    (e) => e.status === 400,
-  );
+  const draft = await quotes.buildQuoteDraft(client, session, {
+    ...baseInput,
+    customerId: "",
+    customer: { name: "Prospecto SA", businessName: "", taxId: "", vatCondition: "", phone: "", address: "" },
+    desiredDocument: "remito",
+  });
+  assert.equal(draft.customer.id, "");
+  assert.equal(draft.customer.display_name, "Prospecto SA");
+  assert.equal(draft.desiredDocument, "remito");
+  assert.equal(draft.vatRate, 10.5);
 });
 
 // Cliente para updateQuote: agrega SELECT ... FOR UPDATE, UPDATE, DELETE items, INSERT items, y getQuote final.

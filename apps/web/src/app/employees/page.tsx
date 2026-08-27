@@ -28,6 +28,7 @@ import {
   toggleEmployeeStatusAction,
   updateEmployeeAction,
 } from "@/app/employees/actions";
+import { PermissionBlocks } from "@/app/employees/permission-blocks";
 import { listEmployeePermissions, listEmployees } from "@/lib/employees";
 import { formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
@@ -117,16 +118,6 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
     currentRole === "administrador" || currentRole === "jefe"
       ? permissions
       : permissions.filter((permission) => !permission.sensitive);
-  const permissionGroups = visiblePermissions.reduce<Record<string, typeof visiblePermissions>>(
-    (groups, permission) => {
-      const key = permission.module || "general";
-      groups[key] = groups[key] ?? [];
-      groups[key].push(permission);
-      return groups;
-    },
-    {},
-  );
-
   return (
     <ModulePage
       active="employees"
@@ -191,42 +182,14 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                 <div className="grid gap-3">
                   <div>
                     <h3 className="erp-text-body font-extrabold text-[color:var(--foreground)]">
-                      Ventanas habilitadas
+                      Accesos por bloques
                     </h3>
                     <p className="erp-text-body-sm mt-1 text-[color:var(--muted)]">
-                      Administradores y jefes pueden ver y asignar todos los permisos disponibles.
+                      Habilita solamente los bloques que necesita para cumplir su función. Las acciones sensibles se identifican por separado.
                     </p>
                   </div>
 
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {Object.entries(permissionGroups).map(([module, modulePermissions]) => (
-                      <fieldset
-                        key={module}
-                        className="rounded-[9px] border border-[color:var(--border)] bg-[color:var(--panel-muted)] p-4"
-                      >
-                        <legend className="px-1 text-[var(--text-caption)] font-extrabold uppercase text-[color:var(--muted)]">
-                          {module}
-                        </legend>
-                        <div className="mt-2 grid gap-2">
-                          {modulePermissions.map((permission) => (
-                            <label
-                              key={permission.key}
-                              className="flex min-h-9 items-start gap-2 rounded-[7px] px-2 py-1.5 text-[var(--text-body-sm)] text-[color:var(--foreground)] hover:bg-white"
-                            >
-                              <input
-                                className="mt-1 h-4 w-4 rounded border-[color:var(--border)] accent-[var(--accent)]"
-                                name="permissionKeys"
-                                suppressHydrationWarning
-                                type="checkbox"
-                                value={permission.key}
-                              />
-                              <span className="min-w-0">{permission.name}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </fieldset>
-                    ))}
-                  </div>
+                  <PermissionBlocks idPrefix="create-employee" permissions={visiblePermissions} />
                 </div>
 
                 <div className="flex justify-end">
@@ -417,37 +380,17 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
 
                                 <details className="rounded-[9px] border border-[color:var(--border)] bg-[color:var(--panel-muted)] p-3">
                                   <summary className="cursor-pointer list-none select-none font-black text-[color:var(--accent-strong)] [&::-webkit-details-marker]:hidden">
-                                    Accesos y permisos
+                                    Accesos efectivos por bloques
                                   </summary>
-                                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                                    {Object.entries(permissionGroups).map(([module, modulePermissions]) => (
-                                      <fieldset
-                                        key={`${employee.id}-${module}`}
-                                        className="rounded-[9px] border border-[color:var(--border)] bg-white p-3"
-                                      >
-                                        <legend className="px-1 text-[var(--text-caption)] font-extrabold uppercase text-[color:var(--muted)]">
-                                          {module}
-                                        </legend>
-                                        <div className="mt-2 grid gap-2">
-                                          {modulePermissions.map((permission) => (
-                                            <label
-                                              key={`${employee.id}-${permission.key}`}
-                                              className="flex min-h-9 items-start gap-2 rounded-[7px] px-2 py-1.5 text-[var(--text-body-sm)] text-[color:var(--foreground)] hover:bg-[color:var(--panel-muted)]"
-                                            >
-                                              <input
-                                                className="mt-1 h-4 w-4 rounded border-[color:var(--border)] accent-[var(--accent)]"
-                                                name="permissionKeys"
-                                                suppressHydrationWarning
-                                                type="checkbox"
-                                                value={permission.key}
-                                                defaultChecked={employee.permissionIds.includes(permission.key)}
-                                              />
-                                              <span className="min-w-0">{permission.name}</span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </fieldset>
-                                    ))}
+                                  <p className="mt-2 text-[var(--text-caption)] leading-5 text-[color:var(--muted)]">
+                                    Esta vista conserva el acceso actual del empleado. Habilitar o quitar un bloque modifica todos sus permisos visibles.
+                                  </p>
+                                  <div className="mt-3">
+                                    <PermissionBlocks
+                                      idPrefix={`employee-${employee.id}`}
+                                      permissions={visiblePermissions}
+                                      selectedKeys={employee.permissionIds}
+                                    />
                                   </div>
                                 </details>
 

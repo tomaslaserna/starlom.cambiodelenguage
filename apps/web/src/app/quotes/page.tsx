@@ -154,7 +154,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
 
         {canCreateQuotes ? (
         <Card>
-          <QuoteEntryForm action={createQuoteAction} className="grid gap-4 p-4">
+          <QuoteEntryForm action={createQuoteAction} className="grid scroll-mt-24 gap-4 p-4" id="crear-presupuesto">
             <QuoteEntryFields
               clients={quoteFormData.clients}
               priceLists={quoteFormData.priceLists}

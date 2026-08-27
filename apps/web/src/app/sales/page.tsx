@@ -26,7 +26,12 @@ import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { getSalesSummary } from "@/lib/sales-admin";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
-import { SALES_READ_PERMISSION, sessionCanDeleteOperationalRecords } from "@/lib/route-auth";
+import {
+  SALES_OPERATE_PERMISSION,
+  SALES_READ_PERMISSION,
+  sessionAllows,
+  sessionCanDeleteOperationalRecords,
+} from "@/lib/route-auth";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { deleteSaleAction, requestFiscalNoteAction } from "@/app/sales/actions";
 
@@ -38,7 +43,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [SALES_READ_PERMISSION]);
   const params = await searchParams;
-  const [summary, sales, canDeleteRecords] = await Promise.all([
+  const [summary, sales, canDeleteRecords, canOperateSales] = await Promise.all([
     getSalesSummary(session.companyId, "mes"),
     listOrders({
       companyId: session.companyId,
@@ -48,6 +53,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
       pageSize: "25",
     }),
     sessionCanDeleteOperationalRecords(session),
+    sessionAllows(session, [SALES_OPERATE_PERMISSION]),
   ]);
 
   return (
@@ -200,7 +206,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                               <a className={tableActionItemClass} href={`/api/pdfs/sales/notes/${document.id}`} rel="noreferrer" target="_blank">
                                 {document.className} interna #{String(document.receiptNumber).padStart(8, "0")}
                               </a>
-                              {sale.fiscalStatus === "aprobado" && !document.hasFiscalDocument && !document.hasPendingFiscalRequest ? (
+                              {canOperateSales && sale.fiscalStatus === "aprobado" && !document.hasFiscalDocument && !document.hasPendingFiscalRequest ? (
                                 <form action={requestFiscalNoteAction}>
                                   <input name="saleId" type="hidden" value={sale.id} />
                                   <input name="documentId" type="hidden" value={document.id} />
@@ -215,11 +221,15 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                               ) : null}
                             </div>
                           ))}
-                          <div className="mt-1 border-t border-[#dbe7f8] px-2.5 pb-1 pt-2 text-left text-[10px] font-black uppercase tracking-[0.08em] text-[color:var(--muted)]">
-                            Operaciones
-                          </div>
-                          <a className={tableActionItemClass} href={`/orders/new?tipo=nota_credito&venta=${sale.id}`}>Registrar devolucion</a>
-                          <a className={tableActionItemClass} href={`/orders/new?tipo=nota_debito&venta=${sale.id}`}>Registrar agregado</a>
+                          {canOperateSales ? (
+                            <>
+                              <div className="mt-1 border-t border-[#dbe7f8] px-2.5 pb-1 pt-2 text-left text-[10px] font-black uppercase tracking-[0.08em] text-[color:var(--muted)]">
+                                Operaciones
+                              </div>
+                              <a className={tableActionItemClass} href={`/orders/new?tipo=nota_credito&venta=${sale.id}`}>Registrar devolucion</a>
+                              <a className={tableActionItemClass} href={`/orders/new?tipo=nota_debito&venta=${sale.id}`}>Registrar agregado</a>
+                            </>
+                          ) : null}
                           {canDeleteRecords ? (
                             <form action={deleteSaleAction}>
                               <input name="id" type="hidden" value={sale.id} />

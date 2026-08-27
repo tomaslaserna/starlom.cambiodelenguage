@@ -90,7 +90,7 @@ test("jefe is a full-access role while legacy employee shortcuts stay removed", 
   assert.match(routeAuth, /normalized === "administrador" \|\| normalized === "jefe"/);
   assert.match(routeAuth, /if \(isFullAccessRole\(role\)\) return true/);
   assert.match(routeAuth, /if \(!isFullAccessRole\(session\.role\)\) throw new ApiError\(403, "Solo Administrador o Jefe"\)/);
-  assert.match(routeAuth, /JOIN app_permissions ap ON ap\.key = pp\.permission_key AND ap\.sensitive = FALSE/);
+  assert.match(routeAuth, /JOIN app_permissions ap ON ap\.key = pp\.permission_key\s+WHERE pp\.profile_id/);
   assert.match(routeAuth, /JOIN app_permissions ap ON ap\.key = rp\.permission_key AND ap\.sensitive = FALSE/);
 });
 
@@ -113,9 +113,9 @@ test("jefe can edit employee profiles and see all profile permissions", () => {
   const employeesPage = read("apps/web/src/app/employees/page.tsx");
   assert.match(employeesPage, /function canEditEmployee\(actorRole: string, targetRole: string\)/);
   assert.match(employeesPage, /currentRole === "administrador" \|\| currentRole === "jefe"/);
-  assert.match(employeesPage, /defaultChecked=\{employee\.permissionIds\.includes\(permission\.key\)\}/);
+  assert.match(employeesPage, /selectedKeys=\{employee\.permissionIds\}/);
   assert.match(employeesPage, /Modificar/);
-  assert.match(employeesPage, /Accesos y permisos/);
+  assert.match(employeesPage, /Accesos efectivos por bloques/);
   assert.match(employeesPage, /Borrar acceso/);
   assert.match(employeesPage, /name="confirmDelete"/);
   assert.doesNotMatch(employeesPage, /DataTableCell colSpan=\{9\}/);
@@ -562,7 +562,8 @@ test("future orders use the registered receipt as a suggestion and allow an expl
 
   const quoteEntryFields = read("apps/web/src/app/quotes/quote-entry-fields.tsx");
   assert.match(quoteEntryFields, /name="customerId"/);
-  assert.doesNotMatch(quoteEntryFields, /Cliente ocasional|name="customerName"/);
+  assert.match(quoteEntryFields, /Cliente nuevo \/ prospecto/);
+  assert.match(quoteEntryFields, /name="customerName"/);
   assert.match(quoteEntryFields, /name="productsJson"/);
   assert.match(quoteEntryFields, /priceForList/);
   assert.match(quoteEntryFields, /priceLists/);
@@ -577,7 +578,7 @@ test("future orders use the registered receipt as a suggestion and allow an expl
   assert.match(quotes, /price_list_name/);
   assert.match(quotes, /client_legal_name/);
   assert.match(quotes, /vatAmountsFromNet/);
-  assert.match(quotes, /Selecciona un cliente registrado/);
+  assert.match(quotes, /nombre del prospecto/);
   assert.doesNotMatch(quotes, /if \(!clientId\)[\s\S]*INSERT INTO clients/);
 });
 
@@ -715,7 +716,7 @@ test("Escritorio is listed first in the Inicio menu and links to the home page",
   assert.match(navigation, /href: "\/",\s*label: "Escritorio",\s*active: "home",/);
   assert.match(
     navigation,
-    /label: "Inicio"[\s\S]*groups: \[groupByLabel\("Escritorio"\), groupByLabel\("Calendario"\), groupByLabel\("Mensajes"\), groupByLabel\("Banco"\)\]/,
+    /label: "Inicio"[\s\S]*groups: \[[\s\S]*groupByLabel\("Escritorio"\)[\s\S]*groupByLabel\("LA TIRRA ia\.01"\)[\s\S]*groupByLabel\("Calendario"\)[\s\S]*groupByLabel\("Mensajes"\)[\s\S]*groupByLabel\("Banco"\)[\s\S]*\]/,
   );
 });
 
@@ -962,10 +963,10 @@ test("message center groups messages into WhatsApp-style contact conversations w
 test("shared button variants keep a consistent action hierarchy", () => {
   const button = read("apps/web/src/components/ui/button.tsx");
   assert.match(button, /const primaryButtonClass =[\s\S]*bg-\[color:var\(--accent\)\]/);
-  assert.match(button, /const secondaryButtonClass =[\s\S]*bg-\[#1d4ed8\]/);
-  assert.match(button, /const outlineButtonClass =[\s\S]*bg-white[\s\S]*text-\[#1755b8\]/);
+  assert.match(button, /const secondaryButtonClass =[\s\S]*bg-white[\s\S]*text-\[#0a55bd\]/);
+  assert.match(button, /const outlineButtonClass =[\s\S]*bg-white[\s\S]*text-\[#33445f\]/);
   assert.match(button, /const ghostButtonClass =[\s\S]*bg-transparent[\s\S]*text-\[#334155\]/);
-  assert.match(button, /const dangerButtonClass =[\s\S]*bg-\[#b91c1c\]/);
+  assert.match(button, /const dangerButtonClass =[\s\S]*bg-\[#fff1f2\][\s\S]*text-\[#b4232f\]/);
   assert.match(button, /primary: primaryButtonClass/);
   assert.match(button, /secondary: secondaryButtonClass/);
   assert.match(button, /ghost: ghostButtonClass/);
@@ -1080,7 +1081,7 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   const billingActions = read("apps/web/src/app/billing/actions.ts");
   assert.match(billingActions, /issueCreditNoteAction/);
   assert.match(billingActions, /issueDebitNoteAction/);
-  assert.match(billingActions, /Solo Administrador o Jefe/);
+  assert.match(billingActions, /requireApiSession\(\[SALES_OPERATE_PERMISSION\]\)/);
 
   const fiscalNotePage = read("apps/web/src/app/billing/fiscal-note-page.tsx");
   assert.match(fiscalNotePage, /Emitir NC en ARCA/);
@@ -1134,6 +1135,84 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.match(pdfRenderer, /fiscalItemsTable/);
   assert.match(pdfRenderer, /qrImage/);
   assert.doesNotMatch(pdfRenderer, /Starlim - documento operativo/);
+});
+
+test("public store creates a price-free cart and hands it to CRM as a lead plus draft quote", () => {
+  const login = read("apps/web/src/app/login/page.tsx");
+  const page = read("apps/web/src/app/tienda/page.tsx");
+  const client = read("apps/web/src/app/tienda/storefront.tsx");
+  const storefront = read("apps/web/src/lib/storefront.ts");
+  const route = read("apps/web/src/app/api/storefront/requests/route.ts");
+
+  assert.match(login, /href="\/tienda"[^>]*>TIENDA/);
+  assert.match(page, /listStorefrontProducts/);
+  assert.match(client, /Tu carrito/);
+  assert.match(client, /\+\{products\.length\} artículos en lista/);
+  assert.match(client, /Continuar · \{totalUnits\}/);
+  assert.match(client, /Papelería/);
+  assert.match(client, /Descartables/);
+  assert.match(client, /Todas las marcas/);
+  assert.match(client, /groupedProducts/);
+  assert.match(client, /Observación para el vendedor/);
+  assert.match(client, /\(opcional\)/);
+  assert.match(client, /Los precios serán definidos por el comercial/);
+  assert.match(client, /Hemos recibido tu pedido/);
+  assert.match(client, /A la brevedad un comercial se contactará con usted/);
+  assert.match(client, /navigator\.geolocation/);
+  assert.match(client, /Dirección completa/);
+  assert.doesNotMatch(client, /formatCurrency|unitPrice|precio[^s]/i);
+  assert.match(storefront, /INSERT INTO crm_leads/);
+  assert.match(storefront, /INSERT INTO quotes/);
+  assert.match(storefront, /INSERT INTO quote_items/);
+  assert.match(storefront, /withCompanyContext/);
+  assert.match(route, /parseStorefrontRequest/);
+  assert.doesNotMatch(route, /requireApiSession/);
+});
+
+test("seller mobile CRM has an elevated quick-sale button and a viewport-safe drawer", () => {
+  const navigation = read("apps/web/src/components/seller-mobile-navigation.tsx");
+  const modulePage = read("apps/web/src/components/module-page.tsx");
+  const styles = read("apps/web/src/app/globals.css");
+  const leadsPage = read("apps/web/src/app/crm/leads/page.tsx");
+  const leadsBoard = read("apps/web/src/app/crm/leads/leads-board.tsx");
+
+  assert.match(navigation, /Crear cliente/);
+  assert.match(navigation, /Crear lead/);
+  assert.match(navigation, /Hacer presupuesto/);
+  assert.match(navigation, /seller-mobile-navigation__create/);
+  assert.match(navigation, /aria-expanded=\{quickOpen\}/);
+  assert.match(styles, /seller-mobile-navigation__create/);
+  assert.match(styles, /border-radius: 999px/);
+  assert.match(modulePage, /bottom-\[calc\(4\.25rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.doesNotMatch(modulePage, /max-h-\[72vh\]/);
+  assert.match(leadsPage, /params\.nuevo === "1"/);
+  assert.match(leadsBoard, /initialCreating/);
+});
+
+test("Cobros y pagos es un resumen y Cuentas corrientes conserva la operatoria", () => {
+  const paymentsPage = read("apps/web/src/app/payments/page.tsx");
+  const accountsPage = read("apps/web/src/app/payments/accounts/[id]/page.tsx");
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.match(paymentsPage, /Resumen de cobranzas/);
+  assert.match(paymentsPage, /Clientes con cuentas abiertas/);
+  assert.match(paymentsPage, /Clientes en mora/);
+  assert.match(paymentsPage, /Clientes por vencer/);
+  assert.match(paymentsPage, /Ir a Cuentas corrientes/);
+  assert.doesNotMatch(paymentsPage, /RegisterPaymentDialog/);
+  assert.doesNotMatch(paymentsPage, /voidCustomerPaymentAction/);
+  assert.match(accountsPage, /RegisterPaymentDialog/);
+  assert.match(navigation, /href: "\/payments",\s*label: "Resumen de cobranzas"/);
+  assert.match(navigation, /href: "\/payments\/accounts",\s*label: "Cuentas corrientes"/);
+});
+
+test("navigation waits for permissions long enough and resolves them in one batch", () => {
+  const modulePage = read("apps/web/src/components/module-page.tsx");
+  const navigation = read("apps/web/src/lib/navigation.ts");
+
+  assert.match(modulePage, /NAVIGATION_AUTHORIZATION_TIMEOUT_MS = 5_000/);
+  assert.doesNotMatch(modulePage, /getNavigationAuthorization\(session\), 60,/);
+  assert.match(navigation, /sessionAllowedPermissionKeys\(\s*session,\s*collectRequiredNavigationPermissions\(\)/s);
+  assert.doesNotMatch(navigation, /collectRequiredNavigationPermissions\(\)\.map\(async/);
 });
 
 test("Fiscal muestra pendientes de facturar solo para clientes con factura habitual", () => {

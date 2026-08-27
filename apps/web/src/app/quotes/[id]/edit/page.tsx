@@ -34,6 +34,13 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
 
   const initialValues = {
     customerId,
+    customerName: quote.customer.name,
+    customerBusinessName: quote.customer.businessName,
+    customerTaxId: quote.customer.taxId,
+    customerVatCondition: quote.customer.vatCondition,
+    customerPhone: quote.customer.phone,
+    customerAddress: quote.customer.address,
+    desiredDocument: quote.desiredDocument ?? "remito",
     validityDays: String(quote.validityDays ?? 15),
     priceListOverride: quote.priceListName ?? "",
     assignedSellerId: quote.visibleToAll ? "" : (quote.sellerId ?? ""),

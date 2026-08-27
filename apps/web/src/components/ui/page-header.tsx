@@ -33,13 +33,13 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        "flex flex-col gap-4 rounded-[var(--radius-lg)] border border-[color:var(--border)] bg-[color:var(--panel)] px-5 py-5 shadow-[var(--shadow-xs)] md:flex-row md:items-center md:justify-between",
+        "erp-textured-surface flex flex-col gap-4 rounded-[var(--radius-xl)] border border-[color:var(--border)] bg-[linear-gradient(135deg,#ffffff_0%,#f7faff_100%)] px-5 py-5 shadow-[var(--shadow-sm)] md:flex-row md:items-center md:justify-between",
         className,
       )}
     >
       <div className="min-w-0">
         {eyebrow ? <div className="erp-text-caption mb-1 font-semibold uppercase tracking-[0.04em] text-[#1d4ed8]">{eyebrow}</div> : null}
-        <h2 className="text-[1.625rem] font-extrabold leading-8 tracking-[-0.03em] text-[color:var(--foreground)]">{title}</h2>
+        <h2 className="erp-display-font text-[1.625rem] font-bold leading-8 tracking-[-0.035em] text-[color:var(--foreground)]">{title}</h2>
         {description ? <p className="erp-text-body-sm mt-1 max-w-3xl font-normal text-[color:var(--muted)]">{description}</p> : null}
         {meta ? <div className="erp-text-caption mt-3 font-medium text-[color:var(--muted)]">{meta}</div> : null}
       </div>

@@ -28,7 +28,7 @@ export function DataTable({
   return (
     <div
       className={cn(
-        "min-w-0 overflow-hidden rounded-[var(--radius-lg)] border border-[color:var(--border)] bg-[color:var(--panel)] shadow-[var(--shadow-xs)]",
+        "min-w-0 overflow-hidden rounded-[var(--radius-xl)] border border-[color:var(--border)] bg-[color:var(--panel)] shadow-[var(--shadow-sm)]",
         className,
       )}
       data-data-table
@@ -54,7 +54,7 @@ export function DataTableHeader({ className, ...props }: HTMLAttributes<HTMLTabl
   return (
     <thead
       className={cn(
-        "erp-text-caption border-b border-[color:var(--border)] bg-[color:var(--table-header)] uppercase text-[#526177] [&>tr]:h-[var(--table-header-height)]",
+        "erp-display-font erp-text-caption border-b border-[color:var(--border)] bg-[linear-gradient(180deg,#f8fbff_0%,#f3f7fc_100%)] uppercase text-[#526177] [&>tr]:h-[var(--table-header-height)]",
         className,
       )}
       {...props}

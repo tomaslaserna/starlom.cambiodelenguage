@@ -5,12 +5,12 @@ import { redirect } from "next/navigation";
 import { ApiError } from "@/lib/api-response";
 import { deleteSale } from "@/lib/sales-admin";
 import { uuidParam } from "@/lib/request-body";
-import { requireApiSession } from "@/lib/route-auth";
+import { requireApiSession, SALES_OPERATE_PERMISSION } from "@/lib/route-auth";
 import { requestSaleFiscalNote } from "@/lib/fiscal";
 
 export async function requestFiscalNoteAction(formData: FormData) {
   try {
-    const session = await requireApiSession([{ resource: "ventas", action: "ver" }]);
+    const session = await requireApiSession([SALES_OPERATE_PERMISSION]);
     const saleId = uuidParam(String(formData.get("saleId") ?? ""), "Venta");
     const documentId = uuidParam(String(formData.get("documentId") ?? ""), "Nota operativa");
     await requestSaleFiscalNote(session, saleId, documentId);

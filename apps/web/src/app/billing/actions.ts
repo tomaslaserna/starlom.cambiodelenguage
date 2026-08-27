@@ -2,30 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { normalizeRole } from "@/lib/auth";
 import { authorizeSaleCreditNote, authorizeSaleDebitNote, authorizeSaleFiscalDocument, rejectSaleFiscalDocument } from "@/lib/fiscal";
 import { uuidParam } from "@/lib/request-body";
-import { requireApiSession } from "@/lib/route-auth";
+import { requireApiSession, SALES_OPERATE_PERMISSION } from "@/lib/route-auth";
 
 type FiscalNoteActionKind = "credit_note" | "debit_note";
 
 function actionErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   return "No se pudo emitir la nota fiscal.";
-}
-
-function assertCanIssueFiscalCreditNote(role: string) {
-  const normalized = normalizeRole(role);
-  if (normalized !== "administrador" && normalized !== "jefe") {
-    throw new Error("Solo Administrador o Jefe pueden emitir notas fiscales.");
-  }
-}
-
-function assertCanResolveFiscalInvoice(role: string) {
-  const normalized = normalizeRole(role);
-  if (normalized !== "administrador" && normalized !== "jefe") {
-    throw new Error("Solo Administrador o Jefe pueden resolver documentos fiscales.");
-  }
 }
 
 function noteAmountFromFormData(formData: FormData) {
@@ -43,8 +28,7 @@ async function issueFiscalNoteAction(formData: FormData, kind: FiscalNoteActionK
   const route = kind === "credit_note" ? "credit-note" : "debit-note";
 
   try {
-    const session = await requireApiSession();
-    assertCanIssueFiscalCreditNote(session.role);
+    const session = await requireApiSession([SALES_OPERATE_PERMISSION]);
     saleId = uuidParam(rawSaleId, "Venta");
     const reason = String(formData.get("reason") ?? "").trim();
     const amount = noteAmountFromFormData(formData);
@@ -81,8 +65,7 @@ export async function issueDebitNoteAction(formData: FormData) {
 export async function authorizeFiscalInvoiceAction(formData: FormData) {
   const rawSaleId = String(formData.get("saleId") ?? "");
   try {
-    const session = await requireApiSession();
-    assertCanResolveFiscalInvoice(session.role);
+    const session = await requireApiSession([SALES_OPERATE_PERMISSION]);
     const saleId = uuidParam(rawSaleId, "Venta");
     await authorizeSaleFiscalDocument(session, saleId);
     revalidatePath("/billing");
@@ -97,8 +80,7 @@ export async function authorizeFiscalInvoiceAction(formData: FormData) {
 export async function rejectFiscalInvoiceAction(formData: FormData) {
   const rawSaleId = String(formData.get("saleId") ?? "");
   try {
-    const session = await requireApiSession();
-    assertCanResolveFiscalInvoice(session.role);
+    const session = await requireApiSession([SALES_OPERATE_PERMISSION]);
     const saleId = uuidParam(rawSaleId, "Venta");
     const reason = String(formData.get("reason") ?? "Rechazado desde Fiscal").trim();
     await rejectSaleFiscalDocument(session, saleId, reason);

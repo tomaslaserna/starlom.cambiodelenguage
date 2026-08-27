@@ -5,7 +5,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        "relative min-w-0 rounded-[var(--radius-lg)] border border-[color:var(--border)] bg-[color:var(--panel)] shadow-[var(--shadow-xs)]",
+        "relative min-w-0 rounded-[var(--radius-xl)] border border-[color:var(--border)] bg-[color:var(--panel)] shadow-[var(--shadow-sm)]",
         className,
       )}
       {...props}
@@ -14,7 +14,7 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
 }
 
 export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("rounded-t-[11px] border-b border-[color:var(--border)] bg-[color:var(--table-header)] px-5 py-4", className)} {...props} />;
+  return <div className={cn("rounded-t-[17px] border-b border-[color:var(--border)] bg-[linear-gradient(135deg,#f8fbff_0%,#f3f7fc_100%)] px-5 py-4", className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingElement>) {

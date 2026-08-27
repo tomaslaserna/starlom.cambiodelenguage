@@ -209,7 +209,7 @@ export default async function Home() {
           <StatCard icon={<AppIcon className="h-5 w-5" name="receipt" />} label="Mensajes sin leer" tone="warning" value={allUnread.length} />
         </section>
 
-        <section>
+        <section className="seller-mobile-optional-shortcuts">
           <h2 className="erp-text-caption font-bold uppercase tracking-wide text-[#64748b]">Accesos rápidos</h2>
           <div className="mt-2 flex flex-wrap gap-2">
             {shortcuts.map((shortcut) => (

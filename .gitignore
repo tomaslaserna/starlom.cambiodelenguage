@@ -20,3 +20,5 @@ apps/web/tsconfig.tsbuildinfo
 
 # Visual brainstorming companion (local mockups)
 .superpowers/
+.vercel
+.env*

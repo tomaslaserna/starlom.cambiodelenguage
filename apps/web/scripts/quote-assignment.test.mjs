@@ -176,6 +176,7 @@ test("getVendorQuotes incluye OR visible_to_all en el filtro", async () => {
     "@/lib/order-status": { normalizedOrderStatusSql: () => "estado" },
     "@/lib/pricing": { listPriceListParameters: async () => [] },
     "@/lib/sales-source-sql": { canonicalSalesSourceSql: () => "true" },
+    "@/lib/sales-vat": { adjustedSalesAmountSql: (expression) => expression },
     "@/lib/pagination": { parsePagination: () => ({ page: 1, pageSize: 25, offset: 0 }) },
     "@/lib/collections": { listSalesToCollectWhere: async () => [] },
   });

@@ -97,7 +97,7 @@ function Badge({ value, active }: { value: number; active?: boolean }) {
 
 function navigationRowClass(active: boolean) {
   return cn(
-    "erp-text-body-sm flex min-h-10 items-center gap-2 rounded-[9px] border px-3 py-2 font-medium transition-[background-color,border-color,color,box-shadow]",
+    "erp-display-font erp-text-body-sm flex min-h-10 items-center gap-2 rounded-[10px] border px-3 py-2 font-semibold transition-[background-color,border-color,color,box-shadow]",
     active
       ? "border-white/26 bg-white text-[#0b4fc7] shadow-[0_10px_22px_rgba(5,32,85,0.18)]"
       : "border-transparent text-white/82 hover:border-white/18 hover:bg-white/10 hover:text-white",
@@ -124,7 +124,7 @@ function NavigationItemLink({
     <Link
       aria-current={itemCurrent ? "page" : undefined}
       className={cn(
-        "erp-text-body-sm flex min-h-9 items-center gap-2 rounded-[8px] px-2.5 py-1.5 transition-colors lg:min-h-8",
+        "erp-display-font erp-text-body-sm flex min-h-9 items-center gap-2 rounded-[8px] px-2.5 py-1.5 font-medium transition-colors lg:min-h-8",
         itemCurrent
           ? "bg-white font-medium text-[#0b4fc7] shadow-[inset_2px_0_0_#2563eb]"
           : "text-white/74 hover:bg-white/10 hover:text-white",
@@ -220,7 +220,7 @@ function NavigationGroupBlock({
 
 const sectionSummaryClass = (activeSection: boolean) =>
   cn(
-    "erp-text-body-sm flex min-h-11 items-center gap-2 rounded-[10px] border px-3 py-2 font-medium uppercase tracking-normal transition-[background-color,border-color,color,box-shadow]",
+    "erp-display-font erp-text-body-sm flex min-h-11 items-center gap-2 rounded-[10px] border px-3 py-2 font-semibold uppercase tracking-[0.01em] transition-[background-color,border-color,color,box-shadow]",
     activeSection
       ? "border-white/26 bg-white/16 text-white shadow-[0_10px_22px_rgba(5,32,85,0.14)]"
       : "border-white/10 bg-white/6 text-white/82 hover:border-white/18 hover:bg-white/10 hover:text-white",
@@ -280,7 +280,7 @@ function CrmWorldNavigation({
 }) {
   return (
     <nav aria-label="Navegacion CRM" className="grid gap-2">
-      <Link className={cn(navigationRowClass(false), "text-[#93b4ff]")} href="/">
+      <Link className={cn(navigationRowClass(false), "crm-system-return text-[#93b4ff]")} href="/">
         <span aria-hidden="true" className="erp-text-caption w-3 shrink-0 text-center">
           &lt;
         </span>

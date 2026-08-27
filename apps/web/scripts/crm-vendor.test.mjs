@@ -25,7 +25,7 @@ const parsePagination = loadTypeScriptModule("../src/lib/pagination.ts");
 
 // Mock de @/lib/db que registra cada query y responde por regex.
 const dbCalls = [];
-function makeCrm(queryImpl) {
+function makeCrm(queryImpl, { allCustomerAccess = false } = {}) {
   dbCalls.length = 0;
   return loadTypeScriptModule("../src/lib/crm.ts", {
     "@/lib/api-response": { ApiError },
@@ -34,12 +34,16 @@ function makeCrm(queryImpl) {
     "@/lib/db": {
       queryWithCompanyContext: async (companyId, sql, params) => {
         dbCalls.push({ sql, params });
+        if (/FROM profile_permissions pp/i.test(sql)) {
+          return { rows: allCustomerAccess ? [{ allowed: 1 }] : [] };
+        }
         return queryImpl(sql, params);
       },
     },
     "@/lib/messages": { getCustomerFollowUp: async () => ({ groups: {} }) },
     "@/lib/order-status": { normalizedOrderStatusSql: () => "estado" },
     "@/lib/pricing": { listPriceListParameters: async () => [] },
+    "@/lib/sales-vat": { adjustedSalesAmountSql: (amount) => amount },
     "@/lib/sales-source-sql": { canonicalSalesSourceSql: () => "true" },
     "@/lib/pagination": parsePagination,
     "@/lib/collections": {
@@ -95,4 +99,21 @@ test("assertVendorOwnsClient pasa y consulta clients por seller_name/assigned_se
   assert.match(call.sql, /seller_name/i);
   assert.match(call.sql, /assigned_seller/i);
   assert.ok(call.params[2].includes("JUAN"));
+});
+
+test("vendedor principal ve toda la cartera y no queda limitado por seller_name", async () => {
+  const crm = makeCrm((sql) => {
+    if (/COUNT\(\*\)/i.test(sql)) return { rows: [{ total: "1" }] };
+    return {
+      rows: [{ id: "c3", display_name: "Cliente general", active: true, relation: "a cargo" }],
+    };
+  }, { allCustomerAccess: true });
+
+  const result = await crm.getVendorCustomers(session);
+  const rowsCall = dbCalls.find((call) => /CASE WHEN/i.test(call.sql));
+  assert.match(rowsCall.sql, /WHERE empresa_id = \$1 AND \$2::text\[\] IS NOT NULL/i);
+  assert.equal(result.meta.total, 1);
+
+  await crm.assertVendorOwnsClient(session, "33333333-3333-3333-3333-333333333333");
+  assert.equal(dbCalls.filter((call) => /FROM clients c/i.test(call.sql)).length, 0);
 });
