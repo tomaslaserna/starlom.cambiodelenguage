@@ -39,6 +39,9 @@ const activitySource = readFileSync(new URL("../src/lib/sales-activity.ts", impo
 const activityPanel = readFileSync(new URL("../src/app/crm/leads/sales-activity-panel.tsx", import.meta.url), "utf8");
 const leadsPage = readFileSync(new URL("../src/app/crm/leads/page.tsx", import.meta.url), "utf8");
 const leadFollowupPanel = readFileSync(new URL("../src/app/crm/leads/lead-followup-panel.tsx", import.meta.url), "utf8");
+const calendarPage = readFileSync(new URL("../src/app/calendar/page.tsx", import.meta.url), "utf8");
+const calendarActions = readFileSync(new URL("../src/app/calendar/actions.ts", import.meta.url), "utf8");
+const shellNavigation = readFileSync(new URL("../src/components/shell-navigation.tsx", import.meta.url), "utf8");
 
 test("el panel comercial persiste actividades aisladas por empresa y vendedor", () => {
   assert.match(activityMigration, /CREATE TABLE public\.crm_sales_activities/);
@@ -66,4 +69,15 @@ test("Leads muestra círculos de progreso y conserva el embudo de prospectos", (
   assert.match(leadsPage, /<SalesActivityPanel/);
   assert.match(leadsPage, /<LeadsBoard/);
   assert.match(leadsPage, /normalizeRole\(session\.role\) !== "vendedor"/);
+});
+
+test("el CRM conserva su contexto y el calendario programa contactos de leads", () => {
+  assert.match(shellNavigation, /href: "\/crm\/perfil", label: "Inicio comercial"/);
+  assert.match(shellNavigation, /href: "\/crm\/calendario"/);
+  assert.match(shellNavigation, /href: "\/crm\/supervisor"/);
+  assert.match(calendarPage, /Leads sugeridos para contactar/);
+  assert.match(calendarPage, /Leads programados/);
+  assert.match(calendarPage, /name="leadId"/);
+  assert.match(calendarActions, /scheduleLeadReminder/);
+  assert.match(leadsSource, /export async function scheduleLeadReminder/);
 });

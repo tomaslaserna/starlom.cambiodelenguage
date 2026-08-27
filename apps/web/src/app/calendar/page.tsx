@@ -2,6 +2,10 @@ import { ModulePage } from "@/components/module-page";
 import { formatDateTime } from "@/lib/format";
 import { listMessageCenter, listTasks } from "@/lib/messages";
 import { requireStaffSession } from "@/lib/auth";
+import { normalizeRole } from "@/lib/auth";
+import { getVendorLeads } from "@/lib/leads";
+import { sessionCanUseCrm } from "@/lib/route-auth";
+import { localDateIso } from "@/lib/timezone";
 import { completeCalendarTaskAction, createCalendarTaskAction } from "@/app/calendar/actions";
 import {
   Button,
@@ -21,18 +25,63 @@ import {
   Textarea,
 } from "@/components/ui";
 
-export default async function CalendarPage() {
+export default async function CalendarPage({ crmMode = false }: { crmMode?: boolean }) {
   const session = await requireStaffSession();
-  const [tasks, center] = await Promise.all([listTasks(session), listMessageCenter(session)]);
+  const canManageLeads = normalizeRole(session.role) === "vendedor" && await sessionCanUseCrm(session);
+  const [tasks, center, vendorLeads] = await Promise.all([
+    listTasks(session),
+    listMessageCenter(session),
+    canManageLeads ? getVendorLeads(session) : Promise.resolve(null),
+  ]);
   const pending = [...tasks.personal, ...tasks.received];
+  const activeLeads = vendorLeads ? Object.values(vendorLeads.active).flat() : [];
+  const today = localDateIso();
+  const suggestedLeads = activeLeads.filter((lead) => !lead.nextFollowup || lead.nextFollowup <= today);
+  const programmedLeads = activeLeads
+    .filter((lead) => lead.nextFollowup && lead.nextFollowup > today)
+    .sort((a, b) => (a.nextFollowup ?? "").localeCompare(b.nextFollowup ?? ""));
 
   return (
     <ModulePage
       active="calendar"
-      description="Recordatorios fijos, tareas asignadas y pendientes operativos."
+      description={crmMode ? "Agenda comercial, leads sugeridos y próximos contactos programados." : "Recordatorios fijos, tareas asignadas y pendientes operativos."}
       session={session}
-      title="Calendario"
+      title={crmMode ? "CRM · Calendario" : "Calendario"}
     >
+      {canManageLeads ? (
+        <div className="mb-5 grid gap-5 xl:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle>Leads sugeridos para contactar</CardTitle></CardHeader>
+            <CardContent>
+              {suggestedLeads.length ? (
+                <ul className="grid gap-2">
+                  {suggestedLeads.slice(0, 10).map((lead) => (
+                    <li className="flex items-center justify-between gap-3 rounded-[9px] border border-[color:var(--border)] px-3 py-2" key={lead.id}>
+                      <span className="font-bold">{lead.name}</span>
+                      <span className="erp-text-caption text-[color:var(--muted)]">{lead.nextFollowup ? `Pendiente desde ${lead.nextFollowup}` : "Sin fecha asignada"}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="erp-text-body-sm text-[color:var(--muted)]">No hay leads vencidos o sin programar.</p>}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Leads programados</CardTitle></CardHeader>
+            <CardContent>
+              {programmedLeads.length ? (
+                <ul className="grid gap-2">
+                  {programmedLeads.slice(0, 10).map((lead) => (
+                    <li className="flex items-center justify-between gap-3 rounded-[9px] border border-[color:var(--border)] px-3 py-2" key={lead.id}>
+                      <span className="font-bold">{lead.name}</span>
+                      <span className="erp-text-caption font-bold text-[color:var(--accent)]">{lead.nextFollowup}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="erp-text-body-sm text-[color:var(--muted)]">Todavía no hay próximos contactos programados.</p>}
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>
           <CardHeader>
@@ -40,6 +89,14 @@ export default async function CalendarPage() {
           </CardHeader>
           <CardContent>
           <form action={createCalendarTaskAction} className="grid gap-3">
+            {canManageLeads ? (
+              <Field htmlFor="calendar-lead" label="Vincular a un lead (opcional)">
+                <Select id="calendar-lead" name="leadId" defaultValue="">
+                  <option value="">Recordatorio o tarea general</option>
+                  {activeLeads.map((lead) => <option key={lead.id} value={lead.id}>{lead.name}</option>)}
+                </Select>
+              </Field>
+            ) : null}
             <Field htmlFor="calendar-title" label="Titulo" required>
               <Input id="calendar-title" name="title" required />
             </Field>

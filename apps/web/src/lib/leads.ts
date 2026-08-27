@@ -220,6 +220,24 @@ export async function recordLeadContact(
   );
 }
 
+export async function scheduleLeadReminder(
+  session: AuthSession,
+  id: string,
+  nextFollowup: string,
+  notes: string,
+): Promise<void> {
+  await getScopedLead(session, id);
+  await queryWithCompanyContext(
+    session.companyId,
+    `UPDATE crm_leads
+        SET next_followup = $1::date,
+            notes = CASE WHEN $2 = '' THEN notes ELSE CONCAT_WS(E'\\n', NULLIF(notes, ''), $2) END,
+            updated_at = now()
+      WHERE id = $3::uuid AND empresa_id = $4`,
+    [nextFollowup, notes, id, session.companyId],
+  );
+}
+
 export async function convertLeadToClient(
   session: AuthSession,
   id: string,
