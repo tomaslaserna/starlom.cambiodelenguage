@@ -9,7 +9,9 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
     const session = await requireApiSession([{ resource: "compras", action: "ver" }]);
-    const supplierId = uuidParam(request.nextUrl.searchParams.get("supplierId") ?? undefined, "Proveedor");
+    const supplierId = request.nextUrl.searchParams.get("catalog") === "all"
+      ? undefined
+      : uuidParam(request.nextUrl.searchParams.get("supplierId") ?? undefined, "Proveedor");
     const products = await listPurchaseFormProducts(session.companyId, supplierId);
     return NextResponse.json({ ok: true, data: products });
   } catch (error) {

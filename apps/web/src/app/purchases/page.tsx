@@ -60,6 +60,7 @@ type PurchasesPageProps = {
     error?: string;
     message?: string;
     mrpSupplier?: string;
+    created?: string;
   }>;
 };
 
@@ -214,6 +215,12 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
             role="alert"
           >
             {params.message ?? "No se pudo borrar la compra."}
+          </div>
+        ) : null}
+
+        {showCreateForm && params.created ? (
+          <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800" role="status">
+            Compra registrada correctamente. El stock, los costos, el IVA y la cuenta por pagar ya fueron actualizados.
           </div>
         ) : null}
 

@@ -21,7 +21,7 @@ import { requireApiSession } from "@/lib/route-auth";
 
 export async function createPurchaseAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "compras", action: "crear" }]);
-  await createPurchase(
+  const purchase = await createPurchase(
     session,
     purchaseInputFromBody({
       supplierId: formData.get("supplierId"),
@@ -40,6 +40,7 @@ export async function createPurchaseAction(formData: FormData) {
   revalidatePath("/billing");
   revalidatePath("/treasury/accounts-payable");
   revalidatePath("/treasury/cash-flow");
+  redirect(`/purchases?view=nueva&created=${purchase.id}`);
 }
 
 export async function updatePurchaseStatusAction(formData: FormData) {

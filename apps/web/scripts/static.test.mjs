@@ -394,7 +394,9 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
   const purchaseEntryFields = read("apps/web/src/app/purchases/purchase-entry-fields.tsx");
   assert.match(purchaseEntryFields, /name="productsJson"/);
   assert.match(purchaseEntryFields, /name="supplierId"/);
-  assert.match(purchaseEntryFields, /supplierId \? products\.filter\(\(product\) => product\.supplierId === supplierId\) : \[\]/);
+  assert.match(purchaseEntryFields, /supplierId \? products : \[\]/);
+  assert.match(purchaseEntryFields, /catalog=all/);
+  assert.match(purchaseEntryFields, /newProductName/);
   assert.match(purchaseEntryFields, /setLines\(\[\]\)/);
   assert.match(purchaseEntryFields, /Este proveedor no tiene productos asociados/);
   assert.match(purchaseEntryFields, /Agregar producto/);

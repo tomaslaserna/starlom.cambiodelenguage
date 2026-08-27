@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { Button, ButtonLink, Field, Input, SearchableSelect, Select } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
@@ -27,6 +28,8 @@ type PurchaseLineDraft = {
 
 type PurchaseLineState = PurchaseLineDraft & {
   id: string;
+  newProductName?: string;
+  newProductCode?: string;
 };
 
 type PurchaseEntryFieldsProps = {
@@ -36,6 +39,40 @@ type PurchaseEntryFieldsProps = {
 };
 
 const emptyLine = (): PurchaseLineDraft => ({ productId: "", quantity: "1", unitCost: "" });
+
+function PurchaseProcessingOverlay() {
+  const [stage, setStage] = useState(0);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setStage((current) => Math.min(current + 1, 3)), 700);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const stages = ["Registrando la compra y el IVA", "Ingresando unidades al stock", "Actualizando costos y productos", "Generando la cuenta por pagar"];
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/40 p-4 backdrop-blur-[2px]" role="status" aria-live="polite">
+          <div className="w-full max-w-md rounded-2xl border border-blue-100 bg-white p-6 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <span className="h-8 w-8 animate-spin rounded-full border-4 border-blue-100 border-t-[color:var(--accent)]" />
+              <div><div className="font-black">Procesando nueva compra</div><div className="text-sm text-[color:var(--muted)]">No cierres esta pantalla.</div></div>
+            </div>
+            <div className="mt-5 grid gap-2">
+              {stages.map((label, index) => (
+                <div className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold ${index === stage ? "bg-blue-50 text-blue-800" : index < stage ? "text-emerald-700" : "text-slate-400"}`} key={label}>
+                  <span className={`grid h-5 w-5 place-items-center rounded-full text-xs ${index < stage ? "bg-emerald-100" : index === stage ? "bg-blue-100" : "bg-slate-100"}`}>{index < stage ? "✓" : index + 1}</span>
+                  {label}
+                </div>
+              ))}
+            </div>
+          </div>
+    </div>
+  );
+}
+
+function PurchaseSubmit({ disabled }: { disabled: boolean }) {
+  const { pending } = useFormStatus();
+  return <><Button className="w-full" disabled={disabled || pending} type="submit">{pending ? "Registrando..." : "Registrar compra e ingreso"}</Button>{pending ? <PurchaseProcessingOverlay /> : null}</>;
+}
 
 function numericInput(value: string, fallback = 0) {
   const numberValue = Number(value);
@@ -50,6 +87,12 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
   const [suppliersLoading, setSuppliersLoading] = useState(true);
   const [suppliersLoadFailed, setSuppliersLoadFailed] = useState(false);
   const [products, setProducts] = useState<PurchaseFormProduct[]>([]);
+  const [searchAllProducts, setSearchAllProducts] = useState(false);
+  const [newProductOpen, setNewProductOpen] = useState(false);
+  const [newProductName, setNewProductName] = useState("");
+  const [newProductCode, setNewProductCode] = useState("");
+  const [newProductQuantity, setNewProductQuantity] = useState("1");
+  const [newProductCost, setNewProductCost] = useState("");
   const [loadingSupplierId, setLoadingSupplierId] = useState(initialSupplierId);
   const [draftLine, setDraftLine] = useState<PurchaseLineDraft>(emptyLine());
   const [lines, setLines] = useState<PurchaseLineState[]>(() => initialLines.map((line, index) => ({
@@ -60,10 +103,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
   })));
   const lineIdRef = useRef(initialLines.length);
 
-  const filteredProducts = useMemo(
-    () => (supplierId ? products.filter((product) => product.supplierId === supplierId) : []),
-    [products, supplierId],
-  );
+  const filteredProducts = useMemo(() => supplierId ? products : [], [products, supplierId]);
   const supplierOptions = useMemo(
     () => suppliers.map((supplier) => ({ value: supplier.id, label: supplier.name, description: `${supplier.paymentTermDays} días de plazo` })),
     [suppliers],
@@ -78,7 +118,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
       })),
     [filteredProducts],
   );
-  const productMap = useMemo(() => new Map(filteredProducts.map((product) => [product.id, product])), [filteredProducts]);
+  const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const productsLoading = Boolean(supplierId) && loadingSupplierId === supplierId;
   const draftProduct = productMap.get(draftLine.productId) ?? null;
   const selectedSupplier = suppliers.find((supplier) => supplier.id === supplierId) ?? null;
@@ -87,10 +127,12 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
   const payload = lines
     .map((line) => ({
       productId: line.productId,
+      newProductName: line.newProductName ?? "",
+      newProductCode: line.newProductCode ?? "",
       quantity: Math.max(0, Math.trunc(numericInput(line.quantity, 0))),
       unitCost: Math.max(0, numericInput(line.unitCost, 0)),
     }))
-    .filter((line) => productMap.has(line.productId) && line.quantity > 0);
+    .filter((line) => (productMap.has(line.productId) || Boolean(line.newProductName)) && line.quantity > 0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -115,7 +157,10 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
   useEffect(() => {
     if (!supplierId) return;
     const controller = new AbortController();
-    void fetch(`/api/purchases/form-products?supplierId=${encodeURIComponent(supplierId)}`, {
+    const productUrl = searchAllProducts
+      ? "/api/purchases/form-products?catalog=all"
+      : `/api/purchases/form-products?supplierId=${encodeURIComponent(supplierId)}`;
+    void fetch(productUrl, {
       cache: "no-store",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
@@ -137,7 +182,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
       })
       .finally(() => setLoadingSupplierId((current) => (current === supplierId ? "" : current)));
     return () => controller.abort();
-  }, [supplierId]);
+  }, [supplierId, searchAllProducts]);
 
   function updateDraftLine(next: Partial<PurchaseLineDraft>) {
     setDraftLine((current) => ({ ...current, ...next }));
@@ -151,8 +196,28 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
     setSupplierId(nextSupplierId);
     setLoadingSupplierId(nextSupplierId);
     setProducts([]);
+    setSearchAllProducts(false);
     setDraftLine(emptyLine());
     setLines([]);
+  }
+
+  function addNewProductLine() {
+    const quantity = Math.max(0, Math.trunc(numericInput(newProductQuantity, 0)));
+    const cost = Math.max(0, numericInput(newProductCost, 0));
+    if (newProductName.trim().length < 2 || quantity < 1) return;
+    setLines((current) => [...current, {
+      id: `purchase-line-new-${lineIdRef.current++}`,
+      productId: `new:${lineIdRef.current}`,
+      newProductName: newProductName.trim(),
+      newProductCode: newProductCode.trim(),
+      quantity: String(quantity),
+      unitCost: String(cost),
+    }]);
+    setNewProductName("");
+    setNewProductCode("");
+    setNewProductQuantity("1");
+    setNewProductCost("");
+    setNewProductOpen(false);
   }
 
   function addDraftLine() {
@@ -232,8 +297,19 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
           <h3 className="erp-text-title-sm font-black">Mercadería recibida</h3>
           <p className="erp-text-caption mt-1 text-[color:var(--muted)]">Buscá dentro del catálogo completo del proveedor o agregá un artículo nuevo.</p>
         </div>
-        <ButtonLink href="/prices/new" target="_blank" variant="outline">+ Agregar producto nuevo</ButtonLink>
+        <Button type="button" variant="outline" onClick={() => setNewProductOpen((current) => !current)}>+ Agregar producto nuevo</Button>
       </div>
+
+      {newProductOpen ? (
+        <div className="grid gap-3 rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 md:grid-cols-2 xl:grid-cols-12 xl:items-end">
+          <Field className="xl:col-span-5" htmlFor="purchase-new-product-name" label="Nombre del nuevo producto"><Input id="purchase-new-product-name" placeholder="Ej.: Detergente concentrado 5 L" value={newProductName} onChange={(event) => setNewProductName(event.target.value)} /></Field>
+          <Field className="xl:col-span-2" htmlFor="purchase-new-product-code" label="Código (opcional)"><Input id="purchase-new-product-code" value={newProductCode} onChange={(event) => setNewProductCode(event.target.value)} /></Field>
+          <Field className="xl:col-span-2" htmlFor="purchase-new-product-quantity" label="Cantidad"><Input id="purchase-new-product-quantity" min="1" step="1" type="number" value={newProductQuantity} onChange={(event) => setNewProductQuantity(event.target.value)} /></Field>
+          <Field className="xl:col-span-2" htmlFor="purchase-new-product-cost" label="Costo unitario s/IVA"><Input id="purchase-new-product-cost" min="0" step="0.01" type="number" value={newProductCost} onChange={(event) => setNewProductCost(event.target.value)} /></Field>
+          <Button className="w-full xl:col-span-1" disabled={newProductName.trim().length < 2 || numericInput(newProductQuantity) < 1} type="button" onClick={addNewProductLine}>Agregar</Button>
+          <p className="md:col-span-2 xl:col-span-12 text-xs font-semibold text-blue-800">Se creará vinculado a {selectedSupplier?.name ?? "este proveedor"}, con este costo y con la cantidad ingresada como stock inicial.</p>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12 xl:items-end">
         <Field className="min-w-0 md:col-span-2 xl:col-span-6" htmlFor="purchase-product-draft" label="Producto">
@@ -241,7 +317,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
             className="w-full min-w-0"
             disabled={!supplierId || productsLoading}
             id="purchase-product-draft"
-            emptyMessage="No se encontró ese producto dentro del catálogo completo del proveedor"
+            emptyMessage={searchAllProducts ? "No se encontró en el catálogo general" : "No se encontró entre los productos de este proveedor"}
             maxResults={60}
             options={productOptions}
             placeholder={supplierId ? (productsLoading ? "Cargando productos..." : "Seleccionar producto") : "Primero selecciona proveedor"}
@@ -262,12 +338,19 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
         </Field>
         <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-cost-draft" label="Costo unitario s/IVA">
           <Input id="purchase-cost-draft" min="0" step="0.01" type="number" value={draftLine.unitCost} onChange={(event) => updateDraftLine({ unitCost: event.target.value })} />
-          <span className="erp-text-caption text-[color:var(--muted)]">Se completa con el costo actual y queda disponible para corregirlo.</span>
         </Field>
         <Button className="w-full xl:col-span-2" disabled={!canAddLine} type="button" onClick={addDraftLine}>
           Agregar producto
         </Button>
       </div>
+      {supplierId ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-[color:var(--muted)]">
+          <span>El costo se completa con el valor actual y queda disponible para corregirlo.</span>
+          <button className="text-[color:var(--accent-strong)] underline underline-offset-2" type="button" onClick={() => { setLoadingSupplierId(supplierId); setSearchAllProducts((current) => !current); setDraftLine(emptyLine()); }}>
+            {searchAllProducts ? `Ver solo productos de ${selectedSupplier?.name ?? "este proveedor"}` : "Buscar un producto existente en todo el catálogo"}
+          </button>
+        </div>
+      ) : null}
       {selectedSupplier ? <p className="erp-text-body-sm font-semibold text-[color:var(--muted)]">Vencimiento automático: {selectedSupplier.paymentTermDays === 0 ? "pago al recibir" : `${selectedSupplier.paymentTermDays} días desde la fecha de compra`}.</p> : null}
 
       {draftProduct ? (
@@ -291,21 +374,22 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
           <div className="divide-y divide-[color:var(--border)]">
             {lines.map((line, index) => {
               const product = productMap.get(line.productId);
+              const lineName = product?.name ?? line.newProductName ?? line.productId;
               return (
                 <div
                   className="grid grid-cols-[minmax(0,1fr)_96px_130px_120px_92px] items-center gap-2 px-3 py-2"
                   key={line.id}
                 >
                   <div className="min-w-0">
-                    <div className="truncate font-semibold" title={product?.name ?? line.productId}>
-                      {product?.name ?? line.productId}
+                    <div className="truncate font-semibold" title={lineName}>
+                      {lineName}
                     </div>
                     {product?.code ? (
                       <div className="text-xs text-[color:var(--muted)]">{product.code}</div>
-                    ) : null}
+                    ) : line.newProductCode ? <div className="text-xs text-[color:var(--muted)]">{line.newProductCode} · Nuevo producto</div> : line.newProductName ? <div className="text-xs font-semibold text-blue-700">Nuevo producto</div> : null}
                   </div>
                   <Input
-                    aria-label={`Cantidad de ${product?.name ?? "producto"}`}
+                    aria-label={`Cantidad de ${lineName}`}
                     className="min-h-9 px-2 text-right text-xs"
                     min="1"
                     step="1"
@@ -313,10 +397,10 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
                     value={line.quantity}
                     onChange={(event) => updateLine(index, { quantity: event.target.value })}
                   />
-                  <Input aria-label={`Costo de ${product?.name ?? "producto"}`} className="min-h-9 px-2 text-right text-xs" min="0" step="0.01" type="number" value={line.unitCost} onChange={(event) => updateLine(index, { unitCost: event.target.value })} />
+                  <Input aria-label={`Costo de ${lineName}`} className="min-h-9 px-2 text-right text-xs" min="0" step="0.01" type="number" value={line.unitCost} onChange={(event) => updateLine(index, { unitCost: event.target.value })} />
                   <span className="text-right font-mono text-xs font-bold">{formatCurrency(numericInput(line.quantity) * numericInput(line.unitCost))}</span>
                   <Button
-                    aria-label={`Quitar ${product?.name ?? "producto"}`}
+                    aria-label={`Quitar ${lineName}`}
                     size="sm"
                     type="button"
                     variant="outline"
@@ -355,7 +439,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
         <Field className="min-w-0" htmlFor="purchase-description" label="Comprobante del proveedor / observaciones">
           <Input className="w-full min-w-0" id="purchase-description" name="description" placeholder="Ej.: Remito 4581 · entrega completa" />
         </Field>
-        <Button className="w-full" disabled={payload.length === 0} type="submit">Registrar compra e ingreso</Button>
+        <PurchaseSubmit disabled={payload.length === 0} />
       </div>
     </div>
   );

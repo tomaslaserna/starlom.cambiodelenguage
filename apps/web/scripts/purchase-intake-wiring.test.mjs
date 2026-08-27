@@ -28,8 +28,12 @@ test("el formulario filtra productos, muestra imagen, costo, IVA y efectos", () 
   assert.match(entry, /Agregar producto nuevo/);
   assert.match(page, /Una carga actualiza cuatro sectores/);
   assert.match(page, /cuenta por pagar/);
-  assert.match(entry, /Se completa con el costo actual y queda disponible para corregirlo/);
-  assert.match(entry, /disabled=\{payload\.length === 0\}/);
+  assert.match(entry, /El costo se completa con el valor actual y queda disponible para corregirlo/);
+  assert.match(entry, /PurchaseSubmit disabled=\{payload\.length === 0\}/);
+  assert.match(entry, /Buscar un producto existente en todo el catálogo/);
+  assert.match(entry, /Procesando nueva compra/);
+  assert.match(purchases, /newProductName/);
+  assert.match(purchases, /foreignProducts/);
   assert.match(entry, /Comprobante del proveedor \/ observaciones/);
   const productQuery = purchases.slice(purchases.indexOf("export async function listPurchaseFormProducts"), purchases.indexOf("export async function listPurchases"));
   assert.doesNotMatch(productQuery, /LIMIT 300/);

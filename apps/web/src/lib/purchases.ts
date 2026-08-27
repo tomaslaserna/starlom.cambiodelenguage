@@ -8,6 +8,8 @@ import { requireOperationalRecordDeletePermission } from "@/lib/route-auth";
 
 type PurchaseItem = {
   productId: string;
+  newProductName: string;
+  newProductCode: string;
   quantity: number;
   unitCost: number;
 };
@@ -85,11 +87,13 @@ function bodyItems(body: RequestBody): PurchaseItem[] {
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
     .map((item) => ({
       productId: String(item.productId ?? item.id_producto ?? item.id ?? "").trim(),
+      newProductName: String(item.newProductName ?? item.new_product_name ?? "").trim().slice(0, 180),
+      newProductCode: String(item.newProductCode ?? item.new_product_code ?? "").trim().slice(0, 80),
       quantity: Number(item.quantity ?? item.cantidad ?? 0),
       unitCost: Number(item.unitCost ?? item.unit_cost ?? item.costo ?? 0),
     }))
-    .filter((item) => UUID_PATTERN.test(item.productId) && item.quantity > 0 && item.unitCost >= 0)
-    .map((item) => ({ productId: item.productId, quantity: Math.trunc(item.quantity), unitCost: Math.round(item.unitCost * 100) / 100 }));
+    .filter((item) => (UUID_PATTERN.test(item.productId) || item.newProductName.length >= 2) && item.quantity > 0 && item.unitCost >= 0)
+    .map((item) => ({ ...item, quantity: Math.trunc(item.quantity), unitCost: Math.round(item.unitCost * 100) / 100 }));
 }
 
 export function purchaseInputFromBody(body: RequestBody): PurchaseInput {
@@ -377,7 +381,35 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
     );
     if (!supplier.rows[0]) throw new ApiError(400, "Proveedor invalido o inactivo");
 
-    const productIds = Array.from(new Set(input.items.map((item) => item.productId)));
+    const resolvedItems: PurchaseItem[] = [];
+    for (const item of input.items) {
+      if (UUID_PATTERN.test(item.productId)) {
+        resolvedItems.push(item);
+        continue;
+      }
+      if (!isSupplierIntake) throw new ApiError(400, "Los productos nuevos solo pueden crearse desde una compra recibida");
+
+      const duplicate = item.newProductCode
+        ? await client.query<{ id: string }>(
+            "SELECT id::text AS id FROM products WHERE empresa_id = $1 AND active = true AND lower(COALESCE(sku, '')) = lower($2) LIMIT 1",
+            [session.companyId, item.newProductCode],
+          )
+        : { rows: [] };
+      if (duplicate.rows[0]) {
+        resolvedItems.push({ ...item, productId: duplicate.rows[0].id });
+        continue;
+      }
+
+      const created = await client.query<{ id: string }>(
+        `INSERT INTO products (category, category_code, sku, supplier_id, name, cost, empresa_id)
+         VALUES ('Nuevos productos', 'NUEVO', NULLIF($1, ''), $2::uuid, $3, $4, $5)
+         RETURNING id::text AS id`,
+        [item.newProductCode, input.supplierId, item.newProductName, item.unitCost, session.companyId],
+      );
+      resolvedItems.push({ ...item, productId: created.rows[0].id });
+    }
+
+    const productIds = Array.from(new Set(resolvedItems.map((item) => item.productId)));
     if (productIds.length) {
       const products = await client.query<{ id: string; supplier_id: string | null; name: string }>(
         `
@@ -391,15 +423,21 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
         throw new ApiError(400, "Uno o mas productos de la compra no existen o estan inactivos");
       }
 
-      const invalidProduct = products.rows.find((product) => product.supplier_id !== input.supplierId);
-      if (invalidProduct) {
-        throw new ApiError(400, `El producto ${invalidProduct.name || invalidProduct.id} no corresponde al proveedor seleccionado`);
+      const foreignProducts = products.rows.filter((product) => product.supplier_id !== input.supplierId);
+      if (foreignProducts.length && !isSupplierIntake) {
+        throw new ApiError(400, `El producto ${foreignProducts[0].name || foreignProducts[0].id} no corresponde al proveedor seleccionado`);
+      }
+      if (foreignProducts.length) {
+        await client.query(
+          "UPDATE products SET supplier_id = $1::uuid, updated_at = now() WHERE empresa_id = $2 AND id = ANY($3::uuid[])",
+          [input.supplierId, session.companyId, foreignProducts.map((product) => product.id)],
+        );
       }
     }
 
     if (input.items.length === 0) throw new ApiError(400, "Agregá al menos un producto a la compra");
     if (isSupplierIntake) {
-      const netFromItems = input.items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
+      const netFromItems = resolvedItems.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
       const calculatedTotal = input.taxMode === "con_iva"
         ? netFromItems * (1 + input.vatRate / 100)
         : netFromItems;
@@ -433,7 +471,7 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
     );
     const purchaseId = result.rows[0].id;
 
-    for (const item of input.items) {
+    for (const item of resolvedItems) {
       await client.query(
         `
           INSERT INTO purchase_items (
