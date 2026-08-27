@@ -8,9 +8,11 @@ type MarginOption = { code: string; name: string };
 
 export function NewProductForm({
   action,
+  categories,
   margins,
 }: {
   action: (formData: FormData) => Promise<void>;
+  categories: string[];
   margins: MarginOption[];
 }) {
   const [imagePath, setImagePath] = useState("");
@@ -52,7 +54,13 @@ export function NewProductForm({
       <Field htmlFor="product-sku" label="Código / SKU" description="Debe ser único si se informa.">
         <Input id="product-sku" maxLength={80} name="sku" />
       </Field>
-      <Field htmlFor="product-code" label="Categoría de precio" required>
+      <Field htmlFor="product-category" label="Categoría del artículo" description="Podés elegir una existente o escribir una nueva.">
+        <Input id="product-category" list="product-category-options" maxLength={100} name="category" placeholder="Ej.: Papelería, Líquidos, Textil" />
+        <datalist id="product-category-options">
+          {categories.map((category) => <option key={category} value={category} />)}
+        </datalist>
+      </Field>
+      <Field htmlFor="product-code" label="Regla de precio" description="Define qué margen se aplica al costo." required>
         <Select id="product-code" name="code" required>
           <option value="">Seleccionar categoría</option>
           {margins.map((margin) => (

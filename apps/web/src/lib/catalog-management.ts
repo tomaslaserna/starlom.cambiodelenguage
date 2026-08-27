@@ -87,12 +87,15 @@ export type ProductDetail = {
   cost: number;
   stock: number;
   description: string;
+  presentationUnits: number;
 };
 
 export type ProductUpdateInput = {
   name: string;
   cost: number;
   code: string;
+  category: string;
+  presentationUnits: number;
   justification: string;
 };
 
@@ -250,6 +253,7 @@ function mapProduct(row: {
   cost: string | null;
   stock: string;
   description: string | null;
+  presentation_units: number;
 }): ProductDetail {
   return {
     id: row.id,
@@ -261,6 +265,7 @@ function mapProduct(row: {
     cost: Number(row.cost ?? 0),
     stock: Number(row.stock),
     description: row.description ?? "",
+    presentationUnits: Number(row.presentation_units ?? 1),
   };
 }
 
@@ -331,11 +336,16 @@ export function productUpdateInputFromBody(
     name: firstText(body, ["name", "nombre"], defaults.name),
     cost: firstNumber(body, ["cost", "precio", "costo"], defaults.cost),
     code: firstText(body, ["code", "codigo"], defaults.code).toUpperCase(),
+    category: firstText(body, ["category", "categoria"], defaults.category),
+    presentationUnits: Math.trunc(firstNumber(body, ["presentationUnits", "presentacion"], defaults.presentationUnits)),
     justification: firstText(body, ["justification", "justificacion"]),
   };
 
   if (!input.name) throw new ApiError(400, "El nombre es obligatorio");
   if (input.cost < 0) throw new ApiError(400, "El costo no puede ser negativo");
+  if (input.presentationUnits < 1 || input.presentationUnits > 9999) {
+    throw new ApiError(400, "La presentacion debe tener entre 1 y 9999 unidades");
+  }
   if (!input.justification) {
     throw new ApiError(400, "Debe ingresar una justificacion para el cambio");
   }
@@ -629,7 +639,7 @@ export async function getProduct(companyId: number, id: string) {
     `
       SELECT p.id::text AS id, p.sku, p.category, p.category_code,
              COALESCE(s.display_name, '') AS supplier_name,
-             p.name, p.cost::text, '' AS description,
+             p.name, p.cost::text, p.presentation_units, '' AS description,
              COALESCE(stock.current_stock, 0)::text AS stock
       FROM products p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
@@ -664,7 +674,7 @@ export async function updateProduct(
       `
         SELECT p.id::text AS id, p.sku, p.category, p.category_code,
                COALESCE(s.display_name, '') AS supplier_name,
-               p.name, p.cost::text, '' AS description,
+               p.name, p.cost::text, p.presentation_units, '' AS description,
                COALESCE(stock.current_stock, 0)::text AS stock
         FROM products p
         LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
@@ -692,11 +702,13 @@ export async function updateProduct(
         SET name = $1,
             cost = $2,
             category_code = $3,
+            category = $6,
+            presentation_units = $7,
             updated_at = now()
         WHERE id = $4::uuid AND empresa_id = $5 AND active = true
         RETURNING id::text AS id
       `,
-      [input.name, input.cost, input.code, id, session.companyId],
+      [input.name, input.cost, input.code, id, session.companyId, input.category, input.presentationUnits],
     );
     if (!updateResult.rows[0]) throw new ApiError(404, "Producto no encontrado");
 
@@ -709,6 +721,8 @@ export async function updateProduct(
         after: Number(input.cost).toFixed(2),
       },
       { key: "codigo", label: "Categoria", before: current.category_code ?? "", after: input.code },
+      { key: "categoria", label: "Categoría del artículo", before: current.category ?? "", after: input.category },
+      { key: "presentacion", label: "Presentación", before: String(current.presentation_units ?? 1), after: String(input.presentationUnits) },
     ]
       .filter((change) => change.before !== change.after)
       .map(({ label, before, after }) => ({ label, antes: before, despues: after }));
@@ -719,6 +733,8 @@ export async function updateProduct(
         name: input.name,
         cost: String(input.cost),
         category_code: input.code,
+        category: input.category,
+        presentation_units: input.presentationUnits,
       }),
       changedFields: changes.length,
     };

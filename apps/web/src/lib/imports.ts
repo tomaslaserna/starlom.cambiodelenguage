@@ -355,6 +355,7 @@ export function productCreateInputFromBody(body: RequestBody) {
   }
   return {
     name,
+    category: textField(body, "category") || textField(body, "categoria"),
     code,
     sku,
     cost,
@@ -407,7 +408,7 @@ export async function createCatalogProduct(
         RETURNING id::text AS id
       `,
       [
-        margin.rows[0].nombre || rubric,
+        input.category || margin.rows[0].nombre || rubric,
         input.code,
         input.sku || null,
         supplier.rows[0]?.id ?? null,

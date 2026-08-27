@@ -6,6 +6,7 @@ import { requireStaffSession } from "@/lib/auth";
 import { sessionAllows, PRODUCTS_CREATE_PERMISSION } from "@/lib/route-auth";
 import { createPriceProductAction } from "@/app/prices/actions";
 import { NewProductForm } from "@/app/prices/new-product-form";
+import { listProductCategories } from "@/lib/catalog";
 
 type NewProductPageProps = {
   searchParams: Promise<{ created?: string }>;
@@ -16,7 +17,10 @@ export default async function NewProductPage({ searchParams }: NewProductPagePro
   if (!(await sessionAllows(session, [PRODUCTS_CREATE_PERMISSION]))) redirect("/prices");
 
   const params = await searchParams;
-  const margins = await listMargins(session.companyId);
+  const [margins, categories] = await Promise.all([
+    listMargins(session.companyId),
+    listProductCategories(session.companyId),
+  ]);
 
   return (
     <ModulePage
@@ -41,6 +45,7 @@ export default async function NewProductPage({ searchParams }: NewProductPagePro
           <CardContent>
             <NewProductForm
               action={createPriceProductAction}
+              categories={categories}
               margins={margins.map((margin) => ({ code: margin.code, name: margin.name }))}
             />
           </CardContent>

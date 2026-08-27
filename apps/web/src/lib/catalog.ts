@@ -524,6 +524,18 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
   };
 }
 
+export async function listProductCategories(companyId: number) {
+  const result = await queryWithCompanyContext<{ category: string }>(
+    companyId,
+    `SELECT DISTINCT trim(category) AS category
+       FROM products
+      WHERE empresa_id = $1 AND active = true AND NULLIF(trim(category), '') IS NOT NULL
+      ORDER BY category ASC`,
+    [companyId],
+  );
+  return result.rows.map((row) => row.category);
+}
+
 export async function updateProductPresentation(companyId: number, productId: string, presentationUnits: number) {
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,

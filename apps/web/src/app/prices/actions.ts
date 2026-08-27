@@ -12,6 +12,8 @@ import {
 } from "@/lib/pricing";
 import { PRODUCTS_CREATE_PERMISSION, requireAdminApiSession, requireApiSession } from "@/lib/route-auth";
 import { stringFieldsFromFormData } from "@/lib/storage";
+import { getProduct, productUpdateInputFromBody, updateProduct } from "@/lib/catalog-management";
+import { uuidParam } from "@/lib/request-body";
 
 function boolField(formData: FormData, name: string) {
   const value = formData.get(name);
@@ -68,4 +70,14 @@ export async function createPriceProductAction(formData: FormData) {
   revalidatePath("/prices");
   revalidatePath("/products");
   redirect("/prices/new?created=1");
+}
+
+export async function updatePriceProductAction(formData: FormData) {
+  const session = await requireApiSession([{ resource: "productos", action: "editar" }]);
+  const productId = uuidParam(String(formData.get("productId") ?? ""), "Producto");
+  const current = await getProduct(session.companyId, productId);
+  await updateProduct(session, productId, productUpdateInputFromBody(stringFieldsFromFormData(formData), current));
+  revalidatePath("/prices");
+  revalidatePath("/products");
+  redirect(`/prices?updated=${productId}`);
 }

@@ -32,6 +32,7 @@ type PricesPageProps = {
     q?: string;
     page?: string;
     list?: string;
+    updated?: string;
   }>;
 };
 
@@ -49,7 +50,10 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
   const activeList =
     lists.find((list) => list.id === requestedListId) ?? lists[0] ?? null;
   const canEdit = isAdminRole(session.role);
-  const canEditProducts = await sessionAllows(session, [PRODUCTS_CREATE_PERMISSION]);
+  const [canCreateProducts, canEditProducts] = await Promise.all([
+    sessionAllows(session, [PRODUCTS_CREATE_PERMISSION]),
+    sessionAllows(session, [{ resource: "productos", action: "editar" }]),
+  ]);
 
   return (
     <ModulePage
@@ -73,7 +77,7 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
             query.set("list", String(list.id));
             if (result.meta.query) query.set("q", result.meta.query);
             return (
-              <Link
+              <a
                 className={`inline-flex h-9 items-center justify-center rounded-full border px-4 text-sm font-bold leading-none transition-colors ${
                   isActive
                     ? "border-[#2563eb] bg-[#2563eb] text-white"
@@ -83,7 +87,7 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
                 key={list.id}
               >
                 {list.name}
-              </Link>
+              </a>
             );
           })}
           {canEdit ? (
@@ -161,9 +165,7 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
                   </form>
                 </details>
               ) : null}
-              <ButtonLink href="/prices/new" variant="outline">
-                Nuevo producto
-              </ButtonLink>
+              {canCreateProducts ? <ButtonLink href="/prices/new" variant="outline">Nuevo producto</ButtonLink> : null}
             </div>
           </div>
         </Toolbar>
@@ -183,12 +185,13 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
                 <DataTableHead>Categoría</DataTableHead>
                 <DataTableHead>Proveedor</DataTableHead>
                 <DataTableHead align="right">{activeList ? `${activeList.name} (neto)` : "Precio neto"}</DataTableHead>
+                {canEditProducts ? <DataTableHead align="right">Acciones</DataTableHead> : null}
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={6}>
+                  <DataTableCell colSpan={canEditProducts ? 7 : 6}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -228,6 +231,11 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
                       <DataTableCell align="right" className="whitespace-nowrap font-mono text-sm font-bold text-[#0f172a]">
                         {price ? formatCurrency(price) : "-"}
                       </DataTableCell>
+                      {canEditProducts ? (
+                        <DataTableCell align="right">
+                          <ButtonLink href={`/prices/${product.id}/edit`} size="sm" variant="secondary">Editar</ButtonLink>
+                        </DataTableCell>
+                      ) : null}
                     </DataTableRow>
                   );
                 })
