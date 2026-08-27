@@ -278,6 +278,19 @@ function CrmWorldNavigation({
   inicioSection?: NavigationSection;
   indicators: NavigationIndicators;
 }) {
+  const crmInicioSection = inicioSection
+    ? {
+        ...inicioSection,
+        groups: inicioSection.groups.map((group) => {
+            if (group.label === "Banco") return null;
+            if (group.label === "Escritorio") return { ...group, href: "/crm/perfil", label: "Inicio comercial" };
+            if (group.label === "Calendario") return { ...group, href: "/crm/calendario" };
+            if (group.label === "LA TIRRA ia.01") return { ...group, href: "/crm/supervisor" };
+            return group;
+          }).filter((group): group is NavigationGroup => Boolean(group)),
+      }
+    : undefined;
+
   return (
     <nav aria-label="Navegacion CRM" className="grid gap-2">
       <Link className={cn(navigationRowClass(false), "crm-system-return text-[#93b4ff]")} href="/">
@@ -295,9 +308,9 @@ function CrmWorldNavigation({
           <NavigationGroupBlock active={active} current={current} group={group} indicators={indicators} key={group.label} />
         ))}
       </div>
-      {inicioSection ? (
+      {crmInicioSection ? (
         <div className="mt-2 grid gap-1 border-t border-white/14 pt-3">
-          {inicioSection.groups.map((group) => (
+          {crmInicioSection.groups.map((group) => (
             <NavigationGroupBlock active={active} current={current} group={group} indicators={indicators} key={group.label} />
           ))}
         </div>
