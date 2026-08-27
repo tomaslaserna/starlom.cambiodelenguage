@@ -14,9 +14,12 @@ test("el modo móvil comercial se activa únicamente para vendedores", () => {
 });
 
 test("la barra inferior expone Inicio y los destinos principales del CRM", () => {
-  for (const href of ["/crm/perfil", "/crm/clientes", "/crm/leads", "/crm/presupuestos", "/crm/listas"]) {
+  for (const href of ["/crm/perfil", "/crm/clientes", "/crm/presupuestos", "/crm/listas"]) {
     assert.match(mobileNav, new RegExp(`href: "${href.replaceAll("/", "\\/")}"`));
   }
+  assert.doesNotMatch(mobileNav, /href: "\/crm\/leads", label: "Leads"/);
+  assert.match(mobileNav, /href: "\/crm\/leads\?nuevo=1"/);
+  assert.match(mobileNav, /seller-mobile-navigation__create-slot/);
   assert.match(styles, /env\(safe-area-inset-bottom\)/);
   assert.match(styles, /grid-template-columns: repeat\(5/);
 });

@@ -296,8 +296,10 @@ function CrmWorldNavigation({
         ))}
       </div>
       {inicioSection ? (
-        <div className="mt-2">
-          <SectionAccordion active={active} current={current} indicators={indicators} section={inicioSection} />
+        <div className="mt-2 grid gap-1 border-t border-white/14 pt-3">
+          {inicioSection.groups.map((group) => (
+            <NavigationGroupBlock active={active} current={current} group={group} indicators={indicators} key={group.label} />
+          ))}
         </div>
       ) : null}
     </nav>

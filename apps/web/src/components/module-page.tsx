@@ -141,7 +141,7 @@ export async function ModulePage({
       </aside>
 
       <main className={cn("min-h-screen min-w-0 overflow-visible lg:h-screen", lockDesktopScroll ? "lg:overflow-hidden" : "lg:overflow-y-auto lg:overscroll-contain")}>
-        <header className="sticky top-0 z-30 border-b border-[#d9e2ef] bg-white/95 shadow-[0_8px_24px_rgba(15,23,42,0.045)] backdrop-blur">
+        <header className="sticky top-0 z-30 border-b border-[#d9e2ef] bg-white/95 shadow-[0_8px_24px_rgba(15,23,42,0.045)] lg:backdrop-blur">
           <div className="hidden min-h-[4.25rem] items-center justify-between gap-4 px-7 lg:flex">
             <div className="min-w-0">
               <h1 className="erp-text-title-md truncate font-extrabold tracking-normal text-[#0f172a]">{title}</h1>
@@ -166,7 +166,7 @@ export async function ModulePage({
                 >
                   Menu
                 </summary>
-                <div className="fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] top-16 z-40 overflow-y-auto overscroll-contain border-b border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_55%,#073f94_100%)] p-4 pb-7 text-white shadow-[var(--shadow-md)]">
+                <div className="seller-mobile-drawer fixed bottom-[calc(4.25rem+env(safe-area-inset-bottom))] left-0 top-16 z-40 w-[min(88vw,380px)] overflow-y-auto overscroll-contain border-b border-r border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_55%,#073f94_100%)] p-4 pb-7 text-white shadow-[var(--shadow-md)]">
                   <ShellNavigation active={active} indicators={indicators} sections={mobileSections} />
                   <div className="mt-5 grid gap-2 border-t border-white/14 pt-4">
                     <ButtonLink className="border-[#60a5fa]/45 bg-[#0b4fc7] text-white shadow-[0_10px_22px_rgba(5,32,85,0.16)] hover:border-[#93c5fd]/60 hover:bg-[#073f94]" href="/" size="sm" variant="secondary">
