@@ -248,7 +248,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
 
   const listsResult = await queryWithCompanyContext<{ nombre: string }>(
     companyId,
-    `SELECT nombre FROM listas_precio WHERE empresa_id = $1 AND activa = 1 ORDER BY id ASC`,
+    `SELECT nombre FROM listas_precio WHERE empresa_id = $1 AND activa = 1 AND (blocked_until IS NULL OR blocked_until < CURRENT_DATE) ORDER BY id ASC`,
     [companyId],
   );
   const lists = listsResult.rows.map((row) => row.nombre);
@@ -316,7 +316,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
           ON ml.empresa_id = lp.empresa_id
          AND ml.lista_id = lp.id
          AND ml.codigo = ${productMarginCodeExpression("p")}
-        WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1
+        WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1 AND (lp.blocked_until IS NULL OR lp.blocked_until < CURRENT_DATE)
       ) price_map ON true
       WHERE ${where}
       ORDER BY p.name ASC, p.id ASC
@@ -480,7 +480,7 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
           ON ml.empresa_id = lp.empresa_id
          AND ml.lista_id = lp.id
          AND ml.codigo = ${productMarginCodeExpression("p")}
-        WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1
+        WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1 AND (lp.blocked_until IS NULL OR lp.blocked_until < CURRENT_DATE)
       ) price_map ON true${STOCK_MOVEMENTS_LATERAL}
       WHERE ${where}
       ORDER BY p.name ASC, p.id ASC

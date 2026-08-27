@@ -629,7 +629,7 @@ async function getActivePriceListNames(client: PoolClient, companyId: number) {
     `
       SELECT nombre
       FROM listas_precio
-      WHERE empresa_id = $1 AND activa = 1
+      WHERE empresa_id = $1 AND activa = 1 AND (blocked_until IS NULL OR blocked_until < CURRENT_DATE)
       ORDER BY orden ASC, nombre ASC
     `,
     [companyId],
@@ -700,6 +700,7 @@ async function resolveBasicOrderDetail(
       LEFT JOIN listas_precio selected_list
         ON selected_list.empresa_id = p.empresa_id
        AND selected_list.activa = 1
+       AND (selected_list.blocked_until IS NULL OR selected_list.blocked_until < CURRENT_DATE)
        AND lower(selected_list.nombre) = lower($6)
       LEFT JOIN margenes_listas selected_margin
         ON selected_margin.empresa_id = p.empresa_id
@@ -710,6 +711,7 @@ async function resolveBasicOrderDetail(
         FROM listas_precio lp
         WHERE lp.empresa_id = p.empresa_id
           AND lp.activa = 1
+          AND (lp.blocked_until IS NULL OR lp.blocked_until < CURRENT_DATE)
           AND (lp.nombre ILIKE 'L1%' OR lp.nombre = '1')
         ORDER BY CASE WHEN lp.nombre ILIKE 'L1%' THEN 0 ELSE 1 END, lp.orden ASC
         LIMIT 1
@@ -877,6 +879,7 @@ export async function getOrderFormData(
          AND ml.lista_id = lp.id
          AND ml.codigo = ${productMarginCodeExpression("p")}
         WHERE lp.empresa_id = p.empresa_id AND lp.activa = 1
+          AND (lp.blocked_until IS NULL OR lp.blocked_until < CURRENT_DATE)
       ) price_map ON true
       LEFT JOIN LATERAL (
         SELECT COALESCE(SUM(

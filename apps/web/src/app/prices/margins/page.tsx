@@ -7,12 +7,6 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-  DataTable,
-  DataTableBody,
-  DataTableCell,
-  DataTableHead,
-  DataTableHeader,
-  DataTableRow,
   EmptyState,
   Field,
   Input,
@@ -21,7 +15,9 @@ import {
 import { listMargins } from "@/lib/pricing";
 import { isAdminRole, requireStaffSession } from "@/lib/auth";
 import { sessionCanReadProducts } from "@/lib/route-auth";
-import { createMarginAction, updateMarginAction } from "@/app/prices/actions";
+import { createMarginAction, deleteMarginAction, updateMarginAction } from "@/app/prices/actions";
+
+export const dynamic = "force-dynamic";
 
 export default async function MarginsPage() {
   const session = await requireStaffSession();
@@ -33,13 +29,13 @@ export default async function MarginsPage() {
   return (
     <ModulePage
       active="prices"
-      description="Categorías de margen y su margen base."
+      description="Margen ideal de Lista 2 y variaciones derivadas."
       session={session}
       title="Márgenes"
     >
       <div className="grid gap-4">
         <PageHeader
-          description="Cada categoría tiene un margen base que multiplica el costo. Las diferencias por lista se configuran en Parámetros."
+          description="Definí el multiplicador ideal sobre costo para Lista 2 (ANCLA). Las demás listas se calculan automáticamente como variaciones porcentuales del ancla."
           moduleIntro
           title="Márgenes"
         />
@@ -48,7 +44,7 @@ export default async function MarginsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Nueva categoría de margen</CardTitle>
-              <CardDescription>Código, nombre y margen base (multiplicador sobre el costo).</CardDescription>
+              <CardDescription>Código, nombre y multiplicador ideal de Lista 2 sobre el costo.</CardDescription>
             </CardHeader>
             <CardContent>
               <form action={createMarginAction} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
@@ -58,7 +54,7 @@ export default async function MarginsPage() {
                 <Field htmlFor="margin-name" label="Nombre">
                   <Input id="margin-name" maxLength={100} name="name" placeholder="Ej: Limpieza" required />
                 </Field>
-                <Field htmlFor="margin-base" label="Margen base">
+                <Field htmlFor="margin-base" label="Multiplicador ancla">
                   <Input id="margin-base" inputMode="decimal" name="precio_1" placeholder="Ej: 1.45" required step="0.01" type="number" />
                 </Field>
                 <Button type="submit">Agregar</Button>
@@ -67,66 +63,51 @@ export default async function MarginsPage() {
           </Card>
         ) : null}
 
-        <Card className="overflow-hidden">
-          <DataTable
-            caption="Categorías de margen"
-            className="rounded-none border-0 shadow-none"
-            minWidth="640px"
-            tableLabel="Márgenes"
-          >
-            <DataTableHeader>
-              <DataTableRow className="hover:bg-transparent">
-                <DataTableHead>Código</DataTableHead>
-                <DataTableHead>Categoría</DataTableHead>
-                <DataTableHead align="right">Margen base</DataTableHead>
-                {canEdit ? <DataTableHead align="right">Modificar</DataTableHead> : null}
-              </DataTableRow>
-            </DataTableHeader>
-            <DataTableBody>
-              {margins.length === 0 ? (
-                <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={canEdit ? 4 : 3}>
-                    <EmptyState
-                      description="Cuando cargues categorías de margen aparecerán acá."
-                      title="No hay categorías de margen"
-                    />
-                  </DataTableCell>
-                </DataTableRow>
-              ) : (
-                margins.map((margin) => (
-                  <DataTableRow key={margin.code}>
-                    <DataTableCell className="whitespace-nowrap font-mono text-xs font-bold">{margin.code}</DataTableCell>
-                    <DataTableCell>
-                      <div className="max-w-[280px] break-words font-medium">{margin.name}</div>
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap font-mono text-sm font-bold">
-                      {margin.price1.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </DataTableCell>
-                    {canEdit ? (
-                      <DataTableCell align="right">
-                        <form action={updateMarginAction} className="flex items-center justify-end gap-2">
-                          <input name="code" type="hidden" value={margin.code} />
-                          <Input
-                            aria-label={`Nuevo margen base para ${margin.name}`}
-                            className="w-24 text-right"
-                            defaultValue={margin.price1}
-                            inputMode="decimal"
-                            name="precio_1"
-                            step="0.01"
-                            type="number"
-                          />
-                          <Button size="sm" type="submit" variant="secondary">
-                            Guardar
-                          </Button>
-                        </form>
-                      </DataTableCell>
-                    ) : null}
-                  </DataTableRow>
-                ))
-              )}
-            </DataTableBody>
-          </DataTable>
-        </Card>
+        {margins.length === 0 ? (
+          <Card><CardContent><EmptyState description="Cuando cargues categorías de margen aparecerán acá." title="No hay categorías de margen" /></CardContent></Card>
+        ) : (
+          <div className="grid gap-4">
+            {margins.map((margin) => (
+              <Card key={margin.code}>
+                <CardHeader>
+                  <CardTitle>{margin.name}</CardTitle>
+                  <CardDescription>Código de categoría y SKU: {margin.code} · Lista 2 es la referencia ideal</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {canEdit ? (
+                    <form action={updateMarginAction} className="grid gap-4">
+                      <input name="code" type="hidden" value={margin.code} />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field htmlFor={`name-${margin.code}`} label="Nombre">
+                          <Input defaultValue={margin.name} id={`name-${margin.code}`} name="name" required />
+                        </Field>
+                        <Field htmlFor={`base-${margin.code}`} label="Lista 2 · multiplicador ideal" description={`Equivale a ${((1 - 1 / margin.price1) * 100).toFixed(1)}% de margen sobre la venta.`}>
+                          <Input defaultValue={margin.price1} id={`base-${margin.code}`} min="1" name="precio_1" step="0.01" type="number" />
+                        </Field>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                        {margin.multipliers.map((list) => {
+                          const variation = margin.price1 > 0 ? (list.multiplier / margin.price1 - 1) * 100 : 0;
+                          return (
+                            <div className={`rounded-[10px] border p-3 ${list.listName.includes("ANCLA") ? "border-[#2563eb] bg-[#eff6ff]" : "border-[#e2e8f0] bg-[#f8fafc]"}`} key={list.listId}>
+                              <div className="text-xs font-bold text-[#64748b]">{list.listName}</div>
+                              <div className="mt-1 text-lg font-black">× {list.multiplier.toFixed(2)}</div>
+                              <div className="text-xs text-[#64748b]">{variation === 0 ? "ANCLA" : `${variation > 0 ? "+" : ""}${variation.toFixed(0)}% sobre ancla`}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="submit">Guardar cambios</Button>
+                        <Button formAction={deleteMarginAction} type="submit" variant="danger">Eliminar categoría</Button>
+                      </div>
+                    </form>
+                  ) : <p className="text-sm">Margen base: {margin.price1.toFixed(2)}</p>}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </ModulePage>
   );

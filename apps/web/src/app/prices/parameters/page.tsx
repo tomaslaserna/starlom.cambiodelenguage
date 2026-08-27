@@ -87,6 +87,9 @@ function PriceListForm({
       </fieldset>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Field htmlFor={`blocked-${list?.id ?? "new"}`} label="Bloqueada hasta" description="Opcional. Se habilita automáticamente después de esta fecha.">
+          <Input defaultValue={list?.blockedUntil ?? ""} id={`blocked-${list?.id ?? "new"}`} name="blockedUntil" type="date" />
+        </Field>
         <Field htmlFor={`from-${list?.id ?? "new"}`} label="Vigencia desde (opcional)">
           <Input defaultValue={list?.validFrom ?? ""} id={`from-${list?.id ?? "new"}`} name="validFrom" type="date" />
         </Field>
@@ -97,6 +100,10 @@ function PriceListForm({
           <Input defaultValue={list?.floorFactor != null ? String(list.floorFactor) : ""} id={`floor-${list?.id ?? "new"}`} inputMode="decimal" name="floorFactor" step="0.01" type="number" />
         </Field>
         <div className="flex flex-col justify-end gap-2 pb-1">
+          <label className="flex items-center gap-1.5 text-sm">
+            <input defaultChecked={list?.active ?? true} name="active" type="checkbox" />
+            <span>Lista habilitada</span>
+          </label>
           <label className="flex items-center gap-1.5 text-sm">
             <input defaultChecked={list?.requiresAuthorization ?? false} name="requiresAuthorization" type="checkbox" />
             <span>Requiere autorización</span>
@@ -129,13 +136,13 @@ export default async function PriceParametersPage({ searchParams }: ParametersPa
       active="prices"
       description="Definí cómo calcula cada lista, quién la usa y sus reglas."
       session={session}
-      title="Parámetros de precios"
+      title="Gestionar listas"
     >
       <div className="grid gap-4">
         <PageHeader
           description="Creá y configurá las listas: derivación (costo o sobre otra lista + %), acceso por rol y reglas de uso. Al guardar se recalculan los precios."
           moduleIntro
-          title="Parámetros de precios"
+          title="Gestionar listas de precios"
         />
 
         {params.saved ? (

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createCatalogProduct, productCreateInputFromBody } from "@/lib/imports";
 import {
   createMargin,
+  deleteMargin,
   marginInputFromBody,
   recomputeListMultipliers,
   savePriceListParameters,
@@ -38,6 +39,8 @@ export async function savePriceListAction(formData: FormData) {
     requiresAuthorization: boolField(formData, "requiresAuthorization"),
     admitsOffers: boolField(formData, "admitsOffers"),
     floorFactor: floorRaw ? Number(floorRaw) : null,
+    active: boolField(formData, "active"),
+    blockedUntil: String(formData.get("blockedUntil") ?? "").trim() || null,
   });
   revalidatePath("/prices/parameters");
   revalidatePath("/prices");
@@ -70,6 +73,14 @@ export async function createPriceProductAction(formData: FormData) {
   revalidatePath("/prices");
   revalidatePath("/products");
   redirect("/prices/new?created=1");
+}
+
+export async function deleteMarginAction(formData: FormData) {
+  const session = await requireAdminApiSession();
+  await deleteMargin(session.companyId, String(formData.get("code") ?? ""));
+  revalidatePath("/prices/margins");
+  revalidatePath("/prices");
+  redirect("/prices/margins?deleted=1");
 }
 
 export async function updatePriceProductAction(formData: FormData) {

@@ -28,6 +28,7 @@ import {
   customerReceiptTypeOptionValue,
 } from "@/lib/catalog-management";
 import { fastOr } from "@/lib/fast-data";
+import { FISCAL_CONDITION_OPTIONS } from "@/lib/fiscal-conditions";
 import { formatNumber } from "@/lib/format";
 import { listPriceLists } from "@/lib/pricing";
 import { requireStaffSession } from "@/lib/auth";
@@ -109,11 +110,10 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                   <Input id="customer-tax-id" name="taxId" />
                 </Field>
                 <Field htmlFor="customer-vat" label="Condicion IVA">
-                  <Select id="customer-vat" name="vatCondition" defaultValue="Consumidor final">
-                    <option value="Consumidor final">Consumidor final</option>
-                    <option value="Responsable inscripto">Responsable inscripto</option>
-                    <option value="Monotributo">Monotributo</option>
-                    <option value="Exento">Exento</option>
+                  <Select id="customer-vat" name="vatCondition" defaultValue="Consumidor Final">
+                    {FISCAL_CONDITION_OPTIONS.map((condition) => (
+                      <option key={condition} value={condition}>{condition}</option>
+                    ))}
                   </Select>
                 </Field>
                 <Field htmlFor="customer-receipt-type" label="Comprobante asociado" required>

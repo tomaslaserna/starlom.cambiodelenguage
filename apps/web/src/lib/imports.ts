@@ -4,6 +4,7 @@ import { parse } from "csv-parse/sync";
 import iconv from "iconv-lite";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
+import type { PoolClient } from "pg";
 import { normalizeCustomerReceiptType } from "@/lib/catalog-management";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { resolvePriceListName } from "@/lib/order-pricing";
@@ -190,7 +191,7 @@ export async function importCustomersFromCsv(request: Request, companyId: number
         `
           SELECT nombre
           FROM listas_precio
-          WHERE empresa_id = $1 AND activa = 1
+          WHERE empresa_id = $1 AND activa = 1 AND (blocked_until IS NULL OR blocked_until < CURRENT_DATE)
           ORDER BY orden ASC, nombre ASC
         `,
         [companyId],
@@ -366,6 +367,16 @@ export function productCreateInputFromBody(body: RequestBody) {
   };
 }
 
+async function nextCategorySku(client: PoolClient, companyId: number, categoryCode: string) {
+  const prefix = categoryCode.trim().toUpperCase();
+  await client.query("SELECT pg_advisory_xact_lock($1, hashtext($2))", [companyId, `product-sku:${prefix}`]);
+  const result = await client.query<{ next_number: string }>(
+    "SELECT (COALESCE(MAX(substring(sku from '[0-9]+$')::bigint), 0) + 1)::text AS next_number FROM products WHERE empresa_id = $1 AND sku ~ ('^' || $2 || '-[0-9]+$')",
+    [companyId, prefix],
+  );
+  return `${prefix}-${String(result.rows[0]?.next_number ?? "1").padStart(5, "0")}`;
+}
+
 export async function createCatalogProduct(
   session: AuthSession,
   input: ReturnType<typeof productCreateInputFromBody>,
@@ -386,6 +397,8 @@ export async function createCatalogProduct(
       );
       if (duplicate.rows[0]) throw new ApiError(409, `Ya existe un producto con el codigo ${input.sku}`);
     }
+
+    const assignedSku = input.sku || await nextCategorySku(client, session.companyId, input.code);
 
     const rubric = input.code.replace(/\d+$/g, "");
     const supplier = input.provider
@@ -410,7 +423,7 @@ export async function createCatalogProduct(
       [
         input.category || margin.rows[0].nombre || rubric,
         input.code,
-        input.sku || null,
+        assignedSku,
         supplier.rows[0]?.id ?? null,
         input.name,
         input.cost,

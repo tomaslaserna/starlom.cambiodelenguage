@@ -6,7 +6,21 @@ import { ApiError } from "@/lib/api-response";
 import { deleteSale } from "@/lib/sales-admin";
 import { uuidParam } from "@/lib/request-body";
 import { requireApiSession, SALES_OPERATE_PERMISSION } from "@/lib/route-auth";
-import { requestSaleFiscalNote } from "@/lib/fiscal";
+import { requestSaleFiscalInvoice, requestSaleFiscalNote } from "@/lib/fiscal";
+
+export async function requestFiscalInvoiceAction(formData: FormData) {
+  try {
+    const session = await requireApiSession([SALES_OPERATE_PERMISSION]);
+    const id = uuidParam(String(formData.get("id") ?? ""), "Venta");
+    await requestSaleFiscalInvoice(session, id);
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    redirect(`/sales?error=1&message=${encodeURIComponent(error.message.slice(0, 500))}`);
+  }
+  revalidatePath("/sales");
+  revalidatePath("/orders");
+  revalidatePath("/admin/approvals");
+}
 
 export async function requestFiscalNoteAction(formData: FormData) {
   try {

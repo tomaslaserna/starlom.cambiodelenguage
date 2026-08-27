@@ -1161,7 +1161,7 @@ export async function buildPriceListPdf(companyId: number, options: PriceListPdf
 
   const listRow = await queryWithCompanyContext<{ id: number; nombre: string }>(
     companyId,
-    `SELECT id, nombre FROM listas_precio WHERE empresa_id = $1 AND activa = 1 AND ($2 <= 0 OR id = $2) ORDER BY orden ASC, nombre ASC LIMIT 1`,
+    `SELECT id, nombre FROM listas_precio WHERE empresa_id = $1 AND activa = 1 AND (blocked_until IS NULL OR blocked_until < CURRENT_DATE) AND ($2 <= 0 OR id = $2) ORDER BY orden ASC, nombre ASC LIMIT 1`,
     [companyId, Number.isInteger(options.listId) ? options.listId : 0],
   );
   const selectedList = listRow.rows[0];
