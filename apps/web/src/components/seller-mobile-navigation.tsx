@@ -65,7 +65,6 @@ export function SellerMobileNavigation() {
       })}
       <span className="seller-mobile-navigation__create-slot">
         <button aria-expanded={quickOpen} aria-label="Crear cliente, lead o presupuesto" className={cn("seller-mobile-navigation__create", quickOpen && "is-open")} onClick={() => setQuickOpen((value) => !value)} type="button">+</button>
-        <span>Crear</span>
       </span>
       {ITEMS.slice(2).map((item) => {
         const current = pathname.startsWith(item.href);
