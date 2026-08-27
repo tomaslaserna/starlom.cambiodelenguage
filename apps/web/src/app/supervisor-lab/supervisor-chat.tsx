@@ -20,6 +20,9 @@ function toolLabel(toolName: string) {
 export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
   const [input, setInput] = useState("");
   const [timedOut, setTimedOut] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [clearingHistory, setClearingHistory] = useState(false);
+  const [memoryError, setMemoryError] = useState("");
   const transport = useMemo(
     () => new DefaultChatTransport<StarlimSupervisorMessage>({ api: "/api/supervisor-lab/chat" }),
     [],
@@ -28,6 +31,38 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
     transport,
   });
   const busy = status === "submitted" || status === "streaming";
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function restoreHistory() {
+      try {
+        const response = await fetch("/api/supervisor-lab/chat", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const body = (await response.json()) as {
+          ok?: boolean;
+          messages?: StarlimSupervisorMessage[];
+        };
+        if (!response.ok || !body.ok || !Array.isArray(body.messages)) {
+          throw new Error("No se pudo recuperar la conversación");
+        }
+        setMessages(body.messages);
+      } catch (historyError) {
+        if (!controller.signal.aborted) {
+          setMemoryError(
+            historyError instanceof Error
+              ? historyError.message
+              : "No se pudo recuperar la conversación",
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoadingHistory(false);
+      }
+    }
+    void restoreHistory();
+    return () => controller.abort();
+  }, [setMessages]);
 
   useEffect(() => {
     if (!busy) return;
@@ -40,7 +75,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
 
   function submitText(text: string) {
     const value = text.trim();
-    if (!value || busy) return;
+    if (!value || busy || loadingHistory) return;
     setTimedOut(false);
     void sendMessage({ text: value });
     setInput("");
@@ -49,6 +84,26 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     submitText(input);
+  }
+
+  async function startNewConversation() {
+    if (busy || clearingHistory) return;
+    setClearingHistory(true);
+    setMemoryError("");
+    try {
+      const response = await fetch("/api/supervisor-lab/chat", { method: "DELETE" });
+      if (!response.ok) throw new Error("No se pudo borrar la conversación anterior");
+      setMessages([]);
+      setTimedOut(false);
+    } catch (clearError) {
+      setMemoryError(
+        clearError instanceof Error
+          ? clearError.message
+          : "No se pudo borrar la conversación anterior",
+      );
+    } finally {
+      setClearingHistory(false);
+    }
   }
 
   return (
@@ -67,7 +122,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
 
       <div className="flex min-w-0 flex-wrap justify-center gap-2">
         {quickPrompts.map((prompt) => (
-          <Button className="max-w-full whitespace-normal text-center" key={prompt} disabled={busy} onClick={() => submitText(prompt)} size="sm" type="button" variant="secondary">
+          <Button className="max-w-full whitespace-normal text-center" key={prompt} disabled={busy || loadingHistory} onClick={() => submitText(prompt)} size="sm" type="button" variant="secondary">
             {prompt}
           </Button>
         ))}
@@ -75,7 +130,11 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
 
       <Card className="grid min-h-[420px] min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden sm:min-h-[480px]">
         <div aria-live="polite" className="grid min-h-[320px] min-w-0 content-start gap-4 overflow-x-hidden overflow-y-auto p-3 sm:p-5 lg:max-h-[58vh]">
-          {messages.length === 0 ? (
+          {loadingHistory ? (
+            <div className="m-auto max-w-md py-20 text-center text-sm font-semibold text-[#64748b]">
+              Recuperando tu conversación de las últimas 48 horas…
+            </div>
+          ) : messages.length === 0 ? (
             <div className="m-auto max-w-md py-20 text-center text-sm font-medium text-[#64748b]">
               Escribí una consulta o elegí una sugerencia. Cada respuesta debe basarse en información trazable del ERP.
             </div>
@@ -131,12 +190,17 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
               La consulta superó los 48 segundos y fue detenida. Probá nuevamente o usá el enlace sugerido; LA TIRRA ia.01 no debe quedar pensando indefinidamente.
             </div>
           ) : null}
+          {memoryError ? (
+            <div className="rounded-lg border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm font-semibold text-[#92400e]">
+              {memoryError}. Podés seguir usando LA TIRRA, pero este historial podría no conservarse.
+            </div>
+          ) : null}
         </div>
 
         <form className="grid min-w-0 gap-3 border-t border-[#d9e2ef] bg-[#f8fafc] p-3 sm:p-4" onSubmit={onSubmit}>
           <Textarea
             aria-label="Consulta para LA TIRRA ia.01"
-            disabled={busy}
+            disabled={busy || loadingHistory}
             maxLength={2000}
             onChange={(event) => setInput(event.currentTarget.value)}
             placeholder="Ejemplo: ¿qué suele comprar La Cascada?"
@@ -147,12 +211,15 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
             {busy ? (
               <Button onClick={() => void stop()} type="button" variant="secondary">Detener</Button>
             ) : (
-              <Button disabled={!input.trim()} type="submit">Consultar</Button>
+              <Button disabled={!input.trim() || loadingHistory} type="submit">Consultar</Button>
             )}
-            <Button disabled={busy || messages.length === 0} onClick={() => { setMessages([]); setTimedOut(false); }} type="button" variant="secondary">
-              Nueva conversación
+            <Button disabled={busy || clearingHistory || loadingHistory || messages.length === 0} onClick={() => void startNewConversation()} type="button" variant="secondary">
+              {clearingHistory ? "Borrando…" : "Nueva conversación"}
             </Button>
           </div>
+          <p className="text-center text-xs font-semibold text-[#64748b]">
+            Memoria privada del operador · se conserva por un máximo de 48 horas
+          </p>
         </form>
       </Card>
     </div>

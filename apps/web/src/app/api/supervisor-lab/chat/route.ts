@@ -1,12 +1,40 @@
+import { randomUUID } from "node:crypto";
 import { createAgentUIStreamResponse } from "ai";
-import { ApiError, handleApiError } from "@/lib/api-response";
+import { ApiError, handleApiError, ok } from "@/lib/api-response";
 import { requireApiSession } from "@/lib/route-auth";
 import { createStarlimSupervisorAgent } from "@/lib/supervisor-lab/agent";
 import { assertSupervisorAiConfigured } from "@/lib/supervisor-lab/availability";
 import { parseSupervisorRequestBody } from "@/lib/supervisor-lab/request-guard";
 import { getSupervisorLandingSummary } from "@/lib/supervisor-lab/landing-summary";
+import {
+  clearSupervisorChatMemory,
+  getSupervisorChatMemory,
+  saveSupervisorChatMemory,
+  SUPERVISOR_MEMORY_HOURS,
+} from "@/lib/supervisor-lab/chat-memory";
+import type { StarlimSupervisorMessage } from "@/lib/supervisor-lab/agent";
 
 export const runtime = "nodejs";
+
+export async function GET() {
+  try {
+    const session = await requireApiSession();
+    const messages = await getSupervisorChatMemory(session);
+    return ok({ messages, memoryHours: SUPERVISOR_MEMORY_HOURS });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
+
+export async function DELETE() {
+  try {
+    const session = await requireApiSession();
+    await clearSupervisorChatMemory(session);
+    return ok({ cleared: true });
+  } catch (error) {
+    return handleApiError(error);
+  }
+}
 
 function logSupervisorStreamError(error: unknown) {
   const details =
@@ -39,14 +67,20 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => null);
-    const uiMessages = parseSupervisorRequestBody(body);
+    const uiMessages = parseSupervisorRequestBody(body) as StarlimSupervisorMessage[];
+    await saveSupervisorChatMemory(session, uiMessages);
     const summary = await getSupervisorLandingSummary(session);
     return createAgentUIStreamResponse({
       agent: createStarlimSupervisorAgent(session, summary),
       uiMessages,
+      originalMessages: uiMessages,
+      generateMessageId: randomUUID,
       abortSignal: request.signal,
       timeout: { totalMs: 45_000 },
       sendSources: true,
+      onEnd: async ({ messages }) => {
+        await saveSupervisorChatMemory(session, messages);
+      },
       onError: logSupervisorStreamError,
     });
   } catch (error) {
