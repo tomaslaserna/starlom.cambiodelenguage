@@ -1903,6 +1903,9 @@ test("order comprobante flow separates the commercial remito from stock", () => 
   assert.match(remitoRoute, /buildOrderRemitoPdf/);
   assert.match(remitoRoute, /searchParams\.get\("precios"\) === "si"/);
   assert.match(remitoRoute, /searchParams\.get\("copia"\) === "1"/);
+  assert.match(remitoRoute, /shouldFallbackToPriceFreeRemito/);
+  assert.match(remitoRoute, /includePrices && shouldFallbackToPriceFreeRemito\(error\)/);
+  assert.match(remitoRoute, /\{ \.\.\.options, includePrices: false \}/);
 });
 
 test("orders register exposes the comprobante sequence with fiscal gating", () => {
