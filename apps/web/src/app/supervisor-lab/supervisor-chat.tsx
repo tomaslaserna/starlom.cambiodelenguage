@@ -61,6 +61,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [clearingHistory, setClearingHistory] = useState(false);
   const [memoryError, setMemoryError] = useState("");
+  const [expandedChat, setExpandedChat] = useState(false);
   const transport = useMemo(
     () => new DefaultChatTransport<StarlimSupervisorMessage>({
       api: "/api/supervisor-lab/chat",
@@ -116,6 +117,15 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
     return () => window.clearTimeout(timeoutId);
   }, [busy, stop]);
 
+  useEffect(() => {
+    if (!expandedChat) return;
+    function closeExpandedChat(event: KeyboardEvent) {
+      if (event.key === "Escape") setExpandedChat(false);
+    }
+    window.addEventListener("keydown", closeExpandedChat);
+    return () => window.removeEventListener("keydown", closeExpandedChat);
+  }, [expandedChat]);
+
   function submitText(text: string) {
     const value = text.trim();
     if (!value || busy || loadingHistory) return;
@@ -153,7 +163,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
   }
 
   return (
-    <div className="mx-auto grid min-w-0 w-full max-w-[1320px] gap-5 overflow-hidden">
+    <div className="mx-auto grid min-w-0 w-full gap-5 overflow-hidden">
       <Card className="relative overflow-hidden border-[#bcd3f3] bg-[linear-gradient(135deg,#075ac7_0%,#0b75e5_62%,#0f8ee9_100%)] p-0 text-white shadow-[0_20px_45px_rgba(7,90,199,0.16)]">
         <div aria-hidden="true" className="absolute -right-16 -top-20 h-64 w-64 rounded-full border-[36px] border-white/5" />
         <div aria-hidden="true" className="absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-white/5 blur-2xl" />
@@ -212,15 +222,26 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
         </section>
       ) : null}
 
-      <Card className="grid h-[76vh] min-h-[580px] max-h-[900px] min-w-0 scroll-mt-5 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[#c9d8ec] shadow-[0_18px_44px_rgba(15,23,42,0.08)]" id="tirra-conversation">
+      <Card
+        aria-label="Área de conversación con LA TIRRA"
+        className={expandedChat
+          ? "fixed inset-3 z-[80] grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[#c9d8ec] shadow-[0_28px_80px_rgba(15,23,42,0.28)] sm:inset-6"
+          : "grid h-[84vh] min-h-[620px] max-h-[1020px] min-w-0 scroll-mt-5 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[#c9d8ec] shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:min-h-[680px]"}
+        id="tirra-conversation"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d9e2ef] bg-white px-4 py-3 sm:px-6">
           <div>
             <h3 className="text-base font-extrabold text-[#0f172a]">Conversación con LA TIRRA</h3>
             <p className="text-xs font-medium text-[#64748b]">Tus respuestas y consultas de las últimas 48 horas.</p>
           </div>
-          <span className="inline-flex items-center gap-2 rounded-full bg-[#ecfdf5] px-3 py-1.5 text-xs font-extrabold text-[#047857]">
-            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#10b981]" /> Lista para ayudarte
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="hidden items-center gap-2 rounded-full bg-[#ecfdf5] px-3 py-1.5 text-xs font-extrabold text-[#047857] sm:inline-flex">
+              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#10b981]" /> Lista para ayudarte
+            </span>
+            <Button onClick={() => setExpandedChat((current) => !current)} size="sm" type="button" variant="secondary">
+              {expandedChat ? "Volver al tamaño normal" : "Ampliar lectura"}
+            </Button>
+          </div>
         </div>
         <div aria-live="polite" className="grid min-h-0 min-w-0 content-start gap-5 overflow-x-hidden overflow-y-auto bg-[#fbfdff] p-4 sm:p-6 lg:p-7">
           {loadingHistory ? (
@@ -236,7 +257,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
 
           {messages.map((message) => (
             <div
-              className={message.role === "user" ? "ml-auto min-w-0 max-w-[92%] sm:max-w-[78%]" : "mr-auto min-w-0 max-w-full sm:max-w-[88%]"}
+              className={message.role === "user" ? "ml-auto min-w-0 max-w-[92%] sm:max-w-[76%]" : "mr-auto min-w-0 max-w-[1100px]"}
               key={message.id}
             >
               <div
