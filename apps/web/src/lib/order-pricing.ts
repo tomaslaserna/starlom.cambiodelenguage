@@ -54,7 +54,30 @@ export function legacyPriceListAlias(value: string | null | undefined) {
 }
 
 export function samePriceListName(left: string | null | undefined, right: string | null | undefined) {
-  return priceListToken(left) === priceListToken(right);
+  const leftToken = priceListToken(left);
+  const rightToken = priceListToken(right);
+  if (leftToken === rightToken) return true;
+  const leftKey = recognizedPriceListKey(leftToken);
+  const rightKey = recognizedPriceListKey(rightToken);
+  return leftKey !== null && rightKey !== null && leftKey === rightKey;
+}
+
+function recognizedPriceListKey(value: string | null | undefined): PriceListKey | null {
+  const compact = priceListToken(value);
+  if (!compact) return null;
+  if (compact.includes("revendedor") || compact === "rev" || compact === "ver") return "rev";
+  if (compact.includes("minorista")) return "rev";
+  if (compact.includes("mayorista")) return "1";
+  if (compact.includes("excep") || compact.includes("especial")) return "0";
+  if (compact.startsWith("l0")) return "0";
+  if (compact.startsWith("l1")) return "1";
+  if (compact.startsWith("l2")) return "2";
+  if (compact.startsWith("l3")) return "3";
+
+  const explicit = compact.match(/(?:precio|lista)([0-4])/);
+  if (explicit) return explicit[1] === "4" ? "rev" : (explicit[1] as PriceListKey);
+  if (/^[0-4]$/.test(compact)) return compact === "4" ? "rev" : (compact as PriceListKey);
+  return null;
 }
 
 export function resolvePriceListName(
@@ -75,23 +98,7 @@ export function resolvePriceListName(
 }
 
 export function normalizePriceListKey(value: string | null | undefined): PriceListKey {
-  const compact = priceListToken(value);
-
-  if (!compact) return PRICE_LIST_DEFAULT;
-  if (compact.includes("revendedor") || compact === "rev" || compact === "ver") return "rev";
-  if (compact.includes("minorista")) return "rev";
-  if (compact.includes("mayorista")) return "1";
-  if (compact.includes("excep") || compact.includes("especial")) return "0";
-  if (compact.startsWith("l0")) return "0";
-  if (compact.startsWith("l1")) return "1";
-  if (compact.startsWith("l2")) return "2";
-  if (compact.startsWith("l3")) return "3";
-
-  const explicit = compact.match(/(?:precio|lista)([0-4])/);
-  if (explicit) return explicit[1] === "4" ? "rev" : (explicit[1] as PriceListKey);
-  if (/^[0-4]$/.test(compact)) return compact === "4" ? "rev" : (compact as PriceListKey);
-
-  return PRICE_LIST_DEFAULT;
+  return recognizedPriceListKey(value) ?? PRICE_LIST_DEFAULT;
 }
 
 export function priceForList(

@@ -17,7 +17,7 @@ import {
   Select,
 } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { DEFAULT_PRICE_LIST_NAME, priceForList, resolvePriceListName } from "@/lib/order-pricing";
+import { DEFAULT_PRICE_LIST_NAME, priceForList, resolvePriceListName, samePriceListName } from "@/lib/order-pricing";
 import { presentationPriceForLine, presentationSuggestion } from "@/lib/presentation-pricing";
 import { offerLineDiscount } from "@/lib/offer-status";
 import type { PriceOffer } from "@/lib/price-offers";
@@ -119,7 +119,10 @@ export function OrderEntryFields({
       : habitualDocument;
   const vatRate: IvaRate = saleVatRateForDocument(desiredDocument) ?? 0;
   const hasConfiguredDocument = desiredDocument !== null && vatRate > 0;
-  const activePriceList = resolvePriceListName(priceListOverride || selectedClient?.priceList, priceListOptions);
+  const customerPriceList = selectedClient
+    ? resolvePriceListName(selectedClient.priceList, priceListOptions)
+    : "";
+  const activePriceList = resolvePriceListName(priceListOverride || customerPriceList, priceListOptions);
   const productOptions = useMemo(
     () =>
       products.map((product) => ({
@@ -318,9 +321,13 @@ export function OrderEntryFields({
                 </option>
               ))}
             </Select>
-            {selectedClient.priceList && selectedClient.priceList !== activePriceList ? (
+            {customerPriceList && !samePriceListName(customerPriceList, activePriceList) ? (
+              <div className="mt-1 text-xs font-semibold text-[color:var(--warning)]">
+                Excepción manual. Acuerdo del cliente: {customerPriceList}.
+              </div>
+            ) : customerPriceList ? (
               <div className="mt-1 text-xs text-[color:var(--muted)]">
-                Sugerida por cliente: {activePriceList}
+                Acuerdo comercial del cliente.
               </div>
             ) : null}
           </Field>
