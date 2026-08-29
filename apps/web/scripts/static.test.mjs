@@ -732,7 +732,7 @@ test("Escritorio is listed first in the Inicio menu and links to the home page",
   assert.match(navigation, /href: "\/",\s*label: "Escritorio",\s*active: "home",/);
   assert.match(
     navigation,
-    /label: "Inicio"[\s\S]*groups: \[[\s\S]*groupByLabel\("Escritorio"\)[\s\S]*groupByLabel\("LA TIRRA ia\.01"\)[\s\S]*groupByLabel\("Calendario"\)[\s\S]*groupByLabel\("Banco"\)[\s\S]*\]/,
+    /label: "Inicio"[\s\S]*groups: \[[\s\S]*groupByLabel\("Escritorio"\)[\s\S]*groupByLabel\("LA TIRRA ia\.1\.1"\)[\s\S]*groupByLabel\("Calendario"\)[\s\S]*groupByLabel\("Banco"\)[\s\S]*\]/,
   );
 });
 

@@ -54,6 +54,11 @@ test("el agente usa herramientas tipadas, de servidor y solo lectura", () => {
   assert.match(tools, /getSupervisorCustomerInvoices/);
   assert.match(tools, /getSupervisorInvoiceByNumber/);
   assert.match(tools, /getErpGuide/);
+  assert.match(tools, /searchCompanyManual/);
+  assert.match(tools, /getCleaningAdvice/);
+  assert.match(tools, /searchSupervisorCatalogForCleaning/);
+  assert.match(agent, /Nunca recomiendes mezclar lavandina\/hipoclorito/);
+  assert.match(agent, /Sos LA TIRRA ia\.1\.1/);
   assert.match(tools, /executedCalls/);
   assert.match(agent, /toolChoice: "none"/);
   assert.doesNotMatch(agent, /activeTools: \[\]/);
@@ -122,12 +127,35 @@ test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   assert.match(chat, /32_000/);
   assert.match(chat, /La consulta superó los 32 segundos/);
   assert.match(chat, /<MessageResponse[^>]*>\{part\.text\}<\/MessageResponse>/);
+  assert.match(chat, /Preguntame sobre el sistema/);
+  assert.match(chat, /Preguntame cómo trabajamos/);
+  assert.match(chat, /Pedime una solución de limpieza/);
+  assert.match(chat, /Pedime ayuda para responder/);
+  assert.match(chat, /Shift \+ Enter para otra línea/);
   assert.doesNotMatch(chat, /dangerouslySetInnerHTML/);
   assert.match(navigation, /href: "\/supervisor-lab"/);
-  assert.match(navigation, /groupByLabel\("LA TIRRA ia\.01"\)/);
-  assert.match(page, /title="LA TIRRA ia\.01"/);
-  assert.match(chat, /LA TIRRA ia\.01/);
-  assert.match(agent, /Sos LA TIRRA ia\.01/);
+  assert.match(navigation, /groupByLabel\("LA TIRRA ia\.1\.1"\)/);
+  assert.match(page, /title="LA TIRRA ia\.1\.1"/);
+  assert.match(chat, /LA TIRRA ia\.1\.1/);
+  assert.match(agent, /Sos LA TIRRA ia\.1\.1/);
+});
+
+test("LA TIRRA 1.1 consulta manual y conocimiento seguro de limpieza", () => {
+  const manual = read("src/lib/supervisor-lab/company-manual.ts");
+  const cleaning = read("src/lib/supervisor-lab/cleaning-knowledge.ts");
+  const tools = read("src/lib/supervisor-lab/tools.ts");
+  const readModel = read("src/lib/supervisor-lab/read-model.ts");
+
+  assert.match(manual, /Ciclo de pedidos, entrega y venta/);
+  assert.match(manual, /Recepción de compras a proveedores/);
+  assert.match(manual, /Presupuestos y conversión a pedido/);
+  assert.match(cleaning, /Nunca mezclar lavandina\/hipoclorito con ácidos, amoníaco, alcohol/);
+  assert.match(cleaning, /sangre y fluidos biológicos/);
+  assert.match(cleaning, /clarifyingQuestions/);
+  assert.match(tools, /catalogClarification/);
+  assert.match(readModel, /p\.active = TRUE/);
+  assert.match(readModel, /stock_movements/);
+  assert.doesNotMatch(`${manual}\n${cleaning}\n${tools}`, /INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM/i);
 });
 
 test("el supervisor resuelve métricas mensuales con una consulta agregada y enlaces verificables", () => {

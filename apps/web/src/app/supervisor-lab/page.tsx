@@ -22,10 +22,10 @@ export default async function SupervisorLabPage() {
   return (
     <ModulePage
       active="supervisor-lab"
-      description="Asistente interno personalizado con acceso de solo lectura."
+      description="Asistente operativo y comercial con conocimiento del ERP y asesoramiento especializado en limpieza."
       navigationAuthorization={navigationAuthorization}
       session={session}
-      title="LA TIRRA ia.01"
+      title="LA TIRRA ia.1.1"
     >
       <div className="grid gap-5">
         <PersonalizedOverview summary={summary} />

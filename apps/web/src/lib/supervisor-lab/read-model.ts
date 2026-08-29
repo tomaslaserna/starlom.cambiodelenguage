@@ -38,6 +38,72 @@ export type SupervisorCustomerMatch = {
   sourceHref: string;
 };
 
+export type SupervisorCatalogRecommendation = {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  supplier: string;
+  available: number;
+  href: string;
+};
+
+export async function searchSupervisorCatalogForCleaning(
+  session: AuthSession,
+  terms: string[],
+): Promise<SupervisorCatalogRecommendation[]> {
+  assertSupervisorReader(session);
+  const patterns = [...new Set(terms.map((term) => term.trim().toLocaleLowerCase("es")).filter(Boolean))]
+    .slice(0, 12)
+    .map((term) => `%${term.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
+  if (!patterns.length) return [];
+  const result = await queryWithCompanyContext<{
+    id: string;
+    code: string | null;
+    name: string;
+    category: string | null;
+    supplier: string | null;
+    available: string;
+  }>(
+    session.companyId,
+    `SELECT p.id::text AS id,
+            p.sku AS code,
+            p.name,
+            p.category,
+            s.display_name AS supplier,
+            COALESCE(stock.available, 0)::text AS available
+       FROM products p
+       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+       LEFT JOIN LATERAL (
+         SELECT SUM(CASE WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity ELSE -sm.quantity END) AS available
+           FROM stock_movements sm
+          WHERE sm.empresa_id = p.empresa_id AND sm.product_id = p.id
+       ) stock ON TRUE
+      WHERE p.empresa_id = $1
+        AND p.active = TRUE
+        AND (
+          LOWER(COALESCE(p.name, '')) LIKE ANY($2::text[])
+          OR LOWER(COALESCE(p.category, '')) LIKE ANY($2::text[])
+          OR LOWER(COALESCE(p.sku, '')) LIKE ANY($2::text[])
+        )
+      ORDER BY
+        CASE WHEN COALESCE(stock.available, 0) > 0 THEN 0 ELSE 1 END,
+        p.name ASC
+      LIMIT 12`,
+    [session.companyId, patterns],
+    { cache: false },
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    code: row.code ?? "",
+    name: row.name,
+    category: row.category ?? "",
+    supplier: row.supplier ?? "",
+    available: Number(row.available),
+    href: `/products?query=${encodeURIComponent(row.code || row.name)}`,
+  }));
+}
+
 export type SupervisorCustomerBalance = {
   customerId: string;
   customerName: string;

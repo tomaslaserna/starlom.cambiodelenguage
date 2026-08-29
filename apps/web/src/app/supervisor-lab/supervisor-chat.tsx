@@ -7,6 +7,37 @@ import { Button, Card, Textarea } from "@/components/ui";
 import { MessageResponse } from "@/components/ai-elements/message";
 import type { StarlimSupervisorMessage } from "@/lib/supervisor-lab/agent";
 
+const CAPABILITIES = [
+  {
+    number: "01",
+    eyebrow: "Información del ERP",
+    title: "Preguntame sobre el sistema",
+    description: "Ventas, saldos, facturas, pedidos, stock, clientes y pendientes con enlaces para verificar.",
+    example: "¿Cuánto vendimos este mes y dónde lo verifico?",
+  },
+  {
+    number: "02",
+    eyebrow: "Manual Starlim",
+    title: "Preguntame cómo trabajamos",
+    description: "Te explico cada circuito, qué ocurre después y qué controles tenés que realizar.",
+    example: "¿Cómo registro una devolución y qué modifica?",
+  },
+  {
+    number: "03",
+    eyebrow: "Productos y limpieza",
+    title: "Pedime una solución de limpieza",
+    description: "Analizo mancha, superficie y ambiente, y busco alternativas disponibles en nuestro catálogo.",
+    example: "¿Cómo saco grasa de un piso cerámico y qué producto puedo ofrecer?",
+  },
+  {
+    number: "04",
+    eyebrow: "Atención al cliente",
+    title: "Pedime ayuda para responder",
+    description: "Paso pedidos informales en limpio y preparo respuestas breves para asesorar mejor al cliente.",
+    example: "Ordená este pedido de WhatsApp e indicame qué quiso pedir el cliente.",
+  },
+] as const;
+
 function toolLabel(toolName: string) {
   return {
     searchCustomers: "Buscando clientes",
@@ -17,6 +48,10 @@ function toolLabel(toolName: string) {
     getCustomerProductPattern: "Analizando patrón de compra",
     getOperationalSnapshot: "Revisando pendientes",
     getWorkPriorities: "Preparando tus prioridades",
+    getSalesMetrics: "Calculando ventas",
+    getErpGuide: "Buscando la pantalla correcta",
+    searchCompanyManual: "Consultando el manual Starlim",
+    getCleaningAdvice: "Analizando la solución de limpieza",
   }[toolName] ?? "Consultando el ERP";
 }
 
@@ -116,25 +151,63 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
 
   return (
     <div className="mx-auto grid min-w-0 w-full max-w-5xl gap-4 overflow-hidden">
-      <Card className="border-[#cbdcf7] bg-[linear-gradient(135deg,#f7fbff_0%,#eef5ff_100%)] p-5 text-center">
-        <div className="mx-auto grid max-w-2xl gap-2">
-          <span className="mx-auto rounded-full bg-[#dbeafe] px-3 py-1 text-xs font-extrabold uppercase tracking-wide text-[#075ac7]">
-            Asistente interno · solo lectura
-          </span>
-          <h2 className="text-xl font-extrabold text-[#0f172a]">LA TIRRA ia.01</h2>
-          <p className="text-sm font-medium text-[#64748b]">
-            Consulta clientes, compras habituales, pedidos y decisiones fiscales. No puede modificar datos.
-          </p>
+      <Card className="relative overflow-hidden border-[#bcd3f3] bg-[linear-gradient(135deg,#075ac7_0%,#0b75e5_62%,#0f8ee9_100%)] p-0 text-white shadow-[0_20px_45px_rgba(7,90,199,0.16)]">
+        <div aria-hidden="true" className="absolute -right-16 -top-20 h-64 w-64 rounded-full border-[36px] border-white/5" />
+        <div aria-hidden="true" className="absolute -bottom-24 left-1/3 h-48 w-48 rounded-full bg-white/5 blur-2xl" />
+        <div className="relative grid gap-7 p-5 sm:p-7">
+          <div className="grid max-w-3xl gap-3">
+            <span className="w-fit rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs font-extrabold uppercase tracking-[0.12em] text-white">
+              Tu asistente de trabajo · versión 1.1
+            </span>
+            <div className="grid gap-2">
+              <h2 className="text-2xl font-black tracking-[-0.03em] sm:text-3xl">Hola, soy LA TIRRA.</h2>
+              <p className="max-w-2xl text-sm font-medium leading-6 text-blue-50 sm:text-base">
+                No necesitás aprender comandos ni saber dónde está cada dato. Escribime como hablarías con un compañero y yo busco, explico o te ayudo a responder.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {CAPABILITIES.map((capability) => (
+              <button
+                className="group grid min-h-40 gap-3 rounded-2xl border border-white/20 bg-white/[0.11] p-4 text-left shadow-sm backdrop-blur-sm transition hover:-translate-y-0.5 hover:border-white/40 hover:bg-white/[0.17] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={busy || loadingHistory}
+                key={capability.number}
+                onClick={() => submitText(capability.example)}
+                type="button"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-black tracking-[0.16em] text-blue-100">{capability.eyebrow}</span>
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-white text-xs font-black text-[#075ac7]">{capability.number}</span>
+                </div>
+                <div className="grid gap-1">
+                  <strong className="text-base font-extrabold text-white">{capability.title}</strong>
+                  <span className="text-sm leading-5 text-blue-50/90">{capability.description}</span>
+                </div>
+                <span className="mt-auto text-xs font-bold text-white/80 transition group-hover:text-white">Probar con un ejemplo →</span>
+              </button>
+            ))}
+          </div>
         </div>
       </Card>
 
-      <div className="flex min-w-0 flex-wrap justify-center gap-2">
-        {quickPrompts.map((prompt) => (
-          <Button className="max-w-full whitespace-normal text-center" key={prompt} disabled={busy || loadingHistory} onClick={() => submitText(prompt)} size="sm" type="button" variant="secondary">
-            {prompt}
-          </Button>
-        ))}
-      </div>
+      {quickPrompts.length ? (
+        <section aria-labelledby="recommended-questions" className="grid min-w-0 gap-2">
+          <div className="flex flex-wrap items-end justify-between gap-2 px-1">
+            <div>
+              <h3 className="text-sm font-extrabold text-[#0f172a]" id="recommended-questions">Sugerencias para vos</h3>
+              <p className="text-xs font-medium text-[#64748b]">Preguntas preparadas según tu función y tus pendientes.</p>
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-wrap gap-2">
+            {quickPrompts.map((prompt) => (
+              <Button className="max-w-full whitespace-normal text-left" key={prompt} disabled={busy || loadingHistory} onClick={() => submitText(prompt)} size="sm" type="button" variant="secondary">
+                {prompt}
+              </Button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <Card className="grid min-h-[420px] min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden sm:min-h-[480px]">
         <div aria-live="polite" className="grid min-h-[320px] min-w-0 content-start gap-4 overflow-x-hidden overflow-y-auto p-3 sm:p-5 lg:max-h-[58vh]">
@@ -144,7 +217,8 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
             </div>
           ) : messages.length === 0 ? (
             <div className="m-auto max-w-md py-20 text-center text-sm font-medium text-[#64748b]">
-              Escribí una consulta o elegí una sugerencia. Cada respuesta debe basarse en información trazable del ERP.
+              <strong className="mb-2 block text-base text-[#0f172a]">¿Qué necesitás resolver?</strong>
+              Escribí la consulta con tus propias palabras o elegí una opción de arriba. Si me falta un dato importante, te lo voy a preguntar.
             </div>
           ) : null}
 
@@ -195,7 +269,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
           ) : null}
           {timedOut ? (
             <div className="rounded-lg border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm font-semibold text-[#92400e]">
-              La consulta superó los 32 segundos y fue detenida. Probá nuevamente; LA TIRRA ia.01 no debe quedar pensando indefinidamente.
+              La consulta superó los 32 segundos y fue detenida. Probá nuevamente; LA TIRRA ia.1.1 no debe quedar pensando indefinidamente.
             </div>
           ) : null}
           {memoryError ? (
@@ -207,15 +281,23 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
 
         <form className="grid min-w-0 gap-3 border-t border-[#d9e2ef] bg-[#f8fafc] p-3 sm:p-4" onSubmit={onSubmit}>
           <Textarea
-            aria-label="Consulta para LA TIRRA ia.01"
+            aria-label="Consulta para LA TIRRA ia.1.1"
             disabled={busy || loadingHistory}
             maxLength={2000}
             onChange={(event) => setInput(event.currentTarget.value)}
-            placeholder="Ejemplo: ¿qué suele comprar La Cascada?"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submitText(input);
+              }
+            }}
+            placeholder="Escribime con tus palabras. Ejemplo: ¿qué producto le ofrezco para sacar sarro de una grifería?"
             rows={3}
             value={input}
           />
-          <div className="flex flex-wrap justify-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-xs font-semibold text-[#64748b]">Enter para consultar · Shift + Enter para otra línea</span>
+            <div className="flex flex-wrap justify-center gap-2">
             {busy ? (
               <Button onClick={() => void stop()} type="button" variant="secondary">Detener</Button>
             ) : (
@@ -224,6 +306,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
             <Button disabled={busy || clearingHistory || loadingHistory || messages.length === 0} onClick={() => void startNewConversation()} type="button" variant="secondary">
               {clearingHistory ? "Borrando…" : "Nueva conversación"}
             </Button>
+            </div>
           </div>
           <p className="text-center text-xs font-semibold text-[#64748b]">
             Memoria privada del operador · se conserva por un máximo de 48 horas

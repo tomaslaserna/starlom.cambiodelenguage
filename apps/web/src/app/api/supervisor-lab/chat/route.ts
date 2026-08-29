@@ -63,9 +63,9 @@ export async function POST(request: Request) {
       assertSupervisorAiConfigured();
     } catch (error) {
       if (error instanceof Error && error.message === "SUPERVISOR_AI_DISABLED") {
-        throw new ApiError(404, "LA TIRRA ia.01 no está habilitada");
+        throw new ApiError(404, "LA TIRRA ia.1.1 no está habilitada");
       }
-      throw new ApiError(503, "LA TIRRA ia.01 no está configurada");
+      throw new ApiError(503, "LA TIRRA ia.1.1 no está configurada");
     }
 
     const body = await request.json().catch(() => null);

@@ -285,7 +285,7 @@ function CrmWorldNavigation({
             if (group.label === "Banco") return null;
             if (group.label === "Escritorio") return { ...group, href: "/crm/perfil", label: "Inicio comercial" };
             if (group.label === "Calendario") return { ...group, href: "/crm/calendario" };
-            if (group.label === "LA TIRRA ia.01") return { ...group, href: "/crm/supervisor" };
+            if (group.label === "LA TIRRA ia.1.1") return { ...group, href: "/crm/supervisor" };
             return group;
           }).filter((group): group is NavigationGroup => Boolean(group)),
       }

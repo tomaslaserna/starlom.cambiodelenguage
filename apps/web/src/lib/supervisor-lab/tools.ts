@@ -12,11 +12,14 @@ import {
   getSupervisorInvoiceByNumber,
   getSupervisorOperationalSnapshot,
   getSupervisorSalesMetrics,
+  searchSupervisorCatalogForCleaning,
   searchSupervisorCustomers,
 } from "@/lib/supervisor-lab/read-model";
 import { summarizeCustomerProductPatterns } from "@/lib/supervisor-lab/product-pattern";
 import { getSupervisorLandingSummary } from "@/lib/supervisor-lab/landing-summary";
 import { getErpGuide } from "@/lib/supervisor-lab/system-guide";
+import { searchCompanyManual } from "@/lib/supervisor-lab/company-manual";
+import { diagnoseCleaningProblem } from "@/lib/supervisor-lab/cleaning-knowledge";
 
 async function resolvePrioritySession(session: AuthSession, employeeName?: string) {
   const requestedName = employeeName?.trim();
@@ -206,6 +209,40 @@ export function createSupervisorTools(session: AuthSession) {
         topic: z.enum(["sales", "profitability", "collections", "fiscal", "orders", "stock", "customers"]),
       }),
       execute: async ({ topic }) => ({ guide: getErpGuide(topic) }),
+    }),
+    searchCompanyManual: tool({
+      description: "Busca en el manual operativo detallado de Starlim cómo funciona un proceso del ERP o de la empresa. Usar para preguntas de procedimiento, pasos, controles, responsabilidades o qué ocurre después de una acción.",
+      inputSchema: z.object({
+        query: z.string().trim().min(3).max(300),
+      }),
+      execute: async ({ query }) => executeOnce(`searchCompanyManual:${query.trim().toLocaleLowerCase("es")}`, async () => ({
+        entries: searchCompanyManual(query),
+        clarification: "El manual describe el circuito configurado en el ERP. Si una política interna no figura, debe marcarse como pendiente de validación y no inventarse.",
+      })),
+    }),
+    getCleaningAdvice: tool({
+      description: "Diagnostica una necesidad de limpieza doméstica o institucional y busca opciones reales en el catálogo activo de Starlim. Usar para manchas, suciedad, superficies, desinfección, métodos y asesoramiento al cliente.",
+      inputSchema: z.object({
+        problem: z.string().trim().min(3).max(500),
+        surface: z.string().trim().min(2).max(160).optional(),
+        environment: z.enum(["hogar", "comercio", "institucion", "industria", "desconocido"]).optional(),
+      }),
+      execute: async ({ problem, surface, environment }) => executeOnce(
+        `getCleaningAdvice:${problem}:${surface ?? ""}:${environment ?? ""}`.toLocaleLowerCase("es"),
+        async () => {
+          const advice = diagnoseCleaningProblem(problem, surface, environment);
+          return {
+            advice,
+            catalogMatches: await searchSupervisorCatalogForCleaning(session, advice.catalogTerms),
+            catalogClarification: "Son coincidencias del catálogo activo, ordenadas primero por existencia positiva. Confirmar etiqueta, compatibilidad, presentación y lista de precios antes de ofrecerlas al cliente.",
+            sources: [
+              { label: "Catálogo de productos", href: "/products" },
+              { label: "Listas de precios", href: "/crm/listas" },
+              { label: "Stock", href: "/stock" },
+            ],
+          };
+        },
+      ),
     }),
   };
 }

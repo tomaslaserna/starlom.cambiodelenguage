@@ -213,7 +213,7 @@ export const navigationGroups: NavigationGroup[] = [
   },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   { href: "/bank", label: "Banco", active: "bank" },
-  { href: "/supervisor-lab", label: "LA TIRRA ia.01", active: "supervisor-lab", permission: CRM_READ_PERMISSION },
+  { href: "/supervisor-lab", label: "LA TIRRA ia.1.1", active: "supervisor-lab", permission: CRM_READ_PERMISSION },
   // CRM (segundo mundo para vendedores). active: "crm" agrupa estos en la seccion CRM.
   { href: "/crm/perfil", label: "Perfil", active: "crm", permission: CRM_READ_PERMISSION },
   { href: "/crm/clientes", label: "Clientes", active: "crm", permission: CRM_READ_PERMISSION },
@@ -242,7 +242,7 @@ export const navigationSections: NavigationSection[] = [
     icon: "chart",
     groups: [
       groupByLabel("Escritorio"),
-      groupByLabel("LA TIRRA ia.01"),
+      groupByLabel("LA TIRRA ia.1.1"),
       groupByLabel("Calendario"),
       groupByLabel("Banco"),
     ],

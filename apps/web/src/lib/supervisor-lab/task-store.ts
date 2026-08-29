@@ -28,7 +28,7 @@ export function supervisorTasksEnabled() {
 }
 
 function assertTasksEnabled() {
-  if (!supervisorTasksEnabled()) throw new ApiError(404, "Tareas de LA TIRRA ia.01 no habilitadas");
+  if (!supervisorTasksEnabled()) throw new ApiError(404, "Tareas de LA TIRRA ia.1.1 no habilitadas");
 }
 
 export async function listSupervisorTasks(session: AuthSession): Promise<SupervisorTask[]> {
