@@ -1160,6 +1160,7 @@ test("public store creates a price-free cart and hands it to CRM as a lead plus 
   const login = read("apps/web/src/app/login/page.tsx");
   const page = read("apps/web/src/app/tienda/page.tsx");
   const client = read("apps/web/src/app/tienda/storefront.tsx");
+  const catalog = read("apps/web/src/lib/catalog.ts");
   const storefront = read("apps/web/src/lib/storefront.ts");
   const route = read("apps/web/src/app/api/storefront/requests/route.ts");
 
@@ -1167,6 +1168,12 @@ test("public store creates a price-free cart and hands it to CRM as a lead plus 
   assert.match(page, /listStorefrontProducts/);
   assert.match(client, /Tu carrito/);
   assert.match(client, /\+\{products\.length\} artículos en lista/);
+  assert.match(client, /Disponible/);
+  assert.match(client, /Consultar disponibilidad/);
+  assert.match(client, /Sin stock momentáneo/);
+  assert.match(client, /AvailabilityBadge available=\{product\.available\}/);
+  assert.match(catalog, /COALESCE\(stock\.available, 0\)::text AS available/);
+  assert.match(catalog, /availability: Number\(row\.available\) <= 0/);
   assert.match(client, /Continuar · \{totalUnits\}/);
   assert.match(client, /Papelería/);
   assert.match(client, /Descartables/);

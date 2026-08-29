@@ -361,6 +361,7 @@ export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
     supplier: string | null;
     name: string;
     image_path: string | null;
+    available: string;
   }>(
     companyId,
     `SELECT p.id::text AS id,
@@ -368,9 +369,21 @@ export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
             p.category,
             s.display_name AS supplier,
             p.name,
-            p.image_path
+            p.image_path,
+            COALESCE(stock.available, 0)::text AS available
        FROM products p
        LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+       LEFT JOIN LATERAL (
+         SELECT SUM(
+           CASE
+             WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
+             ELSE -sm.quantity
+           END
+         ) AS available
+           FROM stock_movements sm
+          WHERE sm.empresa_id = p.empresa_id
+            AND sm.product_id = p.id
+       ) stock ON TRUE
       WHERE p.empresa_id = $1 AND p.active = true
       ORDER BY p.name ASC, p.id ASC`,
     [companyId],
@@ -383,6 +396,7 @@ export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
     supplier: row.supplier ?? "",
     name: row.name,
     imageUrl: row.image_path ? publicProductImageUrl(row.image_path) : null,
+    availability: Number(row.available) <= 0 ? "out" as const : Number(row.available) <= 5 ? "check" as const : "available" as const,
   }));
 }
 

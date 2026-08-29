@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function StorePage() {
   const products = (await listStorefrontProducts(1))
-    .map(({ id, name, code, category, supplier, imageUrl }) => ({ id, name, code, category, brand: supplier, imageUrl }));
+    .map(({ id, name, code, category, supplier, imageUrl, availability }) => ({ id, name, code, category, brand: supplier, imageUrl, available: availability }));
   return <main className="min-h-screen bg-[#f4f8fc] text-[#172033]">
     <header className="sticky top-0 z-30 border-b border-[#dbe5f1] bg-white/95 px-4 py-3 shadow-sm backdrop-blur sm:px-8"><div className="mx-auto flex max-w-[1380px] items-center justify-between gap-4"><Link href="/login"><Image alt="Starlim" className="h-auto w-[145px]" height={66} priority src="/starlim-logo.png" width={145} /></Link><Link className="rounded-[10px] border border-[#cbd8e8] px-4 py-2 text-sm font-bold text-[#315170] hover:bg-[#f4f8fc]" href="/login">Volver</Link></div></header>
     <section className="relative isolate overflow-hidden bg-[linear-gradient(115deg,#063779,#075ac7)] px-5 py-10 text-white sm:px-8 sm:py-14">
