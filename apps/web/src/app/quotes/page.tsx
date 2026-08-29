@@ -22,8 +22,6 @@ import {
   type StatusBadgeTone,
 } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { getOrderFormData } from "@/lib/orders";
-import { listVendors } from "@/lib/imports";
 import { listQuotes } from "@/lib/quotes";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
@@ -33,10 +31,8 @@ import {
   QUOTES_READ_PERMISSION,
   sessionAllows,
 } from "@/lib/route-auth";
-import { createQuoteAction, deleteQuoteAction } from "@/app/quotes/actions";
+import { deleteQuoteAction } from "@/app/quotes/actions";
 import { QuoteDeleteButton } from "@/app/quotes/quote-delete-button";
-import { QuoteEntryFields } from "@/app/quotes/quote-entry-fields";
-import { QuoteEntryForm } from "@/app/quotes/quote-entry-form";
 
 type QuotesPageProps = {
   searchParams: Promise<{
@@ -45,6 +41,7 @@ type QuotesPageProps = {
     error?: string;
     updated?: string;
     deleted?: string;
+    created?: string;
   }>;
 };
 
@@ -108,14 +105,12 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const params = await searchParams;
   const status = params.status?.trim() || "pendiente";
   const query = params.q?.trim().toLowerCase() ?? "";
-  const [canCreateQuotes, canApproveQuotes, canEditQuotes, canDeleteQuotes, rawQuotes, quoteFormData, vendors] = await Promise.all([
+  const [canCreateQuotes, canApproveQuotes, canEditQuotes, canDeleteQuotes, rawQuotes] = await Promise.all([
     sessionAllows(session, [QUOTES_CREATE_PERMISSION]),
     sessionAllows(session, [QUOTES_APPROVE_PERMISSION]),
     sessionAllows(session, [{ resource: "presupuestos", action: "editar" }]),
     sessionAllows(session, [{ resource: "presupuestos", action: "cancelar" }]),
     listQuotes(session.companyId, status === "all" ? "" : status),
-    getOrderFormData(session.companyId),
-    listVendors(session.companyId),
   ]);
   const quotes = rawQuotes.filter((item) => matchesQuery(item, query));
   const total = quotes.reduce((sum, quote) => sum + quote.total, 0);
@@ -130,8 +125,8 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
     >
       <div className="grid gap-5">
         <PageHeader
-          description="Genera presupuestos formales para guardar o presupuestos rapidos para enviar por WhatsApp."
-          moduleIntro
+          actions={canCreateQuotes ? <ButtonLink href="/quotes/new">Nuevo presupuesto</ButtonLink> : null}
+          description="Consulta, busca y gestiona los presupuestos realizados."
           title="Presupuestos"
         />
 
@@ -151,18 +146,10 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
             Presupuesto eliminado.
           </div>
         ) : null}
-
-        {canCreateQuotes ? (
-        <Card>
-          <QuoteEntryForm action={createQuoteAction} className="grid scroll-mt-24 gap-4 p-4" id="crear-presupuesto">
-            <QuoteEntryFields
-              clients={quoteFormData.clients}
-              priceLists={quoteFormData.priceLists}
-              products={quoteFormData.products}
-              vendors={vendors}
-            />
-          </QuoteEntryForm>
-        </Card>
+        {params.created ? (
+          <div className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]">
+            Presupuesto creado correctamente.
+          </div>
         ) : null}
 
         <Toolbar ariaLabel="Filtros de presupuestos">

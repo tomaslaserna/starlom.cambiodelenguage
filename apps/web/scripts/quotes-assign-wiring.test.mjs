@@ -12,7 +12,7 @@ test("QuoteEntryFields tiene el selector Asignar a", () => {
 });
 
 test("la pagina de alta pasa vendors a QuoteEntryFields", () => {
-  const src = read("../src/app/quotes/page.tsx");
+  const src = read("../src/app/quotes/new/page.tsx");
   assert.match(src, /listVendors/);
   assert.match(src, /vendors=\{/);
 });

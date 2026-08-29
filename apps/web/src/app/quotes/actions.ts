@@ -60,6 +60,11 @@ export async function createQuoteAction(
     return { ok: false, error: error instanceof Error ? error.message : "No se pudo crear el presupuesto" };
   }
   revalidatePath("/quotes");
+  revalidatePath("/crm/presupuestos");
+  const returnTo = String(formData.get("returnTo") ?? "");
+  if (returnTo === "/quotes?created=1" || returnTo === "/crm/presupuestos?created=1") {
+    redirect(returnTo);
+  }
   // nonce lets the client detect a fresh success and reset the form once.
   return { ok: true, nonce: Date.now() };
 }
