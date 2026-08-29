@@ -135,7 +135,10 @@ test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   assert.match(chat, /Pedime ayuda para responder/);
   assert.match(chat, /Shift \+ Enter para otra línea/);
   assert.match(chat, /id="tirra-conversation"/);
-  assert.match(chat, /h-\[84vh\]/);
+  assert.match(chat, /h-\[900px\]/);
+  assert.match(chat, /sm:h-\[980px\]/);
+  assert.match(chat, /lg:h-\[1080px\]/);
+  assert.match(chat, /rows=\{2\}/);
   assert.match(chat, /Ampliar lectura/);
   assert.match(chat, /fixed inset-3/);
   assert.match(chat, /Escape/);

@@ -226,7 +226,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
         aria-label="Área de conversación con LA TIRRA"
         className={expandedChat
           ? "fixed inset-3 z-[80] grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[#c9d8ec] shadow-[0_28px_80px_rgba(15,23,42,0.28)] sm:inset-6"
-          : "grid h-[84vh] min-h-[620px] max-h-[1020px] min-w-0 scroll-mt-5 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[#c9d8ec] shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:min-h-[680px]"}
+          : "grid h-[900px] min-h-[84vh] min-w-0 scroll-mt-5 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-[#c9d8ec] shadow-[0_18px_44px_rgba(15,23,42,0.08)] sm:h-[980px] lg:h-[1080px]"}
         id="tirra-conversation"
       >
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d9e2ef] bg-white px-4 py-3 sm:px-6">
@@ -325,7 +325,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
               }
             }}
             placeholder="Escribime con tus palabras. Ejemplo: ¿qué producto le ofrezco para sacar sarro de una grifería?"
-            rows={3}
+            rows={2}
             value={input}
           />
           <div className="flex flex-wrap items-center justify-between gap-3">
