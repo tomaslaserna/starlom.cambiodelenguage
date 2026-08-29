@@ -1974,3 +1974,27 @@ test("editing blocks historical zero-rate orders and derives VAT from the select
   assert.match(orders, /hasConsistentOrderVatSnapshot/);
   assert.match(orders, /COALESCE\(s\.vat_rate, 0\)::text AS vat_rate/);
 });
+
+test("PDF multipagina conserva identidad, cierre fiscal y firma util", () => {
+  const renderer = read("apps/web/src/lib/pdf/renderer.ts");
+  const documents = read("apps/web/src/lib/pdf/documents.ts");
+  const statement = read("apps/web/src/app/api/pdfs/accounts/statement/[id]/route.ts");
+
+  assert.match(renderer, /private addContinuationPage\(\)/);
+  assert.match(renderer, /CONTINUACION/);
+  assert.match(renderer, /Cliente \/ destinatario:/);
+  assert.match(renderer, /this\.addContinuationPage\(\);\s*drawHeader\(\);/);
+  assert.match(renderer, /options: \{ keepWithNext\?: number \} = \{\}/);
+  assert.match(renderer, /const latestStart = FOOTER_Y/);
+  assert.doesNotMatch(renderer, /signatureBaseline|signatureLimit/);
+  assert.match(documents, /fiscalSummary\(fiscalRows,[\s\S]*keepWithNext: 66/);
+  assert.match(documents, /continuationSubject: quote\.customer/);
+  assert.match(documents, /continuationSubject: remito\.nombre_cliente/);
+  assert.match(documents, /continuationSubject: sale\.nombre_cliente/);
+  assert.match(statement, /continuationSubject: customer\.name/);
+  assert.equal(
+    (documents.match(/COALESCE\(NULLIF\(TRIM\(c\.legal_name\), ''\), NULLIF\(TRIM\(s\.client_name\), ''\), c\.display_name, ''\)/g) ?? []).length,
+    2,
+    "facturas y notas fiscales deben priorizar la razon social sobre el nombre comercial",
+  );
+});

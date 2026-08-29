@@ -27,6 +27,7 @@ type FiscalHeaderInput = {
   footerRight?: string;
   fiscalCode?: string;
   associatedDocument?: string;
+  continuationSubject?: string;
 };
 
 const COLORS = {
@@ -152,6 +153,7 @@ export class StarlimPdf {
   doc: PDFKit.PDFDocument;
   private footerLeft = `${companyInfo.brand} - documento operativo`;
   private footerRight = "";
+  private currentHeader: FiscalHeaderInput | null = null;
 
   constructor(doc: PDFKit.PDFDocument) {
     this.doc = doc;
@@ -167,11 +169,32 @@ export class StarlimPdf {
 
   ensureSpace(height: number) {
     if (this.doc.y + height > CONTENT_BOTTOM) {
-      this.doc.addPage();
+      this.addContinuationPage();
     }
   }
 
+  private addContinuationPage() {
+    this.doc.addPage();
+    const header = this.currentHeader;
+    if (!header) return;
+
+    const top = PAGE.marginTop;
+    const rightX = PAGE.width - PAGE.marginX - 250;
+    this.drawLogo(PAGE.marginX, top, 24);
+    this.doc.font("Helvetica-Bold").fontSize(8).fillColor(COLORS.soft);
+    this.doc.text("CONTINUACION", rightX, top, { width: 250, align: "right" });
+    this.doc.font("Helvetica-Bold").fontSize(12).fillColor(COLORS.body);
+    this.doc.text(`${header.title} ${header.number}`.trim(), rightX, top + 13, { width: 250, align: "right" });
+    this.doc.font("Helvetica").fontSize(7.5).fillColor(COLORS.muted);
+    const subject = header.continuationSubject ? `Cliente / destinatario: ${header.continuationSubject}` : companyInfo.name;
+    this.doc.text(subject, PAGE.marginX, top + 34, { width: 330 });
+    this.doc.text([header.date, this.footerRight].filter(Boolean).join(" - "), rightX, top + 34, { width: 250, align: "right" });
+    this.doc.moveTo(PAGE.marginX, top + 49).lineTo(PAGE.width - PAGE.marginX, top + 49).strokeColor(COLORS.body).lineWidth(0.9).stroke();
+    this.doc.y = top + 61;
+  }
+
   drawHeader(input: FiscalHeaderInput) {
+    this.currentHeader = input;
     this.footerLeft = input.footerLeft ?? `${input.title} ${input.number}`.trim();
     this.footerRight = input.footerRight ?? input.date;
 
@@ -441,7 +464,7 @@ export class StarlimPdf {
       );
       const rowHeight = Math.max(18, Math.max(...heights) + 7);
       if (this.doc.y + rowHeight > CONTENT_BOTTOM) {
-        this.doc.addPage();
+        this.addContinuationPage();
         drawHeader();
       }
 
@@ -458,14 +481,18 @@ export class StarlimPdf {
     this.doc.y += 6;
   }
 
-  fiscalSummary(rows: [string, string][], finalLabel: string, finalValue: string): void {
+  fiscalSummary(
+    rows: [string, string][],
+    finalLabel: string,
+    finalValue: string,
+    options: { keepWithNext?: number } = {},
+  ): void {
     const height = 110;
-    this.ensureSpace(height + 8);
+    this.ensureSpace(height + 8 + (options.keepWithNext ?? 0));
     const y = this.doc.y + 8;
     if (y + height > CONTENT_BOTTOM) {
-      this.doc.addPage();
-      this.doc.y = PAGE.marginTop;
-      this.fiscalSummary(rows, finalLabel, finalValue);
+      this.addContinuationPage();
+      this.fiscalSummary(rows, finalLabel, finalValue, options);
       return;
     }
 
@@ -613,7 +640,7 @@ export class StarlimPdf {
       });
       const rowHeight = Math.max(minRowHeight, Math.max(...heights) + rowPadding);
       if (this.doc.y + rowHeight > CONTENT_BOTTOM) {
-        this.doc.addPage();
+        this.addContinuationPage();
         drawHeader();
       }
 
@@ -674,21 +701,17 @@ export class StarlimPdf {
 
   signatures(left: string, right: string, options: { density?: PdfTableDensity } = {}) {
     const compact = options.density === "compact";
-    const signatureBaseline = compact ? PAGE.height - 100 : PAGE.height - 128;
-    const signatureLimit = compact ? PAGE.height - 76 : PAGE.height - 90;
     const labelOffset = compact ? 6 : 8;
-    const y = Math.max(this.doc.y + (compact ? 14 : 26), signatureBaseline);
-    if (y > signatureLimit) {
-      this.doc.addPage();
-      this.doc.y = 88;
-    }
-    const finalY = Math.min(y, compact ? PAGE.height - 88 : PAGE.height - 112);
+    const latestStart = FOOTER_Y - (compact ? 15 : 18);
+    if (this.doc.y > latestStart) this.addContinuationPage();
+    const finalY = Math.min(this.doc.y + (compact ? 3 : 4), latestStart);
     this.doc.moveTo(PAGE.marginX, finalY).lineTo(PAGE.marginX + 210, finalY).strokeColor(COLORS.body).lineWidth(0.7).stroke();
     this.doc.moveTo(PAGE.width - PAGE.marginX - 210, finalY).lineTo(PAGE.width - PAGE.marginX, finalY).stroke();
     this.doc.font("Helvetica").fontSize(compact ? 7 : 8).fillColor(COLORS.muted);
     this.doc.text(left, PAGE.marginX, finalY + labelOffset, { width: 210, align: "center" });
     this.doc.text(right, PAGE.width - PAGE.marginX - 210, finalY + labelOffset, { width: 210, align: "center" });
     this.doc.fillColor(COLORS.body);
+    this.doc.y = finalY + labelOffset + (compact ? 9 : 11);
   }
 
   addPageNumbers() {

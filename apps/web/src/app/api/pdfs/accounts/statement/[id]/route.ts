@@ -45,6 +45,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
         extra: [customer.taxId ? `CUIT ${customer.taxId}` : "", `Periodo: ${dateRangeLabel(from, to)}`].filter(Boolean),
         footerLeft: `Estado de cuenta - ${customer.name || "Cliente"}`,
         footerRight: dateRangeLabel(from, to),
+        continuationSubject: customer.name || "Cliente",
       });
 
       pdf.section("Cliente");

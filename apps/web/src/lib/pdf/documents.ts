@@ -225,6 +225,7 @@ export async function buildQuotePdf(companyId: number, quoteId: string) {
       extra: [`Validez hasta ${pdfDate(quote.expirationDate)}`],
       footerLeft: "Validez del presupuesto",
       footerRight: `Total ${pdfMoney(quote.total)}`,
+      continuationSubject: quote.customer.businessName || quote.customer.name || "Sin cliente",
     });
 
     pdf.section("Presupuestado a");
@@ -392,6 +393,7 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
       extra: [includePrices ? "Documento valorizado" : "Control de mercaderia", remito.deposito ? `Deposito: ${remito.deposito}` : ""].filter(Boolean),
       footerLeft: includePrices ? "Documento no valido como factura" : "Control de mercaderia - sin valores",
       footerRight: includePrices ? `Total final ${pdfMoney(valuedSummary.total)}` : "Deposito",
+      continuationSubject: remito.nombre_cliente || "Sin cliente",
     });
 
     pdf.section("Destinatario");
@@ -535,6 +537,7 @@ export async function buildAccountStatementPdf(companyId: number, input: {
       extra: [`Tipo: ${type === "cliente" ? "Cliente" : "Proveedor"}`, `Periodo: ${dateRangeLabel(input.from, input.to)}`],
       footerLeft: `Cuenta corriente - ${name}`,
       footerRight: dateRangeLabel(input.from, input.to),
+      continuationSubject: name,
     });
     pdf.section(type === "cliente" ? "Cliente" : "Proveedor");
     pdf.title(name, 12);
@@ -653,6 +656,7 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: string
       extra: [isCollection ? "Cobro de cliente" : "Pago a proveedor"],
       footerLeft: isCollection ? "Comprobante de cobranza" : "Comprobante de pago",
       footerRight: pdfMoney(Number(record.monto)),
+      continuationSubject: record.entidad_nombre || "-",
     });
     pdf.section(isCollection ? "Recibimos de" : "Pagamos a");
     pdf.title(record.entidad_nombre || "-", 12);
@@ -703,7 +707,7 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
     `
       SELECT s.id::text AS id,
              COALESCE(s.sale_number, '') AS sale_number,
-             COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
+             COALESCE(NULLIF(TRIM(c.legal_name), ''), NULLIF(TRIM(s.client_name), ''), c.display_name, '') AS nombre_cliente,
              COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
              COALESCE(c.fiscal_condition, '') AS condicion_iva_cliente,
              COALESCE(c.delivery_address, c.address, '') AS domicilio_cliente,
@@ -803,6 +807,7 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
       variant: "fiscal",
       footerLeft: "Comprobante autorizado - ARCA",
       footerRight: `Total ${pdfMoney(amounts.total)}`,
+      continuationSubject: sale.nombre_cliente || "Sin cliente",
     });
     pdf.fiscalClientBox({
       name: sale.nombre_cliente || "Sin cliente",
@@ -842,7 +847,7 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
           ["Importe Otros Tributos", pdfMoney(0)],
         ]
       : [["Importe", pdfMoney(amounts.total)], ["Importe Otros Tributos", pdfMoney(0)]];
-    pdf.fiscalSummary(fiscalRows, "Importe Total", pdfMoney(amounts.total));
+    pdf.fiscalSummary(fiscalRows, "Importe Total", pdfMoney(amounts.total), { keepWithNext: 66 });
     pdf.fiscalAuthorizationBox(sale.cae, sale.cae_expires_at ? pdfDate(sale.cae_expires_at) : "-", qrImage);
   });
 }
@@ -896,7 +901,7 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
              s.fiscal_point_of_sale AS sale_fiscal_point_of_sale,
              s.fiscal_receipt_type AS sale_fiscal_receipt_type,
              s.fiscal_receipt_number AS sale_fiscal_receipt_number,
-             COALESCE(s.client_name, c.display_name, '') AS cliente,
+             COALESCE(NULLIF(TRIM(c.legal_name), ''), NULLIF(TRIM(s.client_name), ''), c.display_name, '') AS cliente,
              COALESCE(s.client_document, c.tax_id, '') AS documento,
              COALESCE(c.fiscal_condition, '') AS condicion_iva_cliente,
              COALESCE(c.delivery_address, c.address, '') AS domicilio_cliente,
@@ -965,6 +970,7 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
       variant: "fiscal",
       footerLeft: "Nota fiscal autorizada - ARCA",
       footerRight: `Total ${pdfMoney(amounts.total)}`,
+      continuationSubject: note.cliente || "Sin cliente",
     });
     pdf.fiscalClientBox({
       name: note.cliente || "Sin cliente",
@@ -994,7 +1000,7 @@ export async function buildFiscalSalesNotePdf(companyId: number, noteId: string)
         ]
       : [["Importe", pdfMoney(amounts.total)], ["Importe Otros Tributos", pdfMoney(0)]];
     pdf.note(note.reason || `Comprobante asociado a factura ${associated}.`);
-    pdf.fiscalSummary(fiscalRows, "Importe Total", pdfMoney(amounts.total));
+    pdf.fiscalSummary(fiscalRows, "Importe Total", pdfMoney(amounts.total), { keepWithNext: 66 });
     pdf.fiscalAuthorizationBox(note.cae, note.cae_expires_at ? pdfDate(note.cae_expires_at) : "-", qrImage);
   });
 }
@@ -1053,6 +1059,7 @@ export async function buildInternalSalesNotePdf(companyId: number, noteId: strin
       variant: "internal",
       footerLeft: "Documento interno no fiscal",
       footerRight: `Total ${pdfMoney(total)}`,
+      continuationSubject: note.customer_name || "Sin cliente",
     });
     pdf.section("Cliente");
     pdf.title(note.customer_name || "Sin cliente", 12);
@@ -1091,6 +1098,7 @@ export async function buildPurchaseOrderPdf(companyId: number, purchaseId: strin
       extra: [`Estado: ${purchase.status}`, taxLabel],
       footerLeft: `Proveedor: ${purchase.supplierName || "-"}`,
       footerRight: `Total ${pdfMoney(purchase.total)}`,
+      continuationSubject: purchase.supplierName || "-",
     });
     pdf.section("Proveedor");
     pdf.title(purchase.supplierName || `Compra #${purchase.id}`, 12);
@@ -1124,6 +1132,7 @@ export async function buildPurchaseReturnRequestPdf(companyId: number, purchaseI
       extra: [`Compra: ${String(purchase.id).slice(0, 8).toUpperCase()}`, `Estado: ${purchase.status}`, taxLabel],
       footerLeft: "Devolucion a proveedor",
       footerRight: `Ref. compra ${purchase.id}`,
+      continuationSubject: purchase.supplierName || "-",
     });
     pdf.section("Proveedor");
     pdf.title(purchase.supplierName || `Compra #${purchase.id}`, 12);
@@ -1243,6 +1252,7 @@ export async function buildPriceListPdf(companyId: number, options: PriceListPdf
       extra: [ivaTag, `Productos: ${rows.length}`],
       footerLeft: "Lista de precios",
       footerRight: listName,
+      continuationSubject: listName,
     });
     pdf.section("Lista vigente");
     pdf.title(listName, 13);
@@ -1357,6 +1367,7 @@ export async function buildOrderRequestPdf(companyId: number, orderId: string) {
       variant: "internal",
       footerLeft: "Control de deposito - paso previo al armado",
       footerRight: "Uso interno",
+      continuationSubject: current.nombre_cliente || `Pedido ${commercialCode}`,
     });
     pdf.section("Pedido");
     pdf.title(current.nombre_cliente || `Pedido ${commercialCode}`, 12);
@@ -1506,6 +1517,7 @@ export async function buildOrderRemitoPdf(
       extra: [includePrices ? "Documento valorizado" : "Control de mercaderia", copia ? "COPIA" : "ORIGINAL"],
       footerLeft: includePrices ? "Documento no valido como factura" : "Control de mercaderia - sin valores",
       footerRight: includePrices ? `Total final ${pdfMoney(valuedSummary.total)}` : "Deposito",
+      continuationSubject: order.nombre_cliente || "Sin cliente",
     });
 
     pdf.section("Destinatario");
