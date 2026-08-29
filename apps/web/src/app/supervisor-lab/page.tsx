@@ -5,8 +5,6 @@ import { requireStaffSession } from "@/lib/auth";
 import { getNavigationAuthorization } from "@/lib/navigation";
 import { supervisorAiEnabled } from "@/lib/supervisor-lab/availability";
 import { SupervisorChat } from "@/app/supervisor-lab/supervisor-chat";
-import { SupervisorTaskInbox } from "@/app/supervisor-lab/task-inbox";
-import { supervisorTasksEnabled } from "@/lib/supervisor-lab/task-store";
 import { getSupervisorLandingSummary } from "@/lib/supervisor-lab/landing-summary";
 import { PersonalizedOverview } from "@/app/supervisor-lab/personalized-overview";
 
@@ -30,7 +28,6 @@ export default async function SupervisorLabPage() {
       <div className="grid gap-5">
         <PersonalizedOverview summary={summary} />
         <SupervisorChat quickPrompts={summary.quickPrompts} />
-        {supervisorTasksEnabled() ? <SupervisorTaskInbox /> : null}
       </div>
     </ModulePage>
   );

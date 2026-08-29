@@ -121,6 +121,8 @@ test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   assert.match(page, /requireStaffSession\(\)/);
   assert.match(page, /getSupervisorLandingSummary\(session\)/);
   assert.match(page, /<PersonalizedOverview summary=\{summary\}/);
+  assert.doesNotMatch(page, /SupervisorTaskInbox/);
+  assert.doesNotMatch(page, /supervisorTasksEnabled/);
   assert.match(chat, /DefaultChatTransport<StarlimSupervisorMessage>/);
   assert.match(chat, /sendMessage\(\{ text: value \}\)/);
   assert.match(chat, /quickPrompts\.map/);
@@ -132,6 +134,9 @@ test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   assert.match(chat, /Pedime una solución de limpieza/);
   assert.match(chat, /Pedime ayuda para responder/);
   assert.match(chat, /Shift \+ Enter para otra línea/);
+  assert.match(chat, /id="tirra-conversation"/);
+  assert.match(chat, /h-\[76vh\]/);
+  assert.match(chat, /scrollIntoView/);
   assert.doesNotMatch(chat, /dangerouslySetInnerHTML/);
   assert.match(navigation, /href: "\/supervisor-lab"/);
   assert.match(navigation, /groupByLabel\("LA TIRRA ia\.1\.1"\)/);
