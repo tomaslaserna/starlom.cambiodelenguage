@@ -29,6 +29,16 @@ export const ERP_GUIDE = {
     href: "/stock",
     guidance: "Abrí Datos > Stock para consultar existencias y movimientos.",
   },
+  products: {
+    label: "Catálogo de productos",
+    href: "/products",
+    guidance: "Abrí Datos > Productos para consultar y mantener el catálogo general de artículos.",
+  },
+  purchases: {
+    label: "Nueva compra",
+    href: "/purchases",
+    guidance: "Abrí Compras > Nueva compra. Dentro de Mercadería recibida usá + Agregar producto nuevo para dar de alta un artículo que llegó de un proveedor; al registrar la compra también se incorpora su stock inicial y costo.",
+  },
   customers: {
     label: "Clientes",
     href: "/customers",

@@ -61,6 +61,7 @@ test("el agente usa herramientas tipadas, de servidor y solo lectura", () => {
   assert.match(agent, /Sos LA TIRRA ia\.1\.1/);
   assert.match(tools, /executedCalls/);
   assert.match(agent, /toolChoice: "none"/);
+  assert.match(agent, /stepNumber >= 2/);
   assert.doesNotMatch(agent, /activeTools: \[\]/);
   assert.match(tools, /employeeName/);
   assert.match(tools, /resolvePrioritySession/);
@@ -188,6 +189,9 @@ test("el supervisor resuelve métricas mensuales con una consulta agregada y enl
   assert.match(tools, /Rentabilidad/);
   assert.match(guide, /payments\/accounts/);
   assert.match(guide, /Abrí Administración > Cuentas corrientes/);
+  assert.match(guide, /\+ Agregar producto nuevo/);
+  assert.match(guide, /href: "\/purchases"/);
+  assert.match(tools, /"products", "purchases"/);
 });
 
 test("el perfil personalizado llega al tablero y a las instrucciones del agente", () => {

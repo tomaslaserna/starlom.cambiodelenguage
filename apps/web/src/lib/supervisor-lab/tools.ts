@@ -206,7 +206,7 @@ export function createSupervisorTools(session: AuthSession) {
     getErpGuide: tool({
       description: "Indica en que pantalla del ERP se encuentra una funcion o dato y devuelve un enlace interno. Usar cuando el usuario pregunta donde ver algo o cuando conviene permitirle verificar un numero.",
       inputSchema: z.object({
-        topic: z.enum(["sales", "profitability", "collections", "fiscal", "orders", "stock", "customers"]),
+        topic: z.enum(["sales", "profitability", "collections", "fiscal", "orders", "stock", "products", "purchases", "customers"]),
       }),
       execute: async ({ topic }) => ({ guide: getErpGuide(topic) }),
     }),
