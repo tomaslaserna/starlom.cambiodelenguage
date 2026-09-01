@@ -14,3 +14,9 @@ test("entregar una venta postea el debito en la cuenta corriente", () => {
   // idempotente: no duplica si ya hay debito para esa venta
   assert.match(source, /FROM current_account_movements WHERE empresa_id = \$1 AND sale_id = \$2::uuid AND debit > 0/);
 });
+
+test("la fecha comercial se fija al dia real de entrega", () => {
+  assert.match(source, /const actualDeliveryDate = localDateIso\(\)/);
+  assert.match(source, /sale_date = CASE WHEN \$1 = 'entregado' THEN \$5::date ELSE sale_date END/);
+  assert.match(source, /\[nextStatus, id, session\.companyId, nextCollectionStatus, actualDeliveryDate\]/);
+});

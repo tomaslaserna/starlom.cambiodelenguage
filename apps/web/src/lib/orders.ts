@@ -1328,16 +1328,18 @@ export async function updateOrderStatus(
 
     const nextCollectionStatus =
       nextStatus === "entregado" ? "pendiente" : nextStatus === "cancelado" ? "cancelado" : "no_aplica";
+    const actualDeliveryDate = localDateIso();
     await client.query(
       `
         UPDATE sales
         SET order_status = $1,
             status = $1,
             collection_status = $4,
+            sale_date = CASE WHEN $1 = 'entregado' THEN $5::date ELSE sale_date END,
             updated_at = now()
         WHERE id = $2::uuid AND empresa_id = $3
       `,
-      [nextStatus, id, session.companyId, nextCollectionStatus],
+      [nextStatus, id, session.companyId, nextCollectionStatus, actualDeliveryDate],
     );
 
     const delivery =
