@@ -354,7 +354,7 @@ export async function getCustomerStatement(
       ) allocation ON true
       WHERE p.empresa_id = $1 AND p.client_id = $2::uuid
         AND p.entity_type = 'cliente' AND p.status::text = 'registrado'
-        AND p.amount - COALESCE(allocation.applied_amount, 0) > 0.005
+        AND ROUND(GREATEST(p.amount - COALESCE(allocation.applied_amount, 0), 0), 0) > 0
       ORDER BY p.payment_date DESC, p.created_at DESC
     `,
     [companyId, clientId],

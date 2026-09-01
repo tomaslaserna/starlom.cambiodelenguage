@@ -128,6 +128,7 @@ export type OrderFormProduct = {
   name: string;
   available: number;
   presentationUnits: number;
+  cost: number;
   prices: ProductPriceMap;
 };
 
@@ -605,6 +606,10 @@ type ResolvedOrderDetailLine = {
   discount: number;
   unitPrice: number;
   subtotal: number;
+  unitCost: number;
+  grossProfit: number;
+  marginPercent: number;
+  priceListName: string;
 };
 
 async function getOrderCustomer(client: PoolClient, companyId: number, customerId: string) {
@@ -675,6 +680,7 @@ async function resolveBasicOrderDetail(
     discount: string;
     unit_price: string;
     improved_unit_price: string;
+    unit_cost: string;
     presentation_units: number;
     sort_order: number;
   }>(
@@ -690,6 +696,7 @@ async function resolveBasicOrderDetail(
              request.discount::text,
              COALESCE(NULLIF(${unitPriceExpression}, 0), p.sale_price, p.cost, 0)::text AS unit_price,
              COALESCE(NULLIF(${improvedUnitPriceExpression}, 0), p.sale_price, p.cost, 0)::text AS improved_unit_price,
+             COALESCE(p.cost, 0)::text AS unit_cost,
              p.presentation_units,
              request.sort_order
       FROM requested request
@@ -741,6 +748,9 @@ async function resolveBasicOrderDetail(
       discount,
     });
     const unitPrice = pricing.effectiveUnitPrice;
+    const unitCost = money(Number(product.unit_cost));
+    const grossProfit = money(pricing.subtotal - quantity * unitCost);
+    const marginPercent = pricing.subtotal > 0 ? (grossProfit / pricing.subtotal) * 100 : 0;
     if (unitPrice <= 0) {
       throw new ApiError(400, `El producto ${product.description} no tiene precio para la lista del cliente`);
     }
@@ -751,6 +761,10 @@ async function resolveBasicOrderDetail(
       discount,
       unitPrice,
       subtotal: pricing.subtotal,
+      unitCost,
+      grossProfit,
+      marginPercent,
+      priceListName,
     };
   });
 
@@ -778,9 +792,10 @@ async function insertOrderDetailLines(
     await client.query(
       `
         INSERT INTO sale_items (
-          sale_id, product_id, description, quantity, unit_price, discount, total_amount, empresa_id
+          sale_id, product_id, description, quantity, unit_price, discount, total_amount, empresa_id,
+          unit_cost_snapshot, gross_profit_snapshot, margin_percent_snapshot, price_list_snapshot, snapshot_at
         )
-        VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8)
+        VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
       `,
       [
         orderId,
@@ -791,6 +806,10 @@ async function insertOrderDetailLines(
         line.discount,
         line.subtotal,
         companyId,
+        line.unitCost,
+        line.grossProfit,
+        line.marginPercent,
+        line.priceListName,
       ],
     );
   }
@@ -848,6 +867,7 @@ export async function getOrderFormData(
     presentation_units: number;
     list_prices: Record<string, string | number> | null;
     fallback_price: string;
+    cost: string;
   }>(
     companyId,
     `
@@ -855,6 +875,7 @@ export async function getOrderFormData(
              COALESCE(p.sku, p.category_code, '') AS code,
              p.name,
              p.presentation_units,
+             COALESCE(p.cost, 0)::text AS cost,
              GREATEST(COALESCE(stock.stock_real, 0) - COALESCE(reserved.reserved, 0), 0)::text AS available,
              COALESCE(price_map.list_prices, '{}'::jsonb) AS list_prices,
              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0), p.sale_price, p.cost, 0)::text AS fallback_price
@@ -932,6 +953,7 @@ export async function getOrderFormData(
       name: row.name,
       available: Number(row.available),
       presentationUnits: Number(row.presentation_units ?? 1),
+      cost: Number(row.cost),
       prices: Object.fromEntries(
         Object.entries(row.list_prices ?? { General: row.fallback_price }).map(([name, value]) => [
           name,

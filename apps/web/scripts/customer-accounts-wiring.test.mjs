@@ -177,7 +177,7 @@ test("el estado de cuenta linkea el remito con precios y la factura", () => {
 test("el estado de cuenta muestra pagos registrados pendientes de aplicar", () => {
   const page = readFileSync(new URL("../src/app/payments/accounts/[id]/page.tsx", import.meta.url), "utf8");
   assert.match(source, /unappliedPayments/);
-  assert.match(source, /p\.amount - COALESCE\(allocation\.applied_amount, 0\) > 0\.005/);
+  assert.match(source, /ROUND\(GREATEST\(p\.amount - COALESCE\(allocation\.applied_amount, 0\), 0\), 0\) > 0/);
   assert.match(page, /Pagos registrados pendientes de aplicar/);
   assert.match(page, /no reducen la deuda/i);
 });

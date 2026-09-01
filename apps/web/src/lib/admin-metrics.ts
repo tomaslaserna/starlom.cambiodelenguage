@@ -105,7 +105,7 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
                COALESCE(s.source_cost_amount, line_totals.item_cost, 0) AS cost_amount
         FROM sales s
         LEFT JOIN LATERAL (
-          SELECT COALESCE(SUM(si.quantity * COALESCE(p.cost, 0)), 0) AS item_cost
+          SELECT COALESCE(SUM(si.quantity * COALESCE(si.unit_cost_snapshot, p.cost, 0)), 0) AS item_cost
           FROM sale_items si
           LEFT JOIN products p ON p.id = si.product_id AND p.empresa_id = si.empresa_id
           WHERE si.sale_id = s.id AND si.empresa_id = s.empresa_id
@@ -123,7 +123,16 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
         FROM sales_internal_documents sid
         JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
         LEFT JOIN LATERAL (
-          SELECT COALESCE(SUM((entry->>'quantity')::numeric * COALESCE(p.cost, 0)), 0) AS item_cost
+          SELECT COALESCE(SUM((entry->>'quantity')::numeric * COALESCE(
+            NULLIF(entry->>'unitCost', '')::numeric,
+            (SELECT MAX(original.unit_cost_snapshot)
+               FROM sale_items original
+              WHERE original.sale_id = s.id
+                AND original.empresa_id = s.empresa_id
+                AND original.product_id = NULLIF(entry->>'id', '')::uuid),
+            p.cost,
+            0
+          )), 0) AS item_cost
           FROM jsonb_array_elements(sid.detail_json) entry
           LEFT JOIN products p
             ON p.id = NULLIF(entry->>'id', '')::uuid
@@ -300,7 +309,7 @@ export async function getMonthlySeries(companyId: number, year: string): Promise
                COALESCE(s.source_cost_amount, line_totals.item_cost, 0) AS costo
         FROM sales s
         LEFT JOIN LATERAL (
-          SELECT COALESCE(SUM(dv.quantity * COALESCE(p.cost, 0)), 0) AS item_cost
+          SELECT COALESCE(SUM(dv.quantity * COALESCE(dv.unit_cost_snapshot, p.cost, 0)), 0) AS item_cost
           FROM sale_items dv
           LEFT JOIN products p ON p.id = dv.product_id AND p.empresa_id = dv.empresa_id
           WHERE dv.sale_id = s.id AND dv.empresa_id = s.empresa_id
@@ -318,7 +327,16 @@ export async function getMonthlySeries(companyId: number, year: string): Promise
         FROM sales_internal_documents sid
         JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
         LEFT JOIN LATERAL (
-          SELECT COALESCE(SUM((entry->>'quantity')::numeric * COALESCE(p.cost, 0)), 0) AS item_cost
+          SELECT COALESCE(SUM((entry->>'quantity')::numeric * COALESCE(
+            NULLIF(entry->>'unitCost', '')::numeric,
+            (SELECT MAX(original.unit_cost_snapshot)
+               FROM sale_items original
+              WHERE original.sale_id = s.id
+                AND original.empresa_id = s.empresa_id
+                AND original.product_id = NULLIF(entry->>'id', '')::uuid),
+            p.cost,
+            0
+          )), 0) AS item_cost
           FROM jsonb_array_elements(sid.detail_json) entry
           LEFT JOIN products p
             ON p.id = NULLIF(entry->>'id', '')::uuid

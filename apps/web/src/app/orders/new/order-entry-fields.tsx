@@ -27,6 +27,7 @@ import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/li
 import { OrderConfirmationPreview } from "@/app/orders/new/order-confirmation-preview";
 import type { IvaRate } from "@/lib/order-confirmation";
 import { vatAmountsFromNet } from "@/lib/vat-calculation";
+import { grossMarginPercent, marginRisk } from "@/lib/sale-margin";
 
 type OrderLineDraft = {
   productId: string;
@@ -149,11 +150,16 @@ export function OrderEntryFields({
         unitPrice: pricing.effectiveUnitPrice,
         subtotal: pricing.subtotal,
         presentationPricing: pricing,
+        marginPercent: grossMarginPercent(pricing.subtotal, product.cost * quantity),
       };
     })
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
 
   const netAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0);
+  const totalCost = calculatedLines.reduce((total, line) => total + line.product.cost * line.quantity, 0);
+  const orderMarginPercent = grossMarginPercent(netAmount, totalCost);
+  const lowMarginLines = calculatedLines.filter((line) => line.quantity > 0 && marginRisk(line.marginPercent) !== "none");
+  const orderMarginRisk = marginRisk(orderMarginPercent);
   const orderTotals = vatAmountsFromNet(netAmount, vatRate);
   const pricedLines = calculatedLines
     .filter((line) => line.quantity > 0)
@@ -519,6 +525,27 @@ export function OrderEntryFields({
                 )}
             </DataTableBody>
           </DataTable>
+          {lowMarginLines.length > 0 ? (
+            <div
+              className={`rounded-lg border p-4 ${orderMarginRisk === "critical" ? "border-red-300 bg-red-50 text-red-950" : "border-amber-300 bg-amber-50 text-amber-950"}`}
+              role="alert"
+            >
+              <div className="font-black">
+                {orderMarginRisk === "critical" ? "Margen crítico" : "Margen potencialmente bajo"} · pedido {orderMarginPercent.toFixed(1).replace(".", ",")}%
+              </div>
+              <p className="mt-1 text-sm">
+                La venta se puede registrar igualmente. Revisá precio, descuento y lista antes de continuar.
+              </p>
+              <ul className="mt-2 grid gap-1 text-sm">
+                {lowMarginLines.map((line) => (
+                  <li key={line.id}>
+                    <b>{line.product.name}</b>: {line.marginPercent.toFixed(1).replace(".", ",")}% de margen
+                    {line.discount > 0 ? ` · ${line.discount}% de descuento` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

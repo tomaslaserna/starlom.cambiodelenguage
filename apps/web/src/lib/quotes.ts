@@ -1072,17 +1072,20 @@ export async function acceptQuote(
       unit_price: string;
       discount: string;
       total_amount: string;
+      unit_cost: string;
     }>(
       `
-        SELECT product_id::text,
-               description,
-               quantity::text,
-               unit_price::text,
-               discount::text,
-               total_amount::text
-        FROM quote_items
-        WHERE quote_id = $1::uuid AND empresa_id = $2
-        ORDER BY id ASC
+        SELECT qi.product_id::text,
+               qi.description,
+               qi.quantity::text,
+               qi.unit_price::text,
+               qi.discount::text,
+               qi.total_amount::text,
+               COALESCE(p.cost, 0)::text AS unit_cost
+        FROM quote_items qi
+        LEFT JOIN products p ON p.id = qi.product_id AND p.empresa_id = qi.empresa_id
+        WHERE qi.quote_id = $1::uuid AND qi.empresa_id = $2
+        ORDER BY qi.id ASC
       `,
       [id, session.companyId],
     );
@@ -1154,22 +1157,32 @@ export async function acceptQuote(
     const orderId = saleResult.rows[0].id;
 
     for (const item of items.rows) {
+      const quantity = Number(item.quantity);
+      const totalAmount = Number(item.total_amount);
+      const unitCost = Number(item.unit_cost);
+      const grossProfit = Number((totalAmount - quantity * unitCost).toFixed(2));
+      const marginPercent = totalAmount > 0 ? (grossProfit / totalAmount) * 100 : 0;
       await client.query(
         `
           INSERT INTO sale_items (
-            sale_id, product_id, description, quantity, unit_price, discount, total_amount, empresa_id
+            sale_id, product_id, description, quantity, unit_price, discount, total_amount, empresa_id,
+            unit_cost_snapshot, gross_profit_snapshot, margin_percent_snapshot, price_list_snapshot, snapshot_at
           )
-          VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8)
+          VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
         `,
         [
           orderId,
           item.product_id,
           item.description,
-          Number(item.quantity),
+          quantity,
           Number(item.unit_price),
           Number(item.discount),
-          Number(item.total_amount),
+          totalAmount,
           session.companyId,
+          unitCost,
+          grossProfit,
+          marginPercent,
+          priceList,
         ],
       );
     }

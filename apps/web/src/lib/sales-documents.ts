@@ -13,6 +13,7 @@ export type SalesDocumentItem = {
   quantity: number;
   unitPrice: number;
   subtotal: number;
+  unitCost?: number;
 };
 
 export type SalesNoteInput = {
@@ -430,6 +431,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
         name: string;
         quantity: string;
         unit_price: string;
+        unit_cost: string;
         returned_quantity: string;
       }>(
         `
@@ -437,6 +439,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
                  COALESCE(MAX(si.description), p.name, '(producto)') AS name,
                  SUM(si.quantity)::text AS quantity,
                  MAX(si.unit_price)::text AS unit_price,
+                 MAX(COALESCE(si.unit_cost_snapshot, p.cost, 0))::text AS unit_cost,
                  COALESCE((
                    SELECT SUM((entry->>'quantity')::numeric)
                    FROM sales_internal_documents doc,
@@ -474,7 +477,13 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
             throw new ApiError(400, `La devolucion de ${original.name} supera las ${available} unidades pendientes`);
           }
           const unitPrice = Number(original.unit_price);
-          return { ...item, name: original.name, unitPrice, subtotal: Number((item.quantity * unitPrice).toFixed(2)) };
+          return {
+            ...item,
+            name: original.name,
+            unitPrice,
+            unitCost: Number(original.unit_cost),
+            subtotal: Number((item.quantity * unitPrice).toFixed(2)),
+          };
         }
         if (!Number.isFinite(item.unitPrice) || item.unitPrice <= 0) {
           throw new ApiError(400, `El precio de ${productNames.get(item.id) ?? "producto"} debe ser mayor a cero`);
