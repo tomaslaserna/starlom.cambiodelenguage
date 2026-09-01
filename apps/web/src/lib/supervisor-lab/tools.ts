@@ -194,14 +194,17 @@ export function createSupervisorTools(session: AuthSession) {
       inputSchema: z.object({
         period: z.string().regex(/^\d{4}-\d{2}$/).optional().describe("Mes en formato AAAA-MM; omitir para el mes actual"),
       }),
-      execute: async ({ period }) => executeOnce(`getSalesMetrics:${period ?? "current"}`, async () => ({
-        metrics: await getSupervisorSalesMetrics(session, period),
-        interpretation: "grossAmount es el total comercial final; netAmount descuenta IVA solamente cuando existe un comprobante fiscal aprobado que lo discrimina.",
-        sources: [
-          { label: "Registro de ventas", href: `/sales${period ? `?month=${period}` : ""}` },
-          { label: "Rentabilidad", href: `/rentabilidad${period ? `?month=${period}` : ""}` },
-        ],
-      })),
+      execute: async ({ period }) => executeOnce(`getSalesMetrics:${period ?? "current"}`, async () => {
+        const metrics = await getSupervisorSalesMetrics(session, period);
+        return {
+          metrics,
+          interpretation: "grossAmount es el total comercial final. netAmount es un neto fiscal explicativo: descuenta IVA solamente cuando existe un comprobante fiscal aprobado que lo discrimina, por lo que no debe compararse como si fuera la misma métrica que el neto de Rentabilidad.",
+          howToVerify: "Abrí Registro de ventas. El enlace ya selecciona el mes consultado y muestra únicamente ventas entregadas de ese período.",
+          sources: [
+            { label: "Registro de ventas del período", href: metrics.sourceHref },
+          ],
+        };
+      }),
     }),
     getErpGuide: tool({
       description: "Indica en que pantalla del ERP se encuentra una funcion o dato y devuelve un enlace interno. Usar cuando el usuario pregunta donde ver algo o cuando conviene permitirle verificar un numero.",

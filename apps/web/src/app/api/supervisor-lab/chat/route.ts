@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createAgentUIStreamResponse } from "ai";
 import { ApiError, handleApiError, ok } from "@/lib/api-response";
-import { requireApiSession } from "@/lib/route-auth";
+import { CRM_READ_PERMISSION, requireApiSession, sessionAllows } from "@/lib/route-auth";
 import { createStarlimSupervisorAgent } from "@/lib/supervisor-lab/agent";
 import { assertSupervisorAiConfigured } from "@/lib/supervisor-lab/availability";
 import { parseSupervisorRequestBody } from "@/lib/supervisor-lab/request-guard";
@@ -16,9 +16,17 @@ import type { StarlimSupervisorMessage } from "@/lib/supervisor-lab/agent";
 
 export const runtime = "nodejs";
 
+async function requireSupervisorReadPermission() {
+  const session = await requireApiSession();
+  if (!(await sessionAllows(session, [CRM_READ_PERMISSION]))) {
+    throw new ApiError(403, "No tenés permiso para consultar LA TIRRA ia.1.1");
+  }
+  return session;
+}
+
 export async function GET() {
   try {
-    const session = await requireApiSession();
+    const session = await requireSupervisorReadPermission();
     const messages = await getSupervisorChatMemory(session);
     return ok({ messages, memoryHours: SUPERVISOR_MEMORY_HOURS });
   } catch (error) {
@@ -28,7 +36,7 @@ export async function GET() {
 
 export async function DELETE() {
   try {
-    const session = await requireApiSession();
+    const session = await requireSupervisorReadPermission();
     await clearSupervisorChatMemory(session);
     return ok({ cleared: true });
   } catch (error) {
@@ -58,7 +66,7 @@ export async function POST(request: Request) {
   const requestId = randomUUID();
   const startedAt = Date.now();
   try {
-    const session = await requireApiSession();
+    const session = await requireSupervisorReadPermission();
     try {
       assertSupervisorAiConfigured();
     } catch (error) {

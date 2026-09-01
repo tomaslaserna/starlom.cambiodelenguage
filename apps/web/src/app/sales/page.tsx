@@ -25,6 +25,7 @@ import { hasCompleteFiscalData } from "@/lib/client-fiscal";
 import { listOrders } from "@/lib/orders";
 import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { getSalesSummary } from "@/lib/sales-admin";
+import { currentMonth } from "@/lib/month-range";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import {
@@ -37,19 +38,21 @@ import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { deleteSaleAction, requestFiscalInvoiceAction, requestFiscalNoteAction } from "@/app/sales/actions";
 
 type SalesPageProps = {
-  searchParams: Promise<{ q?: string; page?: string; error?: string; message?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; month?: string; error?: string; message?: string }>;
 };
 
 export default async function SalesPage({ searchParams }: SalesPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [SALES_READ_PERMISSION]);
   const params = await searchParams;
+  const selectedMonth = /^\d{4}-\d{2}$/.test(params.month ?? "") ? params.month as string : currentMonth();
   const [summary, sales, canDeleteRecords, canOperateSales] = await Promise.all([
-    getSalesSummary(session.companyId, "mes"),
+    getSalesSummary(session.companyId, selectedMonth),
     listOrders({
       companyId: session.companyId,
       query: params.q,
       status: "entregado",
+      month: selectedMonth,
       page: params.page,
       pageSize: "25",
     }),
@@ -96,7 +99,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
         </div>
 
         <Toolbar ariaLabel="Buscar ventas">
-          <form action="/sales" className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto] lg:items-end">
+          <form action="/sales" className="grid w-full gap-3 lg:grid-cols-[minmax(190px,1fr)_170px_auto_auto] lg:items-end">
             <Field htmlFor="sales-query" label="Buscar">
               <Input
                 defaultValue={sales.meta.query}
@@ -105,6 +108,14 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                 name="q"
                 placeholder="Cliente, CUIT o vendedor"
                 type="search"
+              />
+            </Field>
+            <Field htmlFor="sales-month" label="Mes">
+              <Input
+                defaultValue={selectedMonth}
+                id="sales-month"
+                name="month"
+                type="month"
               />
             </Field>
             <Button className="lg:mb-0" type="submit">

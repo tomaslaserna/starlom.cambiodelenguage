@@ -38,6 +38,10 @@ type SaleEditField = keyof typeof SALE_EDIT_FIELDS;
 
 function currentPeriod(period: string | null) {
   const month = currentMonth();
+  if (/^\d{4}-\d{2}$/.test(period ?? "")) {
+    const range = monthRange(period as string);
+    return { start: range.start, end: range.endExclusive };
+  }
   if (period === "anio") {
     const year = Number(month.slice(0, 4));
     return { start: `${year}-01-01`, end: `${year + 1}-01-01` };

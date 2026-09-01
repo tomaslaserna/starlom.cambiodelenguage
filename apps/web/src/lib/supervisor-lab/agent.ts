@@ -4,6 +4,7 @@ import { ToolLoopAgent, stepCountIs, type InferAgentUIMessage } from "ai";
 import type { AuthSession } from "@/lib/auth";
 import { createSupervisorTools } from "@/lib/supervisor-lab/tools";
 import type { SupervisorLandingSummary } from "@/lib/supervisor-lab/landing-summary";
+import { SUPERVISOR_RESPONSE_CONTRACT } from "@/lib/supervisor-lab/response-contract";
 
 const DEFAULT_MODEL = "google/gemini-3.5-flash";
 
@@ -60,7 +61,8 @@ Reglas obligatorias:
 - Incluye al final las fuentes devueltas por las herramientas como enlaces internos, excepto en el modo breve de traduccion de pedidos.
 - No afirmes que una tarea fue realizada: este laboratorio es solo lectura y no puede modificar pedidos, stock, facturas, pagos ni clientes.
 - Si falta informacion, explicalo expresamente.
-- Solo podes ver la empresa y los clientes habilitados para ${session.displayName} (${summary.profileLabel}).`,
+- Solo podes ver la empresa y los clientes habilitados para ${session.displayName} (${summary.profileLabel}).
+${SUPERVISOR_RESPONSE_CONTRACT}`,
   });
 }
 

@@ -34,6 +34,7 @@ import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { assertSaleStockAvailableForConfirmation, discountSaleStockOnDelivery } from "@/lib/stock";
 import { createDeliveryDocumentForSale } from "@/lib/deliveries";
 import { localDateIso } from "@/lib/timezone";
+import { monthRange } from "@/lib/month-range";
 import {
   normalizeStoredVatRate,
   vatAmountsFromGross,
@@ -49,6 +50,7 @@ type ListInput = {
   query?: string | null;
   status?: string | null;
   collectionStatus?: string | null;
+  month?: string | null;
   page?: string | null;
   pageSize?: string | null;
 };
@@ -277,6 +279,9 @@ export async function listOrders(input: ListInput = {}) {
   const query = input.query?.trim() ?? "";
   const status = input.status?.trim() ?? "";
   const collectionStatus = input.collectionStatus?.trim() ?? "";
+  const selectedMonth = /^\d{4}-\d{2}$/.test(input.month?.trim() ?? "")
+    ? monthRange(input.month!.trim())
+    : null;
   const pagination = parsePagination(input);
   const params: unknown[] = [companyId];
   const filters = ["s.empresa_id = $1", canonicalSalesSourceSql("s")];
@@ -296,6 +301,11 @@ export async function listOrders(input: ListInput = {}) {
   if (collectionStatus) {
     params.push(collectionStatus);
     filters.push(`COALESCE(collection_status, 'pendiente') = $${params.length}`);
+  }
+
+  if (selectedMonth) {
+    params.push(selectedMonth.start, selectedMonth.endExclusive);
+    filters.push(`s.sale_date >= $${params.length - 1}::date AND s.sale_date < $${params.length}::date`);
   }
 
   const where = filters.join(" AND ");

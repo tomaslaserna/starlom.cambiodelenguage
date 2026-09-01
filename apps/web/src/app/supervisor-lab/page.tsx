@@ -3,6 +3,8 @@ import { connection } from "next/server";
 import { ModulePage } from "@/components/module-page";
 import { requireStaffSession } from "@/lib/auth";
 import { getNavigationAuthorization } from "@/lib/navigation";
+import { requirePagePermission } from "@/lib/page-auth";
+import { CRM_READ_PERMISSION } from "@/lib/route-auth";
 import { supervisorAiEnabled } from "@/lib/supervisor-lab/availability";
 import { SupervisorChat } from "@/app/supervisor-lab/supervisor-chat";
 import { getSupervisorLandingSummary } from "@/lib/supervisor-lab/landing-summary";
@@ -12,6 +14,7 @@ export default async function SupervisorLabPage() {
   await connection();
   if (!supervisorAiEnabled()) notFound();
   const session = await requireStaffSession();
+  await requirePagePermission(session, [CRM_READ_PERMISSION]);
   const [navigationAuthorization, summary] = await Promise.all([
     getNavigationAuthorization(session),
     getSupervisorLandingSummary(session),

@@ -186,7 +186,8 @@ test("el supervisor resuelve métricas mensuales con una consulta agregada y enl
   assert.match(readModel, /netSalesAmountSql/);
   assert.match(readModel, /normalizedOrderStatusSql\("s"\).*'entregado'/s);
   assert.match(tools, /Registro de ventas/);
-  assert.match(tools, /Rentabilidad/);
+  assert.match(tools, /metrics\.sourceHref/);
+  assert.match(tools, /no debe compararse como si fuera la misma métrica que el neto de Rentabilidad/);
   assert.match(guide, /payments\/accounts/);
   assert.match(guide, /Abrí Administración > Cuentas corrientes/);
   assert.match(guide, /\+ Agregar producto nuevo/);
