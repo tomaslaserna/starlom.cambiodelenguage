@@ -6,6 +6,7 @@ import { createStarlimSupervisorAgent } from "@/lib/supervisor-lab/agent";
 import { assertSupervisorAiConfigured } from "@/lib/supervisor-lab/availability";
 import { parseSupervisorRequestBody } from "@/lib/supervisor-lab/request-guard";
 import { getSupervisorLandingSummary } from "@/lib/supervisor-lab/landing-summary";
+import { compactSupervisorMessages } from "@/lib/supervisor-lab/message-compact";
 import {
   clearSupervisorChatMemory,
   getSupervisorChatMemory,
@@ -77,7 +78,9 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => null);
-    const uiMessages = parseSupervisorRequestBody(body) as StarlimSupervisorMessage[];
+    const uiMessages = compactSupervisorMessages(
+      parseSupervisorRequestBody(body) as StarlimSupervisorMessage[],
+    );
     console.info(JSON.stringify({ level: "info", event: "Supervisor request started", requestId, messageCount: uiMessages.length }));
     await saveSupervisorChatMemory(session, uiMessages);
     const summary = await getSupervisorLandingSummary(session);

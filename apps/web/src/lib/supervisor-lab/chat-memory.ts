@@ -4,6 +4,7 @@ import type { UIMessage } from "ai";
 import type { AuthSession } from "@/lib/auth";
 import { withCompanyContext } from "@/lib/db";
 import type { StarlimSupervisorMessage } from "@/lib/supervisor-lab/agent";
+import { compactSupervisorMessages } from "@/lib/supervisor-lab/message-compact";
 
 export const SUPERVISOR_MEMORY_HOURS = 48;
 export const SUPERVISOR_MEMORY_MAX_MESSAGES = 200;
@@ -25,7 +26,10 @@ function isStoredMessage(value: unknown): value is StarlimSupervisorMessage {
 }
 
 function boundedMessages(messages: StarlimSupervisorMessage[]) {
-  return messages.filter(isStoredMessage).slice(-SUPERVISOR_MEMORY_MAX_MESSAGES);
+  return compactSupervisorMessages(
+    messages.filter(isStoredMessage),
+    SUPERVISOR_MEMORY_MAX_MESSAGES,
+  );
 }
 
 export async function getSupervisorChatMemory(session: AuthSession) {
@@ -47,7 +51,10 @@ export async function getSupervisorChatMemory(session: AuthSession) {
       [session.companyId, session.userId, SUPERVISOR_MEMORY_MAX_MESSAGES],
     );
 
-    return result.rows.map((row) => row.message).filter(isStoredMessage);
+    return compactSupervisorMessages(
+      result.rows.map((row) => row.message).filter(isStoredMessage),
+      SUPERVISOR_MEMORY_MAX_MESSAGES,
+    );
   });
 }
 

@@ -6,6 +6,7 @@ import { DefaultChatTransport, getToolName, isToolUIPart } from "ai";
 import { Button, Card, Textarea } from "@/components/ui";
 import { MessageResponse } from "@/components/ai-elements/message";
 import type { StarlimSupervisorMessage } from "@/lib/supervisor-lab/agent";
+import { compactSupervisorMessages } from "@/lib/supervisor-lab/message-compact";
 
 const CAPABILITIES = [
   {
@@ -66,7 +67,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
     () => new DefaultChatTransport<StarlimSupervisorMessage>({
       api: "/api/supervisor-lab/chat",
       prepareSendMessagesRequest: ({ messages }) => ({
-        body: { messages: messages.slice(-30) },
+        body: { messages: compactSupervisorMessages(messages.slice(-30)) },
       }),
     }),
     [],

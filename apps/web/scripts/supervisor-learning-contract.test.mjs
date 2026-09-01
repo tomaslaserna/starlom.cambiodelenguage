@@ -45,3 +45,19 @@ test("la fuente de ventas aplica el mismo mes que la métrica consultada", () =>
   assert.match(tools, /href: metrics\.sourceHref/);
   assert.match(tools, /no debe compararse como si fuera la misma métrica que el neto de Rentabilidad/);
 });
+
+test("el historial de LA TIRRA se compacta antes de viajar o guardarse", () => {
+  const chat = read("src/app/supervisor-lab/supervisor-chat.tsx");
+  const route = read("src/app/api/supervisor-lab/chat/route.ts");
+  const memory = read("src/lib/supervisor-lab/chat-memory.ts");
+  const compact = read("src/lib/supervisor-lab/message-compact.ts");
+
+  assert.match(chat, /compactSupervisorMessages\(messages\.slice\(-30\)\)/);
+  assert.match(route, /compactSupervisorMessages\(\s*parseSupervisorRequestBody/s);
+  assert.match(memory, /return compactSupervisorMessages\(/);
+  assert.match(memory, /return compactSupervisorMessages\(\s*result\.rows/s);
+  assert.match(compact, /SUPERVISOR_CHAT_CONTEXT_MAX_MESSAGES = 12/);
+  assert.match(compact, /SUPERVISOR_CHAT_MESSAGE_MAX_CHARACTERS = 2_500/);
+  assert.match(compact, /parts: \[\{ type: "text", text \}\]/);
+  assert.match(compact, /nunca deben volver al navegador ni a la siguiente petición/);
+});
