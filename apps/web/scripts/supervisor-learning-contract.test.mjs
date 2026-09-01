@@ -27,6 +27,7 @@ test("las respuestas de consulta enseñan cómo verificar el dato y no inventan 
   assert.match(contract, /### Cómo verificarlo/);
   assert.match(contract, /### Fuente/);
   assert.match(contract, /No inventes rutas ni enlaces/);
+  assert.match(contract, /no inventes pestañas, ordenamientos automáticos, campos ni comportamientos del ERP/);
   assert.match(chat, /Solo lectura · no autorizo, facturo, cobro ni modifico datos por vos/);
   assert.match(chat, /te muestro cómo verificarlo vos/);
 });
