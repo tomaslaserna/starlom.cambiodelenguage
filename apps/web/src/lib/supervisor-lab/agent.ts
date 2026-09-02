@@ -16,7 +16,7 @@ export function createStarlimSupervisorAgent(session: AuthSession, summary: Supe
     model: process.env.SUPERVISOR_AI_MODEL || DEFAULT_MODEL,
     stopWhen: stepCountIs(3),
     prepareStep: ({ stepNumber }) =>
-      stepNumber >= 2
+      stepNumber >= 1
         ? { toolChoice: "none" as const }
         : {},
     temperature: 0.1,

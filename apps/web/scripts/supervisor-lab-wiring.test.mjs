@@ -61,7 +61,7 @@ test("el agente usa herramientas tipadas, de servidor y solo lectura", () => {
   assert.match(agent, /Sos LA TIRRA ia\.1\.1/);
   assert.match(tools, /executedCalls/);
   assert.match(agent, /toolChoice: "none"/);
-  assert.match(agent, /stepNumber >= 2/);
+  assert.match(agent, /stepNumber >= 1/);
   assert.doesNotMatch(agent, /activeTools: \[\]/);
   assert.match(tools, /employeeName/);
   assert.match(tools, /resolvePrioritySession/);
@@ -80,6 +80,8 @@ test("la ruta experimental exige sesion, configuracion y limites", () => {
   assert.match(route, /timeout: \{ totalMs: 28_000 \}/);
   assert.match(route, /Supervisor request started/);
   assert.match(route, /Supervisor request completed/);
+  assert.match(route, /Supervisor step completed/);
+  assert.match(route, /textCharacters/);
   assert.match(availability, /SUPERVISOR_AI_ENABLED/);
   assert.match(availability, /AI_GATEWAY_API_KEY/);
   assert.match(availability, /process\.env\.VERCEL === "1"/);
@@ -129,6 +131,8 @@ test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   assert.match(chat, /quickPrompts\.map/);
   assert.match(chat, /32_000/);
   assert.match(chat, /La consulta superó los 32 segundos/);
+  assert.match(chat, /La consulta terminó, pero no se redactó la respuesta/);
+  assert.match(chat, /Reintentar respuesta/);
   assert.match(chat, /<MessageResponse[^>]*>\{part\.text\}<\/MessageResponse>/);
   assert.match(chat, /Preguntame sobre el sistema/);
   assert.match(chat, /Preguntame cómo trabajamos/);

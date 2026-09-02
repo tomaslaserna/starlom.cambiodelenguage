@@ -76,6 +76,15 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
     transport,
   });
   const busy = status === "submitted" || status === "streaming";
+  const lastMessage = messages.at(-1);
+  const completedWithoutText = !busy
+    && lastMessage?.role === "assistant"
+    && lastMessage.parts.some((part) => isToolUIPart(part) && part.state === "output-available")
+    && !lastMessage.parts.some((part) => part.type === "text" && part.text.trim().length > 0);
+  const lastUserText = [...messages]
+    .reverse()
+    .find((message) => message.role === "user")
+    ?.parts.find((part) => part.type === "text")?.text ?? "";
 
   useEffect(() => {
     const controller = new AbortController();
@@ -307,6 +316,14 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
           {timedOut ? (
             <div className="rounded-lg border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm font-semibold text-[#92400e]">
               La consulta superó los 32 segundos y fue detenida. Probá nuevamente; LA TIRRA ia.1.1 no debe quedar pensando indefinidamente.
+            </div>
+          ) : null}
+          {completedWithoutText ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm font-semibold text-[#92400e]">
+              <span>La consulta terminó, pero no se redactó la respuesta. No sigue procesando.</span>
+              <Button disabled={!lastUserText} onClick={() => submitText(lastUserText)} size="sm" type="button" variant="secondary">
+                Reintentar respuesta
+              </Button>
             </div>
           ) : null}
           {memoryError ? (

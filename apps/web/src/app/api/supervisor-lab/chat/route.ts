@@ -92,6 +92,17 @@ export async function POST(request: Request) {
       abortSignal: request.signal,
       timeout: { totalMs: 28_000 },
       sendSources: true,
+      onStepEnd: ({ stepNumber, finishReason, text, toolCalls }) => {
+        console.info(JSON.stringify({
+          level: "info",
+          event: "Supervisor step completed",
+          requestId,
+          stepNumber,
+          finishReason,
+          textCharacters: text.length,
+          tools: toolCalls.map((call) => call.toolName),
+        }));
+      },
       onEnd: async ({ messages }) => {
         await saveSupervisorChatMemory(session, messages);
         console.info(JSON.stringify({ level: "info", event: "Supervisor request completed", requestId, durationMs: Date.now() - startedAt }));
