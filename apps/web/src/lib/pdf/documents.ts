@@ -1258,7 +1258,7 @@ export async function buildPriceListPdf(companyId: number, options: PriceListPdf
 
     for (const [groupName, groupRows] of orderedGroups) {
       pdf.section(groupName);
-      pdf.table(
+      pdf.catalogTable(
         [
           { label: "Codigo", width: 74 },
           { label: "Producto", width: 208 },
@@ -1271,7 +1271,6 @@ export async function buildPriceListPdf(companyId: number, options: PriceListPdf
           row.presentacion || "-",
           pdfMoney(Number(row.precio)),
         ]),
-        { minRowHeight: 20 },
       );
     }
     pdf.note("Documento informativo no fiscal. Verificar condiciones particulares, descuentos y disponibilidad antes de confirmar una operacion.");

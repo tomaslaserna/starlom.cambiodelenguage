@@ -682,6 +682,7 @@ test("pricing lists use the L0-L3 normalized names and L2 as default anchor", ()
   // El PDF de listas ahora toma los nombres desde la tabla listas_precio (que pricing.ts
   // siembra con L0-L3), en vez de hardcodearlos. La vieja "Lista 4 (+10%)" no debe reaparecer.
   assert.match(pdfDocuments, /export async function buildPriceListPdf/);
+  assert.match(pdfDocuments, /pdf\.catalogTable\(/);
   assert.match(pdfDocuments, /FROM listas_precio WHERE empresa_id/);
   assert.doesNotMatch(pdfDocuments, /Lista 4 \(\+10%\)/);
 });

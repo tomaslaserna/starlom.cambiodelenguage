@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import PDFDocument from "pdfkit/js/pdfkit.standalone.js";
+import PDFDocument from "pdfkit";
 
 type Align = "left" | "center" | "right";
 
@@ -78,13 +78,6 @@ export const companyInfo = {
 function logoPath() {
   const candidate = join(process.cwd(), "public", "starlim-logo.png");
   return existsSync(candidate) ? candidate : "";
-}
-
-function logoData() {
-  const path = logoPath();
-  if (!path) return null;
-  const bytes = readFileSync(path);
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
 function safeText(value: PdfTableCell) {
@@ -207,9 +200,11 @@ export class StarlimPdf {
   }
 
   private drawLogo(x: number, y: number, maxHeight = 42) {
-    const logo = logoData();
+    const logo = logoPath();
     if (logo) {
-      this.doc.image(logo as unknown as Buffer, x, y, { height: maxHeight });
+      // Passing the stable path lets PDFKit reuse the same image object on
+      // continuation pages instead of embedding the PNG again for every page.
+      this.doc.image(logo, x, y, { height: maxHeight });
       return;
     }
     this.doc.font("Helvetica-Bold").fontSize(22).fillColor(COLORS.accent).text(companyInfo.brand, x, y);
@@ -664,6 +659,78 @@ export class StarlimPdf {
       this.doc.y = y + rowHeight;
     }
     this.doc.y += tableBottomSpace;
+  }
+
+  catalogTable(columns: PdfTableColumn[], rows: PdfTableCell[][]) {
+    const rowHeight = 12;
+    const headerHeight = 18;
+    const horizontalPadding = 3;
+    const bodyFontSize = 6.8;
+    const lineGap = rowHeight - bodyFontSize;
+
+    const drawHeader = () => {
+      this.ensureSpace(headerHeight + rowHeight);
+      const y = this.doc.y;
+      this.doc.moveTo(PAGE.marginX, y + headerHeight)
+        .lineTo(PAGE.width - PAGE.marginX, y + headerHeight)
+        .strokeColor(COLORS.body)
+        .lineWidth(1.1)
+        .stroke();
+      let x = PAGE.marginX;
+      this.doc.font("Helvetica-Bold").fontSize(6.4).fillColor(COLORS.muted);
+      for (const column of columns) {
+        this.doc.text(headerTitle(column.label), x + horizontalPadding, y + 5, {
+          width: column.width - horizontalPadding * 2,
+          align: column.align ?? "left",
+          height: 8,
+          lineBreak: false,
+          ellipsis: true,
+        });
+        x += column.width;
+      }
+      this.doc.y = y + headerHeight;
+    };
+
+    if (!rows.length) {
+      drawHeader();
+      this.doc.font("Helvetica-Oblique").fontSize(9).fillColor(COLORS.muted);
+      this.doc.text("Sin datos para mostrar.", PAGE.marginX, this.doc.y + 12, {
+        width: PAGE.contentWidth,
+        align: "center",
+      });
+      this.doc.y += 42;
+      return;
+    }
+
+    let offset = 0;
+    while (offset < rows.length) {
+      drawHeader();
+      const startY = this.doc.y;
+      const capacity = Math.max(1, Math.floor((CONTENT_BOTTOM - startY) / rowHeight));
+      const pageRows = rows.slice(offset, offset + capacity);
+      let x = PAGE.marginX;
+      this.doc.font("Helvetica").fontSize(bodyFontSize).fillColor(COLORS.body);
+      columns.forEach((column, columnIndex) => {
+        const values = pageRows.map((row) => safeText(row[columnIndex])).join("\n");
+        this.doc.text(values, x + horizontalPadding, startY + 3, {
+          width: column.width - horizontalPadding * 2,
+          height: pageRows.length * rowHeight,
+          align: column.align ?? "left",
+          lineGap,
+          ellipsis: true,
+        });
+        x += column.width;
+      });
+      const endY = startY + pageRows.length * rowHeight;
+      this.doc.moveTo(PAGE.marginX, endY)
+        .lineTo(PAGE.width - PAGE.marginX, endY)
+        .strokeColor(COLORS.line)
+        .lineWidth(0.7)
+        .stroke();
+      this.doc.y = endY + 6;
+      offset += pageRows.length;
+      if (offset < rows.length) this.addContinuationPage();
+    }
   }
 
   totals(rows: [string, string][], finalLabel: string, finalValue: string, options: { density?: PdfTableDensity } = {}) {
