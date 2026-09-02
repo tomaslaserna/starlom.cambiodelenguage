@@ -28,7 +28,7 @@ test("crm/cobros muestra el boton Registrar cobro con el cliente pre-cargado", (
 test("pagina /crm/clientes es DB pura del vendedor: tabla, sin tablero ni tira de perfil", () => {
   const src = read("../src/app/crm/clientes/page.tsx");
   assert.match(src, /getVendorCustomers/);
-  assert.match(src, /\/customers\/\$\{/); // linkea a la ficha
+  assert.match(src, /\/crm\/clientes\/\$\{/); // linkea a la ficha sin abandonar el CRM
   assert.match(src, /PaginationLinks/);
   assert.doesNotMatch(src, /ClientesDashboard/); // el seguimiento se movio a Perfil
   assert.doesNotMatch(src, /getVendorProfile/); // saca la tira de perfil
@@ -40,6 +40,9 @@ test("el seguimiento de clientes (tablero) vive en Perfil", () => {
   assert.match(src, /getVendorClients/);
   assert.match(src, /agendarClienteAction/);
   assert.match(src, /getVendorProfile/); // mantiene los numeros del vendedor
+  assert.match(src, /sessionCanUseCrm\(session\)/);
+  assert.doesNotMatch(src, /normalizeRole\(session\.role\) !== "vendedor"/);
+  assert.match(src, /isSeller \? await getSalesActivityDashboard/);
 });
 
 test("registerCrmCustomerPaymentAction: gate crm.ver + guard de propiedad + registerCustomerPayment", () => {

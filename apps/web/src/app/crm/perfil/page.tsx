@@ -12,7 +12,8 @@ import { ClientesDashboard } from "@/app/crm/clientes/clientes-dashboard";
 
 export default async function CrmPerfilPage() {
   const session = await requireStaffSession();
-  if (normalizeRole(session.role) !== "vendedor" || !(await sessionCanUseCrm(session))) redirect("/");
+  if (!(await sessionCanUseCrm(session))) redirect("/");
+  const isSeller = normalizeRole(session.role) === "vendedor";
 
   const [profile, clients, openAccounts, leadAgenda] = await Promise.all([
     getVendorProfile(session),
@@ -21,8 +22,8 @@ export default async function CrmPerfilPage() {
     getLeadFollowupAgenda(session),
   ]);
   const { groups, counts, zonas } = clients;
-  const activity = await getSalesActivityDashboard(session, clients);
-  const pendingCustomerContacts = activity.planned.filter((client) => !client.contactedToday).length;
+  const activity = isSeller ? await getSalesActivityDashboard(session, clients) : null;
+  const pendingCustomerContacts = activity?.planned.filter((client) => !client.contactedToday).length ?? 0;
   const pendingLeadContacts = leadAgenda.filter((lead) => !lead.contactedToday).length;
   const contactsToday = pendingCustomerContacts + pendingLeadContacts;
   const accountsToCollect = openAccounts.accounts.filter((account) => account.balance > 0.005).length;
