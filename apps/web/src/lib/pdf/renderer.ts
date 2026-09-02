@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import PDFDocument from "pdfkit";
+import PDFDocument from "pdfkit/js/pdfkit.standalone.js";
 
 type Align = "left" | "center" | "right";
 
@@ -144,6 +144,7 @@ export function safeFilename(value: string) {
 
 export class StarlimPdf {
   doc: PDFKit.PDFDocument;
+  private logoImage: unknown | null | undefined;
   private footerLeft = `${companyInfo.brand} - documento operativo`;
   private footerRight = "";
   private currentHeader: FiscalHeaderInput | null = null;
@@ -200,12 +201,22 @@ export class StarlimPdf {
   }
 
   private drawLogo(x: number, y: number, maxHeight = 42) {
-    const logo = logoPath();
-    if (logo) {
-      // Passing the stable path lets PDFKit reuse the same image object on
-      // continuation pages instead of embedding the PNG again for every page.
-      this.doc.image(logo, x, y, { height: maxHeight });
-      return;
+    const path = logoPath();
+    if (path) {
+      if (this.logoImage === undefined) {
+        const bytes = readFileSync(path);
+        const data = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+        const documentWithImages = this.doc as PDFKit.PDFDocument & {
+          openImage: (source: ArrayBuffer) => unknown;
+        };
+        this.logoImage = documentWithImages.openImage(data);
+      }
+      if (this.logoImage) {
+        // Reuse the already embedded image on continuation pages. Creating a
+        // fresh Buffer per page made long catalogues both huge and slow.
+        this.doc.image(this.logoImage as Buffer, x, y, { height: maxHeight });
+        return;
+      }
     }
     this.doc.font("Helvetica-Bold").fontSize(22).fillColor(COLORS.accent).text(companyInfo.brand, x, y);
   }
