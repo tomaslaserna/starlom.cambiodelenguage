@@ -13,7 +13,6 @@ import {
   recordSalesActivityAction,
   recordLeadContactAction,
 } from "@/app/crm/leads/actions";
-import { LeadFollowupPanel } from "@/app/crm/leads/lead-followup-panel";
 import { SalesActivityPanel } from "@/app/crm/leads/sales-activity-panel";
 import { getSalesActivityDashboard } from "@/lib/sales-activity";
 
@@ -38,10 +37,9 @@ export default async function CrmLeadsPage({ searchParams }: { searchParams: Pro
       title="CRM · Leads"
     >
       <div className="grid gap-7">
-        <LeadFollowupPanel agenda={leadAgenda} recordAction={recordLeadContactAction} />
         <div>
-          <h2 className="erp-text-title-md font-black">Prospectos nuevos</h2>
-          <p className="erp-text-body-sm mt-1 text-[color:var(--muted)]">Embudo de personas o empresas que todavía no son clientes.</p>
+          <h2 className="erp-text-title-md font-black">Gestión de leads</h2>
+          <p className="erp-text-body-sm mt-1 text-[color:var(--muted)]">Contactá, reprogramá y convertí prospectos sin perder el próximo paso.</p>
           <div className="mt-4">
             <LeadsBoard
               active={active}
@@ -52,6 +50,8 @@ export default async function CrmLeadsPage({ searchParams }: { searchParams: Pro
               initialCreating={params.nuevo === "1"}
               discardAction={discardLeadAction}
               moveAction={moveLeadStageAction}
+              agenda={leadAgenda}
+              recordAction={recordLeadContactAction}
             />
           </div>
         </div>

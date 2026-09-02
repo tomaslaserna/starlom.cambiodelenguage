@@ -38,7 +38,7 @@ const activityMigration = readFileSync(
 const activitySource = readFileSync(new URL("../src/lib/sales-activity.ts", import.meta.url), "utf8");
 const activityPanel = readFileSync(new URL("../src/app/crm/leads/sales-activity-panel.tsx", import.meta.url), "utf8");
 const leadsPage = readFileSync(new URL("../src/app/crm/leads/page.tsx", import.meta.url), "utf8");
-const leadFollowupPanel = readFileSync(new URL("../src/app/crm/leads/lead-followup-panel.tsx", import.meta.url), "utf8");
+const leadsBoard = readFileSync(new URL("../src/app/crm/leads/leads-board.tsx", import.meta.url), "utf8");
 const calendarPage = readFileSync(new URL("../src/app/calendar/page.tsx", import.meta.url), "utf8");
 const calendarActions = readFileSync(new URL("../src/app/calendar/actions.ts", import.meta.url), "utf8");
 const shellNavigation = readFileSync(new URL("../src/components/shell-navigation.tsx", import.meta.url), "utf8");
@@ -57,9 +57,10 @@ test("la agenda de leads fija diez contactos y permite reprogramar cada prospect
   assert.match(leadsSource, /LIMIT 10/);
   assert.match(leadsSource, /recordLeadContact/);
   assert.match(leadsSource, /next_followup = \$1::date/);
-  assert.match(leadFollowupPanel, /\[7, 14, 30, 60\]/);
-  assert.match(leadFollowupPanel, /Guardar y reprogramar/);
-  assert.match(leadsPage, /<LeadFollowupPanel/);
+  assert.match(leadsBoard, /\[7, 14, 30, 60\]/);
+  assert.match(leadsBoard, /Guardar y reprogramar/);
+  assert.match(leadsBoard, /Cada lead conserva una próxima acción/);
+  assert.match(leadsPage, /agenda=\{leadAgenda\}/);
 });
 
 test("Leads muestra círculos de progreso y conserva el embudo de prospectos", () => {
@@ -73,9 +74,11 @@ test("Leads muestra círculos de progreso y conserva el embudo de prospectos", (
   assert.doesNotMatch(leadsPage, /normalizeRole\(session\.role\) !== "vendedor".*redirect/);
 });
 
-test("Leads abre primero su agenda y embudo, sin confundirse con Inicio comercial", () => {
-  assert.ok(leadsPage.indexOf("<LeadFollowupPanel") < leadsPage.indexOf("<LeadsBoard"));
+test("Leads abre su bandeja operativa antes de la actividad comercial", () => {
   assert.ok(leadsPage.indexOf("<LeadsBoard") < leadsPage.indexOf("<SalesActivityPanel"));
+  assert.match(leadsBoard, /\["hoy", "Hoy"\]/);
+  assert.match(leadsBoard, /\["embudo", "Embudo"\]/);
+  assert.match(leadsBoard, /\["todos", "Todos"\]/);
 });
 
 test("el CRM conserva su contexto y el calendario programa contactos de leads", () => {

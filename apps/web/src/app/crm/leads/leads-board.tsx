@@ -1,205 +1,48 @@
 "use client";
 
-import { useState } from "react";
-import { Button, Field, Input, Select } from "@/components/ui";
+import { useMemo, useState } from "react";
+import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
+import type { LeadFollowupAgendaItem } from "@/lib/leads";
 import type { Lead } from "@/lib/leads-domain";
 import { ORDER_CONFIRMATION_RECEIPT_OPTIONS } from "@/lib/receipt-types";
 
 type Action = (formData: FormData) => Promise<void>;
+type View = "hoy" | "embudo" | "todos";
+type Props = { active: Record<string, Lead[]>; closed: Lead[]; counts: Record<string, number>; createAction: Action; moveAction: Action; discardAction: Action; convertAction: Action; recordAction: Action; agenda: LeadFollowupAgendaItem[]; initialCreating?: boolean };
 
-type LeadsBoardProps = {
-  active: Record<string, Lead[]>;
-  closed: Lead[];
-  counts: Record<string, number>;
-  createAction: Action;
-  moveAction: Action;
-  discardAction: Action;
-  convertAction: Action;
-  initialCreating?: boolean;
-};
-
-const COLUMNS: { key: string; label: string }[] = [
-  { key: "nuevo", label: "Nuevo" },
-  { key: "contactado", label: "Contactado" },
-  { key: "interesado", label: "Interesado" },
-];
-
+const COLUMNS = [{ key: "nuevo", label: "Nuevos" }, { key: "contactado", label: "Contactados" }, { key: "interesado", label: "Interesados" }];
 const NEXT_STAGE: Record<string, string> = { nuevo: "contactado", contactado: "interesado" };
-const CUSTOMER_RECEIPT_OPTIONS = ORDER_CONFIRMATION_RECEIPT_OPTIONS.filter(
-  (option) => option.value === "remito" || option.value === "factura_a" || option.value === "factura_b",
-);
+const RECEIPTS = ORDER_CONFIRMATION_RECEIPT_OPTIONS.filter((item) => ["remito", "factura_a", "factura_b"].includes(item.value));
+function localDate(days = 0) { const date = new Date(); date.setDate(date.getDate() + days); return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(date); }
+function isActive(lead: Lead) { return ["nuevo", "contactado", "interesado"].includes(lead.stage); }
+function dateTone(date: string | null) { if (!date || date < localDate()) return "border-[color:var(--danger)] text-[color:var(--danger)]"; if (date <= localDate(3)) return "border-[color:var(--warning)] text-[color:var(--warning)]"; return "border-[color:var(--border)] text-[color:var(--muted)]"; }
+function whatsappUrl(phone: string) { const digits = phone.replace(/\D/g, ""); return digits ? `https://wa.me/${digits.startsWith("54") ? digits : `54${digits}`}` : ""; }
 
-function followupTone(date: string | null): string {
-  if (!date) return "";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(`${date}T00:00:00`);
-  const days = Math.round((target.getTime() - today.getTime()) / 86400000);
-  if (days < 0) return "border-[color:var(--danger)] text-[color:var(--danger)]";
-  if (days <= 3) return "border-[color:var(--warning)] text-[color:var(--warning)]";
-  return "border-[color:var(--border)] text-[color:var(--muted)]";
-}
-
-export function LeadsBoard({
-  active,
-  closed,
-  counts,
-  createAction,
-  moveAction,
-  discardAction,
-  convertAction,
-  initialCreating = false,
-}: LeadsBoardProps) {
+export function LeadsBoard({ active, closed, counts, createAction, moveAction, discardAction, convertAction, recordAction, agenda, initialCreating = false }: Props) {
+  const [view, setView] = useState<View>("hoy");
   const [creating, setCreating] = useState(initialCreating);
-  const [showClosed, setShowClosed] = useState(false);
+  const [selected, setSelected] = useState<Lead | null>(null);
+  const [delay, setDelay] = useState(7);
+  const [query, setQuery] = useState("");
+  const all = useMemo(() => [...COLUMNS.flatMap(({ key }) => active[key] ?? []), ...closed], [active, closed]);
+  const filtered = all.filter((lead) => `${lead.name} ${lead.phone} ${lead.locality}`.toLowerCase().includes(query.toLowerCase()));
 
-  return (
-    <div className="grid gap-5">
-      <div className="flex items-center justify-between">
-        <p className="erp-text-body-sm text-[color:var(--muted)]">
-          {counts.nuevo + counts.contactado + counts.interesado} leads activos ·{" "}
-          {counts.convertido} convertidos · {counts.descartado} descartados
-        </p>
-        <Button onClick={() => setCreating(true)} size="sm" type="button">
-          + Nuevo lead
-        </Button>
-      </div>
+  const leadCard = (lead: Lead, compact = false) => {
+    const whatsapp = whatsappUrl(lead.phone);
+    return <article className="grid gap-3 rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3"><div><div className="font-black">{lead.name}</div><div className="erp-text-caption mt-1 text-[color:var(--muted)]">{[lead.locality, lead.source].filter(Boolean).join(" · ") || "Sin zona ni origen"}</div></div><span className={`shrink-0 rounded-full border px-2.5 py-1 erp-text-caption font-bold ${dateTone(lead.nextFollowup)}`}>{lead.nextFollowup ? `Próximo ${lead.nextFollowup}` : "Sin seguimiento"}</span></div>
+      {!compact && lead.notes ? <p className="line-clamp-2 erp-text-body-sm text-[color:var(--muted)]">{lead.notes}</p> : null}
+      <div className="flex flex-wrap gap-2">{whatsapp ? <a className="inline-flex min-h-9 items-center rounded-lg border border-[color:var(--border)] px-3 erp-text-body-sm font-bold" href={whatsapp} rel="noreferrer" target="_blank">WhatsApp</a> : null}{isActive(lead) ? <Button onClick={() => { setDelay(7); setSelected(lead); }} size="sm">Contactado</Button> : null}{NEXT_STAGE[lead.stage] ? <form action={moveAction}><input name="id" type="hidden" value={lead.id}/><input name="stage" type="hidden" value={NEXT_STAGE[lead.stage]}/><Button size="sm" type="submit" variant="secondary">Pasar a {NEXT_STAGE[lead.stage]}</Button></form> : null}{lead.stage === "interesado" ? <a className="inline-flex min-h-9 items-center rounded-lg border border-[color:var(--border)] px-3 erp-text-body-sm font-bold" href={`/quotes/new?lead=${lead.id}`}>Presupuestar</a> : null}</div>
+    </article>;
+  };
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {COLUMNS.map((column) => (
-          <div
-            className="grid content-start gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-3"
-            key={column.key}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              const id = event.dataTransfer.getData("text/lead-id");
-              if (!id) return;
-              const formData = new FormData();
-              formData.set("id", id);
-              formData.set("stage", column.key);
-              void moveAction(formData);
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <h2 className="erp-text-body-sm font-black">{column.label}</h2>
-              <span className="erp-text-caption text-[color:var(--muted)]">{active[column.key]?.length ?? 0}</span>
-            </div>
-            {(active[column.key] ?? []).map((lead) => (
-              <article
-                className="grid gap-2 rounded-md border border-[color:var(--border)] bg-[color:var(--panel)] p-3"
-                draggable
-                key={lead.id}
-                onDragStart={(event) => event.dataTransfer.setData("text/lead-id", lead.id)}
-              >
-                <div className="font-bold">{lead.name}</div>
-                <div className="erp-text-caption text-[color:var(--muted)]">
-                  {[lead.locality, lead.phone].filter(Boolean).join(" · ") || "Sin datos"}
-                </div>
-                {lead.nextFollowup ? (
-                  <span className={`w-fit rounded-full border px-2 py-0.5 text-xs font-semibold ${followupTone(lead.nextFollowup)}`}>
-                    Seguir: {lead.nextFollowup}
-                  </span>
-                ) : null}
-                <div className="flex flex-wrap gap-2">
-                  {NEXT_STAGE[lead.stage] ? (
-                    <form action={moveAction}>
-                      <input name="id" type="hidden" value={lead.id} />
-                      <input name="stage" type="hidden" value={NEXT_STAGE[lead.stage]} />
-                      <Button size="sm" type="submit" variant="secondary">
-                        → {NEXT_STAGE[lead.stage]}
-                      </Button>
-                    </form>
-                  ) : null}
-                  <form action={convertAction} className="flex items-center gap-2">
-                    <input name="id" type="hidden" value={lead.id} />
-                    <Select
-                      aria-label={`Comprobante asociado de ${lead.name}`}
-                      defaultValue=""
-                      name="receiptType"
-                      required
-                    >
-                      <option disabled value="">Comprobante</option>
-                      {CUSTOMER_RECEIPT_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </Select>
-                    <Button size="sm" type="submit">Convertir</Button>
-                  </form>
-                  <form action={discardAction}>
-                    <input name="id" type="hidden" value={lead.id} />
-                    <Button size="sm" type="submit" variant="secondary">Descartar</Button>
-                  </form>
-                </div>
-              </article>
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <div>
-        <button
-          className="erp-text-body-sm font-semibold text-[color:var(--muted)]"
-          onClick={() => setShowClosed((value) => !value)}
-          type="button"
-        >
-          {showClosed ? "▾" : "▸"} Cerrados ({closed.length})
-        </button>
-        {showClosed ? (
-          <ul className="mt-2 grid gap-2">
-            {closed.map((lead) => (
-              <li className="flex items-center justify-between rounded-md border border-[color:var(--border)] p-2" key={lead.id}>
-                <span>{lead.name} · {lead.locality || "Sin zona"}</span>
-                <span className="erp-text-caption text-[color:var(--muted)]">
-                  {lead.stage === "convertido" ? "Convertido" : "Descartado"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-
-      {creating ? (
-        <div aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog">
-          <button
-            aria-label="Cerrar"
-            className="absolute inset-0 cursor-default bg-black/40"
-            onClick={() => setCreating(false)}
-            type="button"
-          />
-          <div className="relative z-10 w-full max-w-md rounded-[12px] border border-[color:var(--border)] bg-[color:var(--panel)] p-5">
-            <h2 className="erp-text-title-sm font-black">Nuevo lead</h2>
-            <form action={createAction} className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={() => setCreating(false)}>
-              <Field htmlFor="lead-name" label="Nombre">
-                <Input id="lead-name" name="name" required />
-              </Field>
-              <Field htmlFor="lead-phone" label="Teléfono">
-                <Input id="lead-phone" name="phone" />
-              </Field>
-              <Field htmlFor="lead-locality" label="Zona / localidad">
-                <Input id="lead-locality" name="locality" />
-              </Field>
-              <Field htmlFor="lead-source" label="Origen">
-                <Input id="lead-source" name="source" placeholder="Recomendado, feria, etc." />
-              </Field>
-              <Field htmlFor="lead-email" label="Email">
-                <Input id="lead-email" name="email" type="email" />
-              </Field>
-              <Field htmlFor="lead-followup" label="Próximo seguimiento">
-                <Input id="lead-followup" name="nextFollowup" type="date" />
-              </Field>
-              <div className="sm:col-span-2">
-                <Field htmlFor="lead-notes" label="Notas">
-                  <Input id="lead-notes" name="notes" placeholder="Opcional" />
-                </Field>
-              </div>
-              <div className="flex justify-end gap-2 sm:col-span-2">
-                <Button onClick={() => setCreating(false)} size="sm" type="button" variant="secondary">Cancelar</Button>
-                <Button size="sm" type="submit">Crear lead</Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
+  return <div className="grid gap-5">
+    <Card className="grid gap-4 p-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="erp-text-title-sm font-black">Tu agenda comercial</h2><p className="erp-text-body-sm mt-1 text-[color:var(--muted)]">Cada lead conserva una próxima acción para que ninguno quede olvidado.</p></div><Button onClick={() => setCreating(true)} size="sm">+ Nuevo lead</Button></div><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[["Para hoy", agenda.filter((lead) => !lead.contactedToday).length], ["Sin fecha", all.filter((lead) => isActive(lead) && !lead.nextFollowup).length], ["Interesados", counts.interesado], ["Convertidos", counts.convertido]].map(([label, value]) => <div className="rounded-xl bg-[color:var(--panel-subtle)] p-3" key={label}><div className="text-2xl font-black tabular-nums">{value}</div><div className="erp-text-caption font-bold text-[color:var(--muted)]">{label}</div></div>)}</div></Card>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div className="inline-flex rounded-xl border border-[color:var(--border)] bg-[color:var(--panel)] p-1">{([["hoy", "Hoy"], ["embudo", "Embudo"], ["todos", "Todos"]] as const).map(([key, label]) => <button className={`min-h-9 rounded-lg px-4 erp-text-body-sm font-bold ${view === key ? "bg-[color:var(--accent)] text-white" : "text-[color:var(--muted)]"}`} key={key} onClick={() => setView(key)}>{label}{key === "hoy" ? ` (${agenda.length})` : ""}</button>)}</div><p className="erp-text-body-sm text-[color:var(--muted)]">{counts.nuevo + counts.contactado + counts.interesado} activos · {counts.convertido} convertidos</p></div>
+    {view === "hoy" ? <div className="grid gap-3">{agenda.length ? agenda.map((lead) => <div className={lead.contactedToday ? "opacity-60" : ""} key={lead.id}>{leadCard(lead)}</div>) : <Card className="p-8 text-center"><div className="font-black">Agenda al día</div><p className="erp-text-body-sm mt-1 text-[color:var(--muted)]">No hay seguimientos vencidos ni programados para hoy.</p></Card>}</div> : null}
+    {view === "embudo" ? <div className="grid gap-4 md:grid-cols-3">{COLUMNS.map((column) => <section className="grid content-start gap-3 rounded-xl border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-3" key={column.key} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { const id = event.dataTransfer.getData("text/lead-id"); if (!id) return; const data = new FormData(); data.set("id", id); data.set("stage", column.key); void moveAction(data); }}><div className="flex items-center justify-between"><h3 className="font-black">{column.label}</h3><span className="erp-text-caption">{active[column.key]?.length ?? 0}</span></div>{(active[column.key] ?? []).map((lead) => <div draggable key={lead.id} onDragStart={(event) => event.dataTransfer.setData("text/lead-id", lead.id)}>{leadCard(lead, true)}</div>)}</section>)}</div> : null}
+    {view === "todos" ? <div className="grid gap-3"><Input aria-label="Buscar leads" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre, teléfono o zona" value={query}/>{filtered.map((lead) => <div key={lead.id}>{leadCard(lead, true)}{isActive(lead) ? <div className="-mt-1 flex flex-wrap justify-end gap-2 rounded-b-xl border border-t-0 border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-2"><form action={convertAction} className="flex gap-2"><input name="id" type="hidden" value={lead.id}/><Select aria-label={`Comprobante de ${lead.name}`} defaultValue="" name="receiptType" required><option disabled value="">Comprobante</option>{RECEIPTS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</Select><Button size="sm" type="submit">Convertir</Button></form><form action={discardAction}><input name="id" type="hidden" value={lead.id}/><Button size="sm" type="submit" variant="secondary">Descartar</Button></form></div> : null}</div>)}</div> : null}
+    {selected ? <div aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog"><button aria-label="Cerrar" className="absolute inset-0 bg-black/40" onClick={() => setSelected(null)}/><Card className="relative z-10 w-full max-w-lg p-5"><h2 className="erp-text-title-sm font-black">Contacto · {selected.name}</h2><p className="erp-text-body-sm mt-1 text-[color:var(--muted)]">Registrá el resultado y cuándo debe reaparecer.</p><form action={recordAction} className="mt-4 grid gap-4" onSubmit={() => setSelected(null)}><input name="id" type="hidden" value={selected.id}/><div className="flex flex-wrap gap-2">{[7, 14, 30, 60].map((days) => <Button key={days} onClick={() => setDelay(days)} size="sm" variant={delay === days ? "primary" : "secondary"}>{days} días</Button>)}</div><Field htmlFor="lead-next-contact" label="Próximo contacto"><Input defaultValue={localDate(delay)} id="lead-next-contact" key={delay} min={localDate(1)} name="nextFollowup" required type="date"/></Field><Field htmlFor="lead-contact-note" label="Resultado / nota"><Textarea id="lead-contact-note" maxLength={500} name="notes" placeholder="Qué respondió y cuál es el próximo paso" rows={3}/></Field><div className="flex justify-end gap-2"><Button onClick={() => setSelected(null)} size="sm" variant="secondary">Cancelar</Button><Button size="sm" type="submit">Guardar y reprogramar</Button></div></form></Card></div> : null}
+    {creating ? <div aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog"><button aria-label="Cerrar" className="absolute inset-0 bg-black/40" onClick={() => setCreating(false)}/><Card className="relative z-10 w-full max-w-lg p-5"><h2 className="erp-text-title-sm font-black">Nuevo lead</h2><p className="erp-text-body-sm mt-1 text-[color:var(--muted)]">Cargá lo mínimo. Podés completar el resto cuando avance.</p><form action={createAction} className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={() => setCreating(false)}><Field htmlFor="lead-name" label="Nombre"><Input id="lead-name" name="name" required/></Field><Field htmlFor="lead-phone" label="Teléfono"><Input id="lead-phone" name="phone"/></Field><Field htmlFor="lead-followup" label="Próximo contacto"><Input defaultValue={localDate(7)} id="lead-followup" min={localDate(1)} name="nextFollowup" required type="date"/></Field><details className="sm:col-span-2 rounded-lg border border-[color:var(--border)] p-3"><summary className="cursor-pointer erp-text-body-sm font-bold">Agregar más datos</summary><div className="mt-3 grid gap-3 sm:grid-cols-2"><Field htmlFor="lead-locality" label="Zona / localidad"><Input id="lead-locality" name="locality"/></Field><Field htmlFor="lead-source" label="Origen"><Input id="lead-source" name="source" placeholder="Recomendado, feria, etc."/></Field><Field htmlFor="lead-email" label="Email"><Input id="lead-email" name="email" type="email"/></Field><Field htmlFor="lead-notes" label="Necesidad / notas"><Input id="lead-notes" name="notes" placeholder="Qué busca o qué quedó pendiente"/></Field></div></details><div className="flex justify-end gap-2 sm:col-span-2"><Button onClick={() => setCreating(false)} size="sm" variant="secondary">Cancelar</Button><Button size="sm" type="submit">Crear lead</Button></div></form></Card></div> : null}
+  </div>;
 }
