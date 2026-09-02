@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 
 type Availability = "available" | "check" | "out";
 type Product = { id: string; name: string; code: string; category: string; brand: string; imageUrl: string | null; available: Availability };
@@ -19,6 +19,19 @@ const sectionFilters: { key: SectionKey; label: string; terms: string[] }[] = [
 
 const fieldClass = "min-h-11 rounded-[9px] border border-[#cbd8e8] px-3 font-medium outline-none focus:border-[#075ac7]";
 
+const categoryPresentation: Record<string, { eyebrow: string; description: string; accent: string; icon: string }> = {
+  descartables: { eyebrow: "Servicio ágil", description: "Vasos, bandejas, cubiertos y soluciones para cada entrega.", accent: "from-[#075ac7] to-[#0a79df]", icon: "◯" },
+  papeleria: { eyebrow: "Reposición diaria", description: "Papeles, bobinas, servilletas y productos institucionales.", accent: "from-[#176b87] to-[#2b91a8]", icon: "▤" },
+  limpieza: { eyebrow: "Cuidado profesional", description: "Líquidos y químicos para una limpieza eficiente y segura.", accent: "from-[#16784d] to-[#2c9a67]", icon: "✦" },
+  articulos: { eyebrow: "Todo lo necesario", description: "Guantes, esponjas, cabos, baldes y accesorios de trabajo.", accent: "from-[#5d3ca0] to-[#7658bd]", icon: "◇" },
+  textil: { eyebrow: "Rendimiento durable", description: "Trapos, rejillas, paños y textiles para uso intensivo.", accent: "from-[#b56213] to-[#e19532]", icon: "▦" },
+  marca: { eyebrow: "Marcas seleccionadas", description: "Magnum, Usina, Esekaku y líneas destacadas del catálogo.", accent: "from-[#263f73] to-[#4260a1]", icon: "★" },
+};
+
+function normalizeCategory(value: string) {
+  return value.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+}
+
 function AvailabilityBadge({ available }: { available: Availability }) {
   const status = available === "out"
     ? { label: "Sin stock momentáneo", className: "bg-[#fff1f2] text-[#b4233d]" }
@@ -34,12 +47,26 @@ export function Storefront({ products }: { products: Product[] }) {
   const [category, setCategory] = useState("");
   const [brand, setBrand] = useState("");
   const [section, setSection] = useState<SectionKey>("all");
+  const [browseAll, setBrowseAll] = useState(false);
   const [step, setStep] = useState<"catalog" | "checkout" | "success">("catalog");
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState("");
   const [location, setLocation] = useState<Location>({ address: "", city: "", province: "", latitude: "", longitude: "" });
-  const categories = useMemo(() => [...new Set(products.map((p) => p.category).filter(Boolean))].sort(), [products]);
+  const catalogRef = useRef<HTMLDivElement>(null);
+  const categoryCounts = useMemo(() => products.reduce((counts, product) => {
+    if (product.category) counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>()), [products]);
+  const categories = useMemo(() => {
+    const order = ["descartables", "papeleria", "limpieza", "articulos", "textil", "marca"];
+    return [...categoryCounts.keys()].sort((a, b) => {
+      const ai = order.indexOf(normalizeCategory(a));
+      const bi = order.indexOf(normalizeCategory(b));
+      if (ai !== bi) return (ai < 0 ? order.length : ai) - (bi < 0 ? order.length : bi);
+      return a.localeCompare(b, "es");
+    });
+  }, [categoryCounts]);
   const brands = useMemo(() => [...new Set(products.map((p) => p.brand).filter(Boolean))].sort(), [products]);
   const filtered = useMemo(() => products.filter((product) => {
     const needle = query.trim().toLocaleLowerCase("es");
@@ -60,6 +87,7 @@ export function Storefront({ products }: { products: Product[] }) {
   }, [filtered]);
   const selected = products.filter((product) => (cart[product.id] ?? 0) > 0);
   const totalUnits = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
+  const showCatalog = browseAll || Boolean(category || brand || query.trim());
   const mapUrl = location.latitude && location.longitude
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${Number(location.longitude) - .01}%2C${Number(location.latitude) - .01}%2C${Number(location.longitude) + .01}%2C${Number(location.latitude) + .01}&layer=mapnik&marker=${location.latitude}%2C${location.longitude}`
     : "https://www.openstreetmap.org/export/embed.html?bbox=-64.35%2C-31.55%2C-64.05%2C-31.25&layer=mapnik";
@@ -71,6 +99,13 @@ export function Storefront({ products }: { products: Product[] }) {
   function goToCheckout() {
     setStep("checkout");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function openCategory(value: string) {
+    setCategory(value);
+    setSection("all");
+    setQuery("");
+    window.setTimeout(() => catalogRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
 
   function locate() {
@@ -103,14 +138,40 @@ export function Storefront({ products }: { products: Product[] }) {
 
   return <section className="mx-auto max-w-[1380px] px-4 py-8 sm:px-8">
     {step === "catalog" ? <>
+      <section aria-labelledby="store-categories-title" className="mb-7">
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+          <div><span className="text-sm font-extrabold uppercase tracking-[0.12em] text-[#075ac7]">Comprá por categoría</span><h2 className="mt-1 text-3xl font-extrabold tracking-[-0.035em] sm:text-4xl" id="store-categories-title">¿Qué necesitás reponer?</h2><p className="mt-2 max-w-2xl text-[#64748b]">Entrá directamente al sector que buscás y armá el pedido en pocos pasos.</p></div>
+          {showCatalog && <button className="text-sm font-extrabold text-[#075ac7] hover:underline" onClick={() => { setBrowseAll(false); setCategory(""); setBrand(""); setQuery(""); }} type="button">Volver a categorías</button>}
+        </div>
+        <label className="mb-5 block"><span className="sr-only">Buscar en toda la tienda</span><input className="min-h-14 w-full rounded-[16px] border border-[#b9cbe0] bg-white px-5 text-base font-semibold shadow-sm outline-none transition placeholder:font-medium placeholder:text-[#7b8da3] focus:border-[#075ac7] focus:ring-4 focus:ring-[#075ac7]/10" onChange={(event) => setQuery(event.target.value)} placeholder="¿Ya sabés qué buscás? Escribí producto, marca o código…" type="search" value={query} /></label>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {categories.map((value) => {
+            const presentation = categoryPresentation[normalizeCategory(value)] ?? { eyebrow: "Explorá el catálogo", description: "Encontrá todos los productos disponibles en esta categoría.", accent: "from-[#315170] to-[#557493]", icon: "＋" };
+            const active = category === value;
+            return <button aria-pressed={active} className={`group relative min-h-52 overflow-hidden rounded-[22px] bg-gradient-to-br ${presentation.accent} p-6 text-left text-white shadow-[0_14px_34px_rgba(26,55,96,0.16)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_20px_42px_rgba(26,55,96,0.24)] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#ffb74d] ${active ? "ring-4 ring-[#ffb74d]" : ""}`} key={value} onClick={() => openCategory(value)} type="button">
+              <span aria-hidden="true" className="absolute -right-5 -top-8 text-[9rem] font-black text-white/10 transition group-hover:scale-110">{presentation.icon}</span>
+              <span className="relative text-xs font-extrabold uppercase tracking-[0.13em] text-white/75">{presentation.eyebrow}</span>
+              <strong className="relative mt-5 block text-3xl font-extrabold tracking-[-0.035em]">{value}</strong>
+              <span className="relative mt-3 block max-w-[28rem] text-sm font-medium leading-6 text-white/80">{presentation.description}</span>
+              <span className="relative mt-5 inline-flex items-center gap-2 font-extrabold">Ver {categoryCounts.get(value)} artículos <span aria-hidden="true" className="transition group-hover:translate-x-1">→</span></span>
+            </button>;
+          })}
+          <button className="group min-h-52 rounded-[22px] border-2 border-dashed border-[#a9bdd5] bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:border-[#075ac7] hover:shadow-lg focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#ffb74d]" onClick={() => { setBrowseAll(true); setCategory(""); window.setTimeout(() => catalogRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0); }} type="button">
+            <span className="text-xs font-extrabold uppercase tracking-[0.13em] text-[#075ac7]">Catálogo completo</span><strong className="mt-5 block text-3xl font-extrabold tracking-[-0.035em]">Ver todo</strong><span className="mt-3 block text-sm font-medium leading-6 text-[#64748b]">Recorré los {products.length} artículos y combiná filtros por marca o categoría.</span><span className="mt-5 inline-flex items-center gap-2 font-extrabold text-[#075ac7]">Abrir catálogo <span aria-hidden="true" className="transition group-hover:translate-x-1">→</span></span>
+          </button>
+        </div>
+      </section>
+      <div ref={catalogRef} />
+      {showCatalog && <>
       <div className="rounded-[16px] border border-[#dbe5f1] bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5ebf2] pb-4"><div><strong className="block text-lg">+{products.length} artículos en lista</strong><span className="text-sm font-medium text-[#64748b]">{filtered.length} visibles con los filtros actuales</span></div><button className="rounded-[11px] bg-[#ffb74d] px-5 py-3 font-extrabold text-[#173052] shadow-sm disabled:opacity-50" disabled={!totalUnits} onClick={goToCheckout} type="button">Continuar · {totalUnits} {totalUnits === 1 ? "unidad" : "unidades"}</button></div>
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Secciones de productos">{sectionFilters.map((item) => <button aria-pressed={section === item.key} className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-bold ${section === item.key ? "bg-[#075ac7] text-white" : "border border-[#cbd8e8] text-[#315170] hover:bg-[#f4f8fc]"}`} key={item.key} onClick={() => setSection(item.key)} type="button">{item.label}</button>)}</div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_230px_230px]"><input className={fieldClass} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar producto, código, marca o categoría" type="search" value={query} /><select className={`${fieldClass} bg-white`} onChange={(event) => setCategory(event.target.value)} value={category}><option value="">Todas las categorías</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><select className={`${fieldClass} bg-white`} onChange={(event) => setBrand(event.target.value)} value={brand}><option value="">Todas las marcas</option>{brands.map((value) => <option key={value}>{value}</option>)}</select></div>
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Secciones de productos">{sectionFilters.map((item) => <button aria-pressed={section === item.key} className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-bold ${section === item.key ? "bg-[#075ac7] text-white" : "border border-[#cbd8e8] text-[#315170] hover:bg-[#f4f8fc]"}`} key={item.key} onClick={() => { setSection(item.key); setCategory(""); setBrowseAll(true); }} type="button">{item.label}</button>)}</div>
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_230px_230px]"><input className={fieldClass} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar producto, código, marca o categoría" type="search" value={query} /><select className={`${fieldClass} bg-white`} onChange={(event) => { setCategory(event.target.value); if (!event.target.value) setBrowseAll(true); }} value={category}><option value="">Todas las categorías</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><select className={`${fieldClass} bg-white`} onChange={(event) => setBrand(event.target.value)} value={brand}><option value="">Todas las marcas</option>{brands.map((value) => <option key={value}>{value}</option>)}</select></div>
       </div>
       <div className="mt-7 grid gap-10">{groupedProducts.map(([group, groupProducts]) => <section key={group}><div className="mb-4 flex items-end justify-between gap-3 border-b border-[#cfdbea] pb-2"><h2 className="text-2xl font-extrabold tracking-[-0.025em]">{group}</h2><span className="text-sm font-bold text-[#64748b]">{groupProducts.length} {groupProducts.length === 1 ? "artículo" : "artículos"}</span></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{groupProducts.map((product) => <article className="overflow-hidden rounded-[16px] border border-[#dbe5f1] bg-white shadow-sm" key={product.id}><div className="relative aspect-[4/3] bg-[#edf3f9]">{product.imageUrl ? <Image alt={product.name} className="object-contain p-4" fill sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 25vw" src={product.imageUrl} /> : <div className="grid h-full place-items-center text-5xl text-[#9aabc0]">▧</div>}</div><div className="p-4"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-bold uppercase text-[#64748b]">{product.brand || product.category || "Producto"}</span><AvailabilityBadge available={product.available} /></div><h3 className="mt-2 min-h-12 font-extrabold leading-6">{product.name}</h3>{product.code && <p className="mt-1 text-xs text-[#718096]">Código {product.code}</p>}<div className="mt-4 flex items-center justify-between gap-2"><button aria-label={`Quitar ${product.name}`} className="h-10 w-10 rounded-full border border-[#cbd8e8] text-xl font-bold" onClick={() => changeQuantity(product.id, -1)} type="button">−</button><strong className="text-lg tabular-nums">{cart[product.id] ?? 0}</strong><button aria-label={`Agregar ${product.name}`} className="h-10 w-10 rounded-full bg-[#075ac7] text-xl font-bold text-white" onClick={() => changeQuantity(product.id, 1)} type="button">+</button></div></div></article>)}</div></section>)}</div>
       {!filtered.length && <p className="py-16 text-center font-semibold text-[#64748b]">No encontramos productos con ese filtro.</p>}
       <div className="sticky bottom-4 z-20 mt-8 flex items-center justify-between gap-4 rounded-[16px] bg-[#102d52] px-5 py-4 text-white shadow-2xl"><div><strong className="block text-lg">{totalUnits} {totalUnits === 1 ? "unidad" : "unidades"}</strong><span className="text-sm text-white/70">{selected.length} {selected.length === 1 ? "producto" : "productos"} en el carrito</span></div><button className="rounded-[11px] bg-[#ffb74d] px-5 py-3 font-extrabold text-[#173052] disabled:opacity-50" disabled={!totalUnits} onClick={goToCheckout} type="button">Continuar</button></div>
+      </>}
     </> : <form className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]" onSubmit={submit}>
       <div className="rounded-[18px] border border-[#dbe5f1] bg-white p-5 shadow-sm sm:p-7"><button className="mb-5 text-sm font-bold text-[#075ac7]" onClick={() => setStep("catalog")} type="button">← Volver al catálogo</button><h2 className="text-2xl font-extrabold">Datos para la cotización</h2><p className="mt-2 text-[#64748b]">Los campos se pueden corregir manualmente antes de enviar.</p><div className="mt-6 grid gap-4 sm:grid-cols-2">{[["name","Nombre y apellido *"],["phone","Teléfono *"],["brand","Marca o nombre comercial"],["taxId","CUIT"],["businessName","Razón social"],["industry","Rubro"]].map(([name,label]) => <label className="grid gap-1.5 text-sm font-bold" key={name}>{label}<input className={fieldClass} name={name} required={name === "name" || name === "phone"} /></label>)}</div>
       <div className="mt-7 flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-extrabold">Dirección de entrega</h3><p className="text-sm text-[#64748b]">Usá el mapa o completala manualmente.</p></div><button className="rounded-[10px] border border-[#075ac7] px-4 py-2 text-sm font-bold text-[#075ac7]" disabled={locating} onClick={locate} type="button">{locating ? "Ubicando…" : "Usar mi ubicación"}</button></div>
