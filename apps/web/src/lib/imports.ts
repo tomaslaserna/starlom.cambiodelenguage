@@ -464,7 +464,6 @@ export async function listVendors(companyId: number) {
       JOIN profiles p ON p.id = ue.id_usuario
       WHERE ue.empresa_id = $1
         AND ue.activo = TRUE
-        AND ue.role::text = 'vendedor'
       ORDER BY name ASC
     `,
     [companyId],

@@ -673,8 +673,9 @@ export async function buildQuoteDraft(
 
 const QUOTE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// Resuelve a quién se asigna el presupuesto. Un vendedor válido de la empresa => solo
-// ese vendedor lo ve. "" o un id inválido => visible para todos (y se conserva el creador).
+// Resuelve a quién se asigna el presupuesto. La responsabilidad comercial es
+// independiente del rol principal: cualquier empleado activo de la empresa puede vender.
+// "" o un id inválido => visible para todos (y se conserva el creador).
 export async function resolveQuoteAssignment(
   client: PoolClient,
   session: AuthSession,
@@ -688,7 +689,7 @@ export async function resolveQuoteAssignment(
           FROM usuario_empresa ue
           JOIN profiles p ON p.id = ue.id_usuario
          WHERE ue.empresa_id = $1 AND ue.id_usuario = $2::uuid
-           AND ue.activo = TRUE AND ue.role::text = 'vendedor'
+           AND ue.activo = TRUE
          LIMIT 1
       `,
       [session.companyId, candidate],

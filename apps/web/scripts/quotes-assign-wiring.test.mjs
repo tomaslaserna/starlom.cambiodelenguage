@@ -4,6 +4,20 @@ import test from "node:test";
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 
+test("todo empleado activo puede ser responsable comercial sin cambiar su rol principal", () => {
+  const imports = read("../src/lib/imports.ts");
+  const quotes = read("../src/lib/quotes.ts");
+  const management = read("../src/lib/vendors-management.ts");
+  const vendorListing = imports.slice(imports.indexOf("export async function listVendors"));
+  const assignment = quotes.slice(quotes.indexOf("export async function resolveQuoteAssignment"));
+
+  assert.match(vendorListing, /ue\.activo = TRUE/);
+  assert.doesNotMatch(vendorListing, /ue\.role::text = 'vendedor'/);
+  assert.match(assignment, /ue\.activo = TRUE/);
+  assert.doesNotMatch(assignment, /ue\.role::text = 'vendedor'/);
+  assert.doesNotMatch(management, /ue\.role::text = 'vendedor'/);
+});
+
 test("QuoteEntryFields tiene el selector Asignar a", () => {
   const src = read("../src/app/quotes/quote-entry-fields.tsx");
   assert.match(src, /vendors/);

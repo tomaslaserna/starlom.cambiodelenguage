@@ -23,7 +23,6 @@ export async function getVendorManagement(companyId: number) {
         JOIN profiles p ON p.id = ue.id_usuario
         WHERE ue.empresa_id = $1
           AND ue.activo = TRUE
-          AND ue.role::text = 'vendedor'
         UNION
         SELECT BTRIM(seller_name) AS vendor FROM clients WHERE empresa_id = $1 AND COALESCE(BTRIM(seller_name), '') <> ''
         UNION

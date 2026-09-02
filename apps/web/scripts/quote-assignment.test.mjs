@@ -79,11 +79,15 @@ test("quoteInputFromBody lee assignedSellerId", () => {
   assert.equal(withoutVendor.assignedSellerId, "");
 });
 
-test("resolveQuoteAssignment: vendedor valido -> asignado; invalido/'' -> Todos", async () => {
+test("resolveQuoteAssignment: empleado activo -> asignado; invalido/'' -> Todos", async () => {
   const session = { companyId: 1, userId: "creator" };
   const okClient = { query: async () => ({ rows: [{ ok: 1 }] }) };
   const assigned = await quotes.resolveQuoteAssignment(okClient, session, "11111111-1111-4111-8111-111111111111");
   assert.deepEqual(assigned, { sellerId: "11111111-1111-4111-8111-111111111111", visibleToAll: false });
+  const assignmentQuery = [];
+  const adminClient = { query: async (sql) => { assignmentQuery.push(sql); return { rows: [{ ok: 1 }] }; } };
+  await quotes.resolveQuoteAssignment(adminClient, session, "33333333-3333-4333-8333-333333333333");
+  assert.doesNotMatch(assignmentQuery[0], /role::text\s*=\s*'vendedor'/i);
   const noClient = { query: async () => { throw new Error("no deberia consultar"); } };
   const all = await quotes.resolveQuoteAssignment(noClient, session, "");
   assert.deepEqual(all, { sellerId: "creator", visibleToAll: true });
