@@ -5,9 +5,11 @@ import { queryWithCompanyContext } from "@/lib/db";
 import {
   ACTIVE_LEAD_STAGES,
   leadToCustomerInput,
+  leadStageAfterContact,
   normalizeLeadStage,
   type Lead,
   type LeadInput,
+  type LeadContactOutcome,
   type LeadStage,
 } from "@/lib/leads-domain";
 import type { AuthSession } from "@/lib/auth";
@@ -97,7 +99,7 @@ export async function getLeadFollowupAgenda(session: AuthSession): Promise<LeadF
       WHERE l.empresa_id = $1
         AND UPPER(BTRIM(COALESCE(l.assigned_seller,''))) = ANY($3::text[])
         AND l.stage IN ('nuevo', 'contactado', 'interesado')
-        AND (l.next_followup IS NULL OR l.next_followup <= $4::date OR ct.lead_id IS NOT NULL)
+        AND (l.next_followup IS NULL OR l.next_followup <= $4::date)
       ORDER BY COALESCE(l.next_followup, l.created_at::date), l.created_at, l.id
       LIMIT 10`,
     [session.companyId, session.userId, candidates, today],
@@ -157,6 +159,8 @@ async function getScopedLead(session: AuthSession, id: string): Promise<Lead> {
 }
 
 export async function createLead(session: AuthSession, input: LeadInput): Promise<{ id: string }> {
+  const automaticFollowup = new Date(`${localDateIso()}T12:00:00-03:00`);
+  automaticFollowup.setDate(automaticFollowup.getDate() + 3);
   const result = await queryWithCompanyContext<{ id: string }>(
     session.companyId,
     `INSERT INTO crm_leads
@@ -171,7 +175,7 @@ export async function createLead(session: AuthSession, input: LeadInput): Promis
       input.email,
       input.locality,
       input.source,
-      input.nextFollowup,
+      input.nextFollowup ?? localDateIso(automaticFollowup),
       input.notes,
       session.username,
     ],
@@ -199,13 +203,15 @@ export async function recordLeadContact(
   id: string,
   nextFollowup: string,
   notes: string,
+  outcome: LeadContactOutcome,
 ): Promise<void> {
-  await getScopedLead(session, id);
+  const lead = await getScopedLead(session, id);
+  const nextStage = leadStageAfterContact(lead.stage, outcome);
   await queryWithCompanyContext(
     session.companyId,
     `WITH updated AS (
        UPDATE crm_leads
-          SET stage = CASE WHEN stage = 'nuevo' THEN 'contactado' ELSE stage END,
+          SET stage = $6,
               next_followup = $1::date,
               notes = CASE WHEN $2 = '' THEN notes ELSE CONCAT_WS(E'\\n', NULLIF(notes, ''), $2) END,
               updated_at = now()
@@ -214,9 +220,9 @@ export async function recordLeadContact(
      )
      INSERT INTO crm_sales_activities
        (empresa_id, seller_id, lead_id, activity_type, outcome, source_bucket, notes, next_followup)
-     SELECT $4, $5::uuid, id, 'seguimiento', 'contactado', 'lead', $2, $1::date
+     SELECT $4, $5::uuid, id, 'seguimiento', $7, 'lead', $2, $1::date
        FROM updated`,
-    [nextFollowup, notes, id, session.companyId, session.userId],
+    [nextFollowup, notes, id, session.companyId, session.userId, nextStage, outcome],
   );
 }
 

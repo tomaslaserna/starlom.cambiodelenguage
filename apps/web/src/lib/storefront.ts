@@ -91,8 +91,8 @@ export async function createStorefrontRequest(input: StorefrontRequest) {
     const leadNotes = [`Solicitud web ${quoteNumber}`, `Marca: ${input.brand || "-"}`, input.companyName && `Negocio informado: ${input.companyName}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || input.businessType || "-"}`, input.usualPurchases.length && `Compra habitualmente: ${input.usualPurchases.join(", ")}`, input.currentSupplier && `Proveedor actual: ${input.currentSupplier}`, input.supplierCount && `Cantidad de proveedores: ${input.supplierCount}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
 
     const lead = await client.query<{ id: string }>(
-      `INSERT INTO crm_leads (empresa_id, assigned_seller, name, phone, locality, source, stage, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,'Tienda web','nuevo',$6,'tienda-web') RETURNING id::text`,
+      `INSERT INTO crm_leads (empresa_id, assigned_seller, name, phone, locality, source, stage, next_followup, notes, created_by)
+       VALUES ($1,$2,$3,$4,$5,'Tienda web','nuevo',CURRENT_DATE + 3,$6,'tienda-web') RETURNING id::text`,
       [COMPANY_ID, seller.identity, input.name, input.phone, [input.city, input.province].filter(Boolean).join(", "), leadNotes],
     );
     const quote = await client.query<{ id: string }>(

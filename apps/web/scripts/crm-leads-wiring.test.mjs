@@ -57,9 +57,12 @@ test("la agenda de leads fija diez contactos y permite reprogramar cada prospect
   assert.match(leadsSource, /LIMIT 10/);
   assert.match(leadsSource, /recordLeadContact/);
   assert.match(leadsSource, /next_followup = \$1::date/);
-  assert.match(leadsBoard, /\[7, 14, 30, 60\]/);
-  assert.match(leadsBoard, /Guardar y reprogramar/);
+  assert.match(leadsBoard, /\[3, 7, 15, 30, 60\]/);
+  assert.match(leadsBoard, /Guardar y sacar de hoy/);
   assert.match(leadsBoard, /Cada lead conserva una próxima acción/);
+  assert.match(leadsBoard, /Sugerencia automática/);
+  assert.match(leadsBoard, /Guardar y sacar de hoy/);
+  assert.match(leadsSource, /leadStageAfterContact/);
   assert.match(leadsPage, /agenda=\{leadAgenda\}/);
 });
 

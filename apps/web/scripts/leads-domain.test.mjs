@@ -42,6 +42,16 @@ test("normalizeLeadStage mapea válidos y cae a 'nuevo' si es inválido", () => 
   assert.equal(domain.normalizeLeadStage("cualquiera"), "nuevo");
 });
 
+test("las cadencias automáticas escalan según el resultado comercial", () => {
+  assert.equal(domain.leadCadenceDays("pedido_probable"), 3);
+  assert.equal(domain.leadCadenceDays("interesado"), 3);
+  assert.equal(domain.leadCadenceDays("contactado"), 7);
+  assert.equal(domain.leadCadenceDays("sin_respuesta"), 15);
+  assert.equal(domain.leadCadenceDays("no_interesado"), 30);
+  assert.equal(domain.leadStageAfterContact("nuevo", "sin_respuesta"), "contactado");
+  assert.equal(domain.leadStageAfterContact("contactado", "interesado"), "interesado");
+});
+
 test("leadInputFromBody exige nombre y valida la fecha de seguimiento", () => {
   assert.throws(() => domain.leadInputFromBody({ name: "" }), /nombre es obligatorio/i);
   assert.throws(

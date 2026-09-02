@@ -8,6 +8,25 @@ export type LeadStage = (typeof LEAD_STAGES)[number];
 export const ACTIVE_LEAD_STAGES = ["nuevo", "contactado", "interesado"] as const;
 export type ActiveLeadStage = (typeof ACTIVE_LEAD_STAGES)[number];
 
+export const LEAD_CONTACT_OUTCOMES = ["sin_respuesta", "contactado", "interesado", "pedido_probable", "no_interesado"] as const;
+export type LeadContactOutcome = (typeof LEAD_CONTACT_OUTCOMES)[number];
+
+export function leadCadenceDays(outcome: LeadContactOutcome): number {
+  return {
+    pedido_probable: 3,
+    interesado: 3,
+    contactado: 7,
+    sin_respuesta: 15,
+    no_interesado: 30,
+  }[outcome];
+}
+
+export function leadStageAfterContact(current: LeadStage, outcome: LeadContactOutcome): LeadStage {
+  if (outcome === "interesado" || outcome === "pedido_probable") return "interesado";
+  if (current === "nuevo") return "contactado";
+  return current;
+}
+
 export function normalizeLeadStage(value: string): LeadStage {
   const normalized = value.trim().toLowerCase();
   return (LEAD_STAGES as readonly string[]).includes(normalized) ? (normalized as LeadStage) : "nuevo";

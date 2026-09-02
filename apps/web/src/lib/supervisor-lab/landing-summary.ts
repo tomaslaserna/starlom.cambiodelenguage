@@ -6,6 +6,7 @@ import { activeAccountMovementWhereSql } from "@/lib/accounts";
 import { getVendorClients, hasAllCustomerAccess, sellerCandidates } from "@/lib/crm";
 import { queryWithCompanyContext } from "@/lib/db";
 import { getSupervisorOperationalSnapshot } from "@/lib/supervisor-lab/read-model";
+import { getLeadFollowupAgenda } from "@/lib/leads";
 
 export type SupervisorLandingCard = {
   label: string;
@@ -106,9 +107,10 @@ async function getCollectionPriorities(session: AuthSession): Promise<Collection
 export async function getSupervisorLandingSummary(session: AuthSession): Promise<SupervisorLandingSummary> {
   const firstName = (session.displayName || session.username || "equipo").trim().split(/\s+/)[0];
   if (normalizeRole(session.role) === "vendedor") {
-    const [clients, collections] = await Promise.all([
+    const [clients, collections, leadAgenda] = await Promise.all([
       getVendorClients(session),
       getCollectionPriorities(session),
+      getLeadFollowupAgenda(session),
     ]);
     const approaching = clients.groups.contactar ?? [];
     const overdueCustomers = [...(clients.groups.riesgo ?? []), ...(clients.groups.perdido ?? [])];
@@ -137,6 +139,15 @@ export async function getSupervisorLandingSummary(session: AuthSession): Promise
         approachingCustomers: approaching,
         overdueCustomers,
         collectionPriorities: collections,
+        leadContactsToday: leadAgenda.filter((lead) => !lead.contactedToday).map((lead) => ({
+          id: lead.id,
+          name: lead.name,
+          phone: lead.phone,
+          stage: lead.stage,
+          dueDate: lead.nextFollowup,
+          reason: lead.nextFollowup ? `Seguimiento programado para ${lead.nextFollowup}` : "Lead sin fecha de seguimiento",
+          href: "/crm/leads",
+        })),
       },
     };
   }

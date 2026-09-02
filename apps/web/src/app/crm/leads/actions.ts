@@ -8,7 +8,8 @@ import {
   moveLeadStage,
   recordLeadContact,
 } from "@/lib/leads";
-import { leadInputFromBody, normalizeLeadStage } from "@/lib/leads-domain";
+import { leadCadenceDays, leadInputFromBody, LEAD_CONTACT_OUTCOMES, normalizeLeadStage, type LeadContactOutcome } from "@/lib/leads-domain";
+import { localDateIso } from "@/lib/timezone";
 import { uuidParam } from "@/lib/request-body";
 import { CRM_READ_PERMISSION, requireApiSession } from "@/lib/route-auth";
 import { recordSalesActivity, SALES_ACTIVITY_OUTCOMES, type RecommerceBucket } from "@/lib/sales-activity";
@@ -70,11 +71,15 @@ export async function recordSalesActivityAction(formData: FormData) {
 export async function recordLeadContactAction(formData: FormData) {
   const session = await requireApiSession([CRM_READ_PERMISSION]);
   const id = uuidParam(String(formData.get("id") ?? ""), "Lead");
-  const nextFollowup = String(formData.get("nextFollowup") ?? "").trim();
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires" }).format(new Date());
+  const outcome = String(formData.get("outcome") ?? "contactado") as LeadContactOutcome;
+  if (!(LEAD_CONTACT_OUTCOMES as readonly string[]).includes(outcome)) throw new Error("Resultado de contacto inválido");
+  const automatic = new Date(`${localDateIso()}T12:00:00-03:00`);
+  automatic.setDate(automatic.getDate() + leadCadenceDays(outcome));
+  const nextFollowup = String(formData.get("nextFollowup") ?? "").trim() || localDateIso(automatic);
+  const today = localDateIso();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(nextFollowup) || nextFollowup <= today) {
     throw new Error("El próximo contacto debe ser una fecha futura");
   }
-  await recordLeadContact(session, id, nextFollowup, String(formData.get("notes") ?? "").trim().slice(0, 500));
+  await recordLeadContact(session, id, nextFollowup, String(formData.get("notes") ?? "").trim().slice(0, 500), outcome);
   revalidateLeads();
 }
