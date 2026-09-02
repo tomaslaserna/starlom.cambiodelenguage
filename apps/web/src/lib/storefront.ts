@@ -12,6 +12,11 @@ export type StorefrontRequest = {
   taxId: string;
   businessName: string;
   industry: string;
+  businessType: string;
+  companyName: string;
+  usualPurchases: string[];
+  currentSupplier: string;
+  supplierCount: string;
   address: string;
   city: string;
   province: string;
@@ -40,7 +45,10 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
   const parsed = {
     name: clean(body.name), phone: clean(body.phone, 40), brand: clean(body.brand),
     taxId: clean(body.taxId, 20), businessName: clean(body.businessName),
-    industry: clean(body.industry), address: clean(body.address, 300), city: clean(body.city),
+    industry: clean(body.industry), businessType: clean(body.businessType), companyName: clean(body.companyName),
+    usualPurchases: (Array.isArray(body.usualPurchases) ? body.usualPurchases : []).map((item) => clean(item, 80)).filter(Boolean).slice(0, 12),
+    currentSupplier: clean(body.currentSupplier), supplierCount: clean(body.supplierCount, 40),
+    address: clean(body.address, 300), city: clean(body.city),
     province: clean(body.province), notes: clean(body.notes, 1000), items,
     latitude: Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
     longitude: Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
@@ -80,7 +88,7 @@ export async function createStorefrontRequest(input: StorefrontRequest) {
     const location = input.latitude !== null && input.longitude !== null
       ? `Ubicación: ${input.latitude.toFixed(6)}, ${input.longitude.toFixed(6)}` : "Ubicación: carga manual";
     const cartText = input.items.map((item) => `${item.quantity} x ${byId.get(item.productId)}`).join("\n");
-    const leadNotes = [`Solicitud web ${quoteNumber}`, `Marca: ${input.brand || "-"}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || "-"}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
+    const leadNotes = [`Solicitud web ${quoteNumber}`, `Marca: ${input.brand || "-"}`, input.companyName && `Negocio informado: ${input.companyName}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || input.businessType || "-"}`, input.usualPurchases.length && `Compra habitualmente: ${input.usualPurchases.join(", ")}`, input.currentSupplier && `Proveedor actual: ${input.currentSupplier}`, input.supplierCount && `Cantidad de proveedores: ${input.supplierCount}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
 
     const lead = await client.query<{ id: string }>(
       `INSERT INTO crm_leads (empresa_id, assigned_seller, name, phone, locality, source, stage, notes, created_by)

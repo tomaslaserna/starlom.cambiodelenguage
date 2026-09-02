@@ -6,6 +6,7 @@ import { useMemo, useRef, useState, type FormEvent } from "react";
 type Availability = "available" | "check" | "out";
 type Product = { id: string; name: string; code: string; category: string; brand: string; imageUrl: string | null; available: Availability };
 type Location = { address: string; city: string; province: string; latitude: string; longitude: string };
+type Discovery = { industry: string; businessType: string; companyName: string; usualPurchases: string[]; currentSupplier: string; supplierCount: string };
 type SectionKey = "all" | "papeleria" | "descartables" | "liquidos" | "articulos" | "textil";
 
 const sectionFilters: { key: SectionKey; label: string; terms: string[] }[] = [
@@ -18,6 +19,8 @@ const sectionFilters: { key: SectionKey; label: string; terms: string[] }[] = [
 ];
 
 const fieldClass = "min-h-11 rounded-[9px] border border-[#cbd8e8] px-3 font-medium outline-none focus:border-[#075ac7]";
+const businessOptions = ["Gastronomía", "Hotelería", "Comercio", "Industria", "Institución", "Consorcio", "Servicio de limpieza", "Otro"];
+const purchaseOptions = ["Descartables", "Papelería", "Líquidos de limpieza", "Artículos", "Textil"];
 
 const categoryPresentation: Record<string, { eyebrow: string; description: string; accent: string; icon: string }> = {
   descartables: { eyebrow: "Servicio ágil", description: "Vasos, bandejas, cubiertos y soluciones para cada entrega.", accent: "from-[#075ac7] to-[#0a79df]", icon: "◯" },
@@ -48,6 +51,9 @@ export function Storefront({ products }: { products: Product[] }) {
   const [brand, setBrand] = useState("");
   const [section, setSection] = useState<SectionKey>("all");
   const [browseAll, setBrowseAll] = useState(false);
+  const [showDiscovery, setShowDiscovery] = useState(false);
+  const [discoveryStep, setDiscoveryStep] = useState<1 | 2>(1);
+  const [discovery, setDiscovery] = useState<Discovery>({ industry: "", businessType: "", companyName: "", usualPurchases: [], currentSupplier: "", supplierCount: "" });
   const [step, setStep] = useState<"catalog" | "checkout" | "success">("catalog");
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -108,6 +114,19 @@ export function Storefront({ products }: { products: Product[] }) {
     window.setTimeout(() => catalogRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
 
+  function togglePurchase(value: string) {
+    setDiscovery((current) => ({ ...current, usualPurchases: current.usualPurchases.includes(value) ? current.usualPurchases.filter((item) => item !== value) : [...current.usualPurchases, value] }));
+  }
+
+  function finishDiscovery() {
+    const categoryByPurchase: Record<string, string> = { "Descartables": "descartables", "Papelería": "papeleria", "Líquidos de limpieza": "limpieza", "Artículos": "articulos", "Textil": "textil" };
+    const preferredCategories = discovery.usualPurchases.map((item) => categoryByPurchase[item]);
+    const firstMatch = categories.find((value) => preferredCategories.includes(normalizeCategory(value)));
+    setShowDiscovery(false);
+    if (firstMatch) openCategory(firstMatch);
+    else { setBrowseAll(true); window.setTimeout(() => catalogRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0); }
+  }
+
   function locate() {
     setError(""); setLocating(true);
     if (!navigator.geolocation) { setError("Tu navegador no permite obtener la ubicación. Podés completar la dirección manualmente."); setLocating(false); return; }
@@ -126,7 +145,7 @@ export function Storefront({ products }: { products: Product[] }) {
     event.preventDefault(); setSubmitting(true); setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch("/api/storefront/requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(form.entries()), ...location, items: selected.map((product) => ({ productId: product.id, quantity: cart[product.id] })) }) });
+      const response = await fetch("/api/storefront/requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(form.entries()), ...discovery, usualPurchases: discovery.usualPurchases, ...location, items: selected.map((product) => ({ productId: product.id, quantity: cart[product.id] })) }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "No pudimos enviar el pedido");
       setStep("success"); window.scrollTo({ top: 0, behavior: "smooth" });
@@ -138,6 +157,18 @@ export function Storefront({ products }: { products: Product[] }) {
 
   return <section className="mx-auto max-w-[1380px] px-4 py-8 sm:px-8">
     {step === "catalog" ? <>
+      <section className="mb-8 grid overflow-hidden rounded-[24px] bg-[#102d52] text-white shadow-[0_18px_50px_rgba(16,45,82,0.18)] lg:grid-cols-[1fr_auto]">
+        <div className="p-6 sm:p-8"><span className="text-xs font-extrabold uppercase tracking-[0.13em] text-[#9fc9ff]">Compra más simple</span><h2 className="mt-2 text-2xl font-extrabold tracking-[-0.03em] sm:text-3xl">Contanos qué tipo de negocio tenés</h2><p className="mt-3 max-w-2xl leading-7 text-white/75">En menos de un minuto te orientamos hacia los productos que más se usan en tu rubro. No hace falta registrarse ni dejar un teléfono.</p></div>
+        <div className="flex items-center p-6 pt-0 sm:p-8 lg:pl-0"><button className="w-full rounded-[13px] bg-[#ffb74d] px-6 py-4 font-extrabold text-[#173052] transition hover:bg-[#ffc66f] lg:w-auto" onClick={() => { setDiscoveryStep(1); setShowDiscovery(true); }} type="button">Ayudame a elegir →</button></div>
+      </section>
+      {showDiscovery && <div aria-modal="true" className="fixed inset-0 z-50 grid place-items-end bg-[#07182d]/65 p-0 backdrop-blur-sm sm:place-items-center sm:p-5" role="dialog">
+        <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-[26px] bg-white p-6 shadow-2xl sm:max-w-2xl sm:rounded-[26px] sm:p-8">
+          <div className="flex items-start justify-between gap-4"><div><span className="text-xs font-extrabold uppercase tracking-[0.12em] text-[#075ac7]">Paso {discoveryStep} de 2</span><h2 className="mt-2 text-2xl font-extrabold">{discoveryStep === 1 ? "¿Cómo es tu operación?" : "¿Cómo comprás actualmente?"}</h2></div><button aria-label="Cerrar" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#eef4fa] text-xl font-bold" onClick={() => setShowDiscovery(false)} type="button">×</button></div>
+          {discoveryStep === 1 ? <div className="mt-6"><p className="mb-3 font-bold">¿Con qué rubro te identificás más?</p><div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{businessOptions.map((value) => <button className={`min-h-14 rounded-[12px] border px-3 text-sm font-bold ${discovery.businessType === value ? "border-[#075ac7] bg-[#eaf3ff] text-[#075ac7] ring-2 ring-[#075ac7]/15" : "border-[#ccd9e8] text-[#40536b]"}`} key={value} onClick={() => setDiscovery((current) => ({ ...current, businessType: value, industry: value }))} type="button">{value}</button>)}</div><label className="mt-5 grid gap-1.5 text-sm font-bold">Nombre del negocio <span className="font-medium text-[#64748b]">(opcional)</span><input className={fieldClass} onChange={(event) => setDiscovery((current) => ({ ...current, companyName: event.target.value }))} placeholder="Ej.: Restaurante El Centro" value={discovery.companyName} /></label><button className="mt-7 w-full rounded-[12px] bg-[#075ac7] px-5 py-3.5 font-extrabold text-white disabled:opacity-40" disabled={!discovery.businessType} onClick={() => setDiscoveryStep(2)} type="button">Continuar</button></div>
+          : <div className="mt-6"><p className="mb-3 font-bold">¿Qué productos comprás habitualmente?</p><div className="flex flex-wrap gap-2">{purchaseOptions.map((value) => <button className={`rounded-full border px-4 py-2.5 text-sm font-bold ${discovery.usualPurchases.includes(value) ? "border-[#075ac7] bg-[#075ac7] text-white" : "border-[#ccd9e8] text-[#40536b]"}`} key={value} onClick={() => togglePurchase(value)} type="button">{discovery.usualPurchases.includes(value) ? "✓ " : "+ "}{value}</button>)}</div><div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="grid gap-1.5 text-sm font-bold">¿Con quién comprás hoy? <span className="font-medium text-[#64748b]">(opcional)</span><input className={fieldClass} onChange={(event) => setDiscovery((current) => ({ ...current, currentSupplier: event.target.value }))} placeholder="Proveedor o distribuidor" value={discovery.currentSupplier} /></label><label className="grid gap-1.5 text-sm font-bold">¿En cuántos proveedores dividís la compra?<select className={`${fieldClass} bg-white`} onChange={(event) => setDiscovery((current) => ({ ...current, supplierCount: event.target.value }))} value={discovery.supplierCount}><option value="">Seleccionar</option><option>1 proveedor</option><option>2 proveedores</option><option>3 proveedores</option><option>4 o más</option></select></label></div><button className="mt-7 w-full rounded-[12px] bg-[#075ac7] px-5 py-3.5 font-extrabold text-white disabled:opacity-40" disabled={!discovery.usualPurchases.length} onClick={finishDiscovery} type="button">Ver recomendaciones →</button></div>}
+          <p className="mt-4 text-center text-xs font-medium text-[#7b8da3]">Todavía no te pedimos ningún dato de contacto.</p>
+        </div>
+      </div>}
       <section aria-labelledby="store-categories-title" className="mb-7">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div><span className="text-sm font-extrabold uppercase tracking-[0.12em] text-[#075ac7]">Comprá por categoría</span><h2 className="mt-1 text-3xl font-extrabold tracking-[-0.035em] sm:text-4xl" id="store-categories-title">¿Qué necesitás reponer?</h2><p className="mt-2 max-w-2xl text-[#64748b]">Entrá directamente al sector que buscás y armá el pedido en pocos pasos.</p></div>
@@ -173,7 +204,8 @@ export function Storefront({ products }: { products: Product[] }) {
       <div className="sticky bottom-4 z-20 mt-8 flex items-center justify-between gap-4 rounded-[16px] bg-[#102d52] px-5 py-4 text-white shadow-2xl"><div><strong className="block text-lg">{totalUnits} {totalUnits === 1 ? "unidad" : "unidades"}</strong><span className="text-sm text-white/70">{selected.length} {selected.length === 1 ? "producto" : "productos"} en el carrito</span></div><button className="rounded-[11px] bg-[#ffb74d] px-5 py-3 font-extrabold text-[#173052] disabled:opacity-50" disabled={!totalUnits} onClick={goToCheckout} type="button">Continuar</button></div>
       </>}
     </> : <form className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]" onSubmit={submit}>
-      <div className="rounded-[18px] border border-[#dbe5f1] bg-white p-5 shadow-sm sm:p-7"><button className="mb-5 text-sm font-bold text-[#075ac7]" onClick={() => setStep("catalog")} type="button">← Volver al catálogo</button><h2 className="text-2xl font-extrabold">Datos para la cotización</h2><p className="mt-2 text-[#64748b]">Los campos se pueden corregir manualmente antes de enviar.</p><div className="mt-6 grid gap-4 sm:grid-cols-2">{[["name","Nombre y apellido *"],["phone","Teléfono *"],["brand","Marca o nombre comercial"],["taxId","CUIT"],["businessName","Razón social"],["industry","Rubro"]].map(([name,label]) => <label className="grid gap-1.5 text-sm font-bold" key={name}>{label}<input className={fieldClass} name={name} required={name === "name" || name === "phone"} /></label>)}</div>
+      <div className="rounded-[18px] border border-[#dbe5f1] bg-white p-5 shadow-sm sm:p-7"><button className="mb-5 text-sm font-bold text-[#075ac7]" onClick={() => setStep("catalog")} type="button">← Volver al catálogo</button><span className="text-xs font-extrabold uppercase tracking-[0.12em] text-[#075ac7]">Último paso</span><h2 className="mt-2 text-2xl font-extrabold">¿A dónde te enviamos la propuesta?</h2><p className="mt-2 text-[#64748b]">Ya elegiste lo que te interesa. Ahora un comercial prepara la cotización y te contacta.</p><div className="mt-6 grid gap-4 sm:grid-cols-2">{[["name","Nombre y apellido *"],["phone","WhatsApp o teléfono *"],["brand","Marca o nombre comercial"],["taxId","CUIT"],["businessName","Razón social"]].map(([name,label]) => <label className="grid gap-1.5 text-sm font-bold" key={name}>{label}<input className={fieldClass} name={name} required={name === "name" || name === "phone"} /></label>)}<label className="grid gap-1.5 text-sm font-bold">Rubro<input className={fieldClass} name="industry" onChange={(event) => setDiscovery((current) => ({ ...current, industry: event.target.value }))} value={discovery.industry} /></label></div>
+      {(discovery.businessType || discovery.usualPurchases.length > 0) && <div className="mt-5 rounded-[12px] bg-[#eef5ff] p-4 text-sm text-[#315170]"><strong className="block">Perfil de compra guardado</strong><span>{[discovery.businessType, discovery.usualPurchases.join(", ")].filter(Boolean).join(" · ")}</span></div>}
       <div className="mt-7 flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-extrabold">Dirección de entrega</h3><p className="text-sm text-[#64748b]">Usá el mapa o completala manualmente.</p></div><button className="rounded-[10px] border border-[#075ac7] px-4 py-2 text-sm font-bold text-[#075ac7]" disabled={locating} onClick={locate} type="button">{locating ? "Ubicando…" : "Usar mi ubicación"}</button></div>
       <iframe className="mt-4 h-[260px] w-full rounded-[12px] border border-[#cbd8e8]" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapUrl} title="Mapa de ubicación" />
       <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="grid gap-1.5 text-sm font-bold sm:col-span-2">Dirección completa *<input className={fieldClass} onChange={(event) => setLocation((value) => ({ ...value, address: event.target.value }))} required value={location.address} /></label><label className="grid gap-1.5 text-sm font-bold">Localidad<input className={fieldClass} onChange={(event) => setLocation((value) => ({ ...value, city: event.target.value }))} value={location.city} /></label><label className="grid gap-1.5 text-sm font-bold">Provincia<input className={fieldClass} onChange={(event) => setLocation((value) => ({ ...value, province: event.target.value }))} value={location.province} /></label><label className="grid gap-1.5 text-sm font-bold sm:col-span-2">Observación para el vendedor <span className="font-medium text-[#64748b]">(opcional)</span><textarea className="min-h-28 rounded-[9px] border border-[#cbd8e8] p-3 font-medium" maxLength={1000} name="notes" placeholder="Ej.: necesito asesoramiento, fecha estimada de entrega, presentación preferida…" /></label></div>{error && <p className="mt-4 rounded-[10px] bg-[#fff1f2] p-3 font-bold text-[#b4233d]" role="alert">{error}</p>}</div>
