@@ -27,6 +27,7 @@ import {
   CUSTOMER_RECEIPT_OPTIONS,
   customerReceiptTypeOptionValue,
 } from "@/lib/catalog-management";
+import { CUSTOMER_BUSINESS_SEGMENTS } from "@/lib/customer-segments";
 import { fastOr } from "@/lib/fast-data";
 import { FISCAL_CONDITION_OPTIONS } from "@/lib/fiscal-conditions";
 import { formatNumber } from "@/lib/format";
@@ -102,6 +103,12 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
             <form action={createCustomerAction} className="grid gap-3">
               {crmMode ? <input name="returnTo" type="hidden" value="/crm/clientes?created=1" /> : null}
               <div className="grid gap-3 lg:grid-cols-5">
+                <Field htmlFor="customer-segment" label="Rubro comercial">
+                  <Select defaultValue="" id="customer-segment" name="businessSegment">
+                    <option value="">Sin clasificar</option>
+                    {CUSTOMER_BUSINESS_SEGMENTS.map((segment) => <option key={segment} value={segment}>{segment}</option>)}
+                  </Select>
+                </Field>
                 <Field htmlFor="customer-name" label="Cliente" required>
                   <Input id="customer-name" name="name" required />
                 </Field>
@@ -212,6 +219,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
                 <DataTableHead>Identificacion</DataTableHead>
                 <DataTableHead>Contacto</DataTableHead>
                 <DataTableHead>Ubicacion</DataTableHead>
+                <DataTableHead>Rubro</DataTableHead>
                 <DataTableHead>Lista</DataTableHead>
                 <DataTableHead>Comprobante</DataTableHead>
                 <DataTableHead>Estado</DataTableHead>
@@ -220,7 +228,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={7}>
+                  <DataTableCell colSpan={8}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -256,6 +264,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
                         {[customer.city, customer.province].filter(Boolean).join(", ") || "-"}
                       </div>
                     </DataTableCell>
+                    <DataTableCell>{customer.businessSegment || (customer.suggestedBusinessSegment ? <span title="Clasificación automática pendiente de revisión">{customer.suggestedBusinessSegment} *</span> : "Sin clasificar")}</DataTableCell>
                     <DataTableCell>{customer.priceList || "-"}</DataTableCell>
                     <DataTableCell>
                       {canEditCustomers ? (

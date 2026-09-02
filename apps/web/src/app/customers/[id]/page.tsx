@@ -90,6 +90,8 @@ export default async function CustomerDetailPage({ params, crmMode = false }: Cu
                 assignedSeller: customer.assignedSeller,
                 observation: customer.observation,
                 salesCount: history.summary.count,
+                businessSegment: customer.businessSegment,
+                suggestedBusinessSegment: customer.suggestedBusinessSegment,
               }}
               deleteAction={deleteCustomerAction}
               mergeAction={mergeCustomersAction}
@@ -136,6 +138,7 @@ export default async function CustomerDetailPage({ params, crmMode = false }: Cu
               {line("Estado", customer.status)}
               {line("Vendedor propio", customer.seller)}
               {line("Vendedor a cargo", customer.assignedSeller)}
+              {line("Rubro", customer.businessSegment || (customer.suggestedBusinessSegment ? `${customer.suggestedBusinessSegment} (sugerido)` : ""))}
             </CardContent>
           </Card>
           <Card>

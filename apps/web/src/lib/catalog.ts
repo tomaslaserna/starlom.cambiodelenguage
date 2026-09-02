@@ -30,6 +30,9 @@ export type Customer = {
   observation: string;
   salesCount: number;
   paymentTermDays: number | null;
+  businessSegment: string;
+  suggestedBusinessSegment: string;
+  businessSegmentConfidence: number | null;
 };
 
 export type Product = {
@@ -182,12 +185,16 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
     address: string | null;
     notes: string | null;
     sales_count: string;
+    business_segment: string | null;
+    business_segment_suggested: string | null;
+    business_segment_confidence: string | null;
   }>(
     companyId,
     `
       SELECT id, external_code, display_name, legal_name, tax_id,
              fiscal_condition, phone, locality, province, price_list_name, receipt_type,
-             active, seller_name, payment_term_days, address, notes,
+             active, seller_name, payment_term_days, address, notes, business_segment,
+             business_segment_suggested, business_segment_confidence::text,
              (SELECT count(*) FROM sales s WHERE s.empresa_id = clients.empresa_id AND s.client_id = clients.id)::text AS sales_count
       FROM clients
       WHERE ${where}
@@ -219,6 +226,9 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
       observation: row.notes ?? "",
       salesCount: Number(row.sales_count ?? 0),
       paymentTermDays: row.payment_term_days,
+      businessSegment: row.business_segment ?? "",
+      suggestedBusinessSegment: row.business_segment_suggested ?? "",
+      businessSegmentConfidence: row.business_segment_confidence === null ? null : Number(row.business_segment_confidence),
     })),
     meta: {
       companyId,

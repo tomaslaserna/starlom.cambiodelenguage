@@ -48,6 +48,7 @@ export async function updateCustomerAction(formData: FormData) {
       seller: current.seller,
       assignedSeller: current.assignedSeller,
       observation: current.observation,
+      businessSegment: current.businessSegment,
     }),
   );
   revalidatePath("/customers");

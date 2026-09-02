@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button, Field, Input, SearchableSelect, Select } from "@/components/ui";
 import { FISCAL_CONDITION_OPTIONS } from "@/lib/fiscal-conditions";
+import { CUSTOMER_BUSINESS_SEGMENTS } from "@/lib/customer-segments";
 
 type CustomerLite = { id: string; name: string };
 
@@ -23,6 +24,8 @@ type EditableCustomer = {
   assignedSeller: string;
   observation: string;
   salesCount: number;
+  businessSegment: string;
+  suggestedBusinessSegment: string;
 };
 
 type Action = (formData: FormData) => Promise<void>;
@@ -90,6 +93,13 @@ export function CustomerRowActions({
                 {FISCAL_CONDITION_OPTIONS.map((condition) => (
                   <option key={condition} value={condition}>{condition}</option>
                 ))}
+              </Select>
+            </Field>
+            <Field htmlFor={`edit-segment-${customer.id}`} label="Rubro comercial">
+              <Select defaultValue={customer.businessSegment} id={`edit-segment-${customer.id}`} name="businessSegment">
+                <option value="">Sin clasificar</option>
+                {customer.suggestedBusinessSegment && !customer.businessSegment ? <option value={customer.suggestedBusinessSegment}>Sugerido: {customer.suggestedBusinessSegment}</option> : null}
+                {CUSTOMER_BUSINESS_SEGMENTS.filter((segment) => segment !== customer.suggestedBusinessSegment).map((segment) => <option key={segment} value={segment}>{segment}</option>)}
               </Select>
             </Field>
             <Field htmlFor={`edit-phone-${customer.id}`} label="Teléfono">

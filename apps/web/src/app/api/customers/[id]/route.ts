@@ -51,6 +51,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         seller: current.seller,
         assignedSeller: current.assignedSeller,
         observation: current.observation,
+        businessSegment: current.businessSegment,
       }),
     );
     return ok({ data });

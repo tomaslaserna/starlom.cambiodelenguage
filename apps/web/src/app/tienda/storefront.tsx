@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { useMemo, useRef, useState, type FormEvent } from "react";
+import { CUSTOMER_BUSINESS_SEGMENTS } from "@/lib/customer-segments";
+import type { SegmentRecommendation } from "@/lib/segment-recommendations";
 
 type Availability = "available" | "check" | "out";
 type Product = { id: string; name: string; code: string; category: string; brand: string; imageUrl: string | null; available: Availability };
@@ -19,8 +21,19 @@ const sectionFilters: { key: SectionKey; label: string; terms: string[] }[] = [
 ];
 
 const fieldClass = "min-h-11 rounded-[9px] border border-[#cbd8e8] px-3 font-medium outline-none focus:border-[#075ac7]";
-const businessOptions = ["Gastronomía", "Hotelería", "Comercio", "Industria", "Institución", "Consorcio", "Servicio de limpieza", "Otro"];
+const businessOptions = CUSTOMER_BUSINESS_SEGMENTS;
 const purchaseOptions = ["Descartables", "Papelería", "Líquidos de limpieza", "Artículos", "Textil"];
+const gastronomyNeeds = [
+  { label: "Desengrasante", terms: ["desengras"] },
+  { label: "Detergente", terms: ["detergente"] },
+  { label: "Lavandina", terms: ["lavandina"] },
+  { label: "Bolsas de residuos", terms: ["bolsa resid", "bolsa consorcio"] },
+  { label: "Servilletas", terms: ["servilleta"] },
+  { label: "Rollo de cocina", terms: ["rollo cocina", "toalla cocina"] },
+  { label: "Guantes", terms: ["guante"] },
+  { label: "Rejilla", terms: ["rejilla"] },
+  { label: "Esponja", terms: ["esponja"] },
+];
 
 const categoryPresentation: Record<string, { eyebrow: string; description: string; accent: string; icon: string }> = {
   descartables: { eyebrow: "Servicio ágil", description: "Vasos, bandejas, cubiertos y soluciones para cada entrega.", accent: "from-[#075ac7] to-[#0a79df]", icon: "◯" },
@@ -44,7 +57,7 @@ function AvailabilityBadge({ available }: { available: Availability }) {
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold ${status.className}`}>{status.label}</span>;
 }
 
-export function Storefront({ products }: { products: Product[] }) {
+export function Storefront({ products, recommendations = [] }: { products: Product[]; recommendations?: SegmentRecommendation[] }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
@@ -52,6 +65,7 @@ export function Storefront({ products }: { products: Product[] }) {
   const [section, setSection] = useState<SectionKey>("all");
   const [browseAll, setBrowseAll] = useState(false);
   const [showDiscovery, setShowDiscovery] = useState(false);
+  const [showRecommendedSelection, setShowRecommendedSelection] = useState(false);
   const [discoveryStep, setDiscoveryStep] = useState<1 | 2>(1);
   const [discovery, setDiscovery] = useState<Discovery>({ industry: "", businessType: "", companyName: "", usualPurchases: [], currentSupplier: "", supplierCount: "" });
   const [step, setStep] = useState<"catalog" | "checkout" | "success">("catalog");
@@ -60,6 +74,7 @@ export function Storefront({ products }: { products: Product[] }) {
   const [error, setError] = useState("");
   const [location, setLocation] = useState<Location>({ address: "", city: "", province: "", latitude: "", longitude: "" });
   const catalogRef = useRef<HTMLDivElement>(null);
+  const recommendationRef = useRef<HTMLDivElement>(null);
   const categoryCounts = useMemo(() => products.reduce((counts, product) => {
     if (product.category) counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
     return counts;
@@ -74,6 +89,31 @@ export function Storefront({ products }: { products: Product[] }) {
     });
   }, [categoryCounts]);
   const brands = useMemo(() => [...new Set(products.map((p) => p.brand).filter(Boolean))].sort(), [products]);
+  const gastronomySelection = useMemo(() => {
+    const used = new Set<string>();
+    return gastronomyNeeds.flatMap((need) => {
+      const match = products.find((product) => {
+        if (used.has(product.id) || product.available === "out") return false;
+        const name = normalizeCategory(product.name);
+        return need.terms.some((term) => name.includes(term));
+      });
+      if (!match) return [];
+      used.add(match.id);
+      return [{ ...match, reason: need.label }];
+    }).slice(0, 8);
+  }, [products]);
+  const recommendedSelection = useMemo(() => {
+    const byId = new Map(products.map((product) => [product.id, product]));
+    const measured = recommendations
+      .filter((item) => item.segment === discovery.businessType)
+      .flatMap((item) => {
+        const product = byId.get(item.productId);
+        return product && product.available !== "out" ? [{ ...product, reason: `${item.customerCoveragePercent}% de clientes`, typicalQuantity: item.typicalQuantity, provisional: item.provisional }] : [];
+      });
+    if (measured.length) return measured;
+    if (discovery.businessType !== "Restaurante") return [];
+    return gastronomySelection.map((product) => ({ ...product, typicalQuantity: 1, provisional: true }));
+  }, [discovery.businessType, gastronomySelection, products, recommendations]);
   const filtered = useMemo(() => products.filter((product) => {
     const needle = query.trim().toLocaleLowerCase("es");
     const haystack = `${product.name} ${product.code} ${product.category} ${product.brand}`.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -123,8 +163,17 @@ export function Storefront({ products }: { products: Product[] }) {
     const preferredCategories = discovery.usualPurchases.map((item) => categoryByPurchase[item]);
     const firstMatch = categories.find((value) => preferredCategories.includes(normalizeCategory(value)));
     setShowDiscovery(false);
+    if (recommendedSelection.length) {
+      setShowRecommendedSelection(true);
+      window.setTimeout(() => recommendationRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+      return;
+    }
     if (firstMatch) openCategory(firstMatch);
     else { setBrowseAll(true); window.setTimeout(() => catalogRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0); }
+  }
+
+  function addRecommendedSelection() {
+    setCart((current) => Object.fromEntries([...Object.entries(current), ...recommendedSelection.map((product) => [product.id, Math.max(product.typicalQuantity, current[product.id] ?? 0)])]));
   }
 
   function locate() {
@@ -169,6 +218,12 @@ export function Storefront({ products }: { products: Product[] }) {
           <p className="mt-4 text-center text-xs font-medium text-[#7b8da3]">Todavía no te pedimos ningún dato de contacto.</p>
         </div>
       </div>}
+      <div ref={recommendationRef} />
+      {showRecommendedSelection && <section className="mb-8 overflow-hidden rounded-[24px] border border-[#bcd5ef] bg-white shadow-[0_16px_42px_rgba(35,74,118,0.13)]">
+        <div className="flex flex-wrap items-start justify-between gap-4 bg-[#eaf3ff] p-6 sm:p-7"><div><span className="text-xs font-extrabold uppercase tracking-[0.13em] text-[#075ac7]">Selección para {discovery.businessType.toLocaleLowerCase("es")}</span><h2 className="mt-2 text-2xl font-extrabold tracking-[-0.03em] sm:text-3xl">Lo que más suelen necesitar negocios como el tuyo</h2><p className="mt-2 max-w-3xl text-[#536980]">Basado en compras registradas de clientes del mismo rubro. Es un punto de partida: podés cambiar cantidades, sacar productos o seguir recorriendo.</p></div><button aria-label="Cerrar selección" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-xl font-bold text-[#315170]" onClick={() => setShowRecommendedSelection(false)} type="button">×</button></div>
+        <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-7 lg:grid-cols-4">{recommendedSelection.map((product) => <article className="flex min-h-32 gap-3 rounded-[15px] border border-[#dbe5f1] p-3" key={product.id}><div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[10px] bg-[#edf3f9]">{product.imageUrl ? <Image alt="" className="object-contain p-2" fill sizes="80px" src={product.imageUrl} /> : <div className="grid h-full place-items-center text-3xl text-[#9aabc0]">▧</div>}</div><div className="flex min-w-0 flex-1 flex-col"><span className="text-[11px] font-extrabold uppercase text-[#075ac7]">{product.reason}</span><strong className="mt-1 line-clamp-2 text-sm leading-5">{product.name}</strong><span className="mt-1 text-xs font-semibold text-[#64748b]">Cantidad sugerida: {product.typicalQuantity}</span><button className={`mt-auto self-start rounded-full px-3 py-1.5 text-xs font-extrabold ${cart[product.id] ? "bg-[#e7f8ef] text-[#07834f]" : "bg-[#075ac7] text-white"}`} onClick={() => setCart((current) => ({ ...current, [product.id]: Math.max(product.typicalQuantity, current[product.id] ?? 0) }))} type="button">{cart[product.id] ? `Agregado · ${cart[product.id]}` : "+ Agregar"}</button></div></article>)}</div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e1eaf4] px-5 py-4 sm:px-7"><button className="font-bold text-[#075ac7]" onClick={() => { setShowRecommendedSelection(false); setBrowseAll(true); window.setTimeout(() => catalogRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0); }} type="button">Prefiero elegir uno por uno</button><button className="rounded-[12px] bg-[#ffb74d] px-5 py-3 font-extrabold text-[#173052]" onClick={addRecommendedSelection} type="button">Agregar selección al carrito</button></div>
+      </section>}
       <section aria-labelledby="store-categories-title" className="mb-7">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div><span className="text-sm font-extrabold uppercase tracking-[0.12em] text-[#075ac7]">Comprá por categoría</span><h2 className="mt-1 text-3xl font-extrabold tracking-[-0.035em] sm:text-4xl" id="store-categories-title">¿Qué necesitás reponer?</h2><p className="mt-2 max-w-2xl text-[#64748b]">Entrá directamente al sector que buscás y armá el pedido en pocos pasos.</p></div>

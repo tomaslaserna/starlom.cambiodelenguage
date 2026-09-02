@@ -44,6 +44,9 @@ export type CustomerDetail = {
   province: string;
   city: string;
   observation: string;
+  businessSegment: string;
+  suggestedBusinessSegment: string;
+  businessSegmentConfidence: number | null;
 };
 
 export type CustomerInput = {
@@ -62,6 +65,7 @@ export type CustomerInput = {
   seller: string;
   assignedSeller: string;
   observation: string;
+  businessSegment: string;
 };
 
 export type Supplier = {
@@ -102,6 +106,10 @@ export type ProductUpdateInput = {
 };
 
 const DEFAULT_COMPANY_ID = 1;
+const VALID_CUSTOMER_BUSINESS_SEGMENTS = new Set([
+  "Restaurante", "Cafetería", "Bar", "Salón de eventos", "Cancha o club deportivo", "Consorcio",
+  "Fábrica o industria", "Salud o rehabilitación", "Hotelería", "Comercio", "Empresa de limpieza", "Institución", "Otro",
+]);
 
 async function nextCategorySku(client: PoolClient, companyId: number, categoryCode: string) {
   const prefix = categoryCode.trim().toUpperCase();
@@ -200,6 +208,9 @@ function mapCustomer(row: {
   locality: string | null;
   notes: string | null;
   payment_term_days: number | null;
+  business_segment: string | null;
+  business_segment_suggested: string | null;
+  business_segment_confidence: string | null;
 }): CustomerDetail {
   return {
     id: row.id,
@@ -219,6 +230,9 @@ function mapCustomer(row: {
     province: row.province ?? "",
     city: row.locality ?? "",
     observation: row.notes ?? "",
+    businessSegment: row.business_segment ?? "",
+    suggestedBusinessSegment: row.business_segment_suggested ?? "",
+    businessSegmentConfidence: row.business_segment_confidence === null ? null : Number(row.business_segment_confidence),
   };
 }
 
@@ -316,9 +330,13 @@ export function customerInputFromBody(
     seller: firstText(body, ["seller", "vendedor_cl"], defaults.seller),
     assignedSeller: firstText(body, ["assignedSeller", "vendedor_asignado"], defaults.assignedSeller),
     observation: firstText(body, ["observation", "observacion"], defaults.observation),
+    businessSegment: firstText(body, ["businessSegment", "business_segment", "rubro"], defaults.businessSegment),
   };
 
   if (!input.name) throw new ApiError(400, "El nombre es obligatorio");
+  if (input.businessSegment && !VALID_CUSTOMER_BUSINESS_SEGMENTS.has(input.businessSegment)) {
+    throw new ApiError(400, "El rubro seleccionado no es válido");
+  }
   return input;
 }
 
@@ -375,7 +393,8 @@ export async function getCustomer(companyId: number, id: string) {
     `
       SELECT id, external_code, display_name, legal_name, seller_name, assigned_seller, tax_id,
              fiscal_condition, phone, active, address, price_list_name, receipt_type,
-             province, locality, notes
+             province, locality, notes, business_segment, business_segment_suggested,
+             business_segment_confidence::text
       FROM clients
       WHERE id = $1::uuid AND empresa_id = $2
       LIMIT 1
@@ -414,9 +433,11 @@ export async function createCustomer(companyId: number, input: CustomerInput) {
       INSERT INTO clients (
         display_name, legal_name, tax_id, fiscal_condition, phone,
         address, locality, province, price_list_name, active, seller_name,
-        receipt_type, notes, empresa_id, assigned_seller
+        receipt_type, notes, empresa_id, assigned_seller, business_segment,
+        business_segment_reviewed_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10 <> 'inactivo', $11, $12, $13, $14, $15)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10 <> 'inactivo', $11, $12, $13, $14, $15,
+              NULLIF($16, ''), CASE WHEN NULLIF($16, '') IS NULL THEN NULL ELSE now() END)
       RETURNING id::text AS id
     `,
     [
@@ -435,6 +456,7 @@ export async function createCustomer(companyId: number, input: CustomerInput) {
       input.observation,
       companyId,
       input.assignedSeller,
+      input.businessSegment,
     ],
   );
 
@@ -462,6 +484,8 @@ export async function updateCustomer(companyId: number, id: string, input: Custo
           receipt_type = COALESCE(NULLIF($12, ''), receipt_type),
           notes = $13,
           assigned_seller = $16,
+          business_segment = NULLIF($17, ''),
+          business_segment_reviewed_at = CASE WHEN business_segment IS DISTINCT FROM NULLIF($17, '') THEN now() ELSE business_segment_reviewed_at END,
           updated_at = now()
       WHERE id = $14::uuid AND empresa_id = $15
       RETURNING id::text AS id
@@ -483,6 +507,7 @@ export async function updateCustomer(companyId: number, id: string, input: Custo
       id,
       companyId,
       input.assignedSeller,
+      input.businessSegment,
     ],
   );
 

@@ -6,6 +6,7 @@ export const LEAD_STAGES = ["nuevo", "contactado", "interesado", "convertido", "
 export type LeadStage = (typeof LEAD_STAGES)[number];
 
 export const ACTIVE_LEAD_STAGES = ["nuevo", "contactado", "interesado"] as const;
+const VALID_LEAD_BUSINESS_SEGMENTS = new Set(["Restaurante", "Cafetería", "Bar", "Salón de eventos", "Cancha o club deportivo", "Consorcio", "Fábrica o industria", "Salud o rehabilitación", "Hotelería", "Comercio", "Empresa de limpieza", "Institución", "Otro"]);
 export type ActiveLeadStage = (typeof ACTIVE_LEAD_STAGES)[number];
 
 export const LEAD_CONTACT_OUTCOMES = ["sin_respuesta", "contactado", "interesado", "pedido_probable", "no_interesado"] as const;
@@ -40,6 +41,7 @@ export type LeadInput = {
   source: string;
   nextFollowup: string | null;
   notes: string;
+  businessSegment: string;
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -55,6 +57,8 @@ export function leadInputFromBody(body: RequestBody): LeadInput {
     nextFollowup = rawFollowup;
   }
 
+  const businessSegment = textField(body, "businessSegment") || textField(body, "business_segment") || textField(body, "rubro");
+  if (businessSegment && !VALID_LEAD_BUSINESS_SEGMENTS.has(businessSegment)) throw new ApiError(400, "El rubro seleccionado no es válido");
   return {
     name,
     phone: textField(body, "phone") || textField(body, "telefono"),
@@ -63,6 +67,7 @@ export function leadInputFromBody(body: RequestBody): LeadInput {
     source: textField(body, "source") || textField(body, "origen"),
     nextFollowup,
     notes: textField(body, "notes") || textField(body, "notas"),
+    businessSegment,
   };
 }
 
@@ -79,6 +84,7 @@ export type Lead = {
   assignedSeller: string;
   convertedClientId: string | null;
   createdAt: string;
+  businessSegment: string;
 };
 
 export function buildConversionNote(lead: Lead): string {
@@ -106,5 +112,6 @@ export function leadToCustomerInput(lead: Lead, receiptType: string): CustomerIn
     seller: lead.assignedSeller,
     assignedSeller: lead.assignedSeller,
     observation: buildConversionNote(lead),
+    businessSegment: lead.businessSegment,
   };
 }

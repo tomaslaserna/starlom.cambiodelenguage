@@ -28,6 +28,7 @@ type LeadRow = {
   assigned_seller: string;
   converted_client_id: string | null;
   created_at: string;
+  business_segment: string;
 };
 
 const LEAD_COLUMNS = `
@@ -35,7 +36,8 @@ const LEAD_COLUMNS = `
   COALESCE(locality,'') AS locality, COALESCE(source,'') AS source, stage,
   next_followup::text AS next_followup, COALESCE(notes,'') AS notes,
   COALESCE(assigned_seller,'') AS assigned_seller,
-  converted_client_id::text AS converted_client_id, created_at::text AS created_at
+  converted_client_id::text AS converted_client_id, created_at::text AS created_at,
+  COALESCE(business_segment,'') AS business_segment
 `;
 
 function mapLead(row: LeadRow): Lead {
@@ -52,6 +54,7 @@ function mapLead(row: LeadRow): Lead {
     assignedSeller: row.assigned_seller ?? "",
     convertedClientId: row.converted_client_id,
     createdAt: row.created_at,
+    businessSegment: row.business_segment ?? "",
   };
 }
 
@@ -93,7 +96,7 @@ export async function getLeadFollowupAgenda(session: AuthSession): Promise<LeadF
             COALESCE(l.assigned_seller,'') AS assigned_seller,
             l.converted_client_id::text AS converted_client_id, l.created_at::text AS created_at,
             (ct.lead_id IS NOT NULL) AS contacted_today,
-            ct.occurred_at::text AS last_contact_at
+            ct.occurred_at::text AS last_contact_at, COALESCE(l.business_segment,'') AS business_segment
        FROM crm_leads l
        LEFT JOIN contacted_today ct ON ct.lead_id = l.id
       WHERE l.empresa_id = $1
@@ -164,8 +167,8 @@ export async function createLead(session: AuthSession, input: LeadInput): Promis
   const result = await queryWithCompanyContext<{ id: string }>(
     session.companyId,
     `INSERT INTO crm_leads
-       (empresa_id, assigned_seller, name, phone, email, locality, source, stage, next_followup, notes, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'nuevo', $8, $9, $10)
+       (empresa_id, assigned_seller, name, phone, email, locality, source, stage, next_followup, notes, created_by, business_segment)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'nuevo', $8, $9, $10, NULLIF($11,''))
      RETURNING id::text AS id`,
     [
       session.companyId,
@@ -178,6 +181,7 @@ export async function createLead(session: AuthSession, input: LeadInput): Promis
       input.nextFollowup ?? localDateIso(automaticFollowup),
       input.notes,
       session.username,
+      input.businessSegment,
     ],
   );
   return { id: result.rows[0]!.id };

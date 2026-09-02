@@ -66,6 +66,7 @@ test("leadInputFromBody exige nombre y valida la fecha de seguimiento", () => {
     source: "Feria",
     nextFollowup: "2026-08-20",
     notes: "Interesado",
+    businessSegment: "",
   });
   assert.deepEqual(input, {
     name: "Kiosco Sol",
@@ -75,6 +76,7 @@ test("leadInputFromBody exige nombre y valida la fecha de seguimiento", () => {
     source: "Feria",
     nextFollowup: "2026-08-20",
     notes: "Interesado",
+    businessSegment: "",
   });
   assert.equal(domain.leadInputFromBody({ name: "X" }).nextFollowup, null);
 });
@@ -82,7 +84,7 @@ test("leadInputFromBody exige nombre y valida la fecha de seguimiento", () => {
 test("buildConversionNote arma la nota sólo con los datos presentes", () => {
   const base = {
     id: "1", name: "X", phone: "", email: "", locality: "", source: "", stage: "interesado",
-    nextFollowup: null, notes: "", assignedSeller: "VEND", convertedClientId: null, createdAt: "",
+    nextFollowup: null, notes: "", assignedSeller: "VEND", convertedClientId: null, createdAt: "", businessSegment: "",
   };
   assert.equal(domain.buildConversionNote(base), "Lead convertido.");
   assert.equal(
@@ -95,7 +97,7 @@ test("leadToCustomerInput mapea a CustomerInput (locality→city, seller, activo
   const lead = {
     id: "1", name: "Kiosco Sol", phone: "111", email: "a@b.com", locality: "Palermo",
     source: "Feria", stage: "interesado", nextFollowup: null, notes: "Ok",
-    assignedSeller: "JUAN", convertedClientId: null, createdAt: "",
+    assignedSeller: "JUAN", convertedClientId: null, createdAt: "", businessSegment: "Comercio",
   };
   const input = domain.leadToCustomerInput(lead, "Factura B");
   assert.equal(input.name, "Kiosco Sol");
@@ -108,6 +110,6 @@ test("leadToCustomerInput mapea a CustomerInput (locality→city, seller, activo
   assert.match(input.observation, /Email: a@b\.com/);
   assert.deepEqual(
     Object.keys(input).sort(),
-    ["address","assignedSeller","businessName","city","name","observation","phone","priceList","province","receiptType","seller","status","taxId","taxIdType","vatCondition"],
+    ["address","assignedSeller","businessName","businessSegment","city","name","observation","phone","priceList","province","receiptType","seller","status","taxId","taxIdType","vatCondition"],
   );
 });
