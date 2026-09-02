@@ -3,6 +3,7 @@ import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
 import {
   Button,
+  ButtonLink,
   Card,
   DataTable,
   DataTableBody,
@@ -21,7 +22,7 @@ import {
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
-import { createCustomerAction, updateCustomerReceiptTypeAction } from "@/app/customers/actions";
+import { createCustomerAction, updateCustomerBusinessSegmentAction, updateCustomerReceiptTypeAction } from "@/app/customers/actions";
 import { listCustomers } from "@/lib/catalog";
 import {
   CUSTOMER_RECEIPT_OPTIONS,
@@ -42,6 +43,8 @@ type CustomersPageProps = {
     q?: string;
     page?: string;
     created?: string;
+    new?: string;
+    segment?: string;
   }>;
   crmMode?: boolean;
 };
@@ -70,6 +73,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
       query: params.q,
       page: params.page,
       pageSize: "25",
+      businessSegment: params.segment,
     }),
     listPriceLists(session.companyId, true),
     sessionAllows(session, [{ resource: "clientes", action: "crear" }]),
@@ -87,6 +91,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
     >
       <div className="grid gap-5">
         <PageHeader
+          actions={canCreateCustomers ? <ButtonLink href={crmMode || params.new === "1" ? crmMode ? "/crm/clientes" : "/customers" : "/customers?new=1"} variant={crmMode || params.new === "1" ? "secondary" : "primary"}>{crmMode || params.new === "1" ? "Volver a la base" : "+ Nuevo cliente"}</ButtonLink> : undefined}
           description="Base comercial de clientes con identificacion fiscal, contacto y segmentacion operativa."
           moduleIntro
           title="Clientes"
@@ -98,7 +103,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
           </div>
         ) : null}
 
-        {canCreateCustomers ? (
+        {canCreateCustomers && (crmMode || params.new === "1") ? (
           <Card className="scroll-mt-24 p-4" id="crear-cliente">
             <form action={createCustomerAction} className="grid gap-3">
               {crmMode ? <input name="returnTo" type="hidden" value="/crm/clientes?created=1" /> : null}
@@ -182,7 +187,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
           <form
             action={crmMode ? "/crm/clientes/nuevo" : "/customers"}
             aria-label="Busqueda"
-            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto] lg:items-end"
+            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_240px_auto] lg:items-end"
           >
             <Field htmlFor="customers-query" label="Buscar">
               <Input
@@ -192,6 +197,13 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
                 placeholder="Nombre, razon social, CUIT o telefono"
                 type="search"
               />
+            </Field>
+            <Field htmlFor="customers-segment" label="Rubro">
+              <Select defaultValue={params.segment ?? ""} id="customers-segment" name="segment">
+                <option value="">Todos los rubros</option>
+                <option value="unclassified">Sin clasificar</option>
+                {CUSTOMER_BUSINESS_SEGMENTS.map((segment) => <option key={segment} value={segment}>{segment}</option>)}
+              </Select>
             </Field>
             <Button type="submit">Buscar</Button>
           </form>
@@ -264,7 +276,19 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
                         {[customer.city, customer.province].filter(Boolean).join(", ") || "-"}
                       </div>
                     </DataTableCell>
-                    <DataTableCell>{customer.businessSegment || (customer.suggestedBusinessSegment ? <span title="Clasificación automática pendiente de revisión">{customer.suggestedBusinessSegment} *</span> : "Sin clasificar")}</DataTableCell>
+                    <DataTableCell>
+                      {canEditCustomers ? (
+                        <form action={updateCustomerBusinessSegmentAction} className="flex min-w-[210px] items-center gap-2">
+                          <input name="id" type="hidden" value={customer.id} />
+                          <Select aria-label={`Rubro de ${customer.name}`} className="min-h-9" defaultValue={customer.businessSegment || customer.suggestedBusinessSegment || ""} name="businessSegment">
+                            <option value="">Sin clasificar</option>
+                            {CUSTOMER_BUSINESS_SEGMENTS.map((segment) => <option key={segment} value={segment}>{segment}</option>)}
+                          </Select>
+                          <Button size="sm" type="submit" variant="secondary">Guardar</Button>
+                        </form>
+                      ) : customer.businessSegment || (customer.suggestedBusinessSegment ? <span title="Clasificación automática pendiente de revisión">{customer.suggestedBusinessSegment} *</span> : "Sin clasificar")}
+                      {!customer.businessSegment && customer.suggestedBusinessSegment ? <div className="mt-1 text-[11px] text-[color:var(--muted)]">Sugerido automáticamente</div> : null}
+                    </DataTableCell>
                     <DataTableCell>{customer.priceList || "-"}</DataTableCell>
                     <DataTableCell>
                       {canEditCustomers ? (
@@ -313,6 +337,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
           </DataTable>
           <PaginationLinks
             basePath={crmMode ? "/crm/clientes/nuevo" : "/customers"}
+            extraParams={{ segment: params.segment }}
             page={result.meta.page}
             query={result.meta.query}
             totalPages={result.meta.totalPages}

@@ -535,6 +535,29 @@ export async function updateCustomerReceiptType(companyId: number, id: string, v
   return { id, receiptType };
 }
 
+export async function updateCustomerBusinessSegment(companyId: number, id: string, value: string) {
+  const businessSegment = value.trim();
+  if (businessSegment && !VALID_CUSTOMER_BUSINESS_SEGMENTS.has(businessSegment)) {
+    throw new ApiError(400, "Rubro comercial invalido");
+  }
+  const result = await queryWithCompanyContext<{ id: string }>(
+    companyId,
+    `
+      UPDATE clients
+      SET business_segment = NULLIF($1, ''),
+          business_segment_reviewed_at = CASE WHEN NULLIF($1, '') IS NULL THEN NULL ELSE now() END,
+          updated_at = now()
+      WHERE id = $2::uuid AND empresa_id = $3
+      RETURNING id::text AS id
+    `,
+    [businessSegment, id, companyId],
+  );
+
+  if (!result.rows[0]) throw new ApiError(404, "Cliente no encontrado");
+  clearReadQueryCache();
+  return { id, businessSegment };
+}
+
 export async function listSuppliers(input: ListInput = {}): Promise<ListResult<Supplier>> {
   const companyId = input.companyId ?? DEFAULT_COMPANY_ID;
   const query = input.query?.trim() ?? "";

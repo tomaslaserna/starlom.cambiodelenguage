@@ -80,6 +80,7 @@ type ListInput = {
   query?: string | null;
   page?: string | null;
   pageSize?: string | null;
+  businessSegment?: string | null;
 };
 
 type ListResult<T> = {
@@ -157,6 +158,14 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
     filters.push(
       `(display_name ILIKE $${params.length} ESCAPE '\\' OR legal_name ILIKE $${params.length} ESCAPE '\\' OR tax_id ILIKE $${params.length} ESCAPE '\\' OR phone ILIKE $${params.length} ESCAPE '\\')`,
     );
+  }
+
+  const businessSegment = input.businessSegment?.trim() ?? "";
+  if (businessSegment === "unclassified") {
+    filters.push("NULLIF(BTRIM(business_segment), '') IS NULL");
+  } else if (businessSegment) {
+    params.push(businessSegment);
+    filters.push(`business_segment = $${params.length}`);
   }
 
   const where = filters.join(" AND ");

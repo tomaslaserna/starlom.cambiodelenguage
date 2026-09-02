@@ -7,6 +7,7 @@ import {
   customerInputFromBody,
   getCustomer,
   updateCustomer,
+  updateCustomerBusinessSegment,
   updateCustomerReceiptType,
 } from "@/lib/catalog-management";
 import { deleteCustomer, mergeCustomers } from "@/lib/customer-admin";
@@ -65,6 +66,19 @@ export async function updateCustomerReceiptTypeAction(formData: FormData) {
   revalidatePath("/customers");
   revalidatePath("/orders");
   revalidatePath("/orders/new");
+}
+
+export async function updateCustomerBusinessSegmentAction(formData: FormData) {
+  const session = await requireApiSession([{ resource: "clientes", action: "editar" }]);
+  const fields = stringFieldsFromFormData(formData);
+  await updateCustomerBusinessSegment(
+    session.companyId,
+    uuidParam(fields.id, "Cliente"),
+    fields.businessSegment ?? "",
+  );
+  revalidatePath("/customers");
+  revalidatePath("/crm/clientes");
+  revalidatePath("/tienda");
 }
 
 export async function deleteCustomerAction(formData: FormData) {
