@@ -4,6 +4,8 @@ import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
 import {
   Button,
+  ButtonLink,
+  AppIcon,
   Card,
   DataTable,
   DataTableBody,
@@ -31,6 +33,13 @@ function clientStatusTone(status: string): StatusBadgeTone {
   return status.trim().toLowerCase() === "activo" ? "success" : "neutral";
 }
 
+function whatsappHref(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return null;
+  const international = digits.startsWith("54") ? digits : `54${digits}`;
+  return `https://wa.me/${international}`;
+}
+
 export default async function CrmClientesPage({ searchParams }: CrmClientesPageProps) {
   const session = await requireStaffSession();
   if (!(await sessionCanUseCrm(session))) redirect("/");
@@ -49,9 +58,28 @@ export default async function CrmClientesPage({ searchParams }: CrmClientesPageP
     >
       <div className="grid gap-5">
         <PageHeader
-          title={`Hola, ${vendor} 👋`}
-          description={`Tenés ${customers.meta.total} ${customers.meta.total === 1 ? "cliente" : "clientes"} entre propios y a cargo. El seguimiento por estado está en Perfil.`}
+          actions={<ButtonLink href="/customers#crear-cliente" leadingIcon={<AppIcon className="h-4 w-4" name="user" />}>Nuevo cliente</ButtonLink>}
+          title={`Cartera de ${vendor}`}
+          description={`${customers.meta.total} ${customers.meta.total === 1 ? "cliente disponible" : "clientes disponibles"}. Buscá una cuenta y resolvé el próximo paso desde la misma fila.`}
         />
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <Link className="group rounded-[16px] border border-[#cfe0f7] bg-[linear-gradient(135deg,#edf5ff,#ffffff)] p-4 shadow-[var(--shadow-xs)] transition hover:-translate-y-0.5 hover:border-[#8ebbf0] hover:shadow-[var(--shadow-sm)]" href="/crm/perfil">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#075ac7] text-white"><AppIcon className="h-4 w-4" name="clock" /></span>
+            <strong className="mt-3 block text-base font-extrabold text-[#0f172a]">¿A quién contacto hoy?</strong>
+            <span className="mt-1 block text-sm font-medium text-[#64748b]">Abrí la agenda priorizada por recompra y seguimiento.</span>
+          </Link>
+          <Link className="group rounded-[16px] border border-[#f4ddb0] bg-[linear-gradient(135deg,#fff8e9,#ffffff)] p-4 shadow-[var(--shadow-xs)] transition hover:-translate-y-0.5 hover:border-[#eec66f] hover:shadow-[var(--shadow-sm)]" href="/quotes/new">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f59e0b] text-white"><AppIcon className="h-4 w-4" name="quote" /></span>
+            <strong className="mt-3 block text-base font-extrabold text-[#0f172a]">Presupuestar en el acto</strong>
+            <span className="mt-1 block text-sm font-medium text-[#64748b]">Pasá de la consulta del cliente a una propuesta concreta.</span>
+          </Link>
+          <Link className="group rounded-[16px] border border-[#cde9df] bg-[linear-gradient(135deg,#edfdf7,#ffffff)] p-4 shadow-[var(--shadow-xs)] transition hover:-translate-y-0.5 hover:border-[#80cfb2] hover:shadow-[var(--shadow-sm)]" href="/crm/cobros">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0f9f6e] text-white"><AppIcon className="h-4 w-4" name="wallet" /></span>
+            <strong className="mt-3 block text-base font-extrabold text-[#0f172a]">Gestionar cobranzas</strong>
+            <span className="mt-1 block text-sm font-medium text-[#64748b]">Consultá saldos y registrá el seguimiento del cobro.</span>
+          </Link>
+        </div>
 
         {/* Base de datos de tus clientes */}
         <Toolbar ariaLabel="Busqueda de clientes">
@@ -73,7 +101,7 @@ export default async function CrmClientesPage({ searchParams }: CrmClientesPageP
           <DataTable
             caption="Tus clientes (propios y a cargo)"
             className="rounded-none border-0 shadow-none"
-            minWidth="960px"
+            minWidth="1080px"
             tableLabel="Clientes del vendedor"
           >
             <DataTableHeader>
@@ -85,12 +113,13 @@ export default async function CrmClientesPage({ searchParams }: CrmClientesPageP
                 <DataTableHead>Lista</DataTableHead>
                 <DataTableHead>Relacion</DataTableHead>
                 <DataTableHead>Estado</DataTableHead>
+                <DataTableHead className="text-right">Acciones</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {customers.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={7}>
+                  <DataTableCell colSpan={8}>
                     <EmptyState
                       description={customers.meta.query
                         ? "Ajusta la busqueda para encontrar tus clientes."
@@ -125,6 +154,14 @@ export default async function CrmClientesPage({ searchParams }: CrmClientesPageP
                     </DataTableCell>
                     <DataTableCell>
                       <StatusBadge tone={clientStatusTone(customer.status)}>{customer.status}</StatusBadge>
+                    </DataTableCell>
+                    <DataTableCell>
+                      <div className="flex justify-end gap-2">
+                        {whatsappHref(customer.phone) ? (
+                          <ButtonLink href={whatsappHref(customer.phone)!} rel="noreferrer" size="sm" target="_blank" variant="secondary">WhatsApp</ButtonLink>
+                        ) : null}
+                        <ButtonLink href={`/customers/${customer.id}`} size="sm">Ver ficha</ButtonLink>
+                      </div>
                     </DataTableCell>
                   </DataTableRow>
                 ))

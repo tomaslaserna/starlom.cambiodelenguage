@@ -7,6 +7,7 @@ import { PresenceIndicator } from "@/components/presence-indicator";
 import { SessionKeepAlive } from "@/components/session-keep-alive";
 import { ShellNavigation } from "@/components/shell-navigation";
 import { SellerMobileNavigation } from "@/components/seller-mobile-navigation";
+import { CrmCommandBar } from "@/components/crm-command-bar";
 import { ButtonLink, cn } from "@/components/ui";
 import {
   emptyNavigationIndicators,
@@ -176,6 +177,7 @@ export async function ModulePage({
         </header>
 
         <section className="erp-shell-content mx-auto min-w-0 max-w-[1480px] px-4 pb-24 pt-5 sm:px-6 lg:px-7 lg:pb-28 lg:pt-6">
+          {active === "crm" ? <CrmCommandBar /> : null}
           {children}
         </section>
         {sellerMobile ? <SellerMobileNavigation /> : null}

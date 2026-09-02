@@ -1225,6 +1225,23 @@ test("seller mobile CRM has an elevated quick-sale button and a viewport-safe dr
   assert.match(leadsBoard, /initialCreating/);
 });
 
+test("CRM centraliza navegación y acciones comerciales rápidas", () => {
+  const commandBar = read("apps/web/src/components/crm-command-bar.tsx");
+  const modulePage = read("apps/web/src/components/module-page.tsx");
+  const customersPage = read("apps/web/src/app/crm/clientes/page.tsx");
+
+  for (const label of ["Mi día", "Clientes", "Leads", "Presupuestos", "Cobros", "Agenda", "Precios"]) {
+    assert.match(commandBar, new RegExp(label));
+  }
+  assert.match(commandBar, /Nuevo lead/);
+  assert.match(commandBar, /Presupuestar/);
+  assert.match(modulePage, /active === "crm" \? <CrmCommandBar/);
+  assert.match(customersPage, /¿A quién contacto hoy\?/);
+  assert.match(customersPage, /Presupuestar en el acto/);
+  assert.match(customersPage, /Gestionar cobranzas/);
+  assert.match(customersPage, /WhatsApp/);
+});
+
 test("Cobros y pagos es un resumen y Cuentas corrientes conserva la operatoria", () => {
   const paymentsPage = read("apps/web/src/app/payments/page.tsx");
   const accountsPage = read("apps/web/src/app/payments/accounts/[id]/page.tsx");
