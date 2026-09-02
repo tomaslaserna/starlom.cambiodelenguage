@@ -42,6 +42,9 @@ const leadsBoard = readFileSync(new URL("../src/app/crm/leads/leads-board.tsx", 
 const calendarPage = readFileSync(new URL("../src/app/calendar/page.tsx", import.meta.url), "utf8");
 const calendarActions = readFileSync(new URL("../src/app/calendar/actions.ts", import.meta.url), "utf8");
 const shellNavigation = readFileSync(new URL("../src/components/shell-navigation.tsx", import.meta.url), "utf8");
+const crmCommandBar = readFileSync(new URL("../src/components/crm-command-bar.tsx", import.meta.url), "utf8");
+const crmCustomersPage = readFileSync(new URL("../src/app/crm/clientes/page.tsx", import.meta.url), "utf8");
+const mobileNavigation = readFileSync(new URL("../src/components/seller-mobile-navigation.tsx", import.meta.url), "utf8");
 
 test("el panel comercial persiste actividades aisladas por empresa y vendedor", () => {
   assert.match(activityMigration, /CREATE TABLE public\.crm_sales_activities/);
@@ -93,4 +96,13 @@ test("el CRM conserva su contexto y el calendario programa contactos de leads", 
   assert.match(calendarPage, /name="leadId"/);
   assert.match(calendarActions, /scheduleLeadReminder/);
   assert.match(leadsSource, /export async function scheduleLeadReminder/);
+});
+
+test("las acciones comerciales conservan el contexto CRM", () => {
+  assert.doesNotMatch(crmCommandBar, /href="\/quotes/);
+  assert.doesNotMatch(crmCustomersPage, /href="\/quotes|href=\{`\/customers/);
+  assert.doesNotMatch(mobileNavigation, /href: "\/(quotes|customers)/);
+  assert.match(crmCommandBar, /href="\/crm\/presupuestos\/nuevo"/);
+  assert.match(crmCustomersPage, /`\/crm\/clientes\/\$\{customer\.id\}`/);
+  assert.match(shellNavigation, /Volver al sistema/);
 });

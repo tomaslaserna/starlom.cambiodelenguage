@@ -20,7 +20,9 @@ export async function createCustomerAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "clientes", action: "crear" }]);
   await createCustomer(session.companyId, customerInputFromBody(stringFieldsFromFormData(formData)));
   revalidatePath("/customers");
-  redirect("/customers?created=1");
+  revalidatePath("/crm/clientes");
+  const returnTo = String(formData.get("returnTo") ?? "");
+  redirect(returnTo.startsWith("/crm/") ? returnTo : "/customers?created=1");
 }
 
 export async function updateCustomerAction(formData: FormData) {

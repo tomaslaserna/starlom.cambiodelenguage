@@ -14,9 +14,9 @@ const ITEMS: Array<{ href: string; label: string; icon: AppIconName }> = [
 ];
 
 const QUICK_ACTIONS: Array<{ href: string; label: string; description: string; icon: AppIconName }> = [
-  { href: "/customers#crear-cliente", label: "Crear cliente", description: "Dar de alta una cuenta nueva", icon: "search" },
+  { href: "/crm/clientes/nuevo", label: "Crear cliente", description: "Dar de alta una cuenta nueva", icon: "search" },
   { href: "/crm/leads?nuevo=1", label: "Crear lead", description: "Registrar un prospecto en el acto", icon: "clock" },
-  { href: "/quotes#crear-presupuesto", label: "Hacer presupuesto", description: "Cotizar y cerrar con el cliente", icon: "quote" },
+  { href: "/crm/presupuestos/nuevo", label: "Hacer presupuesto", description: "Cotizar y cerrar con el cliente", icon: "quote" },
 ];
 
 export function SellerMobileNavigation() {

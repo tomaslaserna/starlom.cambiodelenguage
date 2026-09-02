@@ -29,6 +29,7 @@ import { deleteCustomerAction, mergeCustomersAction, updateCustomerAction } from
 
 type CustomerDetailPageProps = {
   params: Promise<{ id: string }>;
+  crmMode?: boolean;
 };
 
 function line(label: string, value: string) {
@@ -40,7 +41,7 @@ function line(label: string, value: string) {
   );
 }
 
-export default async function CustomerDetailPage({ params }: CustomerDetailPageProps) {
+export default async function CustomerDetailPage({ params, crmMode = false }: CustomerDetailPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [CUSTOMERS_READ_PERMISSION]);
   const { id } = await params;
@@ -58,7 +59,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
   const priceListNames = priceLists.filter((list) => list.active).map((list) => list.name);
 
   return (
-    <ModulePage active="database" description="Ficha del cliente." session={session} title={customer.name || "Cliente"}>
+    <ModulePage active={crmMode ? "crm" : "database"} description="Ficha del cliente." session={session} title={customer.name || "Cliente"}>
       <div className="grid gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <PageHeader
@@ -66,7 +67,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
             title={customer.name || "Sin nombre"}
           />
           <div className="flex items-center gap-2">
-            <Link className="erp-text-body-sm text-[color:var(--accent)] hover:underline" href="/customers">
+            <Link className="erp-text-body-sm text-[color:var(--accent)] hover:underline" href={crmMode ? "/crm/clientes" : "/customers"}>
               ← Volver a Clientes
             </Link>
             <CustomerRowActions

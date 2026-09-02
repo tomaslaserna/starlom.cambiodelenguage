@@ -30,7 +30,7 @@ export function CrmCommandBar() {
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex">
           <ButtonLink href="/crm/leads?nuevo=1" leadingIcon={<AppIcon className="h-4 w-4" name="trend" />} size="sm" variant="secondary">Nuevo lead</ButtonLink>
-          <ButtonLink href="/quotes/new" leadingIcon={<AppIcon className="h-4 w-4" name="quote" />} size="sm">Presupuestar</ButtonLink>
+          <ButtonLink href="/crm/presupuestos/nuevo" leadingIcon={<AppIcon className="h-4 w-4" name="quote" />} size="sm">Presupuestar</ButtonLink>
         </div>
       </div>
       <nav aria-label="Secciones del CRM" className="flex gap-1 overflow-x-auto px-2 py-2 [scrollbar-width:thin] sm:px-3">

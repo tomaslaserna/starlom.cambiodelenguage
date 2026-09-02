@@ -77,7 +77,7 @@ export default async function CrmPerfilPage() {
             <ButtonLink href="/crm/leads" variant="secondary">Contactar clientes y leads</ButtonLink>
             <ButtonLink href="/crm/cobros" variant="secondary">Revisar cobranzas</ButtonLink>
             <ButtonLink href="/crm/presupuestos" variant="secondary">Revisar presupuestos</ButtonLink>
-            <ButtonLink href="/quotes" variant="secondary">Crear presupuesto</ButtonLink>
+            <ButtonLink href="/crm/presupuestos/nuevo" variant="secondary">Crear presupuesto</ButtonLink>
           </Card>
         </div>
 

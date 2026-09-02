@@ -44,10 +44,11 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: 
   }
 }
 
-function BrandBlock({ title }: { title?: string }) {
+function BrandBlock({ title, crmMode = false }: { title?: string; crmMode?: boolean }) {
+  const href = crmMode ? "/crm/perfil" : "/";
   if (title) {
     return (
-      <Link aria-label={`Starlim - ${title}`} className="flex min-w-0 flex-1 items-center" href="/">
+      <Link aria-label={`Starlim - ${title}`} className="flex min-w-0 flex-1 items-center" href={href}>
         <Image
           alt="Starlim"
           className="h-auto w-[108px] object-contain"
@@ -61,7 +62,7 @@ function BrandBlock({ title }: { title?: string }) {
   }
 
   return (
-    <Link aria-label="Ir al inicio de Starlim" className="flex items-center justify-center py-1" href="/">
+    <Link aria-label={crmMode ? "Ir al inicio comercial" : "Ir al inicio de Starlim"} className="flex items-center justify-center py-1" href={href}>
       <Image
         alt="Starlim"
         className="h-auto w-[148px] object-contain"
@@ -116,7 +117,7 @@ export async function ModulePage({
       <SessionKeepAlive />
       <aside className="erp-sidebar-texture sticky top-0 hidden h-screen overflow-hidden overscroll-none border-r border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_48%,#073f94_100%)] text-white shadow-[8px_0_30px_rgba(7,63,148,0.22)] lg:flex lg:flex-col">
         <div className="border-b border-white/14 px-4 py-4">
-          <BrandBlock />
+          <BrandBlock crmMode={active === "crm"} />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-none px-3 py-4">
           <ShellNavigation active={active} indicators={indicators} sections={sections} />
@@ -127,7 +128,7 @@ export async function ModulePage({
             <div className="erp-text-caption mt-0.5 truncate font-medium text-white/72">{session.role}</div>
           </div>
           <ButtonLink className="border-[#60a5fa]/45 bg-[#0b4fc7] text-white shadow-[0_10px_22px_rgba(5,32,85,0.16)] hover:border-[#93c5fd]/60 hover:bg-[#073f94]" href="/" size="sm" variant="secondary">
-            Inicio
+            {active === "crm" ? "Ir al ERP" : "Inicio"}
           </ButtonLink>
         </div>
       </aside>
@@ -162,13 +163,13 @@ export async function ModulePage({
                   <ShellNavigation active={active} indicators={indicators} sections={mobileSections} />
                   <div className="mt-5 grid gap-2 border-t border-white/14 pt-4">
                     <ButtonLink className="border-[#60a5fa]/45 bg-[#0b4fc7] text-white shadow-[0_10px_22px_rgba(5,32,85,0.16)] hover:border-[#93c5fd]/60 hover:bg-[#073f94]" href="/" size="sm" variant="secondary">
-                      Inicio
+                      {active === "crm" ? "Ir al ERP" : "Inicio"}
                     </ButtonLink>
                     <LogoutButton className="w-full" />
                   </div>
                 </div>
               </details>
-              <BrandBlock title={title} />
+              <BrandBlock crmMode={active === "crm"} title={title} />
               <div className="ml-auto">
                 <PresenceIndicator compact />
               </div>

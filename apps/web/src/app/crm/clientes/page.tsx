@@ -58,7 +58,7 @@ export default async function CrmClientesPage({ searchParams }: CrmClientesPageP
     >
       <div className="grid gap-5">
         <PageHeader
-          actions={<ButtonLink href="/customers#crear-cliente" leadingIcon={<AppIcon className="h-4 w-4" name="user" />}>Nuevo cliente</ButtonLink>}
+          actions={<ButtonLink href="/crm/clientes/nuevo" leadingIcon={<AppIcon className="h-4 w-4" name="user" />}>Nuevo cliente</ButtonLink>}
           title={`Cartera de ${vendor}`}
           description={`${customers.meta.total} ${customers.meta.total === 1 ? "cliente disponible" : "clientes disponibles"}. Buscá una cuenta y resolvé el próximo paso desde la misma fila.`}
         />
@@ -69,7 +69,7 @@ export default async function CrmClientesPage({ searchParams }: CrmClientesPageP
             <strong className="mt-3 block text-base font-extrabold text-[#0f172a]">¿A quién contacto hoy?</strong>
             <span className="mt-1 block text-sm font-medium text-[#64748b]">Abrí la agenda priorizada por recompra y seguimiento.</span>
           </Link>
-          <Link className="group rounded-[16px] border border-[#f4ddb0] bg-[linear-gradient(135deg,#fff8e9,#ffffff)] p-4 shadow-[var(--shadow-xs)] transition hover:-translate-y-0.5 hover:border-[#eec66f] hover:shadow-[var(--shadow-sm)]" href="/quotes/new">
+          <Link className="group rounded-[16px] border border-[#f4ddb0] bg-[linear-gradient(135deg,#fff8e9,#ffffff)] p-4 shadow-[var(--shadow-xs)] transition hover:-translate-y-0.5 hover:border-[#eec66f] hover:shadow-[var(--shadow-sm)]" href="/crm/presupuestos/nuevo">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f59e0b] text-white"><AppIcon className="h-4 w-4" name="quote" /></span>
             <strong className="mt-3 block text-base font-extrabold text-[#0f172a]">Presupuestar en el acto</strong>
             <span className="mt-1 block text-sm font-medium text-[#64748b]">Pasá de la consulta del cliente a una propuesta concreta.</span>
@@ -132,7 +132,7 @@ export default async function CrmClientesPage({ searchParams }: CrmClientesPageP
                 customers.data.map((customer) => (
                   <DataTableRow key={customer.id}>
                     <DataTableCell>
-                      <Link className="max-w-[260px] break-words font-medium text-[color:var(--accent)] hover:underline" href={`/customers/${customer.id}`}>
+                      <Link className="max-w-[260px] break-words font-medium text-[color:var(--accent)] hover:underline" href={`/crm/clientes/${customer.id}`}>
                         {customer.name || "Sin nombre"}
                       </Link>
                       <div className="mt-1 max-w-[260px] break-words text-xs text-[color:var(--muted)]">
@@ -160,7 +160,7 @@ export default async function CrmClientesPage({ searchParams }: CrmClientesPageP
                         {whatsappHref(customer.phone) ? (
                           <ButtonLink href={whatsappHref(customer.phone)!} rel="noreferrer" size="sm" target="_blank" variant="secondary">WhatsApp</ButtonLink>
                         ) : null}
-                        <ButtonLink href={`/customers/${customer.id}`} size="sm">Ver ficha</ButtonLink>
+                        <ButtonLink href={`/crm/clientes/${customer.id}`} size="sm">Ver ficha</ButtonLink>
                       </div>
                     </DataTableCell>
                   </DataTableRow>

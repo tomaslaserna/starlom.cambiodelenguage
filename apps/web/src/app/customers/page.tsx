@@ -42,6 +42,7 @@ type CustomersPageProps = {
     page?: string;
     created?: string;
   }>;
+  crmMode?: boolean;
 };
 
 function customerStatusTone(status: string): StatusBadgeTone {
@@ -52,7 +53,7 @@ function customerStatusTone(status: string): StatusBadgeTone {
   return "neutral";
 }
 
-export default async function CustomersPage({ searchParams }: CustomersPageProps) {
+export default async function CustomersPage({ searchParams, crmMode = false }: CustomersPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [CUSTOMERS_READ_PERMISSION]);
   const navigationAuthorization = await fastOr(
@@ -77,7 +78,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
 
   return (
     <ModulePage
-      active="database"
+      active={crmMode ? "crm" : "database"}
       description="Directorio de clientes con datos comerciales y de contacto."
       navigationAuthorization={navigationAuthorization}
       session={session}
@@ -99,6 +100,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
         {canCreateCustomers ? (
           <Card className="scroll-mt-24 p-4" id="crear-cliente">
             <form action={createCustomerAction} className="grid gap-3">
+              {crmMode ? <input name="returnTo" type="hidden" value="/crm/clientes?created=1" /> : null}
               <div className="grid gap-3 lg:grid-cols-5">
                 <Field htmlFor="customer-name" label="Cliente" required>
                   <Input id="customer-name" name="name" required />
@@ -171,7 +173,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
 
         <Toolbar ariaLabel="Busqueda de clientes">
           <form
-            action="/customers"
+            action={crmMode ? "/crm/clientes/nuevo" : "/customers"}
             aria-label="Busqueda"
             className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto] lg:items-end"
           >
@@ -235,7 +237,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                     <DataTableCell>
                       <Link
                         className="max-w-[260px] break-words font-medium text-[color:var(--accent)] hover:underline"
-                        href={`/customers/${customer.id}`}
+                        href={crmMode ? `/crm/clientes/${customer.id}` : `/customers/${customer.id}`}
                       >
                         {customer.name || "Sin nombre"}
                       </Link>
@@ -301,7 +303,7 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
             </DataTableBody>
           </DataTable>
           <PaginationLinks
-            basePath="/customers"
+            basePath={crmMode ? "/crm/clientes/nuevo" : "/customers"}
             page={result.meta.page}
             query={result.meta.query}
             totalPages={result.meta.totalPages}
