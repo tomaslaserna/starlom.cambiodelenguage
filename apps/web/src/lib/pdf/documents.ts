@@ -6,14 +6,11 @@ import { collapsePaymentAllocations } from "@/lib/customer-accounts";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
 import {
-  applyVat,
+  netPriceLegend,
   normalizeGroupBy,
   normalizeStock,
-  normalizeVat,
-  vatLegend,
   type PriceListGroupBy,
   type PriceListStock,
-  type PriceListVat,
 } from "@/lib/price-list-export";
 import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
 import { getPurchase } from "@/lib/purchases";
@@ -1158,13 +1155,11 @@ export type PriceListPdfOptions = {
   stock?: PriceListStock;
   groupBy?: PriceListGroupBy;
   filter?: string;
-  iva?: PriceListVat;
 };
 
 export async function buildPriceListPdf(companyId: number, options: PriceListPdfOptions) {
   const stock = normalizeStock(options.stock);
   const groupBy = normalizeGroupBy(options.groupBy);
-  const iva = normalizeVat(options.iva == null ? undefined : String(options.iva));
   const filter = (options.filter ?? "").trim().toLocaleLowerCase("es");
   const vigencia = options.vigencia && /^\d{4}-\d{2}-\d{2}$/.test(options.vigencia) ? options.vigencia : localDateIso();
 
@@ -1241,22 +1236,20 @@ export async function buildPriceListPdf(companyId: number, options: PriceListPdf
   }
   const orderedGroups = Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0], "es"));
 
-  const ivaTag = iva === 10.5 ? "IVA 10,5% incluido" : "IVA 21% incluido";
-
   return createPdfFile(`lista_precios_${safeFilename(listName)}.pdf`, ({ pdf }) => {
     pdf.drawHeader({
       title: "Lista de precios",
       code: "LP",
       number: listName,
       date: pdfDate(vigencia),
-      extra: [ivaTag, `Productos: ${rows.length}`],
+      extra: ["Precios netos · sin IVA", `Productos: ${rows.length}`],
       footerLeft: "Lista de precios",
       footerRight: listName,
       continuationSubject: listName,
     });
     pdf.section("Lista vigente");
     pdf.title(listName, 13);
-    pdf.muted(`Vigencia desde ${pdfDate(vigencia)}. ${vatLegend(iva)}`);
+    pdf.muted(`Vigencia desde ${pdfDate(vigencia)}. ${netPriceLegend()}`);
     pdf.doc.y += 12;
 
     if (orderedGroups.length === 0) {
@@ -1276,7 +1269,7 @@ export async function buildPriceListPdf(companyId: number, options: PriceListPdf
           row.codigo || "-",
           row.nombre,
           row.presentacion || "-",
-          pdfMoney(applyVat(Number(row.precio), iva)),
+          pdfMoney(Number(row.precio)),
         ]),
         { minRowHeight: 20 },
       );

@@ -157,12 +157,9 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
                     <Field htmlFor="pdf-filter" label="Filtrar (opcional)">
                       <Input id="pdf-filter" name="filter" placeholder="Categoría o proveedor" />
                     </Field>
-                    <Field htmlFor="pdf-iva" label="IVA a aplicar al exportar">
-                      <Select defaultValue="21" id="pdf-iva" name="iva">
-                        <option value="10.5">Sumar IVA 10,5%</option>
-                        <option value="21">Sumar IVA 21%</option>
-                      </Select>
-                    </Field>
+                    <p className="rounded-[9px] bg-[#eef4ff] px-3 py-2 text-xs font-semibold text-[#334155]">
+                      El PDF muestra siempre precios netos, sin IVA.
+                    </p>
                     <Button type="submit">Generar PDF</Button>
                   </form>
                 </details>

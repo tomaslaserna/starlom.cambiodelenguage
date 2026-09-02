@@ -20,7 +20,6 @@ export async function GET(request: NextRequest) {
       stock: params.get("stock") === "con" ? "con" : "todos",
       groupBy: params.get("groupBy") === "proveedor" ? "proveedor" : "categoria",
       filter: params.get("filter") ?? undefined,
-      iva: params.get("iva") === "10.5" ? 10.5 : 21,
     });
     return pdfResponse(file, params.get("download") !== "1");
   } catch (error) {

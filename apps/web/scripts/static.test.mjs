@@ -640,8 +640,10 @@ test("price lists and sale items stay net while orders and quotes store final VA
 
   const pricesPage = read("apps/web/src/app/prices/page.tsx");
   assert.match(pricesPage, /precios netos, sin IVA/);
-  assert.match(pricesPage, /Sumar IVA 10,5%/);
-  assert.match(pricesPage, /Sumar IVA 21%/);
+  assert.match(pricesPage, /siempre precios netos, sin IVA/);
+  assert.doesNotMatch(pricesPage, /Sumar IVA 10,5%|Sumar IVA 21%|name="iva"/);
+  assert.match(pdfDocuments, /pdfMoney\(Number\(row\.precio\)\)/);
+  assert.doesNotMatch(pdfDocuments, /applyVat\(Number\(row\.precio\)/);
 });
 
 test("pricing lists use the L0-L3 normalized names and L2 as default anchor", () => {
