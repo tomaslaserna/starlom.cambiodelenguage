@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button, Field, Input, SearchableSelect, Select } from "@/components/ui";
 import { FISCAL_CONDITION_OPTIONS } from "@/lib/fiscal-conditions";
 import { CUSTOMER_BUSINESS_SEGMENTS } from "@/lib/customer-segments";
+import { CUSTOMER_RECEIPT_OPTIONS } from "@/lib/customer-receipt-types";
 
 type CustomerLite = { id: string; name: string };
 
@@ -26,6 +27,7 @@ type EditableCustomer = {
   salesCount: number;
   businessSegment: string;
   suggestedBusinessSegment: string;
+  receiptType: string;
 };
 
 type Action = (formData: FormData) => Promise<void>;
@@ -100,6 +102,12 @@ export function CustomerRowActions({
                 <option value="">Sin clasificar</option>
                 {customer.suggestedBusinessSegment && !customer.businessSegment ? <option value={customer.suggestedBusinessSegment}>Sugerido: {customer.suggestedBusinessSegment}</option> : null}
                 {CUSTOMER_BUSINESS_SEGMENTS.filter((segment) => segment !== customer.suggestedBusinessSegment).map((segment) => <option key={segment} value={segment}>{segment}</option>)}
+              </Select>
+            </Field>
+            <Field htmlFor={`edit-receipt-${customer.id}`} label="Comprobante asociado">
+              <Select defaultValue={customer.receiptType} id={`edit-receipt-${customer.id}`} name="receiptType" required>
+                <option disabled value="">Seleccionar comprobante</option>
+                {CUSTOMER_RECEIPT_OPTIONS.map((receiptType) => <option key={receiptType} value={receiptType}>{receiptType}</option>)}
               </Select>
             </Field>
             <Field htmlFor={`edit-phone-${customer.id}`} label="Teléfono">

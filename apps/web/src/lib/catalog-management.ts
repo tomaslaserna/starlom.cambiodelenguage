@@ -6,6 +6,9 @@ import { saleOrderDocument, type SaleOrderDocument } from "@/lib/receipt-types";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
 import type { PoolClient } from "pg";
+import { CUSTOMER_RECEIPT_OPTIONS, type CustomerReceiptType } from "@/lib/customer-receipt-types";
+export { CUSTOMER_RECEIPT_OPTIONS } from "@/lib/customer-receipt-types";
+export type { CustomerReceiptType } from "@/lib/customer-receipt-types";
 
 type ListInput = {
   companyId?: number;
@@ -120,9 +123,6 @@ async function nextCategorySku(client: PoolClient, companyId: number, categoryCo
   );
   return `${prefix}-${String(result.rows[0]?.next_number ?? "1").padStart(5, "0")}`;
 }
-
-export const CUSTOMER_RECEIPT_OPTIONS = ["Remito", "Factura A", "Factura B"] as const;
-export type CustomerReceiptType = (typeof CUSTOMER_RECEIPT_OPTIONS)[number];
 
 const CUSTOMER_RECEIPT_TYPE_LABELS: Record<SaleOrderDocument, CustomerReceiptType> = {
   remito: "Remito",

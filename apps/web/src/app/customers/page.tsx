@@ -22,11 +22,10 @@ import {
   Toolbar,
   type StatusBadgeTone,
 } from "@/components/ui";
-import { createCustomerAction, updateCustomerBusinessSegmentAction, updateCustomerReceiptTypeAction } from "@/app/customers/actions";
+import { createCustomerAction } from "@/app/customers/actions";
 import { listCustomers } from "@/lib/catalog";
 import {
   CUSTOMER_RECEIPT_OPTIONS,
-  customerReceiptTypeOptionValue,
 } from "@/lib/catalog-management";
 import { CUSTOMER_BUSINESS_SEGMENTS } from "@/lib/customer-segments";
 import { fastOr } from "@/lib/fast-data";
@@ -67,7 +66,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
   );
 
   const params = await searchParams;
-  const [result, priceLists, canCreateCustomers, canEditCustomers] = await Promise.all([
+  const [result, priceLists, canCreateCustomers] = await Promise.all([
     listCustomers({
       companyId: session.companyId,
       query: params.q,
@@ -77,7 +76,6 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
     }),
     listPriceLists(session.companyId, true),
     sessionAllows(session, [{ resource: "clientes", action: "crear" }]),
-    sessionAllows(session, [{ resource: "clientes", action: "editar" }]),
   ]);
   const activePriceLists = priceLists.filter((list) => list.active);
 
@@ -235,12 +233,13 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
                 <DataTableHead>Lista</DataTableHead>
                 <DataTableHead>Comprobante</DataTableHead>
                 <DataTableHead>Estado</DataTableHead>
+                <DataTableHead className="text-right">Acción</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={8}>
+                  <DataTableCell colSpan={9}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -276,59 +275,16 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
                         {[customer.city, customer.province].filter(Boolean).join(", ") || "-"}
                       </div>
                     </DataTableCell>
-                    <DataTableCell>
-                      {canEditCustomers ? (
-                        <form action={updateCustomerBusinessSegmentAction} className="flex min-w-[210px] items-center gap-2">
-                          <input name="id" type="hidden" value={customer.id} />
-                          <Select aria-label={`Rubro de ${customer.name}`} className="min-h-9" defaultValue={customer.businessSegment || customer.suggestedBusinessSegment || ""} name="businessSegment">
-                            <option value="">Sin clasificar</option>
-                            {CUSTOMER_BUSINESS_SEGMENTS.map((segment) => <option key={segment} value={segment}>{segment}</option>)}
-                          </Select>
-                          <Button size="sm" type="submit" variant="secondary">Guardar</Button>
-                        </form>
-                      ) : customer.businessSegment || (customer.suggestedBusinessSegment ? <span title="Clasificación automática pendiente de revisión">{customer.suggestedBusinessSegment} *</span> : "Sin clasificar")}
-                      {!customer.businessSegment && customer.suggestedBusinessSegment ? <div className="mt-1 text-[11px] text-[color:var(--muted)]">Sugerido automáticamente</div> : null}
-                    </DataTableCell>
+                    <DataTableCell>{customer.businessSegment || (customer.suggestedBusinessSegment ? <span title="Clasificación automática pendiente de revisión">{customer.suggestedBusinessSegment} *</span> : "Sin clasificar")}</DataTableCell>
                     <DataTableCell>{customer.priceList || "-"}</DataTableCell>
-                    <DataTableCell>
-                      {canEditCustomers ? (
-                        <form
-                          action={updateCustomerReceiptTypeAction}
-                          className="flex min-w-[220px] items-center gap-2"
-                        >
-                          <input name="id" type="hidden" value={customer.id} />
-                          <Select
-                            aria-label={`Comprobante asociado de ${customer.name}`}
-                            className="min-h-9"
-                            defaultValue={customerReceiptTypeOptionValue(customer.receiptType)}
-                            name="receiptType"
-                            required
-                          >
-                            <option disabled value="">
-                              {customer.receiptType
-                                ? `Valor historico: ${customer.receiptType}`
-                                : "Sin configurar"}
-                            </option>
-                            {CUSTOMER_RECEIPT_OPTIONS.map((receiptType) => (
-                              <option key={receiptType} value={receiptType}>
-                                {receiptType}
-                              </option>
-                            ))}
-                          </Select>
-                          <Button size="sm" type="submit" variant="secondary">
-                            Guardar
-                          </Button>
-                        </form>
-                      ) : (
-                        customerReceiptTypeOptionValue(customer.receiptType) ||
-                        customer.receiptType ||
-                        "Sin configurar"
-                      )}
-                    </DataTableCell>
+                    <DataTableCell>{customer.receiptType || "Sin configurar"}</DataTableCell>
                     <DataTableCell>
                       <StatusBadge tone={customerStatusTone(customer.status)}>
                         {customer.status || "Sin estado"}
                       </StatusBadge>
+                    </DataTableCell>
+                    <DataTableCell className="text-right">
+                      <ButtonLink href={crmMode ? `/crm/clientes/${customer.id}` : `/customers/${customer.id}`} size="sm" variant="secondary">Ver ficha</ButtonLink>
                     </DataTableCell>
                   </DataTableRow>
                 ))

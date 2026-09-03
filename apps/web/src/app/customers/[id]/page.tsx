@@ -92,6 +92,7 @@ export default async function CustomerDetailPage({ params, crmMode = false }: Cu
                 salesCount: history.summary.count,
                 businessSegment: customer.businessSegment,
                 suggestedBusinessSegment: customer.suggestedBusinessSegment,
+                receiptType: customer.receiptType,
               }}
               deleteAction={deleteCustomerAction}
               mergeAction={mergeCustomersAction}
@@ -126,9 +127,12 @@ export default async function CustomerDetailPage({ params, crmMode = false }: Cu
           <Card>
             <CardContent>
               <h2 className="erp-text-body-sm font-black">Fiscal</h2>
+              {line("Código cliente", customer.code)}
+              {line("Razón social", customer.businessName)}
               {line("Tipo ID", customer.taxIdType)}
               {line("CUIT/DNI", customer.taxId)}
               {line("Cond. IVA", customer.vatCondition)}
+              {line("Comprobante asociado", customer.receiptType)}
             </CardContent>
           </Card>
           <Card>
