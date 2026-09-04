@@ -34,9 +34,9 @@ type CustomerDetailPageProps = {
 
 function line(label: string, value: string) {
   return (
-    <div className="flex justify-between gap-3 py-1">
+    <div className="grid grid-cols-[minmax(8rem,0.8fr)_1.2fr] gap-3 border-b border-[color:var(--border)]/60 py-2.5 last:border-b-0">
       <span className="erp-text-caption text-[color:var(--muted)]">{label}</span>
-      <span className="erp-text-body-sm font-medium">{value || "-"}</span>
+      <span className="erp-text-body-sm text-right font-semibold">{value || "-"}</span>
     </div>
   );
 }
@@ -61,12 +61,13 @@ export default async function CustomerDetailPage({ params, crmMode = false }: Cu
   return (
     <ModulePage active={crmMode ? "crm" : "database"} description="Ficha del cliente." session={session} title={customer.name || "Cliente"}>
       <div className="grid gap-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4">
           <PageHeader
             description={`${customer.taxIdType || "ID"} ${customer.taxId || "-"}`}
             title={customer.name || "Sin nombre"}
           />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Link className="erp-text-body-sm text-[color:var(--accent)] hover:underline" href={crmMode ? "/crm/clientes" : "/customers"}>
               ← Volver a Clientes
             </Link>
@@ -101,6 +102,7 @@ export default async function CustomerDetailPage({ params, crmMode = false }: Cu
               vendors={vendors}
             />
           </div>
+          </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -115,18 +117,18 @@ export default async function CustomerDetailPage({ params, crmMode = false }: Cu
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card>
-            <CardContent>
-              <h2 className="erp-text-body-sm font-black">Contacto</h2>
+          <Card className="overflow-hidden">
+            <div className="border-b border-[color:var(--border)] bg-[color:var(--background)] px-4 py-3"><h2 className="erp-text-body-sm font-black">Contacto</h2></div>
+            <CardContent className="pt-2">
               {line("Teléfono", customer.phone)}
               {line("Dirección", customer.address)}
               {line("Localidad", customer.city)}
               {line("Provincia", customer.province)}
             </CardContent>
           </Card>
-          <Card>
-            <CardContent>
-              <h2 className="erp-text-body-sm font-black">Fiscal</h2>
+          <Card className="overflow-hidden">
+            <div className="border-b border-[color:var(--border)] bg-[color:var(--background)] px-4 py-3"><h2 className="erp-text-body-sm font-black">Datos fiscales</h2></div>
+            <CardContent className="pt-2">
               {line("Código cliente", customer.code)}
               {line("Razón social", customer.businessName)}
               {line("Tipo ID", customer.taxIdType)}
@@ -135,9 +137,9 @@ export default async function CustomerDetailPage({ params, crmMode = false }: Cu
               {line("Comprobante asociado", customer.receiptType)}
             </CardContent>
           </Card>
-          <Card>
-            <CardContent>
-              <h2 className="erp-text-body-sm font-black">Comercial</h2>
+          <Card className="overflow-hidden">
+            <div className="border-b border-[color:var(--border)] bg-[color:var(--background)] px-4 py-3"><h2 className="erp-text-body-sm font-black">Configuración comercial</h2></div>
+            <CardContent className="pt-2">
               {line("Lista de precios", customer.priceList)}
               {line("Estado", customer.status)}
               {line("Vendedor propio", customer.seller)}
@@ -145,10 +147,10 @@ export default async function CustomerDetailPage({ params, crmMode = false }: Cu
               {line("Rubro", customer.businessSegment || (customer.suggestedBusinessSegment ? `${customer.suggestedBusinessSegment} (sugerido)` : ""))}
             </CardContent>
           </Card>
-          <Card>
-            <CardContent>
-              <h2 className="erp-text-body-sm font-black">Notas</h2>
-              <p className="erp-text-body-sm">{customer.observation || "Sin notas."}</p>
+          <Card className="overflow-hidden">
+            <div className="border-b border-[color:var(--border)] bg-[color:var(--background)] px-4 py-3"><h2 className="erp-text-body-sm font-black">Notas</h2></div>
+            <CardContent className="pt-4">
+              <p className="erp-text-body-sm leading-relaxed text-[color:var(--muted)]">{customer.observation || "Sin notas registradas."}</p>
             </CardContent>
           </Card>
         </div>

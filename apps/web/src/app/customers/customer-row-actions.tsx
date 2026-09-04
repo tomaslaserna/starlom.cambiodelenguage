@@ -75,93 +75,45 @@ export function CustomerRowActions({
       ) : null}
 
       {dialog === "edit" ? (
-        <Overlay onClose={() => setDialog("none")} title="Editar cliente">
-          <form action={updateAction} className="grid gap-3 sm:grid-cols-2" onSubmit={() => setDialog("none")}>
+        <Overlay description="Actualizá los datos comerciales, fiscales y de contacto." onClose={() => setDialog("none")} title="Editar cliente" wide>
+          <form action={updateAction} className="flex max-h-[calc(100dvh-10rem)] flex-col" onSubmit={() => setDialog("none")}>
             <input name="id" type="hidden" value={customer.id} />
-            <Field htmlFor={`edit-name-${customer.id}`} label="Nombre">
-              <Input defaultValue={customer.name} id={`edit-name-${customer.id}`} name="name" required />
-            </Field>
-            <Field htmlFor={`edit-business-${customer.id}`} label="Razón social">
-              <Input defaultValue={customer.businessName} id={`edit-business-${customer.id}`} name="businessName" />
-            </Field>
-            <Field htmlFor={`edit-taxidtype-${customer.id}`} label="Tipo ID">
-              <Input defaultValue={customer.taxIdType} id={`edit-taxidtype-${customer.id}`} name="taxIdType" placeholder="CUIT / DNI" />
-            </Field>
-            <Field htmlFor={`edit-taxid-${customer.id}`} label="CUIT/DNI">
-              <Input defaultValue={customer.taxId} id={`edit-taxid-${customer.id}`} name="taxId" />
-            </Field>
-            <Field htmlFor={`edit-vat-${customer.id}`} label="Cond. IVA">
-              <Select defaultValue={customer.vatCondition} id={`edit-vat-${customer.id}`} name="vatCondition">
-                {FISCAL_CONDITION_OPTIONS.map((condition) => (
-                  <option key={condition} value={condition}>{condition}</option>
-                ))}
-              </Select>
-            </Field>
-            <Field htmlFor={`edit-segment-${customer.id}`} label="Rubro comercial">
-              <Select defaultValue={customer.businessSegment} id={`edit-segment-${customer.id}`} name="businessSegment">
-                <option value="">Sin clasificar</option>
-                {customer.suggestedBusinessSegment && !customer.businessSegment ? <option value={customer.suggestedBusinessSegment}>Sugerido: {customer.suggestedBusinessSegment}</option> : null}
-                {CUSTOMER_BUSINESS_SEGMENTS.filter((segment) => segment !== customer.suggestedBusinessSegment).map((segment) => <option key={segment} value={segment}>{segment}</option>)}
-              </Select>
-            </Field>
-            <Field htmlFor={`edit-receipt-${customer.id}`} label="Comprobante asociado">
-              <Select defaultValue={customer.receiptType} id={`edit-receipt-${customer.id}`} name="receiptType" required>
-                <option disabled value="">Seleccionar comprobante</option>
-                {CUSTOMER_RECEIPT_OPTIONS.map((receiptType) => <option key={receiptType} value={receiptType}>{receiptType}</option>)}
-              </Select>
-            </Field>
-            <Field htmlFor={`edit-phone-${customer.id}`} label="Teléfono">
-              <Input defaultValue={customer.phone} id={`edit-phone-${customer.id}`} name="phone" />
-            </Field>
-            <Field htmlFor={`edit-address-${customer.id}`} label="Dirección">
-              <Input defaultValue={customer.address} id={`edit-address-${customer.id}`} name="address" />
-            </Field>
-            <Field htmlFor={`edit-city-${customer.id}`} label="Localidad">
-              <Input defaultValue={customer.city} id={`edit-city-${customer.id}`} name="city" />
-            </Field>
-            <Field htmlFor={`edit-province-${customer.id}`} label="Provincia">
-              <Input defaultValue={customer.province} id={`edit-province-${customer.id}`} name="province" />
-            </Field>
-            <Field htmlFor={`edit-pricelist-${customer.id}`} label="Lista de precios">
-              <Select defaultValue={customer.priceList} id={`edit-pricelist-${customer.id}`} name="priceList">
-                <option value="">Sin lista</option>
-                {priceLists.map((list) => (
-                  <option key={list} value={list}>{list}</option>
-                ))}
-              </Select>
-            </Field>
-            <Field htmlFor={`edit-status-${customer.id}`} label="Estado">
-              <Select
-                defaultValue={customer.status.trim().toLowerCase() === "inactivo" ? "inactivo" : "activo"}
-                id={`edit-status-${customer.id}`}
-                name="status"
-              >
-                <option value="activo">Activo</option>
-                <option value="inactivo">Inactivo</option>
-              </Select>
-            </Field>
-            <Field htmlFor={`edit-seller-${customer.id}`} label="Vendedor propio">
-              <Select defaultValue={customer.seller} id={`edit-seller-${customer.id}`} name="seller">
-                <option value="">Sin asignar</option>
-                {sellerOptions.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </Select>
-            </Field>
-            <Field htmlFor={`edit-assigned-${customer.id}`} label="Vendedor a cargo">
-              <Select defaultValue={customer.assignedSeller} id={`edit-assigned-${customer.id}`} name="assignedSeller">
-                <option value="">Sin asignar</option>
-                {assignedOptions.map((name) => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </Select>
-            </Field>
-            <div className="sm:col-span-2">
+            <div className="grid min-h-0 gap-4 overflow-y-auto px-5 py-4 lg:grid-cols-3">
+              <EditorSection title="Identificación">
+                <Field htmlFor={`edit-name-${customer.id}`} label="Nombre"><Input defaultValue={customer.name} id={`edit-name-${customer.id}`} name="name" required /></Field>
+                <Field htmlFor={`edit-business-${customer.id}`} label="Razón social"><Input defaultValue={customer.businessName} id={`edit-business-${customer.id}`} name="businessName" /></Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field htmlFor={`edit-taxidtype-${customer.id}`} label="Tipo ID"><Input defaultValue={customer.taxIdType} id={`edit-taxidtype-${customer.id}`} name="taxIdType" placeholder="CUIT / DNI" /></Field>
+                  <Field htmlFor={`edit-taxid-${customer.id}`} label="CUIT/DNI"><Input defaultValue={customer.taxId} id={`edit-taxid-${customer.id}`} name="taxId" /></Field>
+                </div>
+                <Field htmlFor={`edit-vat-${customer.id}`} label="Condición de IVA"><Select defaultValue={customer.vatCondition} id={`edit-vat-${customer.id}`} name="vatCondition">{FISCAL_CONDITION_OPTIONS.map((condition) => <option key={condition} value={condition}>{condition}</option>)}</Select></Field>
+                <Field htmlFor={`edit-receipt-${customer.id}`} label="Comprobante asociado"><Select defaultValue={customer.receiptType} id={`edit-receipt-${customer.id}`} name="receiptType" required><option disabled value="">Seleccionar comprobante</option>{CUSTOMER_RECEIPT_OPTIONS.map((receiptType) => <option key={receiptType} value={receiptType}>{receiptType}</option>)}</Select></Field>
+              </EditorSection>
+
+              <EditorSection title="Contacto y ubicación">
+                <Field htmlFor={`edit-phone-${customer.id}`} label="Teléfono"><Input defaultValue={customer.phone} id={`edit-phone-${customer.id}`} name="phone" /></Field>
+                <Field htmlFor={`edit-address-${customer.id}`} label="Dirección"><Input defaultValue={customer.address} id={`edit-address-${customer.id}`} name="address" /></Field>
+                <Field htmlFor={`edit-city-${customer.id}`} label="Localidad"><Input defaultValue={customer.city} id={`edit-city-${customer.id}`} name="city" /></Field>
+                <Field htmlFor={`edit-province-${customer.id}`} label="Provincia"><Input defaultValue={customer.province} id={`edit-province-${customer.id}`} name="province" /></Field>
+              </EditorSection>
+
+              <EditorSection title="Configuración comercial">
+                <Field htmlFor={`edit-segment-${customer.id}`} label="Rubro comercial"><Select defaultValue={customer.businessSegment} id={`edit-segment-${customer.id}`} name="businessSegment"><option value="">Sin clasificar</option>{customer.suggestedBusinessSegment && !customer.businessSegment ? <option value={customer.suggestedBusinessSegment}>Sugerido: {customer.suggestedBusinessSegment}</option> : null}{CUSTOMER_BUSINESS_SEGMENTS.filter((segment) => segment !== customer.suggestedBusinessSegment).map((segment) => <option key={segment} value={segment}>{segment}</option>)}</Select></Field>
+                <Field htmlFor={`edit-pricelist-${customer.id}`} label="Lista de precios"><Select defaultValue={customer.priceList} id={`edit-pricelist-${customer.id}`} name="priceList"><option value="">Sin lista</option>{priceLists.map((list) => <option key={list} value={list}>{list}</option>)}</Select></Field>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <Field htmlFor={`edit-status-${customer.id}`} label="Estado"><Select defaultValue={customer.status.trim().toLowerCase() === "inactivo" ? "inactivo" : "activo"} id={`edit-status-${customer.id}`} name="status"><option value="activo">Activo</option><option value="inactivo">Inactivo</option></Select></Field>
+                  <Field htmlFor={`edit-seller-${customer.id}`} label="Vendedor propio"><Select defaultValue={customer.seller} id={`edit-seller-${customer.id}`} name="seller"><option value="">Sin asignar</option>{sellerOptions.map((name) => <option key={name} value={name}>{name}</option>)}</Select></Field>
+                </div>
+                <Field htmlFor={`edit-assigned-${customer.id}`} label="Vendedor a cargo"><Select defaultValue={customer.assignedSeller} id={`edit-assigned-${customer.id}`} name="assignedSeller"><option value="">Sin asignar</option>{assignedOptions.map((name) => <option key={name} value={name}>{name}</option>)}</Select></Field>
+              </EditorSection>
+
+              <div className="lg:col-span-3">
               <Field htmlFor={`edit-obs-${customer.id}`} label="Observación">
                 <Input defaultValue={customer.observation} id={`edit-obs-${customer.id}`} name="observation" />
               </Field>
+              </div>
             </div>
-            <div className="flex justify-end gap-2 sm:col-span-2">
+            <div className="flex justify-end gap-2 border-t border-[color:var(--border)] bg-[color:var(--panel)] px-5 py-3">
               <Button onClick={() => setDialog("none")} size="sm" type="button" variant="secondary">Cancelar</Button>
               <Button size="sm" type="submit">Guardar</Button>
             </div>
@@ -217,13 +169,20 @@ export function CustomerRowActions({
   );
 }
 
-function Overlay({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) {
+function EditorSection({ children, title }: { children: React.ReactNode; title: string }) {
+  return <section className="grid content-start gap-3 rounded-xl border border-[color:var(--border)] bg-[color:var(--background)] p-4"><h3 className="erp-text-body-sm font-black text-[color:var(--accent)]">{title}</h3>{children}</section>;
+}
+
+function Overlay({ children, description, onClose, title, wide = false }: { children: React.ReactNode; description?: string; onClose: () => void; title: string; wide?: boolean }) {
   return (
-    <div aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog">
+    <div aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5" role="dialog">
       <button aria-label="Cerrar" className="absolute inset-0 cursor-default bg-black/40" onClick={onClose} type="button" />
-      <div className="relative z-10 w-full max-w-md rounded-[12px] border border-[color:var(--border)] bg-[color:var(--panel)] p-5">
-        <h2 className="erp-text-title-sm font-black">{title}</h2>
-        <div className="mt-4">{children}</div>
+      <div className={`relative z-10 w-full overflow-hidden rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] shadow-2xl ${wide ? "max-w-6xl" : "max-w-md p-5"}`}>
+        <div className={wide ? "flex items-start justify-between border-b border-[color:var(--border)] px-5 py-4" : ""}>
+          <div><h2 className="erp-text-title-sm font-black">{title}</h2>{description ? <p className="mt-1 erp-text-caption text-[color:var(--muted)]">{description}</p> : null}</div>
+          {wide ? <button aria-label="Cerrar" className="grid h-9 w-9 place-items-center rounded-full border border-[color:var(--border)] text-xl text-[color:var(--muted)] hover:bg-[color:var(--background)]" onClick={onClose} type="button">×</button> : null}
+        </div>
+        <div className={wide ? "" : "mt-4"}>{children}</div>
       </div>
     </div>
   );
