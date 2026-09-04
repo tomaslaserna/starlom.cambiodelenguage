@@ -13,6 +13,10 @@ export const CUSTOMER_LINKED_TABLES = [
   "sale_documents",
 ] as const;
 
+// Esta relación usa customer_id en lugar de client_id. Se mantiene separada
+// para que eliminar o fusionar una ficha nunca deje actividades del CRM atrás.
+const CUSTOMER_CRM_LINKED_TABLES = ["crm_sales_activities"] as const;
+
 export async function customerLinkTotal(
   client: PoolClient,
   companyId: number,
@@ -22,6 +26,13 @@ export async function customerLinkTotal(
   for (const table of CUSTOMER_LINKED_TABLES) {
     const result = await client.query<{ n: string }>(
       `SELECT count(*)::text AS n FROM ${table} WHERE empresa_id = $1 AND client_id = $2::uuid`,
+      [companyId, id],
+    );
+    total += Number(result.rows[0]?.n ?? 0);
+  }
+  for (const table of CUSTOMER_CRM_LINKED_TABLES) {
+    const result = await client.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM ${table} WHERE empresa_id = $1 AND customer_id = $2::uuid`,
       [companyId, id],
     );
     total += Number(result.rows[0]?.n ?? 0);
@@ -63,6 +74,12 @@ export async function mergeCustomers(
     for (const table of CUSTOMER_LINKED_TABLES) {
       await client.query(
         `UPDATE ${table} SET client_id = $1::uuid WHERE client_id = $2::uuid AND empresa_id = $3`,
+        [keepId, duplicateId, companyId],
+      );
+    }
+    for (const table of CUSTOMER_CRM_LINKED_TABLES) {
+      await client.query(
+        `UPDATE ${table} SET customer_id = $1::uuid WHERE customer_id = $2::uuid AND empresa_id = $3`,
         [keepId, duplicateId, companyId],
       );
     }
