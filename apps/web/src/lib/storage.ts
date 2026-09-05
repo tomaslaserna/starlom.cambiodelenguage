@@ -244,6 +244,29 @@ export async function removeStorageObjects(bucket: string, paths: string[]) {
   if (error) throw new ApiError(storageErrorStatus(error), error.message || "No se pudo limpiar la carga");
 }
 
+export async function uploadStorageImageBuffer(input: {
+  bucket: string;
+  path: string;
+  buffer: Buffer;
+  contentType: string;
+}) {
+  assertAllowedBucket(input.bucket);
+  const expectedMime = Object.values(IMAGE_MIME_BY_EXTENSION).includes(input.contentType)
+    ? input.contentType
+    : "";
+  if (!expectedMime) throw new ApiError(400, "Formato de imagen no permitido");
+  if (input.buffer.length < 1024 || input.buffer.length > 8 * 1024 * 1024) {
+    throw new ApiError(400, "La imagen no tiene un tamaño válido");
+  }
+  assertImageSignature(input.buffer, expectedMime);
+
+  const { error } = await getStorageAdminClient()
+    .storage
+    .from(input.bucket)
+    .upload(input.path, input.buffer, { contentType: expectedMime, upsert: false });
+  if (error) throw new ApiError(storageErrorStatus(error), error.message || "No se pudo subir la imagen");
+}
+
 export async function createSignedStorageUrl(
   bucket: string,
   path: string,

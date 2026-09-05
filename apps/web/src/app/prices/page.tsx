@@ -100,6 +100,14 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
               + Gestionar listas
             </Link>
           ) : null}
+          {canCreateProducts ? (
+            <Link
+              className="inline-flex h-9 items-center rounded-full border border-[#d9e2ef] bg-white px-3 text-sm font-bold text-[#145bd7] hover:border-[#145bd7]"
+              href="/prices/images"
+            >
+              Fotografías
+            </Link>
+          ) : null}
           {lists.length === 0 ? (
             <span className="text-sm text-[color:var(--muted)]">No hay listas activas todavía.</span>
           ) : null}
