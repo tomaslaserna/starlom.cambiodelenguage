@@ -5,6 +5,7 @@ import test from "node:test";
 const routeAuth = readFileSync(new URL("../src/lib/route-auth.ts", import.meta.url), "utf8");
 const customersPage = readFileSync(new URL("../src/app/customers/page.tsx", import.meta.url), "utf8");
 const newCustomerPage = readFileSync(new URL("../src/app/customers/new/page.tsx", import.meta.url), "utf8");
+const newCustomerForm = readFileSync(new URL("../src/app/customers/new/customer-create-form.tsx", import.meta.url), "utf8");
 const customerActions = readFileSync(new URL("../src/app/customers/customer-row-actions.tsx", import.meta.url), "utf8");
 
 test("el rol jefe tiene clientes.eliminar y vendedor no", () => {
@@ -23,6 +24,9 @@ test("alta y edición de clientes usan condiciones fiscales predeterminadas", ()
 test("el alta administrativa usa una pantalla dedicada y conserva la URL anterior", () => {
   assert.match(customersPage, /href=\{crmMode \? "\/crm\/clientes" : "\/customers\/new"\}/);
   assert.match(customersPage, /\{canCreateCustomers && crmMode \? \(/);
-  assert.match(newCustomerPage, /form action=\{createCustomerAction\}/);
+  assert.match(newCustomerPage, /<CustomerCreateForm/);
   assert.doesNotMatch(newCustomerPage, /listPriceLists/);
+  assert.match(newCustomerForm, /fetch\("\/api\/customers"/);
+  assert.match(newCustomerForm, /\/api\/pricing\/price-lists/);
+  assert.match(newCustomerForm, /\/api\/vendors/);
 });
