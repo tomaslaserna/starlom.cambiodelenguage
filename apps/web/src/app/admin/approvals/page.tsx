@@ -129,6 +129,7 @@ export default async function ApprovalsPage({ searchParams }: ApprovalsPageProps
                         <div className="mt-1 max-w-80 text-xs leading-5 text-(--muted)">
                           {item.detail || "-"}
                         </div>
+                        {item.proofUrl ? <a className="mt-2 inline-flex rounded-md border border-(--border) px-2 py-1 text-xs font-bold text-(--accent-strong)" href={item.proofUrl} rel="noreferrer" target="_blank">Ver comprobante adjunto</a> : null}
                       </DataTableCell>
                       <DataTableCell>{item.requester || "-"}</DataTableCell>
                       <DataTableCell className="whitespace-nowrap">{formatDate(item.createdAt)}</DataTableCell>

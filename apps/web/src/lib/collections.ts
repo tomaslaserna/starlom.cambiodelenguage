@@ -498,6 +498,18 @@ export async function approveCollection(session: AuthSession, saleId: string) {
         session.companyId,
       ],
     );
+    const portalRecipients = await client.query<{ email: string }>(`
+      SELECT DISTINCT a.email FROM customer_portal_accounts a
+      JOIN customer_portal_memberships m ON m.portal_account_id=a.id AND m.empresa_id=a.empresa_id
+      WHERE a.empresa_id=$1 AND m.client_id=$2::uuid AND a.active=TRUE AND a.notify_invoices=TRUE
+    `, [session.companyId, sale.client_id]);
+    for (const recipient of portalRecipients.rows) {
+      await client.query("INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1,$2,$3)", [
+        "portal.pago_aprobado.email",
+        JSON.stringify({ email: recipient.email, saleId, amount, outstanding: nextOutstanding }),
+        session.companyId,
+      ]);
+    }
     await client.query(
       "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
       [

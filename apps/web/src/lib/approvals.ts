@@ -12,6 +12,7 @@ import {
   sessionAllows,
 } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
+import { storageDownloadUrl } from "@/lib/storage";
 
 export const COLLECTION_APPROVAL_PERMISSION = COLLECTIONS_APPROVE_PERMISSION;
 
@@ -50,6 +51,7 @@ export type ApprovalItem = {
   requester: string;
   createdAt: string | null;
   source: ApprovalSource;
+  proofUrl?: string;
 };
 
 const PURCHASE_REQUEST_TYPE_KEYS = ["solicitud", "solicitud_compra", "solicitud de compra"];
@@ -153,6 +155,9 @@ export async function listApprovalCenter(companyId: number, access: ApprovalCent
     requester: item.registeredBy,
     createdAt: item.registeredAt,
     source: "collection",
+    proofUrl: item.notes.match(/starlim-storage:\/\/[^\s]+/)?.[0]
+      ? storageDownloadUrl(item.notes.match(/starlim-storage:\/\/[^\s]+/)![0])
+      : undefined,
   }));
 
   const requestItems: ApprovalItem[] = requests.map((row) => ({
