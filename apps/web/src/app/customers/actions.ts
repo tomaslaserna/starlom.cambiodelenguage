@@ -59,6 +59,30 @@ export async function enableCustomerPortalAction(formData: FormData) {
   redirect(`/customers/${clientId}?portalEnabled=1&invited=${outcome.invitationSent ? "1" : "0"}`);
 }
 
+export async function setCustomerPortalPasswordAction(formData: FormData) {
+  const session = await requireApiSession([{ resource: "clientes", action: "editar" }]);
+  const clientId = uuidParam(String(formData.get("clientId") ?? ""), "Cliente");
+  const accountId = uuidParam(String(formData.get("accountId") ?? ""), "Acceso al portal");
+  const password = String(formData.get("password") ?? "");
+  if (password.length < 8) redirect(`/customers/${clientId}?portalError=${encodeURIComponent("La contraseña debe tener al menos 8 caracteres")}`);
+  try {
+    const access = await withCompanyContext(session.companyId, (db) => db.query<{ auth_user_id: string }>(`SELECT a.auth_user_id::text FROM customer_portal_accounts a JOIN customer_portal_memberships m ON m.portal_account_id=a.id AND m.empresa_id=a.empresa_id WHERE a.empresa_id=$1 AND a.id=$2::uuid AND m.client_id=$3::uuid`, [session.companyId, accountId, clientId]));
+    const authUserId = access.rows[0]?.auth_user_id;
+    if (!authUserId) throw new Error("Ese acceso no está vinculado al cliente");
+    const supabaseUrl = envValue("SUPABASE_URL") || envValue("NEXT_PUBLIC_SUPABASE_URL");
+    if (!supabaseUrl) throw new Error("Falta configurar Supabase");
+    const supabase = createSupabaseClient(supabaseUrl, supabaseServiceRoleKey(), { auth: { autoRefreshToken: false, persistSession: false } });
+    const { error } = await supabase.auth.admin.updateUserById(authUserId, { password });
+    if (error) throw new Error(error.message);
+  } catch (error) {
+    console.error("[customer-portal] password update failed", { clientId, accountId, error });
+    const message = error instanceof Error ? error.message : "No se pudo cambiar la contraseña";
+    redirect(`/customers/${clientId}?portalError=${encodeURIComponent(message)}`);
+  }
+  revalidatePath(`/customers/${clientId}`);
+  redirect(`/customers/${clientId}?portalPasswordUpdated=1`);
+}
+
 export async function createCustomerAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "clientes", action: "crear" }]);
   await createCustomer(session.companyId, customerInputFromBody(stringFieldsFromFormData(formData)));

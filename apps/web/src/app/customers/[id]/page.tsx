@@ -24,12 +24,13 @@ import { listVendors } from "@/lib/imports";
 import { listPriceLists } from "@/lib/pricing";
 import { requirePagePermission } from "@/lib/page-auth";
 import { CUSTOMERS_READ_PERMISSION, sessionAllows } from "@/lib/route-auth";
+import { queryWithCompanyContext } from "@/lib/db";
 import { CustomerRowActions } from "@/app/customers/customer-row-actions";
-import { deleteCustomerAction, enableCustomerPortalAction, mergeCustomersAction, updateCustomerAction } from "@/app/customers/actions";
+import { deleteCustomerAction, enableCustomerPortalAction, mergeCustomersAction, setCustomerPortalPasswordAction, updateCustomerAction } from "@/app/customers/actions";
 
 type CustomerDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ portalEnabled?: string; invited?: string; portalError?: string }>;
+  searchParams?: Promise<{ portalEnabled?: string; invited?: string; portalError?: string; portalPasswordUpdated?: string }>;
   crmMode?: boolean;
 };
 
@@ -51,12 +52,13 @@ export default async function CustomerDetailPage({ params, searchParams, crmMode
   const customer = await getCustomer(session.companyId, id).catch(() => null);
   if (!customer) notFound();
 
-  const [history, vendors, canDelete, allClients, priceLists] = await Promise.all([
+  const [history, vendors, canDelete, allClients, priceLists, portalAccess] = await Promise.all([
     getCustomerPurchaseHistory(session.companyId, id),
     listVendors(session.companyId),
     sessionAllows(session, [{ resource: "clientes", action: "eliminar" }]),
     listClientOptions(session.companyId),
     listPriceLists(session.companyId, true),
+    queryWithCompanyContext<{ id: string; email: string }>(session.companyId, `SELECT a.id::text, a.email FROM customer_portal_accounts a JOIN customer_portal_memberships m ON m.portal_account_id=a.id AND m.empresa_id=a.empresa_id WHERE a.empresa_id=$1 AND m.client_id=$2::uuid AND a.active=TRUE ORDER BY a.email`, [session.companyId, id], { cache: false }),
   ]);
   const priceListNames = priceLists.filter((list) => list.active).map((list) => list.name);
 
@@ -159,7 +161,7 @@ export default async function CustomerDetailPage({ params, searchParams, crmMode
 
         <Card className="overflow-hidden">
           <div className="border-b border-[color:var(--border)] p-4"><h2 className="erp-text-body-sm font-black">Portal del cliente</h2><p className="mt-1 text-sm text-[color:var(--muted)]">Habilitá un correo para consultar pedidos, pagos, repetir compras y administrar avisos. El mismo correo puede vincularse con varias sucursales.</p></div>
-          <CardContent className="pt-4">{portalStatus?.portalEnabled === "1" ? <p className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-700">Acceso habilitado correctamente.{portalStatus.invited === "1" ? " Enviamos la invitación por correo." : " El correo ya tenía usuario y quedó vinculado a este cliente."}</p> : null}{portalStatus?.portalError ? <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">No pudimos habilitar el acceso: {portalStatus.portalError}</p> : null}<form action={enableCustomerPortalAction} className="flex flex-wrap items-end gap-3"><input name="clientId" type="hidden" value={customer.id} /><label className="grid min-w-64 flex-1 gap-2 text-sm font-bold">Correo autorizado<input className="min-h-11 rounded-xl border border-[color:var(--border)] px-3" name="email" placeholder="cliente@empresa.com" required type="email" /></label><button className="min-h-11 rounded-xl bg-[color:var(--accent)] px-5 font-bold text-white" type="submit">Habilitar y enviar acceso</button></form></CardContent>
+          <CardContent className="pt-4">{portalStatus?.portalEnabled === "1" ? <p className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-700">Acceso habilitado correctamente.{portalStatus.invited === "1" ? " Enviamos la invitación por correo." : " El correo ya tenía usuario y quedó vinculado a este cliente."}</p> : null}{portalStatus?.portalPasswordUpdated === "1" ? <p className="mb-4 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-700">Contraseña actualizada correctamente.</p> : null}{portalStatus?.portalError ? <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">No pudimos completar la operación: {portalStatus.portalError}</p> : null}{portalAccess.rows.length ? <div className="mb-5 grid gap-3">{portalAccess.rows.map((access) => <form action={setCustomerPortalPasswordAction} className="flex flex-wrap items-end gap-3 rounded-xl border border-[color:var(--border)] bg-[color:var(--background)] p-3" key={access.id}><input name="clientId" type="hidden" value={customer.id} /><input name="accountId" type="hidden" value={access.id} /><label className="grid min-w-56 flex-1 gap-1 text-sm font-bold">Acceso vinculado<span className="font-medium text-[color:var(--muted)]">{access.email}</span></label><label className="grid min-w-56 flex-1 gap-1 text-sm font-bold">Asignar nueva contraseña<input autoComplete="new-password" className="min-h-11 rounded-xl border border-[color:var(--border)] bg-white px-3" minLength={8} name="password" placeholder="Mínimo 8 caracteres" required type="password" /></label><button className="min-h-11 rounded-xl border border-[color:var(--accent)] px-4 font-bold text-[color:var(--accent)]" type="submit">Cambiar contraseña</button></form>)}</div> : <p className="mb-4 text-sm text-[color:var(--muted)]">Este cliente todavía no tiene accesos vinculados.</p>}<form action={enableCustomerPortalAction} className="flex flex-wrap items-end gap-3"><input name="clientId" type="hidden" value={customer.id} /><label className="grid min-w-64 flex-1 gap-2 text-sm font-bold">Correo autorizado<input className="min-h-11 rounded-xl border border-[color:var(--border)] px-3" name="email" placeholder="cliente@empresa.com" required type="email" /></label><button className="min-h-11 rounded-xl bg-[color:var(--accent)] px-5 font-bold text-white" type="submit">Habilitar y enviar acceso</button></form></CardContent>
         </Card>
 
         <Card className="overflow-hidden">

@@ -42,6 +42,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </Link>
           <div className="flex items-center gap-2">
             <Link className="erp-display-font inline-flex min-h-10 items-center rounded-[11px] bg-[#ffb74d] px-4 text-sm font-extrabold text-[#173052] shadow-sm hover:bg-[#ffc66b]" href="/tienda">TIENDA</Link>
+            <Link className="erp-display-font inline-flex min-h-10 items-center rounded-[11px] border border-white/30 bg-white/10 px-4 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/20" href="/portal">PORTAL CLIENTES</Link>
             <a className="erp-display-font inline-flex min-h-10 items-center rounded-[11px] border border-white/30 bg-white/10 px-4 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/20" href="#acceso">Acceder</a>
           </div>
         </div>
@@ -156,6 +157,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               <p className="erp-text-body-sm mt-5 text-center text-[#5b6b82]">
                 Plataforma operativa Starlim
               </p>
+              <div className="mt-6 border-t border-[#e2e8f0] pt-5 text-center">
+                <p className="text-sm font-bold text-[#334155]">¿Ya sos cliente?</p>
+                <Link className="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-[10px] border border-[#075ac7] font-extrabold text-[#075ac7] transition hover:bg-[#eef5ff]" href="/portal">Portal de clientes</Link>
+              </div>
             </div>
           </div>
         </div>
