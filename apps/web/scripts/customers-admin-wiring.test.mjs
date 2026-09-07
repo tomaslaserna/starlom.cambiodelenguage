@@ -7,12 +7,18 @@ const customersPage = readFileSync(new URL("../src/app/customers/page.tsx", impo
 const newCustomerPage = readFileSync(new URL("../src/app/customers/new/page.tsx", import.meta.url), "utf8");
 const newCustomerForm = readFileSync(new URL("../src/app/customers/new/customer-create-form.tsx", import.meta.url), "utf8");
 const customerActions = readFileSync(new URL("../src/app/customers/customer-row-actions.tsx", import.meta.url), "utf8");
+const catalogManagement = readFileSync(new URL("../src/lib/catalog-management.ts", import.meta.url), "utf8");
 
 test("el rol jefe tiene clientes.eliminar y vendedor no", () => {
   const jefeBlock = routeAuth.slice(routeAuth.indexOf("jefe:"), routeAuth.indexOf("deposito:"));
   const vendedorBlock = routeAuth.slice(routeAuth.indexOf("vendedor:"), routeAuth.length);
   assert.match(jefeBlock, /"clientes\.eliminar"/);
   assert.doesNotMatch(vendedorBlock, /"clientes\.eliminar"/);
+});
+
+test("el CUIT puede repetirse entre distintas sucursales", () => {
+  assert.doesNotMatch(catalogManagement, /Ya existe un cliente con ese CUIT\/DNI/);
+  assert.doesNotMatch(catalogManagement, /regexp_replace\(COALESCE\(tax_id/);
 });
 
 test("alta y edición de clientes usan condiciones fiscales predeterminadas", () => {

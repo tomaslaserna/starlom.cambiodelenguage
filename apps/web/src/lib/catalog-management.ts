@@ -6,7 +6,7 @@ import { saleOrderDocument, type SaleOrderDocument } from "@/lib/receipt-types";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
 import type { AuthSession } from "@/lib/auth";
 import type { PoolClient } from "pg";
-import { CUSTOMER_RECEIPT_OPTIONS, type CustomerReceiptType } from "@/lib/customer-receipt-types";
+import type { CustomerReceiptType } from "@/lib/customer-receipt-types";
 export { CUSTOMER_RECEIPT_OPTIONS } from "@/lib/customer-receipt-types";
 export type { CustomerReceiptType } from "@/lib/customer-receipt-types";
 
@@ -146,10 +146,6 @@ async function resolveCustomerPriceList(companyId: number, value: string) {
 
 function searchPattern(query: string) {
   return `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
-}
-
-function normalizeTaxId(value: string) {
-  return value.replaceAll(/\D/g, "");
 }
 
 export function normalizeCustomerReceiptType(value: string): CustomerReceiptType {
@@ -408,24 +404,7 @@ export async function getCustomer(companyId: number, id: string) {
 }
 
 export async function createCustomer(companyId: number, input: CustomerInput) {
-  const normalizedTaxId = normalizeTaxId(input.taxId);
   const priceList = await resolveCustomerPriceList(companyId, input.priceList);
-
-  if (normalizedTaxId) {
-    const duplicate = await queryWithCompanyContext<{ id: string }>(
-      companyId,
-      `
-        SELECT id::text AS id
-        FROM clients
-        WHERE empresa_id = $1
-          AND regexp_replace(COALESCE(tax_id, ''), '[^0-9]', '', 'g') = $2
-        LIMIT 1
-      `,
-      [companyId, normalizedTaxId],
-    );
-
-    if (duplicate.rows[0]) throw new ApiError(409, "Ya existe un cliente con ese CUIT/DNI");
-  }
 
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,
