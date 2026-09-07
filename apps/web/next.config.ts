@@ -35,9 +35,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  outputFileTracingIncludes: {
-    "/api/products/image/import": ["./public/product-images/pending-2026-09-07/**/*.png"],
-  },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**.supabase.co", pathname: "/storage/v1/object/public/**" },
