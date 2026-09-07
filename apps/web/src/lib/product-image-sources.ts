@@ -555,6 +555,20 @@ export const VERIFIED_PRODUCT_IMAGE_SOURCES: VerifiedProductImageSource[] = [
     sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/ceramicol/pisos/ceramicol-pisos-plastificados-y-flotantes-floral",
     sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/wiscj/products/argentina/341743.webp?h=990&iar=0&w=1760",
   },
+  {
+    productId: "efd20f6e-bcd1-4187-9fc5-515b3d0cb821",
+    productName: "Baygon Mata Cucarachas y Aranas Aero 300",
+    brand: "Baygon",
+    sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/baygon/aerosol/extermina-cucarachas-y-aranas",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/baygon/argentina/product-detail-pages/extermina-cucarachas-y-aranas/baygon_ar-5_25-aerosol-extermina_cucarachas-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "3d236f05-8c37-46cd-a62c-dd1e436ecd5b",
+    productName: "BAYGON MATA MOSCAS Y MOSQUITOS AERO 300ML/12 AR",
+    brand: "Baygon",
+    sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/baygon/aerosol/mata-moscas-y-mosquitos",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/baygon/argentina/product-detail-pages/mata-moscas-y-mosquitos/baygon_ar-5_25-aerosol-mata_moscas-1.webp?h=990&iar=0&w=1760",
+  },
 ];
 
 export function verifiedProductImageSource(productId: string) {
