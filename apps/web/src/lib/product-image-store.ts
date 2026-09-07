@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { withCompanyContext } from "@/lib/db";
@@ -120,26 +118,11 @@ export async function importVerifiedProductImage(
   });
   if (current) return { status: "existing" as const, imageUrl: publicProductImageUrl(current) };
 
-  let contentType: string;
-  let extension: string | undefined;
-  let buffer: Buffer;
-  if (source.hostname === "starlim.vercel.app" && source.pathname.startsWith("/product-images/pending-2026-09-07/")) {
-    const fileName = path.posix.basename(source.pathname);
-    if (!/^[a-z0-9-]+\.png$/.test(fileName)) throw new ApiError(400, "Ruta de imagen preparada inválida");
-    contentType = "image/png";
-    extension = "png";
-    try {
-      buffer = await readFile(path.join(process.cwd(), "public", "product-images", "pending-2026-09-07", fileName));
-    } catch {
-      throw new ApiError(502, "No se encontró la imagen preparada");
-    }
-  } else {
-    const response = await fetch(source, { signal: AbortSignal.timeout(20_000) });
-    contentType = (response.headers.get("content-type") ?? "").split(";")[0].toLowerCase();
-    extension = EXTENSION_BY_MIME[contentType];
-    if (!response.ok || !extension) throw new ApiError(502, "La fuente no devolvió una imagen válida");
-    buffer = Buffer.from(await response.arrayBuffer());
-  }
+  const response = await fetch(source, { signal: AbortSignal.timeout(20_000) });
+  const contentType = (response.headers.get("content-type") ?? "").split(";")[0].toLowerCase();
+  const extension = EXTENSION_BY_MIME[contentType];
+  if (!response.ok || !extension) throw new ApiError(502, "La fuente no devolvió una imagen válida");
+  const buffer = Buffer.from(await response.arrayBuffer());
   const objectPath = `${companyPrefix(session.companyId)}${randomUUID()}.${extension}`;
   await uploadStorageImageBuffer({ bucket: PRODUCT_IMAGES_BUCKET, path: objectPath, buffer, contentType });
 
