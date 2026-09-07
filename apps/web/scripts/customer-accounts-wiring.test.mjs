@@ -253,7 +253,16 @@ test("cuentas abiertas usa listOpenCustomerAccounts y linkea al detalle", () => 
   const src = accountsPage();
   assert.match(src, /listOpenCustomerAccounts/);
   assert.match(src, /\/payments\/accounts\//); // link al estado de cuenta [id]
-  assert.match(src, /Vencido|aging|\+30/i);
+  assert.match(src, /aging\.d7/);
+  assert.match(src, /aging\.d15/);
+  assert.match(src, /aging\.d30/);
+  assert.doesNotMatch(src, /aging\.d60|aging\.d90/);
+});
+
+const homePage = readFileSync(new URL("../src/app/page.tsx", import.meta.url), "utf8");
+test("el acceso rapido Cobranzas del Escritorio abre Cuentas corrientes", () => {
+  assert.match(homePage, /href: "\/payments\/accounts", label: "Cobranzas"/);
+  assert.doesNotMatch(homePage, /href: "\/collections", label: "Cobranzas"/);
 });
 
 test("estado de cuenta usa getCustomerStatement, filtro de fecha y saldo anterior", () => {

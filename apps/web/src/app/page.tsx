@@ -164,7 +164,7 @@ export default async function Home() {
     canCreateOrders ? { href: "/orders/new", label: "Cargar pedido", icon: "cart" } : null,
     canReadQuotes ? { href: "/quotes", label: "Presupuestos", icon: "quote" } : null,
     canReadProducts ? { href: "/prices", label: "Lista de precios", icon: "package" } : null,
-    canReadCollections ? { href: "/collections", label: "Cobranzas", icon: "wallet" } : null,
+    canReadCollections ? { href: "/payments/accounts", label: "Cobranzas", icon: "wallet" } : null,
     { href: "/calendar", label: "Calendario", icon: "calendar" },
   ].filter((item): item is Shortcut => item !== null);
 

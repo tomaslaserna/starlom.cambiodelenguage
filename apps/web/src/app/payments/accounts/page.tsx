@@ -99,9 +99,9 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
                 <DataTableHead className="w-[14%] px-2">Vendedor</DataTableHead>
                 <DataTableHead className="w-[11%] px-2">Ult. movimiento</DataTableHead>
                 <DataTableHead align="right" className="w-[10%] px-2">Al dia</DataTableHead>
-                <DataTableHead align="right" className="w-[10%] px-2">+30</DataTableHead>
-                <DataTableHead align="right" className="w-[10%] px-2">+60</DataTableHead>
-                <DataTableHead align="right" className="w-[10%] px-2">+90</DataTableHead>
+                <DataTableHead align="right" className="w-[10%] px-2">+7 dias</DataTableHead>
+                <DataTableHead align="right" className="w-[10%] px-2">+15 dias</DataTableHead>
+                <DataTableHead align="right" className="w-[10%] px-2">+30 dias</DataTableHead>
                 <DataTableHead align="right" className="w-[13%] px-2">Saldo</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
@@ -136,13 +136,13 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
                       {formatCurrency(account.aging.current)}
                     </DataTableCell>
                     <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
+                      {formatCurrency(account.aging.d7)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
+                      {formatCurrency(account.aging.d15)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
                       {formatCurrency(account.aging.d30)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                      {formatCurrency(account.aging.d60)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                      {formatCurrency(account.aging.d90)}
                     </DataTableCell>
                     <DataTableCell
                       align="right"

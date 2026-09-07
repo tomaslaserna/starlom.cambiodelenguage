@@ -9,7 +9,7 @@ import type { AuthSession } from "@/lib/auth";
 import type { PoolClient } from "pg";
 
 export type AgingDebit = { amount: number; date: string; dueDate: string | null };
-export type AgingBuckets = { current: number; d30: number; d60: number; d90: number; overdueTotal: number };
+export type AgingBuckets = { current: number; d7: number; d15: number; d30: number; overdueTotal: number };
 export type StatementMovement = {
   id: string;
   date: string;
@@ -96,7 +96,7 @@ function daysBetween(fromIso: string, toIso: string) {
 }
 
 export function computeAgingBuckets(debits: AgingDebit[], creditTotal: number, asOf: string): AgingBuckets {
-  const buckets: AgingBuckets = { current: 0, d30: 0, d60: 0, d90: 0, overdueTotal: 0 };
+  const buckets: AgingBuckets = { current: 0, d7: 0, d15: 0, d30: 0, overdueTotal: 0 };
   let remainingCredit = Math.max(0, money(creditTotal));
   const ordered = [...debits].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -113,9 +113,9 @@ export function computeAgingBuckets(debits: AgingDebit[], creditTotal: number, a
     if (overdueDays <= 0) {
       buckets.current = money(buckets.current + outstanding);
     } else {
-      if (overdueDays <= 30) buckets.d30 = money(buckets.d30 + outstanding);
-      else if (overdueDays <= 60) buckets.d60 = money(buckets.d60 + outstanding);
-      else buckets.d90 = money(buckets.d90 + outstanding);
+      if (overdueDays <= 7) buckets.d7 = money(buckets.d7 + outstanding);
+      else if (overdueDays <= 15) buckets.d15 = money(buckets.d15 + outstanding);
+      else buckets.d30 = money(buckets.d30 + outstanding);
       buckets.overdueTotal = money(buckets.overdueTotal + outstanding);
     }
   }
