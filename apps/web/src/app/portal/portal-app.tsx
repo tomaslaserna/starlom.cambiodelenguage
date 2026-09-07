@@ -23,7 +23,7 @@ function supabaseBrowser() {
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" });
 
 export function PortalApp() {
-  const client = useMemo(supabaseBrowser, []);
+  const client = useMemo(() => supabaseBrowser(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [email, setEmail] = useState("");
@@ -36,15 +36,14 @@ export function PortalApp() {
   const [branch, setBranch] = useState("");
 
   useEffect(() => {
-    if (!client) { setError("El acceso de clientes todavía no está configurado."); setLoading(false); return; }
+    if (!client) return;
     client.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
     const { data } = client.auth.onAuthStateChange((_event, next) => { setSession(next); });
     return () => data.subscription.unsubscribe();
   }, [client]);
 
   useEffect(() => {
-    if (!session) { setSummary(null); return; }
-    setLoading(true);
+    if (!session) return;
     fetch("/api/portal/summary", { headers: { authorization: `Bearer ${session.access_token}` } })
       .then(async (response) => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error); return payload.data as Summary; })
       .then((data) => { setSummary(data); setBranch((current) => current || data.clients[0]?.id || ""); setError(""); })

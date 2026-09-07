@@ -3,7 +3,6 @@ import { reactivateClientIfInactive } from "@/lib/client-reactivation";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { summarizeDurations } from "@/lib/delivery-times";
 import {
-  lineSubtotal,
   money,
   normalizePriceListKey,
   resolvePriceListName,

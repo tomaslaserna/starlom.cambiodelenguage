@@ -11,9 +11,9 @@ const source = fs.readFileSync(sourcePath, "utf8");
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const module = { exports: {} };
-new Function("module", "exports", compiled)(module, module.exports);
-const { compactSupervisorMessages } = module.exports;
+const loadedModule = { exports: {} };
+new Function("module", "exports", compiled)(loadedModule, loadedModule.exports);
+const { compactSupervisorMessages } = loadedModule.exports;
 
 test("el contexto elimina metadatos del proveedor y conserva solo el texto útil", () => {
   const oversizedSignature = "x".repeat(75_000);
