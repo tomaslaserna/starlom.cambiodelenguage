@@ -20,7 +20,7 @@ export default async function NewCustomerPage() {
       { allowedPermissionKeys: new Set<string>() },
       60,
     ),
-    listPriceLists(session.companyId, true),
+    fastOr(listPriceLists(session.companyId, true), [], 500),
   ]);
   const activePriceLists = priceLists.filter((list) => list.active);
 

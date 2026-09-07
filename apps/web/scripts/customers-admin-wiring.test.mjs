@@ -25,4 +25,5 @@ test("el alta administrativa usa una pantalla dedicada y conserva la URL anterio
   assert.match(customersPage, /href=\{crmMode \? "\/crm\/clientes" : "\/customers\/new"\}/);
   assert.match(newCustomerPage, /action=\{createCustomerAction\}/);
   assert.match(newCustomerPage, /resource: "clientes", action: "crear"/);
+  assert.match(newCustomerPage, /fastOr\(listPriceLists\(session\.companyId, true\), \[\], 500\)/);
 });
