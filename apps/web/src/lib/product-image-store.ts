@@ -92,7 +92,7 @@ export async function removeProductImage(session: AuthSession, productIdInput: u
   }
 }
 
-const IMPORT_HOSTS = new Set(["edge.sitecorecloud.io"]);
+const IMPORT_HOSTS = new Set(["edge.sitecorecloud.io", "starlim.vercel.app"]);
 const EXTENSION_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",

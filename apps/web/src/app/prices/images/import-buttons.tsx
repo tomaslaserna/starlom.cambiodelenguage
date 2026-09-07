@@ -3,20 +3,20 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type SourceRow = { productId: string; productName: string; existing: boolean };
+type SourceRow = { productId?: string; sourceKey?: string; productName: string; existing: boolean; available?: boolean };
 
 export function ImportButtons({ sources }: { sources: SourceRow[] }) {
   const router = useRouter();
-  const pending = sources.filter((source) => !source.existing);
+  const pending = sources.filter((source) => !source.existing && source.available !== false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
 
-  async function importOne(productId: string) {
+  async function importOne(source: SourceRow) {
     const response = await fetch("/api/products/image/import", {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ productId }),
+      body: JSON.stringify({ productId: source.productId, sourceKey: source.sourceKey }),
     });
     const payload = (await response.json().catch(() => null)) as { error?: string } | null;
     if (!response.ok) throw new Error(payload?.error || "No se pudo importar la imagen");
@@ -28,7 +28,7 @@ export function ImportButtons({ sources }: { sources: SourceRow[] }) {
     setProgress(0);
     try {
       for (let index = 0; index < pending.length; index += 1) {
-        await importOne(pending[index].productId);
+        await importOne(pending[index]);
         setProgress(index + 1);
       }
       router.refresh();

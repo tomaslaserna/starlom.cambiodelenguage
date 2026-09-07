@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import { requireStaffSession } from "@/lib/auth";
 import { withCompanyContext } from "@/lib/db";
-import { VERIFIED_PRODUCT_IMAGE_SOURCES } from "@/lib/product-image-sources";
+import { CUSTOM_PRODUCT_IMAGE_SOURCES, VERIFIED_PRODUCT_IMAGE_SOURCES, normalizeProductImageName } from "@/lib/product-image-sources";
 import { publicProductImageUrl } from "@/lib/storage";
 import { PRODUCTS_CREATE_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { ImportButtons } from "./import-buttons";
@@ -14,19 +14,26 @@ export default async function ProductImagesPage() {
   const session = await requireStaffSession();
   if (!(await sessionAllows(session, [PRODUCTS_CREATE_PERMISSION]))) redirect("/prices");
 
-  const productIds = VERIFIED_PRODUCT_IMAGE_SOURCES.map((source) => source.productId);
   const products = await withCompanyContext(session.companyId, async (client) => {
     const result = await client.query<{ id: string; name: string; image_path: string | null }>(
-      "SELECT id, name, image_path FROM products WHERE empresa_id = $1 AND id = ANY($2::uuid[])",
-      [session.companyId, productIds],
+      "SELECT id, name, image_path FROM products WHERE empresa_id = $1",
+      [session.companyId],
     );
     return result.rows;
   });
   const byId = new Map(products.map((product) => [product.id, product]));
-  const rows = VERIFIED_PRODUCT_IMAGE_SOURCES.map((source) => ({
-    ...source,
-    product: byId.get(source.productId) ?? null,
-  }));
+  const byName = new Map(products.map((product) => [normalizeProductImageName(product.name), product]));
+  const rows = [
+    ...VERIFIED_PRODUCT_IMAGE_SOURCES.map((source) => ({
+      ...source,
+      sourceKey: undefined,
+      product: byId.get(source.productId) ?? null,
+    })),
+    ...CUSTOM_PRODUCT_IMAGE_SOURCES.map((source) => {
+      const product = byName.get(normalizeProductImageName(source.productName)) ?? null;
+      return { ...source, productId: product?.id, product };
+    }),
+  ];
 
   return (
     <ModulePage
@@ -49,8 +56,10 @@ export default async function ProductImagesPage() {
           <ImportButtons
             sources={rows.map((row) => ({
               productId: row.productId,
+              sourceKey: row.sourceKey,
               productName: row.productName,
               existing: Boolean(row.product?.image_path),
+              available: Boolean(row.product),
             }))}
           />
         </div>
@@ -61,7 +70,7 @@ export default async function ProductImagesPage() {
               ? publicProductImageUrl(row.product.image_path)
               : row.sourceUrl;
             return (
-              <article className="overflow-hidden rounded-2xl border border-[#dbe5f2] bg-white shadow-sm" key={row.productId}>
+              <article className="overflow-hidden rounded-2xl border border-[#dbe5f2] bg-white shadow-sm" key={row.productId ?? row.sourceKey}>
                 <div className="flex h-56 items-center justify-center bg-white p-4">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img alt={row.productName} className="h-full w-full object-contain" src={imageUrl} />
@@ -69,13 +78,13 @@ export default async function ProductImagesPage() {
                 <div className="border-t border-[#edf2f7] p-4">
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-xs font-black uppercase tracking-wide text-[#145bd7]">{row.brand}</span>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${row.product?.image_path ? "bg-[#dcfce7] text-[#15803d]" : "bg-[#fff7dd] text-[#9a6700]"}`}>
-                      {row.product?.image_path ? "Cargada" : "Lista para cargar"}
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${row.product?.image_path ? "bg-[#dcfce7] text-[#15803d]" : row.product ? "bg-[#fff7dd] text-[#9a6700]" : "bg-[#fee2e2] text-[#b91c1c]"}`}>
+                      {row.product?.image_path ? "Cargada" : row.product ? "Lista para cargar" : "Artículo no encontrado"}
                     </span>
                   </div>
                   <h2 className="mt-2 text-sm font-extrabold leading-snug text-[#10213d]">{row.product?.name ?? row.productName}</h2>
                   <a className="mt-3 inline-block text-xs font-bold text-[#64748b] hover:text-[#145bd7] hover:underline" href={row.sourcePage} rel="noreferrer" target="_blank">
-                    Ver fuente oficial ↗
+                    {row.sourceKey ? "Ver imagen preparada ↗" : "Ver fuente oficial ↗"}
                   </a>
                 </div>
               </article>

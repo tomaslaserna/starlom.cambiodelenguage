@@ -6,6 +6,72 @@ export type VerifiedProductImageSource = {
   sourceUrl: string;
 };
 
+export type CustomProductImageSource = {
+  sourceKey: string;
+  productName: string;
+  brand: string;
+  sourcePage: string;
+  sourceUrl: string;
+};
+
+// Photographs supplied by Starlim and prepared as catalog-ready studio images.
+// These are resolved against the company's product names at import time because
+// some internal products are intentionally absent from the public storefront.
+export const CUSTOM_PRODUCT_IMAGE_SOURCES: CustomProductImageSource[] = [
+  {
+    sourceKey: "starlim-fibra-verde-10x15",
+    productName: "FIBRA VERDE X 10CM X 15CM",
+    brand: "Starlim",
+    sourcePage: "/product-images/pending-2026-09-07/01-esponja-verde-sin-envase.png",
+    sourceUrl: "https://starlim.vercel.app/product-images/pending-2026-09-07/01-esponja-verde-sin-envase.png",
+  },
+  {
+    sourceKey: "starlim-bactericida-lysoform-5l",
+    productName: "BACTERICIDA LYSOFORM X 5 LTS",
+    brand: "Starlim",
+    sourcePage: "/product-images/pending-2026-09-07/02-bactericida-5l.png",
+    sourceUrl: "https://starlim.vercel.app/product-images/pending-2026-09-07/02-bactericida-5l.png",
+  },
+  {
+    sourceKey: "starlim-bobina-industrial-blanca-25cm",
+    productName: "BOBINA INDUSTRIAL BLANCA 25 CM SIMPLE HOJA",
+    brand: "Starlim",
+    sourcePage: "/product-images/pending-2026-09-07/03-rollos-papel.png",
+    sourceUrl: "https://starlim.vercel.app/product-images/pending-2026-09-07/03-rollos-papel.png",
+  },
+  {
+    sourceKey: "starlim-jabon-ariel-future-5l",
+    productName: "JABON LIQUIDO P/ROPA TIPO ARIEL FUTURE X 5 LTS",
+    brand: "Starlim",
+    sourcePage: "/product-images/pending-2026-09-07/05-jabon-ropa-ariel-5l.png",
+    sourceUrl: "https://starlim.vercel.app/product-images/pending-2026-09-07/05-jabon-ropa-ariel-5l.png",
+  },
+  {
+    sourceKey: "starlim-desodorante-pisos-lavanda-5l",
+    productName: "DESOD. P/PISOS LAVANDA X 5 LTS",
+    brand: "Starlim",
+    sourcePage: "/product-images/pending-2026-09-07/06-desodorante-lavanda-5l.png",
+    sourceUrl: "https://starlim.vercel.app/product-images/pending-2026-09-07/06-desodorante-lavanda-5l.png",
+  },
+  {
+    sourceKey: "starlim-solucion-alcoholica-70-5l",
+    productName: "SOLUCIÓN ALCOHOLICA 70% X 5 LTS",
+    brand: "Starlim",
+    sourcePage: "/product-images/pending-2026-09-07/07-solucion-alcoholica-5l.png",
+    sourceUrl: "https://starlim.vercel.app/product-images/pending-2026-09-07/07-solucion-alcoholica-5l.png",
+  },
+];
+
+export function normalizeProductImageName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 // Every entry is manually checked against the exact product, variety and presentation.
 // The API only imports URLs declared here; clients cannot provide arbitrary remote URLs.
 export const VERIFIED_PRODUCT_IMAGE_SOURCES: VerifiedProductImageSource[] = [
@@ -643,4 +709,8 @@ export const VERIFIED_PRODUCT_IMAGE_SOURCES: VerifiedProductImageSource[] = [
 
 export function verifiedProductImageSource(productId: string) {
   return VERIFIED_PRODUCT_IMAGE_SOURCES.find((entry) => entry.productId === productId) ?? null;
+}
+
+export function customProductImageSource(sourceKey: string) {
+  return CUSTOM_PRODUCT_IMAGE_SOURCES.find((entry) => entry.sourceKey === sourceKey) ?? null;
 }
