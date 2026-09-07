@@ -25,21 +25,38 @@ export async function enableCustomerPortalAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "clientes", action: "editar" }]);
   const clientId = uuidParam(String(formData.get("clientId") ?? ""), "Cliente");
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  if (!email.includes("@")) throw new Error("Ingresá un correo válido");
-  const existing = await withCompanyContext(session.companyId, (db) => db.query<{ id: string }>(`SELECT id::text FROM customer_portal_accounts WHERE empresa_id=$1 AND lower(email)=$2`, [session.companyId, email]));
-  let accountId = existing.rows[0]?.id;
-  if (!accountId) {
-    const supabaseUrl = envValue("SUPABASE_URL") || envValue("NEXT_PUBLIC_SUPABASE_URL");
-    if (!supabaseUrl) throw new Error("Falta configurar Supabase");
-    const supabase = createSupabaseClient(supabaseUrl, supabaseServiceRoleKey(), { auth: { autoRefreshToken: false, persistSession: false } });
-    const appUrl = envValue("NEXT_PUBLIC_APP_URL") || "https://starlim.vercel.app";
-    const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, { redirectTo: `${appUrl.replace(/\/$/, "")}/portal` });
-    if (error || !data.user) throw new Error(error?.message || "No se pudo enviar la invitación");
-    const created = await withCompanyContext(session.companyId, (db) => db.query<{ id: string }>(`INSERT INTO customer_portal_accounts (empresa_id,auth_user_id,email,display_name) VALUES ($1,$2::uuid,$3,$4) RETURNING id::text`, [session.companyId, data.user.id, email, email.split("@")[0]]));
-    accountId = created.rows[0]!.id;
+  if (!email.includes("@")) redirect(`/customers/${clientId}?portalError=${encodeURIComponent("Ingresá un correo válido")}`);
+  let outcome: { invitationSent: boolean } | { error: string };
+  try {
+    const existing = await withCompanyContext(session.companyId, (db) => db.query<{ id: string }>(`SELECT id::text FROM customer_portal_accounts WHERE empresa_id=$1 AND lower(email)=$2`, [session.companyId, email]));
+    let accountId = existing.rows[0]?.id;
+    let invitationSent = false;
+    if (!accountId) {
+      const supabaseUrl = envValue("SUPABASE_URL") || envValue("NEXT_PUBLIC_SUPABASE_URL");
+      if (!supabaseUrl) throw new Error("Falta configurar Supabase");
+      const supabase = createSupabaseClient(supabaseUrl, supabaseServiceRoleKey(), { auth: { autoRefreshToken: false, persistSession: false } });
+      const appUrl = envValue("NEXT_PUBLIC_APP_URL") || "https://starlim.vercel.app";
+      const invitation = await supabase.auth.admin.inviteUserByEmail(email, { redirectTo: `${appUrl.replace(/\/$/, "")}/portal` });
+      let authUser = invitation.data.user;
+      invitationSent = !invitation.error && Boolean(authUser);
+      if (!authUser && invitation.error) {
+        const users = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+        authUser = users.data.users.find((user) => user.email?.toLowerCase() === email) ?? null;
+      }
+      if (!authUser) throw new Error(invitation.error?.message || "No se pudo habilitar ese correo");
+      const created = await withCompanyContext(session.companyId, (db) => db.query<{ id: string }>(`INSERT INTO customer_portal_accounts (empresa_id,auth_user_id,email,display_name) VALUES ($1,$2::uuid,$3,$4) ON CONFLICT (auth_user_id) DO UPDATE SET active=TRUE, updated_at=now() RETURNING id::text`, [session.companyId, authUser.id, email, email.split("@")[0]]));
+      accountId = created.rows[0]!.id;
+    }
+    await withCompanyContext(session.companyId, (db) => db.query(`INSERT INTO customer_portal_memberships (empresa_id,portal_account_id,client_id,is_default) VALUES ($1,$2::uuid,$3::uuid,true) ON CONFLICT (portal_account_id,client_id) DO NOTHING`, [session.companyId, accountId, clientId]));
+    revalidatePath(`/customers/${clientId}`);
+    outcome = { invitationSent };
+  } catch (error) {
+    console.error("[customer-portal] enable failed", { clientId, email, error });
+    const message = error instanceof Error ? error.message : "No se pudo habilitar el acceso";
+    outcome = { error: message };
   }
-  await withCompanyContext(session.companyId, (db) => db.query(`INSERT INTO customer_portal_memberships (empresa_id,portal_account_id,client_id,is_default) VALUES ($1,$2::uuid,$3::uuid,true) ON CONFLICT (portal_account_id,client_id) DO NOTHING`, [session.companyId, accountId, clientId]));
-  revalidatePath(`/customers/${clientId}`);
+  if ("error" in outcome) redirect(`/customers/${clientId}?portalError=${encodeURIComponent(outcome.error)}`);
+  redirect(`/customers/${clientId}?portalEnabled=1&invited=${outcome.invitationSent ? "1" : "0"}`);
 }
 
 export async function createCustomerAction(formData: FormData) {
