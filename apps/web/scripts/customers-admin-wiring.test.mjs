@@ -15,15 +15,14 @@ test("el rol jefe tiene clientes.eliminar y vendedor no", () => {
 });
 
 test("alta y edición de clientes usan condiciones fiscales predeterminadas", () => {
-  assert.match(newCustomerPage, /FISCAL_CONDITION_OPTIONS\.map/);
+  assert.match(customersPage, /FISCAL_CONDITION_OPTIONS\.map/);
   assert.match(customerActions, /FISCAL_CONDITION_OPTIONS\.map/);
   assert.doesNotMatch(customerActions, /<Input[^>]+name="vatCondition"/);
 });
 
 test("el alta administrativa usa una pantalla dedicada y conserva la URL anterior", () => {
-  assert.match(customersPage, /redirect\("\/customers\/new"\)/);
-  assert.match(customersPage, /href=\{crmMode \? "\/crm\/clientes" : "\/customers\/new"\}/);
-  assert.match(newCustomerPage, /action=\{createCustomerAction\}/);
-  assert.match(newCustomerPage, /resource: "clientes", action: "crear"/);
-  assert.match(newCustomerPage, /fastOr\(listPriceLists\(session\.companyId, true\), \[\], 500\)/);
+  assert.match(customersPage, /redirect\("\/customers#crear-cliente"\)/);
+  assert.match(customersPage, /href=\{crmMode \? "\/crm\/clientes" : "\/customers#crear-cliente"\}/);
+  assert.match(customersPage, /\{canCreateCustomers \? \(/);
+  assert.match(newCustomerPage, /redirect\("\/customers#crear-cliente"\)/);
 });

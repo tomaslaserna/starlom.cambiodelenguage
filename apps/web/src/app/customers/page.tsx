@@ -67,7 +67,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
   );
 
   const params = await searchParams;
-  if (!crmMode && params.new === "1") redirect("/customers/new");
+  if (!crmMode && params.new === "1") redirect("/customers#crear-cliente");
   const [result, priceLists, canCreateCustomers] = await Promise.all([
     listCustomers({
       companyId: session.companyId,
@@ -91,7 +91,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
     >
       <div className="grid gap-5">
         <PageHeader
-          actions={canCreateCustomers ? <ButtonLink href={crmMode ? "/crm/clientes" : "/customers/new"} variant={crmMode ? "secondary" : "primary"}>{crmMode ? "Volver a la base" : "+ Nuevo cliente"}</ButtonLink> : undefined}
+          actions={canCreateCustomers ? <ButtonLink href={crmMode ? "/crm/clientes" : "/customers#crear-cliente"} variant={crmMode ? "secondary" : "primary"}>{crmMode ? "Volver a la base" : "+ Nuevo cliente"}</ButtonLink> : undefined}
           description="Base comercial de clientes con identificacion fiscal, contacto y segmentacion operativa."
           moduleIntro
           title="Clientes"
@@ -103,7 +103,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
           </div>
         ) : null}
 
-        {canCreateCustomers && crmMode ? (
+        {canCreateCustomers ? (
           <Card className="scroll-mt-24 p-4" id="crear-cliente">
             <form action={createCustomerAction} className="grid gap-3">
               {crmMode ? <input name="returnTo" type="hidden" value="/crm/clientes?created=1" /> : null}
