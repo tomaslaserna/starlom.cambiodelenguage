@@ -283,7 +283,7 @@ export async function requestSaleFiscalInvoice(session: AuthSession, saleId: str
                COALESCE(s.cae, '') AS cae,
                COALESCE(s.total_amount, 0)::text AS total_amount,
                COALESCE(s.client_name, c.display_name, '') AS client_name,
-               COALESCE(s.client_document, c.tax_id, '') AS tax_id,
+               COALESCE(NULLIF(BTRIM(s.client_document), ''), c.tax_id, '') AS tax_id,
                COALESCE(c.fiscal_condition, '') AS fiscal_condition
         FROM sales s
         LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
@@ -517,7 +517,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
                WHERE si.sale_id = s.id AND si.empresa_id = s.empresa_id
              ), 0)::text AS item_net_amount,
              COALESCE(s.client_name, c.display_name, '') AS client_name,
-             COALESCE(s.client_document, c.tax_id, '') AS client_document,
+             COALESCE(NULLIF(BTRIM(s.client_document), ''), c.tax_id, '') AS client_document,
              COALESCE(c.fiscal_condition, '') AS fiscal_condition,
              ${normalizedOrderStatusSql("s")} AS order_status,
              COALESCE(s.desired_document, '') AS desired_document,
@@ -622,7 +622,7 @@ export async function getSaleFiscalNotePreview(
              s.sale_number,
              COALESCE(s.total_amount, 0)::text AS total_amount,
              COALESCE(s.client_name, c.display_name, '') AS client_name,
-             COALESCE(s.client_document, c.tax_id, '') AS client_document,
+             COALESCE(NULLIF(BTRIM(s.client_document), ''), c.tax_id, '') AS client_document,
              COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
              COALESCE(s.cae, '') AS cae,
              s.fiscal_point_of_sale,

@@ -20,3 +20,9 @@ test("Registro de ventas permite solicitar una factura elegible", () => {
   assert.match(salesActionsSource, /requestSaleFiscalInvoice\(session, id\)/);
   assert.match(salesActionsSource, /requireApiSession\(\[SALES_OPERATE_PERMISSION\]\)/);
 });
+
+test("la facturacion usa el CUIT vigente del cliente si la venta guardo un documento vacio", () => {
+  assert.doesNotMatch(fiscalSource, /COALESCE\(s\.client_document, c\.tax_id, ''\)/);
+  assert.match(fiscalSource, /COALESCE\(NULLIF\(BTRIM\(s\.client_document\), ''\), c\.tax_id, ''\) AS tax_id/);
+  assert.match(fiscalSource, /COALESCE\(NULLIF\(BTRIM\(s\.client_document\), ''\), c\.tax_id, ''\) AS client_document/);
+});
