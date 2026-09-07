@@ -443,6 +443,62 @@ export const VERIFIED_PRODUCT_IMAGE_SOURCES: VerifiedProductImageSource[] = [
     sourcePage: "https://off.com.ar/es-ar/product/con-icaridina/proteccion-invisible-aerosol",
     sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/off/argentina/product-detail-pages/con-icaridina/invisible-everyday-aerosol/off_arg-6_24-con_icaridina-invisibale_everyday_aerosol-image_1.webp?h=1080&iar=0&w=1920",
   },
+  {
+    productId: "e8f62c32-a583-4436-b215-26eaea9802c7",
+    productName: "MM aerosol limpia vidrios 360 ML/12/AR",
+    brand: "Mr. Músculo",
+    sourcePage: "https://mrmuscleclean.com/es-ar/products/whole-house/glass-window-cleaner",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/mrmuscle/argentina/product-detail-pages/vidrios-y-multisuperficies/mr_muscle_ar-6_25-vidrios-glass_cleaner_360ml-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "30f348dd-c140-4432-bdb8-485d426c74a4",
+    productName: "MR MUSCULO ANTIGRASA COCINA DP 450 ML",
+    brand: "Mr. Músculo",
+    sourcePage: "https://mrmuscleclean.com/es-ar/products/kitchen/orange-cleaner",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/mrmuscle/argentina/product-detail-pages/cocina/mr_muscle_ar-6_25-cocina_5450cm3-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "9aa87ce2-587d-4e06-a765-52b49bd53291",
+    productName: "MR MUSCULO ANTIGRASA COCINA DP 900 ML",
+    brand: "Mr. Músculo",
+    sourcePage: "https://mrmuscleclean.com/es-ar/products/kitchen/orange-cleaner",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/mrmuscle/argentina/product-detail-pages/cocina/mr_muscle_ar-6_25-cocina_900cm3-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "8e701962-dbef-4ad4-84a7-8eafec74e900",
+    productName: "MR MUSCULO BAÑO TR 12X500ML AR",
+    brand: "Mr. Músculo",
+    sourcePage: "https://mrmuscleclean.com/es-ar/products/bath/bathroom-cleaner",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/mrmuscle/argentina/product-detail-pages/bano/mr_muscle_ar-6_25-bano_500cm3.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "6beab2d4-470d-4147-8fe1-2aa7353c258d",
+    productName: "MR MUSCULO CREMA CITRUS 450 ML",
+    brand: "Mr. Músculo",
+    sourcePage: "https://mrmuscleclean.com/es-ar/products/bath/bathroom-cleaner",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/mrmuscle/argentina/product-detail-pages/bano/mr_muscle_ar-6_25-bano-creama_citrus_450cm3-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "61dc09b9-6769-43f8-aab6-36b5c5464e3d",
+    productName: "MR MUSCULO EXTRA POWER COCINA GAT 500 ML",
+    brand: "Mr. Músculo",
+    sourcePage: "https://mrmuscleclean.com/es-ar/products/kitchen/extra-power-cleaner",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/mrmuscle/argentina/product-detail-pages/cocina/mr_muscle_ar-6_25-cocina-extra_power_500cm3-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "00673d0f-3400-4c97-9f4a-d0b68582c4fc",
+    productName: "MR MUSCULO VIDRIOS Y MULTIUSO DP 450 ML",
+    brand: "Mr. Músculo",
+    sourcePage: "https://mrmuscleclean.com/es-ar/products/whole-house/glass-window-cleaner",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/mrmuscle/argentina/product-detail-pages/vidrios-y-multisuperficies/mr_muscle_ar-6_25-vidrios-glass_cleaner_450ml-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "cb6cba37-d8b3-40e3-b743-354ffae68ee3",
+    productName: "MR MUSCULO VIDRIOS Y MULTIUSO TR 500CM3/12 AR",
+    brand: "Mr. Músculo",
+    sourcePage: "https://mrmuscleclean.com/es-ar/products/whole-house/glass-window-cleaner",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/mrmuscle/argentina/product-detail-pages/vidrios-y-multisuperficies/mr_muscle_ar-6_25-vidrios-glass_cleaner_500ml-1.webp?h=990&iar=0&w=1760",
+  },
 ];
 
 export function verifiedProductImageSource(productId: string) {
