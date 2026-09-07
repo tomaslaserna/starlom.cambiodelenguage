@@ -21,8 +21,8 @@ test("alta y edición de clientes usan condiciones fiscales predeterminadas", ()
 });
 
 test("el alta administrativa usa una pantalla dedicada y conserva la URL anterior", () => {
-  assert.match(customersPage, /redirect\("\/customers#crear-cliente"\)/);
-  assert.match(customersPage, /href=\{crmMode \? "\/crm\/clientes" : "\/customers#crear-cliente"\}/);
-  assert.match(customersPage, /\{canCreateCustomers \? \(/);
-  assert.match(newCustomerPage, /redirect\("\/customers#crear-cliente"\)/);
+  assert.match(customersPage, /href=\{crmMode \? "\/crm\/clientes" : "\/customers\/new"\}/);
+  assert.match(customersPage, /\{canCreateCustomers && crmMode \? \(/);
+  assert.match(newCustomerPage, /form action=\{createCustomerAction\}/);
+  assert.doesNotMatch(newCustomerPage, /listPriceLists/);
 });
