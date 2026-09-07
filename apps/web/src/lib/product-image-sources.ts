@@ -520,6 +520,41 @@ export const VERIFIED_PRODUCT_IMAGE_SOURCES: VerifiedProductImageSource[] = [
     sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/fuyi/insecto-volador-tableta/fuyi-tabletas-contra-mosquitos",
     sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/wiscj/products/argentina/355390.webp?h=990&iar=0&w=1760",
   },
+  {
+    productId: "ea3d5987-3662-432c-8063-5f711c1868eb",
+    productName: "CERAMICOL AERO LAVANDA 360 ML/12 AR",
+    brand: "Ceramicol",
+    sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/ceramicol/lustramuebles/ceramicol-lustramuebles-aerosol-lavanda",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/wiscj/products/argentina/368925.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "f9f763ec-cbc1-46a3-ba02-d3bcdb145b09",
+    productName: "CERAMICOL AEROSOL NARANJA 360 ML",
+    brand: "Ceramicol",
+    sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/ceramicol/lustramuebles/ceramicol-lustramuebles-aerosol-naranja",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/wiscj/products/argentina/368927.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "3bbcdb93-e765-4700-8c03-bc8c5f747b64",
+    productName: "CERAMICOL AEROSOL ORIGINAL 360ML/12 AR",
+    brand: "Ceramicol",
+    sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/ceramicol/lustramuebles/ceramicol-lustramuebles-aerosol",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/wiscj/products/argentina/368923.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "42211e08-11b8-4c02-b1aa-ba8dbe64a5f5",
+    productName: "CERAMICOL LAMPAZOL 860 ML",
+    brand: "Ceramicol",
+    sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/ceramicol/pisos/ceramicol-limpia-pisos-lampazol-citrus",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/wiscj/products/argentina/341744.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "d878affd-50f6-4d60-9777-e4fded6e12dd",
+    productName: "CERAMICOL PISOS PLASTIFICADOS 875 ML",
+    brand: "Ceramicol",
+    sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/ceramicol/pisos/ceramicol-pisos-plastificados-y-flotantes-floral",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/wiscj/products/argentina/341743.webp?h=990&iar=0&w=1760",
+  },
 ];
 
 export function verifiedProductImageSource(productId: string) {
