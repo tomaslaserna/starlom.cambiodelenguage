@@ -21,7 +21,7 @@ export async function POST(request: Request) {
       if (!sale) throw new Error("Ese pedido no pertenece a tu cuenta");
       const items = (await client.query<{ product_id: string; description: string; quantity: string; unit_price: string; discount: string; total: string }>(
         `SELECT product_id::text, COALESCE(description,''), quantity::text, unit_price::text, COALESCE(discount,0)::text, total_amount::text AS total
-           FROM sale_items WHERE empresa_id=$1 AND sale_id=$2::uuid ORDER BY created_at,id`, [identity.companyId, saleId],
+           FROM sale_items WHERE empresa_id=$1 AND sale_id=$2::uuid ORDER BY id`, [identity.companyId, saleId],
       )).rows;
       if (!items.length) throw new Error("El pedido original no tiene artículos repetibles");
       await client.query("SELECT pg_advisory_xact_lock(83011, $1::int)", [identity.companyId]);

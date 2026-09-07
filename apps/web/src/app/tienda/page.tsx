@@ -8,7 +8,8 @@ import { listSegmentRecommendations } from "@/lib/segment-recommendations";
 export const metadata: Metadata = { title: "Tienda | Starlim", description: "Armá tu pedido de productos Starlim. Un comercial te enviará la cotización." };
 export const dynamic = "force-dynamic";
 
-export default async function StorePage() {
+export default async function StorePage({ searchParams }: { searchParams: Promise<{ portalClient?: string }> }) {
+  const { portalClient = "" } = await searchParams;
   const [storefrontProducts, recommendations] = await Promise.all([
     listStorefrontProducts(1),
     listSegmentRecommendations(1).catch(() => []),
@@ -22,6 +23,6 @@ export default async function StorePage() {
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(4,48,111,0.94)_0%,rgba(5,68,148,0.72)_52%,rgba(7,90,199,0.2)_100%)]" />
       <div className="relative z-10 mx-auto max-w-[1380px]"><span className="text-xs font-bold uppercase tracking-[0.12em] text-[#b8d8ff]">Tienda Starlim</span><h1 className="mt-3 max-w-3xl text-[clamp(2rem,5vw,4rem)] font-extrabold leading-tight tracking-[-0.045em]">Elegí los productos. Nosotros armamos tu cotización.</h1><p className="mt-4 max-w-2xl text-base font-medium leading-7 text-white/80">El catálogo no muestra precios. Indicá las cantidades y un comercial se contactará para preparar la mejor propuesta.</p></div>
     </section>
-    <Storefront products={products} recommendations={recommendations} />
+    <Storefront portalClientId={portalClient} products={products} recommendations={recommendations} />
   </main>;
 }

@@ -59,7 +59,7 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
   return parsed;
 }
 
-export async function createStorefrontRequest(input: StorefrontRequest) {
+export async function createStorefrontRequest(input: StorefrontRequest, portalClientId = "") {
   return withCompanyContext(COMPANY_ID, async (client) => {
     const productIds = input.items.map((item) => item.productId);
     const products = await client.query<{ id: string; name: string }>(
@@ -90,7 +90,8 @@ export async function createStorefrontRequest(input: StorefrontRequest) {
     const cartText = input.items.map((item) => `${item.quantity} x ${byId.get(item.productId)}`).join("\n");
     const leadNotes = [`Solicitud web ${quoteNumber}`, `Marca: ${input.brand || "-"}`, input.companyName && `Negocio informado: ${input.companyName}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || input.businessType || "-"}`, input.usualPurchases.length && `Compra habitualmente: ${input.usualPurchases.join(", ")}`, input.currentSupplier && `Proveedor actual: ${input.currentSupplier}`, input.supplierCount && `Cantidad de proveedores: ${input.supplierCount}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
 
-    const lead = await client.query<{ id: string }>(
+    const portalClient = portalClientId ? (await client.query<{ id: string; name: string; legal_name: string; tax_id: string; phone: string; address: string; fiscal_condition: string }>(`SELECT id::text, display_name AS name, COALESCE(legal_name,'') AS legal_name, COALESCE(tax_id,'') AS tax_id, COALESCE(phone,'') AS phone, COALESCE(address,'') AS address, COALESCE(fiscal_condition,'') AS fiscal_condition FROM clients WHERE empresa_id=$1 AND id=$2::uuid`, [COMPANY_ID, portalClientId])).rows[0] : null;
+    const lead = portalClient ? null : await client.query<{ id: string }>(
       `INSERT INTO crm_leads (empresa_id, assigned_seller, name, phone, locality, source, stage, next_followup, notes, created_by, business_segment)
        VALUES ($1,$2,$3,$4,$5,'Tienda web','nuevo',CURRENT_DATE + 3,$6,'tienda-web',NULLIF($7,'')) RETURNING id::text`,
       [COMPANY_ID, seller.identity, input.name, input.phone, [input.city, input.province].filter(Boolean).join(", "), leadNotes, input.businessType],
@@ -100,9 +101,9 @@ export async function createStorefrontRequest(input: StorefrontRequest) {
         desired_document, active_price_list, price_list_name, discount_percent, net_amount, discount_amount, subtotal_amount,
         vat_amount, client_name, client_legal_name, client_document, client_fiscal_condition, client_phone, client_address,
         empresa_id, visible_to_all)
-       VALUES ($1,NULL,$2::uuid,'pendiente',0,15,false,0,'remito',1,'A cotizar',0,0,0,0,0,$3,$4,$5,'',$6,$7,$8,true)
+       VALUES ($1,$9::uuid,$2::uuid,'pendiente',0,15,false,0,'remito',1,'A cotizar',0,0,0,0,0,$3,$4,$5,$10,$6,$7,$8,true)
        RETURNING id::text`,
-      [quoteNumber, seller.id, input.brand || input.name, input.businessName, input.taxId, input.phone, fullAddress, COMPANY_ID],
+      [quoteNumber, seller.id, portalClient?.name || input.brand || input.name, portalClient?.legal_name || input.businessName, portalClient?.tax_id || input.taxId, portalClient?.phone || input.phone, portalClient?.address || fullAddress, COMPANY_ID, portalClient?.id || null, portalClient?.fiscal_condition || ""],
     );
     for (const item of input.items) {
       await client.query(
@@ -111,6 +112,6 @@ export async function createStorefrontRequest(input: StorefrontRequest) {
         [quote.rows[0]!.id, item.productId, byId.get(item.productId), item.quantity, COMPANY_ID],
       );
     }
-    return { leadId: lead.rows[0]!.id, quoteId: quote.rows[0]!.id, quoteNumber };
+    return { leadId: lead?.rows[0]?.id ?? null, quoteId: quote.rows[0]!.id, quoteNumber };
   });
 }

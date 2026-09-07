@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { createClient } from "@supabase/supabase-js";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { CUSTOMER_BUSINESS_SEGMENTS } from "@/lib/customer-segments";
 import type { SegmentRecommendation } from "@/lib/segment-recommendations";
@@ -57,7 +58,7 @@ function AvailabilityBadge({ available }: { available: Availability }) {
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold ${status.className}`}>{status.label}</span>;
 }
 
-export function Storefront({ products, recommendations = [] }: { products: Product[]; recommendations?: SegmentRecommendation[] }) {
+export function Storefront({ products, recommendations = [], portalClientId = "" }: { products: Product[]; recommendations?: SegmentRecommendation[]; portalClientId?: string }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
@@ -194,7 +195,13 @@ export function Storefront({ products, recommendations = [] }: { products: Produ
     event.preventDefault(); setSubmitting(true); setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch("/api/storefront/requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(form.entries()), ...discovery, usualPurchases: discovery.usualPurchases, ...location, items: selected.map((product) => ({ productId: product.id, quantity: cart[product.id] })) }) });
+      let accessToken = "";
+      if (portalClientId) {
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (url && key) accessToken = (await createClient(url, key).auth.getSession()).data.session?.access_token ?? "";
+      }
+      const response = await fetch("/api/storefront/requests", { method: "POST", headers: { "Content-Type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) }, body: JSON.stringify({ ...Object.fromEntries(form.entries()), ...discovery, usualPurchases: discovery.usualPurchases, ...location, portalClientId, items: selected.map((product) => ({ productId: product.id, quantity: cart[product.id] })) }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "No pudimos enviar el pedido");
       setStep("success"); window.scrollTo({ top: 0, behavior: "smooth" });
