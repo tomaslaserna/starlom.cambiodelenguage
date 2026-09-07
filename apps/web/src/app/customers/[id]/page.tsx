@@ -25,7 +25,7 @@ import { listPriceLists } from "@/lib/pricing";
 import { requirePagePermission } from "@/lib/page-auth";
 import { CUSTOMERS_READ_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { CustomerRowActions } from "@/app/customers/customer-row-actions";
-import { deleteCustomerAction, mergeCustomersAction, updateCustomerAction } from "@/app/customers/actions";
+import { deleteCustomerAction, enableCustomerPortalAction, mergeCustomersAction, updateCustomerAction } from "@/app/customers/actions";
 
 type CustomerDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -154,6 +154,11 @@ export default async function CustomerDetailPage({ params, crmMode = false }: Cu
             </CardContent>
           </Card>
         </div>
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-[color:var(--border)] p-4"><h2 className="erp-text-body-sm font-black">Portal del cliente</h2><p className="mt-1 text-sm text-[color:var(--muted)]">Habilitá un correo para consultar pedidos, pagos, repetir compras y administrar avisos. El mismo correo puede vincularse con varias sucursales.</p></div>
+          <CardContent className="pt-4"><form action={enableCustomerPortalAction} className="flex flex-wrap items-end gap-3"><input name="clientId" type="hidden" value={customer.id} /><label className="grid min-w-64 flex-1 gap-2 text-sm font-bold">Correo autorizado<input className="min-h-11 rounded-xl border border-[color:var(--border)] px-3" name="email" placeholder="cliente@empresa.com" required type="email" /></label><button className="min-h-11 rounded-xl bg-[color:var(--accent)] px-5 font-bold text-white" type="submit">Habilitar y enviar acceso</button></form></CardContent>
+        </Card>
 
         <Card className="overflow-hidden">
           <div className="border-b border-[color:var(--border)] p-4">
