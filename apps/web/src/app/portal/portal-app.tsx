@@ -27,6 +27,9 @@ export function PortalApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [accessMode, setAccessMode] = useState<"login" | "link">("login");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -58,6 +61,22 @@ export function PortalApp() {
     else setMessage("Te enviamos un enlace seguro. Revisá tu correo para ingresar.");
   }
 
+  async function signIn(event: FormEvent) {
+    event.preventDefault(); setError(""); setMessage(""); setLoading(true);
+    if (!client) return;
+    const { error: authError } = await client.auth.signInWithPassword({ email, password });
+    if (authError) setError("Correo o contraseña incorrectos. Si es tu primera vez, pedí un enlace seguro.");
+    setLoading(false);
+  }
+
+  async function savePassword(event: FormEvent) {
+    event.preventDefault(); setError(""); setMessage("");
+    if (!client || newPassword.length < 8) { setError("La contraseña debe tener al menos 8 caracteres."); return; }
+    const { error: authError } = await client.auth.updateUser({ password: newPassword });
+    if (authError) setError("No pudimos guardar la contraseña. Volvé a intentarlo.");
+    else { setNewPassword(""); setMessage("Contraseña guardada. La próxima vez podrás ingresar directamente."); }
+  }
+
   const sales = summary?.sales.filter((sale) => !branch || sale.client_id === branch) ?? [];
   const movements = summary?.movements.filter((movement) => !branch || movement.client_id === branch) ?? [];
 
@@ -82,7 +101,7 @@ export function PortalApp() {
 
   return <main className="min-h-screen bg-[#f3f7fc] text-[#172033]">
     <header className="border-b border-[#dbe5f1] bg-[#075ac7] px-5 py-4 text-white"><div className="mx-auto flex max-w-6xl items-center justify-between"><Image alt="Starlim" className="h-auto w-32" height={58} src="/starlim-logo-white.png" width={150} /><Link className="rounded-xl border border-white/30 px-4 py-2 text-sm font-bold" href="/tienda">Ir a la tienda</Link></div></header>
-    {!session ? <section className="mx-auto grid min-h-[70vh] max-w-md place-items-center px-5 py-12"><form className="w-full rounded-3xl border border-[#dbe5f1] bg-white p-7 shadow-xl" onSubmit={requestAccess}><span className="text-xs font-extrabold uppercase tracking-[.12em] text-[#075ac7]">Portal de clientes</span><h1 className="mt-2 text-3xl font-black">Todo lo tuyo, en un lugar</h1><p className="mt-3 text-[#64748b]">Ingresá con el correo habilitado por Starlim. Te enviaremos un enlace seguro, sin contraseña.</p><label className="mt-6 grid gap-2 text-sm font-bold">Correo electrónico<input className="min-h-12 rounded-xl border border-[#cbd8e8] px-4 outline-none focus:border-[#075ac7]" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} /></label>{message ? <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-700">{message}</p> : null}{error ? <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}<button className="mt-5 min-h-12 w-full rounded-xl bg-[#075ac7] font-extrabold text-white" type="submit">Enviarme acceso</button></form></section>
+    {!session ? <section className="mx-auto grid min-h-[70vh] max-w-md place-items-center px-5 py-12"><form className="w-full rounded-3xl border border-[#dbe5f1] bg-white p-7 shadow-xl" onSubmit={accessMode === "login" ? signIn : requestAccess}><span className="text-xs font-extrabold uppercase tracking-[.12em] text-[#075ac7]">Portal de clientes</span><h1 className="mt-2 text-3xl font-black">{accessMode === "login" ? "Ingresar a mi cuenta" : "Recuperar acceso"}</h1><p className="mt-3 text-[#64748b]">{accessMode === "login" ? "Usá el correo habilitado y tu contraseña." : "Te enviaremos un enlace seguro para entrar y crear una contraseña."}</p><label className="mt-6 grid gap-2 text-sm font-bold">Correo electrónico<input autoComplete="email" className="min-h-12 rounded-xl border border-[#cbd8e8] px-4 outline-none focus:border-[#075ac7]" onChange={(event) => setEmail(event.target.value)} required type="email" value={email} /></label>{accessMode === "login" ? <label className="mt-4 grid gap-2 text-sm font-bold">Contraseña<input autoComplete="current-password" className="min-h-12 rounded-xl border border-[#cbd8e8] px-4 outline-none focus:border-[#075ac7]" minLength={8} onChange={(event) => setPassword(event.target.value)} required type="password" value={password} /></label> : null}{message ? <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-700">{message}</p> : null}{error ? <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p> : null}<button className="mt-5 min-h-12 w-full rounded-xl bg-[#075ac7] font-extrabold text-white disabled:opacity-50" disabled={loading} type="submit">{accessMode === "login" ? "Ingresar" : "Enviar enlace seguro"}</button><button className="mt-4 w-full text-sm font-bold text-[#075ac7]" onClick={() => { setAccessMode(accessMode === "login" ? "link" : "login"); setError(""); setMessage(""); }} type="button">{accessMode === "login" ? "Primera vez u olvidé mi contraseña" : "Ya tengo contraseña"}</button></form></section>
     : <section className="mx-auto max-w-6xl px-5 py-8">{loading ? <p className="rounded-2xl bg-white p-6 font-bold">Cargando tu cuenta…</p> : error ? <div className="rounded-2xl border border-red-200 bg-white p-6"><p className="font-bold text-red-700">{error}</p><button className="mt-4 text-sm font-bold text-[#075ac7]" onClick={() => client?.auth.signOut()} type="button">Salir</button></div> : summary ? <div className="grid gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4"><div><span className="text-xs font-extrabold uppercase tracking-[.12em] text-[#075ac7]">Mi cuenta Starlim</span><h1 className="mt-1 text-3xl font-black">Hola, {summary.profile.displayName || summary.profile.email}</h1></div><button className="text-sm font-bold text-[#075ac7]" onClick={() => client?.auth.signOut()} type="button">Cerrar sesión</button></div>
       {summary.clients.length > 1 ? <label className="grid max-w-md gap-2 text-sm font-bold">Sucursal<select className="min-h-12 rounded-xl border border-[#cbd8e8] bg-white px-4" onChange={(event) => setBranch(event.target.value)} value={branch}>{summary.clients.map((item) => <option key={item.id} value={item.id}>{item.name}{item.locality ? ` · ${item.locality}` : ""}</option>)}</select></label> : null}
@@ -92,6 +111,7 @@ export function PortalApp() {
       <PortalTable title="Historial de pedidos" empty="Todavía no hay pedidos para esta sucursal." rows={sales.map((sale) => [sale.date, sale.number || "Pedido", sale.status, money.format(Number(sale.total))])} />
       <PortalTable title="Cuenta corriente y pagos" empty="No hay movimientos registrados." rows={movements.map((movement) => [movement.date, movement.description, Number(movement.debit) ? `Cargo ${money.format(Number(movement.debit))}` : `Pago ${money.format(Number(movement.credit))}`])} />
       <section className="rounded-2xl border border-[#dbe5f1] bg-white p-5"><h2 className="text-xl font-black">Avisos por correo</h2><p className="mt-1 text-sm text-[#64748b]">Elegí qué novedades querés recibir en {summary.profile.email}.</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><Preference checked={summary.preferences.notify_orders} label="Estado de pedidos" onChange={(v) => savePreferences("notify_orders", v)} /><Preference checked={summary.preferences.notify_invoices} label="Facturas y vencimientos" onChange={(v) => savePreferences("notify_invoices", v)} /><Preference checked={summary.preferences.notify_offers} label="Ofertas y novedades" onChange={(v) => savePreferences("notify_offers", v)} /></div></section>
+      <section className="rounded-2xl border border-[#dbe5f1] bg-white p-5"><h2 className="text-xl font-black">Contraseña de acceso</h2><p className="mt-1 text-sm text-[#64748b]">Creala después de ingresar por primera vez o cambiala cuando quieras.</p><form className="mt-4 flex flex-wrap gap-3" onSubmit={savePassword}><input autoComplete="new-password" className="min-h-11 min-w-64 flex-1 rounded-xl border border-[#cbd8e8] px-4" minLength={8} onChange={(event) => setNewPassword(event.target.value)} placeholder="Nueva contraseña (mínimo 8 caracteres)" required type="password" value={newPassword} /><button className="min-h-11 rounded-xl bg-[#075ac7] px-5 font-bold text-white" type="submit">Guardar contraseña</button></form></section>
     </div> : null}</section>}
   </main>;
 }
