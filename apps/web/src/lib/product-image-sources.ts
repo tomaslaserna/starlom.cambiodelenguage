@@ -60,6 +60,20 @@ export const CUSTOM_PRODUCT_IMAGE_SOURCES: CustomProductImageSource[] = [
     sourcePage: "/product-images/pending-2026-09-07/07-solucion-alcoholica-5l.png",
     sourceUrl: "https://starlim.vercel.app/product-images/pending-2026-09-07/07-solucion-alcoholica-5l.png",
   },
+  {
+    sourceKey: "starlim-film-pvc-hercules-600",
+    productName: "FILM PVC 45CM X 600 X U NOBLEZA/HERCULES",
+    brand: "Hércules",
+    sourcePage: "/product-images/pending-2026-09-07/08-film-pvc-hercules-600.png",
+    sourceUrl: "https://starlim.vercel.app/product-images/pending-2026-09-07/08-film-pvc-hercules-600.png",
+  },
+  {
+    sourceKey: "starlim-papel-hig-elegante-30m-x48",
+    productName: "PAPEL HIG ELEGANTE BLANCO 30MTS X 48 UNIDADES",
+    brand: "Elegante",
+    sourcePage: "/product-images/pending-2026-09-07/09-papel-hig-elegante-30m-x48.png",
+    sourceUrl: "https://starlim.vercel.app/product-images/pending-2026-09-07/09-papel-hig-elegante-30m-x48.png",
+  },
 ];
 
 export function normalizeProductImageName(value: string) {
