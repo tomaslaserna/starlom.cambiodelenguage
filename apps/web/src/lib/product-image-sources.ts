@@ -499,6 +499,27 @@ export const VERIFIED_PRODUCT_IMAGE_SOURCES: VerifiedProductImageSource[] = [
     sourcePage: "https://mrmuscleclean.com/es-ar/products/whole-house/glass-window-cleaner",
     sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/mrmuscle/argentina/product-detail-pages/vidrios-y-multisuperficies/mr_muscle_ar-6_25-vidrios-glass_cleaner_500ml-1.webp?h=990&iar=0&w=1760",
   },
+  {
+    productId: "bba48666-fcb6-414d-83b0-512fc9e0a981",
+    productName: "FUYI LIQUIDO ELECTRICO FULL 32,9 ML",
+    brand: "Fuyi",
+    sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/fuyi/insecto-volador-liquido-electrico/fuyi-liquido-electrico-full-sin-olor",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/wiscj/products/argentina/355457.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "3749418f-4f00-4ff8-883c-4adfa2efdaa8",
+    productName: "FUYI REPELENTE AERO 12 X 170ML",
+    brand: "Fuyi",
+    sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/fuyi/repelente/fuyi-repelente-aerosol",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/wiscj/products/argentina/355347.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "e3354952-04f6-4643-a176-507779e056a5",
+    productName: "FUYI TABLETAS REP X12",
+    brand: "Fuyi",
+    sourcePage: "https://whatsinsidescjohnson.com/es-ar/brands/fuyi/insecto-volador-tableta/fuyi-tabletas-contra-mosquitos",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/wiscj/products/argentina/355390.webp?h=990&iar=0&w=1760",
+  },
 ];
 
 export function verifiedProductImageSource(productId: string) {
