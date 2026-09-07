@@ -76,7 +76,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
       pageSize: "25",
       businessSegment: params.segment,
     }),
-    listPriceLists(session.companyId, true),
+    fastOr(listPriceLists(session.companyId, true), [], 1_500),
     sessionAllows(session, [{ resource: "clientes", action: "crear" }]),
   ]);
   const activePriceLists = priceLists.filter((list) => list.active);
