@@ -184,6 +184,41 @@ export const VERIFIED_PRODUCT_IMAGE_SOURCES: VerifiedProductImageSource[] = [
     sourcePage: "https://lysoform.com.ar/es-ar/products/home-cleaning-disinfecting/multisuperficies",
     sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/lysoform/argentina/dsc-images/updated-product-detail-images/home-cleaning-disinfecting/10-10-25/lysoform-multisuperficies-dp-450.webp?h=990&iar=0&w=1760",
   },
+  {
+    productId: "f15b3951-8f00-44ec-9f27-b8dc5c59c6ff",
+    productName: "PATO BLOQUE PARA MOCHILA 12 X 80 GR",
+    brand: "Pato",
+    sourcePage: "https://patopurific.com.ar/es-ar/products/cistern-block/purific-backpack-block",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/duck/argentina/product-detail-pages/cistern-block/pato_ar-6_25-pastila_para_mochilo_duo-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "00de9c66-861f-437d-8156-a60749cfa6ce",
+    productName: "PATO BLOQUE PARA MOCHILA 24 X 40 GR",
+    brand: "Pato",
+    sourcePage: "https://patopurific.com.ar/es-ar/products/cistern-block/purific-backpack-block",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/duck/argentina/product-detail-pages/cistern-block/pato_ar-6_25-pastila_para_mochilo-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "7d9112e2-8f69-4a25-9e6c-61873deba304",
+    productName: "PATO DISCO ADHESIVO MARINA APARATO 12 X 36ML",
+    brand: "Pato",
+    sourcePage: "https://patopurific.com.ar/es-ar/products/fresh-discs/marina",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/duck/argentina/product-detail-pages/fresh-disc-marina/pato_ar-6_25-marina_repuesto_23_36ml-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "7418acb3-166c-4889-9835-97c07a628709",
+    productName: "PATO GEL LIMPIADOR MARINA 100 % DESTRUCTOR DE SARRO",
+    brand: "Pato",
+    sourcePage: "https://patopurific.com.ar/es-ar/products/limescale/gel-limpiador",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/duck/argentina/product-detail-pages/limescale---gel-limpiador/pato_ar-6_25-100_distructor_de_sarro-1.webp?h=990&iar=0&w=1760",
+  },
+  {
+    productId: "fd859361-ed1c-47a7-9ab6-fb018c1901ac",
+    productName: "PATO PURIFIC BLOQUE ADHESIVO PARA INODOROS CITRUS",
+    brand: "Pato",
+    sourcePage: "https://patopurific.com.ar/es-ar/products/fresh-strips/citrus",
+    sourceUrl: "https://edge.sitecorecloud.io/scjohnsonana080-dart-production-40df/media/project/dart/duck/argentina/product-detail-pages/fresh-strips/pato_ar-6_25-fresh_strip-cirtus-1.webp?h=990&iar=0&w=1760",
+  },
 ];
 
 export function verifiedProductImageSource(productId: string) {
