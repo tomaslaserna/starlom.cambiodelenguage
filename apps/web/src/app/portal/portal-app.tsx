@@ -50,7 +50,10 @@ export function PortalApp() {
 
   useEffect(() => {
     if (!session) return;
-    fetch("/api/portal/summary", { headers: { authorization: `Bearer ${session.access_token}` } })
+    const headers = { authorization: `Bearer ${session.access_token}` };
+    fetch("/api/portal/checkout/reconcile", { method: "POST", headers, cache: "no-store" })
+      .catch(() => null)
+      .then(() => fetch("/api/portal/summary", { headers, cache: "no-store" }))
       .then(async (response) => { const payload = await response.json(); if (!response.ok) throw new Error(payload.error); return payload.data as Summary; })
       .then((data) => { setSummary(data); setBranch((current) => current || data.clients[0]?.id || ""); setError(""); })
       .catch((cause) => setError(cause instanceof Error ? cause.message : "No pudimos cargar tu cuenta"))
