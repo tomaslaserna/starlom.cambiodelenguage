@@ -197,6 +197,7 @@ test("el estado de cuenta muestra pagos registrados pendientes de aplicar", () =
   assert.match(source, /ROUND\(GREATEST\(p\.amount - COALESCE\(allocation\.applied_amount, 0\), 0\), 0\) > 0/);
   assert.match(page, /Pagos registrados pendientes de aplicar/);
   assert.match(page, /no reducen la deuda/i);
+  assert.match(source, /p\.allocation_reconciled_at IS NULL/);
 });
 
 test("un excedente de pago no se inserta como saldo a favor sin remito", () => {
