@@ -122,18 +122,6 @@ export function PortalApp() {
   const repeatableSale = sales.find((sale) => sale.item_count > 0);
   const payableSales = sales.filter((sale) => Number(sale.outstanding) > 0.005 && sale.status === "entregado" && !["pendiente_aprobacion","en_proceso"].includes(sale.collection_status)).toSorted((a, b) => a.date.localeCompare(b.date));
 
-  async function repeatLastOrder() {
-    if (!session || !repeatableSale) return;
-    setLoading(true); setError(""); setMessage("");
-    try {
-      const response = await fetch("/api/portal/repeat", { method: "POST", headers: { authorization: `Bearer ${session.access_token}`, "content-type": "application/json" }, body: JSON.stringify({ saleId: repeatableSale.id }) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "No pudimos repetir el pedido");
-      setMessage(`Solicitud ${payload.data.quoteNumber} creada con los precios del pedido original. Starlim la revisará antes de confirmarla.`);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos repetir el pedido"); }
-    finally { setLoading(false); }
-  }
-
   async function openDocument(path: string) {
     if (!session) return;
     setError("");
@@ -176,8 +164,8 @@ export function PortalApp() {
       </nav>
       <div><span className="text-xs font-extrabold uppercase tracking-[.12em] text-[#075ac7]">Acciones rápidas</span><h2 className="mt-1 text-2xl font-black">¿Qué querés hacer?</h2></div>
       <nav aria-label="Accesos rápidos del portal" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <PortalShortcut accent description="Elegí productos del catálogo y envialos a Starlim." href={`/tienda?portalClient=${encodeURIComponent(branch)}`} title="Armar un pedido" />
-        <button className="rounded-2xl border border-[#bcd5ef] bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#075ac7] disabled:opacity-50" disabled={!repeatableSale || loading} onClick={repeatLastOrder} type="button"><strong className="text-lg">Repetir último pedido</strong><span className="mt-2 block text-sm text-[#64748b]">Recreá el último pedido que tenga productos registrados.</span></button>
+        <PortalShortcut accent description="Tus productos habituales primero, con buscador y stock disponible." href={`/portal/pedido?clientId=${encodeURIComponent(branch)}`} title="Armar un pedido" />
+        {repeatableSale ? <PortalShortcut description="Cargá el último pedido en un carrito editable para agregar o quitar productos." href={`/portal/pedido?clientId=${encodeURIComponent(branch)}&repeatSaleId=${encodeURIComponent(repeatableSale.id)}`} title="Repetir último pedido" /> : <div className="rounded-2xl border border-[#dbe5f1] bg-white p-5 opacity-60"><strong className="text-lg">Repetir último pedido</strong><span className="mt-2 block text-sm text-[#64748b]">Todavía no hay un pedido con productos para repetir.</span></div>}
         <PortalShortcut description="Consultá pedidos anteriores y abrí sus remitos." href="#pedidos" title="Historial de compras" />
         <PortalShortcut description="Visualizá todas las facturas emitidas." href="#facturas" title="Ver facturas" />
         <PortalShortcut description="Revisá únicamente los pagos ya aprobados." href="#pagos" title="Ver pagos" />
