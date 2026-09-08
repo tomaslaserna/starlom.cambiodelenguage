@@ -2,12 +2,13 @@
 
 import Image from "next/image";
 import { createClient } from "@supabase/supabase-js";
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { CUSTOMER_BUSINESS_SEGMENTS } from "@/lib/customer-segments";
 import type { SegmentRecommendation } from "@/lib/segment-recommendations";
 
 type Availability = "available" | "check" | "out";
-type Product = { id: string; name: string; code: string; category: string; brand: string; imageUrl: string | null; available: Availability };
+type Product = { id: string; name: string; code: string; category: string; brand: string; imageUrl: string | null; available: Availability; estimatedPrice: number };
+type Combo = { id: string; name: string; businessSegment: string; items: { productId: string; productName: string; code: string; quantity: number }[] };
 type Location = { address: string; city: string; province: string; latitude: string; longitude: string };
 type Discovery = { industry: string; businessType: string; companyName: string; usualPurchases: string[]; currentSupplier: string; supplierCount: string };
 type SectionKey = "all" | "papeleria" | "descartables" | "liquidos" | "articulos" | "textil";
@@ -36,6 +37,19 @@ const gastronomyNeeds = [
   { label: "Esponja", terms: ["esponja"] },
 ];
 
+const CHALLENGE_MINIMUM = 150_000;
+const CHALLENGE_SECONDS = 15 * 60;
+const CORDOBA_CENTER = { latitude: -31.4201, longitude: -64.1888 };
+const CIRCUNVALACION_RADIUS_KM = 12;
+
+function distanceKm(latitude: number, longitude: number) {
+  const radians = (degrees: number) => degrees * Math.PI / 180;
+  const dLat = radians(latitude - CORDOBA_CENTER.latitude);
+  const dLon = radians(longitude - CORDOBA_CENTER.longitude);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(CORDOBA_CENTER.latitude)) * Math.cos(radians(latitude)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 const categoryPresentation: Record<string, { eyebrow: string; description: string; accent: string; icon: string }> = {
   descartables: { eyebrow: "Servicio ágil", description: "Vasos, bandejas, cubiertos y soluciones para cada entrega.", accent: "from-[#075ac7] to-[#0a79df]", icon: "◯" },
   papeleria: { eyebrow: "Reposición diaria", description: "Papeles, bobinas, servilletas y productos institucionales.", accent: "from-[#176b87] to-[#2b91a8]", icon: "▤" },
@@ -58,7 +72,7 @@ function AvailabilityBadge({ available }: { available: Availability }) {
   return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold ${status.className}`}>{status.label}</span>;
 }
 
-export function Storefront({ products, recommendations = [], portalClientId = "" }: { products: Product[]; recommendations?: SegmentRecommendation[]; portalClientId?: string }) {
+export function Storefront({ products, recommendations = [], combos = [], portalClientId = "" }: { products: Product[]; recommendations?: SegmentRecommendation[]; combos?: Combo[]; portalClientId?: string }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
@@ -74,6 +88,10 @@ export function Storefront({ products, recommendations = [], portalClientId = ""
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState("");
   const [location, setLocation] = useState<Location>({ address: "", city: "", province: "", latitude: "", longitude: "" });
+  const [challengeStartedAt, setChallengeStartedAt] = useState(0);
+  const [challengeSeconds, setChallengeSeconds] = useState(0);
+  const [challengeDistance, setChallengeDistance] = useState<number | null>(null);
+  const [challengeLocating, setChallengeLocating] = useState(false);
   const catalogRef = useRef<HTMLDivElement>(null);
   const recommendationRef = useRef<HTMLDivElement>(null);
   const categoryCounts = useMemo(() => products.reduce((counts, product) => {
@@ -134,10 +152,22 @@ export function Storefront({ products, recommendations = [], portalClientId = ""
   }, [filtered]);
   const selected = products.filter((product) => (cart[product.id] ?? 0) > 0);
   const totalUnits = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
+  const estimatedCartAmount = selected.reduce((sum, product) => sum + product.estimatedPrice * (cart[product.id] ?? 0), 0);
+  const challengeActive = challengeStartedAt > 0 && challengeSeconds > 0;
+  const challengeMinimumReached = estimatedCartAmount >= CHALLENGE_MINIMUM;
+  const visibleCombos = combos.filter((combo) => !combo.businessSegment || !discovery.businessType || combo.businessSegment === discovery.businessType);
   const showCatalog = browseAll || Boolean(category || brand || query.trim());
   const mapUrl = location.latitude && location.longitude
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${Number(location.longitude) - .01}%2C${Number(location.latitude) - .01}%2C${Number(location.longitude) + .01}%2C${Number(location.latitude) + .01}&layer=mapnik&marker=${location.latitude}%2C${location.longitude}`
     : "https://www.openstreetmap.org/export/embed.html?bbox=-64.35%2C-31.55%2C-64.05%2C-31.25&layer=mapnik";
+
+  useEffect(() => {
+    if (!challengeStartedAt) return;
+    const update = () => setChallengeSeconds(Math.max(0, CHALLENGE_SECONDS - Math.floor((Date.now() - challengeStartedAt) / 1000)));
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [challengeStartedAt]);
 
   function changeQuantity(id: string, delta: number) {
     setCart((current) => ({ ...current, [id]: Math.max(0, Math.min(9999, (current[id] ?? 0) + delta)) }));
@@ -177,6 +207,33 @@ export function Storefront({ products, recommendations = [], portalClientId = ""
     setCart((current) => Object.fromEntries([...Object.entries(current), ...recommendedSelection.map((product) => [product.id, Math.max(product.typicalQuantity, current[product.id] ?? 0)])]));
   }
 
+  function addCombo(combo: Combo) {
+    setCart((current) => {
+      const next = { ...current };
+      for (const item of combo.items) next[item.productId] = Math.max(next[item.productId] ?? 0, item.quantity);
+      return next;
+    });
+  }
+
+  function activateChallenge() {
+    setError("");
+    if (!navigator.geolocation) { setError("Necesitamos tu ubicación para validar el área del Desafío Starlim."); return; }
+    setChallengeLocating(true);
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      const distance = distanceKm(coords.latitude, coords.longitude);
+      setChallengeDistance(distance);
+      setLocation((current) => ({ ...current, latitude: String(coords.latitude), longitude: String(coords.longitude) }));
+      if (distance > CIRCUNVALACION_RADIUS_KM) {
+        setError("Tu ubicación está fuera del área habilitada por el Desafío Starlim. Igual podés navegar y enviar un pedido normal.");
+      } else {
+        setChallengeStartedAt(Date.now());
+        setChallengeSeconds(CHALLENGE_SECONDS);
+        setBrowseAll(true);
+      }
+      setChallengeLocating(false);
+    }, () => { setError("No pudimos validar tu ubicación. Permití el acceso para activar el desafío."); setChallengeLocating(false); }, { enableHighAccuracy: true, timeout: 12000 });
+  }
+
   function locate() {
     setError(""); setLocating(true);
     if (!navigator.geolocation) { setError("Tu navegador no permite obtener la ubicación. Podés completar la dirección manualmente."); setLocating(false); return; }
@@ -201,7 +258,7 @@ export function Storefront({ products, recommendations = [], portalClientId = ""
         const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
         if (url && key) accessToken = (await createClient(url, key).auth.getSession()).data.session?.access_token ?? "";
       }
-      const response = await fetch("/api/storefront/requests", { method: "POST", headers: { "Content-Type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) }, body: JSON.stringify({ ...Object.fromEntries(form.entries()), ...discovery, usualPurchases: discovery.usualPurchases, ...location, portalClientId, items: selected.map((product) => ({ productId: product.id, quantity: cart[product.id] })) }) });
+      const response = await fetch("/api/storefront/requests", { method: "POST", headers: { "Content-Type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) }, body: JSON.stringify({ ...Object.fromEntries(form.entries()), ...discovery, usualPurchases: discovery.usualPurchases, ...location, portalClientId, challengeStartedAt: challengeStartedAt ? new Date(challengeStartedAt).toISOString() : "", items: selected.map((product) => ({ productId: product.id, quantity: cart[product.id] })) }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "No pudimos enviar el pedido");
       setStep("success"); window.scrollTo({ top: 0, behavior: "smooth" });
@@ -213,6 +270,20 @@ export function Storefront({ products, recommendations = [], portalClientId = ""
 
   return <section className="mx-auto max-w-[1380px] px-4 py-8 sm:px-8">
     {step === "catalog" ? <>
+      <section className="mb-8 overflow-hidden rounded-[24px] border border-[#ffb45c] bg-[linear-gradient(120deg,#5d160e,#b82b16_55%,#f47a22)] text-white shadow-[0_18px_55px_rgba(163,43,20,.24)]">
+        <div className="grid items-center gap-6 p-6 sm:p-8 lg:grid-cols-[1fr_auto]">
+          <div><span className="text-xs font-black uppercase tracking-[.15em] text-[#ffd39c]">Entrega garantizada</span><h2 className="mt-2 text-3xl font-black tracking-[-.04em]">Desafío Starlim</h2><p className="mt-3 max-w-3xl font-medium leading-7 text-white/85">Validá tu ubicación y tenés 15 minutos para armar una solicitud desde $150.000. Cuando Starlim la confirma, comienzan las 24 horas hábiles: si no llegamos a tiempo, recibís 20% OFF.</p>
+          {challengeStartedAt ? <div className="mt-5 flex flex-wrap items-center gap-3"><strong className="rounded-full bg-white px-4 py-2 text-xl tabular-nums text-[#861f13]">{String(Math.floor(challengeSeconds / 60)).padStart(2, "0")}:{String(challengeSeconds % 60).padStart(2, "0")}</strong><span className="font-bold">{challengeActive ? "Desafío activo" : "El tiempo terminó; podés activarlo nuevamente."}</span><span className={`rounded-full px-3 py-1.5 text-sm font-black ${challengeMinimumReached ? "bg-emerald-100 text-emerald-800" : "bg-white/15 text-white"}`}>{challengeMinimumReached ? "Mínimo alcanzado" : "Todavía no alcanzaste el mínimo"}</span>{challengeDistance !== null ? <span className="text-sm font-bold text-white/80">Ubicación validada a {challengeDistance.toFixed(1)} km del centro</span> : null}</div> : null}</div>
+          <button className="min-h-14 rounded-full border-2 border-white/60 bg-[#ffb13b] px-7 text-lg font-black text-[#542009] shadow-[0_0_30px_rgba(255,183,77,.65)] transition hover:scale-105 disabled:opacity-60" disabled={challengeLocating || challengeActive} onClick={activateChallenge} type="button">{challengeLocating ? "Validando ubicación…" : challengeActive ? "Desafío activado" : "🔥 Activar desafío"}</button>
+        </div>
+        {challengeDistance !== null ? <div className="border-t border-white/20 bg-[#4b140f]/35 p-4 sm:px-8"><iframe className="h-52 w-full rounded-2xl border border-white/30" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapUrl} title="Ubicación para el Desafío Starlim" /><p className="mt-2 text-xs font-semibold text-white/75">Área promocional: radio operativo de 12 km alrededor del centro de Córdoba, como aproximación al anillo de Circunvalación.</p></div> : null}
+      </section>
+
+      {visibleCombos.length > 0 ? <section className="mb-8 rounded-[24px] border border-[#c6d9ef] bg-white p-6 shadow-[0_14px_38px_rgba(35,74,118,.11)] sm:p-8">
+        <div className="flex flex-wrap items-end justify-between gap-4"><div><span className="text-xs font-black uppercase tracking-[.13em] text-[#075ac7]">Compra más rápido</span><h2 className="mt-2 text-3xl font-black tracking-[-.035em]">Conocé nuestros combos</h2><p className="mt-2 text-[#64748b]">Selecciones pensadas por rubro. Agregalas completas y después cambiá cantidades, quitá o sumá productos.</p></div>{discovery.businessType ? <span className="rounded-full bg-[#eaf3ff] px-4 py-2 text-sm font-black text-[#075ac7]">Para {discovery.businessType}</span> : null}</div>
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{visibleCombos.map((combo) => <article className="flex flex-col rounded-[18px] border border-[#dbe5f1] bg-[#f8fbff] p-5" key={combo.id}><span className="text-xs font-black uppercase text-[#59708a]">{combo.businessSegment || "Todos los rubros"}</span><h3 className="mt-2 text-xl font-black">{combo.name}</h3><ul className="mt-3 flex-1 space-y-1.5 text-sm text-[#52657b]">{combo.items.slice(0, 6).map((item) => <li key={item.productId}><strong>{item.quantity}×</strong> {item.productName}</li>)}</ul><button className="mt-5 rounded-xl bg-[#075ac7] px-4 py-3 font-black text-white" onClick={() => addCombo(combo)} type="button">Agregar combo al carrito</button></article>)}</div>
+      </section> : null}
+
       <section className="mb-8 grid overflow-hidden rounded-[24px] bg-[#102d52] text-white shadow-[0_18px_50px_rgba(16,45,82,0.18)] lg:grid-cols-[1fr_auto]">
         <div className="p-6 sm:p-8"><span className="text-xs font-extrabold uppercase tracking-[0.13em] text-[#9fc9ff]">Compra más simple</span><h2 className="mt-2 text-2xl font-extrabold tracking-[-0.03em] sm:text-3xl">Contanos qué tipo de negocio tenés</h2><p className="mt-3 max-w-2xl leading-7 text-white/75">En menos de un minuto te orientamos hacia los productos que más se usan en tu rubro. No hace falta registrarse ni dejar un teléfono.</p></div>
         <div className="flex items-center p-6 pt-0 sm:p-8 lg:pl-0"><button className="w-full rounded-[13px] bg-[#ffb74d] px-6 py-4 font-extrabold text-[#173052] transition hover:bg-[#ffc66f] lg:w-auto" onClick={() => { setDiscoveryStep(1); setShowDiscovery(true); }} type="button">Ayudame a elegir →</button></div>
@@ -271,7 +342,7 @@ export function Storefront({ products, recommendations = [], portalClientId = ""
       <div className="mt-7 flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-extrabold">Dirección de entrega</h3><p className="text-sm text-[#64748b]">Usá el mapa o completala manualmente.</p></div><button className="rounded-[10px] border border-[#075ac7] px-4 py-2 text-sm font-bold text-[#075ac7]" disabled={locating} onClick={locate} type="button">{locating ? "Ubicando…" : "Usar mi ubicación"}</button></div>
       <iframe className="mt-4 h-[260px] w-full rounded-[12px] border border-[#cbd8e8]" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapUrl} title="Mapa de ubicación" />
       <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="grid gap-1.5 text-sm font-bold sm:col-span-2">Dirección completa *<input className={fieldClass} onChange={(event) => setLocation((value) => ({ ...value, address: event.target.value }))} required value={location.address} /></label><label className="grid gap-1.5 text-sm font-bold">Localidad<input className={fieldClass} onChange={(event) => setLocation((value) => ({ ...value, city: event.target.value }))} value={location.city} /></label><label className="grid gap-1.5 text-sm font-bold">Provincia<input className={fieldClass} onChange={(event) => setLocation((value) => ({ ...value, province: event.target.value }))} value={location.province} /></label><label className="grid gap-1.5 text-sm font-bold sm:col-span-2">Observación para el vendedor <span className="font-medium text-[#64748b]">(opcional)</span><textarea className="min-h-28 rounded-[9px] border border-[#cbd8e8] p-3 font-medium" maxLength={1000} name="notes" placeholder="Ej.: necesito asesoramiento, fecha estimada de entrega, presentación preferida…" /></label></div>{error && <p className="mt-4 rounded-[10px] bg-[#fff1f2] p-3 font-bold text-[#b4233d]" role="alert">{error}</p>}</div>
-      <aside className="h-fit rounded-[18px] border border-[#dbe5f1] bg-white p-5 shadow-sm lg:sticky lg:top-24"><h2 className="text-xl font-extrabold">Tu carrito</h2><div className="mt-4 divide-y divide-[#e5ebf2]">{selected.map((product) => <div className="flex items-center justify-between gap-4 py-3" key={product.id}><span className="font-semibold">{product.name}</span><strong className="shrink-0">× {cart[product.id]}</strong></div>)}</div><p className="mt-4 rounded-[10px] bg-[#eef5ff] p-3 text-sm font-semibold text-[#315170]">Los precios serán definidos por el comercial al preparar el presupuesto.</p><button className="mt-5 w-full rounded-[11px] bg-[#075ac7] px-5 py-3.5 font-extrabold text-white disabled:opacity-50" disabled={submitting} type="submit">{submitting ? "Enviando…" : "Enviar pedido"}</button></aside>
+      <aside className="h-fit rounded-[18px] border border-[#dbe5f1] bg-white p-5 shadow-sm lg:sticky lg:top-24"><h2 className="text-xl font-extrabold">Tu carrito</h2><div className="mt-4 divide-y divide-[#e5ebf2]">{selected.map((product) => <div className="flex items-center justify-between gap-4 py-3" key={product.id}><span className="font-semibold">{product.name}</span><strong className="shrink-0">× {cart[product.id]}</strong></div>)}</div><p className="mt-4 rounded-[10px] bg-[#eef5ff] p-3 text-sm font-semibold text-[#315170]">Los precios serán definidos por el comercial al preparar el presupuesto.</p>{challengeStartedAt ? <p className={`mt-3 rounded-[10px] p-3 text-sm font-bold ${challengeActive && challengeMinimumReached ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{!challengeActive ? "El temporizador del desafío venció." : challengeMinimumReached ? "Tu solicitud cumple el mínimo del Desafío Starlim." : "Sumá productos hasta alcanzar el mínimo interno de $150.000."}</p> : null}<button className="mt-5 w-full rounded-[11px] bg-[#075ac7] px-5 py-3.5 font-extrabold text-white disabled:opacity-50" disabled={submitting || Boolean(challengeStartedAt && (!challengeActive || !challengeMinimumReached))} type="submit">{submitting ? "Enviando…" : "Enviar pedido"}</button></aside>
     </form>}
   </section>;
 }

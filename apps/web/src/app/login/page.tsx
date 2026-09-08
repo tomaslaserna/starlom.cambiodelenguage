@@ -6,6 +6,7 @@ import { currentSession } from "@/lib/auth";
 import { getPublicClosedSalesCount } from "@/lib/public-metrics";
 import { safeLocalReturnPath } from "@/lib/safe-return-path";
 import { TestimonialsCarousel } from "./testimonials-carousel";
+import { CustomerWhatsAppButton } from "@/components/customer-whatsapp-button";
 
 type LoginPageProps = {
   searchParams: Promise<{
@@ -268,6 +269,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </div>
         </div>
       </section>
+      <CustomerWhatsAppButton />
     </main>
   );
 }

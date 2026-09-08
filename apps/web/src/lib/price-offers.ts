@@ -20,6 +20,7 @@ export type PriceOffer = {
   validTo: string | null;
   stockLimit: number | null;
   status: OfferStatus;
+  businessSegment: string;
   items: PriceOfferItem[];
 };
 
@@ -34,6 +35,7 @@ export type PriceOfferInput = {
   validFrom: string | null;
   validTo: string | null;
   stockLimit: number | null;
+  businessSegment: string;
   items: { productId: string; quantity: number }[];
 };
 
@@ -50,12 +52,13 @@ export async function listPriceOffers(companyId: number): Promise<PriceOffer[]> 
       valid_from: string | null;
       valid_to: string | null;
       stock_limit: number | null;
+      business_segment: string | null;
     }>(
       companyId,
       `
         SELECT id::text, name, active, price_mode,
                fixed_price::text, discount_percent::text, min_price::text,
-               valid_from::text AS valid_from, valid_to::text AS valid_to, stock_limit
+               valid_from::text AS valid_from, valid_to::text AS valid_to, stock_limit, business_segment
         FROM price_offers
         WHERE empresa_id = $1
         ORDER BY created_at DESC
@@ -105,6 +108,7 @@ export async function listPriceOffers(companyId: number): Promise<PriceOffer[]> 
     validFrom: row.valid_from,
     validTo: row.valid_to,
     stockLimit: row.stock_limit === null ? null : Number(row.stock_limit),
+    businessSegment: row.business_segment ?? "",
     status: computeOfferStatus(Boolean(row.active), row.valid_from, row.valid_to, today),
     items: itemsByOffer.get(row.id) ?? [],
   }));
@@ -144,8 +148,8 @@ export async function savePriceOffer(session: AuthSession, input: PriceOfferInpu
         `
           UPDATE price_offers
           SET name = $1, active = $2, price_mode = $3, fixed_price = $4, discount_percent = $5,
-              min_price = $6, valid_from = $7, valid_to = $8, stock_limit = $9
-          WHERE id = $10::uuid AND empresa_id = $11
+              min_price = $6, valid_from = $7, valid_to = $8, stock_limit = $9, business_segment = NULLIF($10, '')
+          WHERE id = $11::uuid AND empresa_id = $12
         `,
         [
           name,
@@ -157,6 +161,7 @@ export async function savePriceOffer(session: AuthSession, input: PriceOfferInpu
           input.validFrom,
           input.validTo,
           input.stockLimit,
+          input.businessSegment.trim(),
           offerId,
           session.companyId,
         ],
@@ -171,9 +176,9 @@ export async function savePriceOffer(session: AuthSession, input: PriceOfferInpu
         `
           INSERT INTO price_offers (
             empresa_id, name, active, price_mode, fixed_price, discount_percent, min_price,
-            valid_from, valid_to, stock_limit, created_by
+            valid_from, valid_to, stock_limit, business_segment, created_by
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NULLIF($11, ''), $12)
           RETURNING id::text
         `,
         [
@@ -187,6 +192,7 @@ export async function savePriceOffer(session: AuthSession, input: PriceOfferInpu
           input.validFrom,
           input.validTo,
           input.stockLimit,
+          input.businessSegment.trim(),
           session.username,
         ],
       );

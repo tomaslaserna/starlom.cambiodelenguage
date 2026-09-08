@@ -385,6 +385,7 @@ export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
     name: string;
     image_path: string | null;
     available: string;
+    estimated_price: string;
   }>(
     companyId,
     `SELECT p.id::text AS id,
@@ -393,9 +394,23 @@ export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
             s.display_name AS supplier,
             p.name,
             p.image_path,
-            COALESCE(stock.available, 0)::text AS available
+            COALESCE(stock.available, 0)::text AS available,
+            COALESCE(
+              NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(anchor_margin.multiplicador, 1), 2), 0),
+              NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
+              p.sale_price, p.cost, 0
+            )::text AS estimated_price
        FROM products p
        LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+       LEFT JOIN margenes m ON m.empresa_id = p.empresa_id AND m.codigo = ${productMarginCodeExpression("p")}
+       LEFT JOIN listas_precio anchor_list
+         ON anchor_list.empresa_id = p.empresa_id
+        AND anchor_list.nombre ILIKE 'L2%ANCLA%'
+        AND anchor_list.activa = 1
+       LEFT JOIN margenes_listas anchor_margin
+         ON anchor_margin.empresa_id = p.empresa_id
+        AND anchor_margin.lista_id = anchor_list.id
+        AND anchor_margin.codigo = ${productMarginCodeExpression("p")}
        LEFT JOIN LATERAL (
          SELECT SUM(
            CASE
@@ -419,6 +434,7 @@ export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
     supplier: row.supplier ?? "",
     name: row.name,
     imageUrl: row.image_path ? publicProductImageUrl(row.image_path) : null,
+    estimatedPrice: Number(row.estimated_price ?? 0),
     availability: Number(row.available) <= 0 ? "out" as const : Number(row.available) <= 5 ? "check" as const : "available" as const,
   }));
 }

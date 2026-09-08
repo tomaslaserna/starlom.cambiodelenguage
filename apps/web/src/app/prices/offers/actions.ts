@@ -42,6 +42,7 @@ export async function savePriceOfferAction(formData: FormData) {
     validFrom: String(formData.get("validFrom") ?? "").trim() || null,
     validTo: String(formData.get("validTo") ?? "").trim() || null,
     stockLimit: stockRaw ? Math.trunc(Number(stockRaw)) : null,
+    businessSegment: String(formData.get("businessSegment") ?? "").trim(),
     items: parseItems(String(formData.get("itemsJson") ?? "[]")),
   };
   await savePriceOffer(session, input);

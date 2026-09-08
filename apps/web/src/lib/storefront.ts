@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/api-response";
 import { withCompanyContext } from "@/lib/db";
+import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
 
 const COMPANY_ID = 1;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -23,11 +24,20 @@ export type StorefrontRequest = {
   latitude: number | null;
   longitude: number | null;
   notes: string;
+  challengeStartedAt: string;
   items: StorefrontLine[];
 };
 
 function clean(value: unknown, max = 180) {
   return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, max);
+}
+
+function geographicDistanceKm(latitude: number, longitude: number, targetLatitude: number, targetLongitude: number) {
+  const radians = (degrees: number) => degrees * Math.PI / 180;
+  const dLat = radians(latitude - targetLatitude);
+  const dLon = radians(longitude - targetLongitude);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(targetLatitude)) * Math.cos(radians(latitude)) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export function parseStorefrontRequest(value: unknown): StorefrontRequest {
@@ -50,6 +60,7 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
     currentSupplier: clean(body.currentSupplier), supplierCount: clean(body.supplierCount, 40),
     address: clean(body.address, 300), city: clean(body.city),
     province: clean(body.province), notes: clean(body.notes, 1000), items,
+    challengeStartedAt: clean(body.challengeStartedAt, 40),
     latitude: Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
     longitude: Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
   };
@@ -62,12 +73,35 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
 export async function createStorefrontRequest(input: StorefrontRequest, portalClientId = "") {
   return withCompanyContext(COMPANY_ID, async (client) => {
     const productIds = input.items.map((item) => item.productId);
-    const products = await client.query<{ id: string; name: string }>(
-      `SELECT id::text, name FROM products WHERE empresa_id = $1 AND active = true AND id = ANY($2::uuid[])`,
+    const products = await client.query<{ id: string; name: string; estimated_price: string }>(
+      `SELECT p.id::text, p.name,
+              COALESCE(
+                NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(anchor_margin.multiplicador, 1), 2), 0),
+                NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
+                p.sale_price, p.cost, 0
+              )::text AS estimated_price
+         FROM products p
+         LEFT JOIN margenes m ON m.empresa_id=p.empresa_id AND m.codigo=${productMarginCodeExpression("p")}
+         LEFT JOIN listas_precio anchor_list ON anchor_list.empresa_id=p.empresa_id AND anchor_list.nombre ILIKE 'L2%ANCLA%' AND anchor_list.activa=1
+         LEFT JOIN margenes_listas anchor_margin ON anchor_margin.empresa_id=p.empresa_id AND anchor_margin.lista_id=anchor_list.id AND anchor_margin.codigo=${productMarginCodeExpression("p")}
+        WHERE p.empresa_id = $1 AND p.active = true AND p.id = ANY($2::uuid[])`,
       [COMPANY_ID, productIds],
     );
     const byId = new Map(products.rows.map((product) => [product.id, product.name]));
     if (byId.size !== new Set(productIds).size) throw new ApiError(400, "Uno de los productos ya no está disponible");
+    const estimatedById = new Map(products.rows.map((product) => [product.id, Number(product.estimated_price)]));
+    const estimatedAmount = input.items.reduce((sum, item) => sum + (estimatedById.get(item.productId) ?? 0) * item.quantity, 0);
+    const challengeStart = input.challengeStartedAt ? new Date(input.challengeStartedAt) : null;
+    const challengeRequested = Boolean(challengeStart && Number.isFinite(challengeStart.getTime()));
+    const challengeDistance = input.latitude !== null && input.longitude !== null
+      ? geographicDistanceKm(input.latitude, input.longitude, -31.4201, -64.1888) : null;
+    const challengeExpiresAt = challengeRequested ? new Date(challengeStart!.getTime() + 15 * 60_000) : null;
+    const challengeEligible = Boolean(challengeRequested
+      && challengeStart!.getTime() <= Date.now() + 60_000
+      && challengeExpiresAt!.getTime() >= Date.now()
+      && challengeDistance !== null && challengeDistance <= 12
+      && estimatedAmount >= 150_000);
+    if (challengeRequested && !challengeEligible) throw new ApiError(400, "El Desafío Starlim venció o no cumple ubicación y compra mínima");
 
     const seller = (await client.query<{ id: string; identity: string }>(
       `SELECT p.id::text, COALESCE(NULLIF(p.full_name, ''), NULLIF(p.username, ''), '') AS identity
@@ -88,7 +122,7 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
     const location = input.latitude !== null && input.longitude !== null
       ? `Ubicación: ${input.latitude.toFixed(6)}, ${input.longitude.toFixed(6)}` : "Ubicación: carga manual";
     const cartText = input.items.map((item) => `${item.quantity} x ${byId.get(item.productId)}`).join("\n");
-    const leadNotes = [`Solicitud web ${quoteNumber}`, `Marca: ${input.brand || "-"}`, input.companyName && `Negocio informado: ${input.companyName}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || input.businessType || "-"}`, input.usualPurchases.length && `Compra habitualmente: ${input.usualPurchases.join(", ")}`, input.currentSupplier && `Proveedor actual: ${input.currentSupplier}`, input.supplierCount && `Cantidad de proveedores: ${input.supplierCount}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
+    const leadNotes = [`Solicitud web ${quoteNumber}`, challengeEligible && `DESAFÍO STARLIM validado · estimado $${estimatedAmount.toFixed(2)} · distancia ${challengeDistance!.toFixed(2)} km`, `Marca: ${input.brand || "-"}`, input.companyName && `Negocio informado: ${input.companyName}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || input.businessType || "-"}`, input.usualPurchases.length && `Compra habitualmente: ${input.usualPurchases.join(", ")}`, input.currentSupplier && `Proveedor actual: ${input.currentSupplier}`, input.supplierCount && `Cantidad de proveedores: ${input.supplierCount}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
 
     const portalClient = portalClientId ? (await client.query<{ id: string; name: string; legal_name: string; tax_id: string; phone: string; address: string; fiscal_condition: string }>(`SELECT id::text, display_name AS name, COALESCE(legal_name,'') AS legal_name, COALESCE(tax_id,'') AS tax_id, COALESCE(phone,'') AS phone, COALESCE(address,'') AS address, COALESCE(fiscal_condition,'') AS fiscal_condition FROM clients WHERE empresa_id=$1 AND id=$2::uuid`, [COMPANY_ID, portalClientId])).rows[0] : null;
     const lead = portalClient ? null : await client.query<{ id: string }>(
@@ -100,10 +134,11 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
       `INSERT INTO quotes (quote_number, client_id, seller_id, status, total_amount, validity_days, include_vat, vat_rate,
         desired_document, active_price_list, price_list_name, discount_percent, net_amount, discount_amount, subtotal_amount,
         vat_amount, client_name, client_legal_name, client_document, client_fiscal_condition, client_phone, client_address,
-        empresa_id, visible_to_all)
-       VALUES ($1,$9::uuid,$2::uuid,'pendiente',0,15,false,0,'remito',1,'A cotizar',0,0,0,0,0,$3,$4,$5,$10,$6,$7,$8,true)
+        empresa_id, visible_to_all, storefront_challenge_started_at, storefront_challenge_expires_at,
+        storefront_challenge_eligible, storefront_estimated_amount, storefront_distance_km)
+       VALUES ($1,$9::uuid,$2::uuid,'pendiente',0,15,false,0,'remito',1,'A cotizar',0,0,0,0,0,$3,$4,$5,$10,$6,$7,$8,true,$11,$12,$13,$14,$15)
        RETURNING id::text`,
-      [quoteNumber, seller.id, portalClient?.name || input.brand || input.name, portalClient?.legal_name || input.businessName, portalClient?.tax_id || input.taxId, portalClient?.phone || input.phone, portalClient?.address || fullAddress, COMPANY_ID, portalClient?.id || null, portalClient?.fiscal_condition || ""],
+      [quoteNumber, seller.id, portalClient?.name || input.brand || input.name, portalClient?.legal_name || input.businessName, portalClient?.tax_id || input.taxId, portalClient?.phone || input.phone, portalClient?.address || fullAddress, COMPANY_ID, portalClient?.id || null, portalClient?.fiscal_condition || "", challengeStart, challengeExpiresAt, challengeEligible, estimatedAmount, challengeDistance],
     );
     for (const item of input.items) {
       await client.query(

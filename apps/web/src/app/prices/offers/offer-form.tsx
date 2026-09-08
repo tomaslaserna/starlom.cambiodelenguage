@@ -5,6 +5,7 @@ import { Button, Field, Input, SearchableSelect, Select } from "@/components/ui"
 import { formatNumber } from "@/lib/format";
 import type { OrderFormProduct } from "@/lib/orders";
 import type { PriceOffer } from "@/lib/price-offers";
+import { CUSTOMER_BUSINESS_SEGMENTS } from "@/lib/customer-segments";
 
 type ComboItem = { productId: string; name: string; code: string; quantity: number };
 
@@ -76,6 +77,12 @@ export function OfferForm({
           <input defaultChecked={offer?.active ?? true} name="active" type="checkbox" />
           <span>Oferta activa</span>
         </label>
+        <Field htmlFor={`offer-segment-${idSuffix}`} label="Rubro recomendado en tienda">
+          <Select defaultValue={offer?.businessSegment ?? ""} id={`offer-segment-${idSuffix}`} name="businessSegment">
+            <option value="">Todos los rubros</option>
+            {CUSTOMER_BUSINESS_SEGMENTS.map((segment) => <option key={segment} value={segment}>{segment}</option>)}
+          </Select>
+        </Field>
       </div>
 
       {/* Armador de combo */}

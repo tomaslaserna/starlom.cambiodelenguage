@@ -1189,12 +1189,20 @@ test("public store creates a price-free cart and hands it to CRM as a lead plus 
   assert.match(client, /A la brevedad un comercial se contactará con usted/);
   assert.match(client, /navigator\.geolocation/);
   assert.match(client, /Dirección completa/);
+  assert.match(client, /Conocé nuestros combos/);
+  assert.match(client, /Desafío Starlim/);
+  assert.match(client, /CHALLENGE_SECONDS = 15 \* 60/);
+  assert.match(client, /CHALLENGE_MINIMUM = 150_000/);
+  assert.match(client, /CIRCUNVALACION_RADIUS_KM = 12/);
   assert.doesNotMatch(client, /formatCurrency|unitPrice|precio[^s]/i);
   assert.match(storefront, /INSERT INTO crm_leads/);
   assert.match(storefront, /INSERT INTO quotes/);
   assert.match(storefront, /INSERT INTO quote_items/);
   assert.match(storefront, /withCompanyContext/);
+  assert.match(storefront, /storefront_challenge_eligible/);
+  assert.match(storefront, /estimatedAmount >= 150_000/);
   assert.match(route, /parseStorefrontRequest/);
+  assert.match(page, /CustomerWhatsAppButton/);
   assert.doesNotMatch(route, /requireApiSession/);
 });
 
