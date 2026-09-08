@@ -23,7 +23,7 @@ export async function processPortalPayment(payment: MercadoPagoPayment, companyI
     }
     if (Math.abs(Number(payment.transaction_amount) - Number(intent.amount)) > 0.01) throw new Error("Mercado Pago amount mismatch");
 
-    const created = await client.query<{ id: string }>(`INSERT INTO payments (client_id,payment_date,amount,method,reference,status,registered_by,entity_type,entity_name,concept,notes,empresa_id) SELECT $1::uuid,CURRENT_DATE,$2,'transferencia',$3,'registrado',$4::uuid,'cliente',COALESCE(c.display_name,''),'Cobro Mercado Pago','Acreditado automáticamente por Mercado Pago',$5 FROM clients c WHERE c.id=$1::uuid AND c.empresa_id=$5 RETURNING id::text`, [intent.client_id, intent.amount, `Mercado Pago #${paymentReference}`, intent.portal_user_id, companyId]);
+    const created = await client.query<{ id: string }>(`INSERT INTO payments (client_id,payment_date,amount,method,reference,status,entity_type,entity_name,concept,notes,empresa_id) SELECT $1::uuid,CURRENT_DATE,$2,'transferencia',$3,'registrado','cliente',COALESCE(c.display_name,''),'Cobro Mercado Pago','Acreditado automáticamente por Mercado Pago',$4 FROM clients c WHERE c.id=$1::uuid AND c.empresa_id=$4 RETURNING id::text`, [intent.client_id, intent.amount, `Mercado Pago #${paymentReference}`, companyId]);
     const paymentId = created.rows[0]?.id;
     if (!paymentId) throw new Error("Customer not found");
 
@@ -41,7 +41,7 @@ export async function processPortalPayment(payment: MercadoPagoPayment, companyI
     const unallocated = Math.max(0, Number(intent.amount) - applied);
     if (unallocated > 0.005) await client.query(`INSERT INTO current_account_movements (client_id,payment_id,movement_date,debit,credit,description,entity_type,entity_name,empresa_id) SELECT $1::uuid,$2::uuid,CURRENT_DATE,0,$3,$4,'cliente',COALESCE(display_name,''),$5 FROM clients WHERE id=$1::uuid AND empresa_id=$5`, [intent.client_id, paymentId, unallocated, `Saldo a favor Mercado Pago #${paymentReference}`, companyId]);
     await client.query(`UPDATE customer_portal_payment_intents SET status='approved',mp_payment_id=$1,approved_at=now(),updated_at=now() WHERE id=$2::uuid AND empresa_id=$3`, [paymentReference, intentId, companyId]);
-    await client.query(`INSERT INTO audit_log (actor_id,action,entity_table,entity_id,new_data,empresa_id) VALUES ($1::uuid,'customer_payment.mercadopago_approved','payments',$2::uuid,$3::jsonb,$4)`, [intent.portal_user_id, paymentId, JSON.stringify({ mpPaymentId: paymentReference, intentId }), companyId]);
+    await client.query(`INSERT INTO audit_log (action,entity_table,entity_id,new_data,empresa_id) VALUES ('customer_payment.mercadopago_approved','payments',$1::uuid,$2::jsonb,$3)`, [paymentId, JSON.stringify({ mpPaymentId: paymentReference, intentId, portalUserId: intent.portal_user_id }), companyId]);
     return "approved";
   });
 }
