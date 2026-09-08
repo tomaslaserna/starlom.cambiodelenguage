@@ -4,7 +4,7 @@ export function CustomerWhatsAppButton() {
     <a
       aria-label="Hablar con atención al cliente por WhatsApp"
       className="fixed bottom-5 right-5 z-50 grid size-14 place-items-center rounded-full bg-[#25d366] text-white shadow-[0_10px_30px_rgba(17,94,55,.35)] transition hover:-translate-y-1 hover:bg-[#20bd5a] focus:outline-none focus:ring-4 focus:ring-[#25d366]/30"
-      href={`https://wa.me/5493512003500?text=${message}`}
+      href={`https://wa.me/5493543683594?text=${message}`}
       rel="noreferrer"
       target="_blank"
       title="¿Necesitás ayuda? Escribinos por WhatsApp"
