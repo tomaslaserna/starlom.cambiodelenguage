@@ -73,12 +73,15 @@ test("getCustomerStatement trae todos los movimientos ordenados y delega el cort
 
 test("customerPaymentFromBody valida monto, metodo y operacion", () => {
   const mod = loadCustomerAccounts();
-  assert.throws(() => mod.customerPaymentFromBody({ amount: "0", method: "efectivo", destination: "caja" }), /mayor a cero/);
-  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "bitcoin", destination: "caja" }), /Metodo/);
-  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "transferencia", destination: "banco" }), /operacion/i);
-  const ok = mod.customerPaymentFromBody({ amount: "10", method: "efectivo", destination: "caja", clientId: "c1" });
+  const allocation = JSON.stringify([{ saleId: "11111111-1111-4111-8111-111111111111", amount: 10 }]);
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "0", method: "efectivo", destination: "caja", allocations: allocation }), /mayor a cero/);
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "bitcoin", destination: "caja", allocations: allocation }), /Metodo/);
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "transferencia", destination: "banco", allocations: allocation }), /operacion/i);
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "efectivo", destination: "caja", allocations: "[]" }), /remito/i);
+  const ok = mod.customerPaymentFromBody({ amount: "10", method: "efectivo", destination: "caja", clientId: "c1", allocations: allocation });
   assert.equal(ok.amount, 10);
   assert.equal(ok.method, "efectivo");
+  assert.deepEqual(ok.allocations, [{ saleId: "11111111-1111-4111-8111-111111111111", amount: 10 }]);
 });
 
 test("registerCustomerPayment: admin registra directo, vendedor deja pendiente", async () => {
@@ -127,6 +130,20 @@ test("approveCustomerPayment inserta el credito y pasa a registrado", () => {
   assert.match(source, /export async function approveCustomerPayment/);
   assert.match(source, /INSERT INTO current_account_movements/);
   assert.match(source, /pendiente_aprobacion/);
+});
+
+test("la registracion conserva la imputacion elegida para pagos pendientes", () => {
+  assert.match(source, /customer_payment_allocation_requests/);
+  assert.match(source, /requested_amount/);
+  assert.match(source, /validateExplicitAllocations/);
+});
+
+test("el formulario permite elegir remitos e importes parciales", () => {
+  const dialog = readFileSync(new URL("../src/app/payments/register-payment-dialog.tsx", import.meta.url), "utf8");
+  assert.match(dialog, /open-remittances/);
+  assert.match(dialog, /Aplicar a remitos pendientes/);
+  assert.match(dialog, /importe parcial/i);
+  assert.match(dialog, /name="allocations"/);
 });
 
 const approvalsSource = readFileSync(new URL("../src/lib/approvals.ts", import.meta.url), "utf8");

@@ -380,6 +380,17 @@ const PAYMENT_METHODS = new Set<string>(COLLECTION_METHODS);
 export type CustomerPaymentInput = {
   clientId: string; amount: number; date: string; method: string;
   destination: string; operation: string; notes: string;
+  allocations: CustomerPaymentAllocation[];
+};
+
+export type CustomerPaymentAllocation = { saleId: string; amount: number };
+
+export type OpenCustomerRemittance = {
+  saleId: string;
+  number: string;
+  date: string;
+  total: number;
+  outstanding: number;
 };
 
 type OpenSaleForAllocation = {
@@ -387,6 +398,73 @@ type OpenSaleForAllocation = {
   outstanding: string;
   receipt_number: number;
 };
+
+const OPEN_SALES_FOR_ALLOCATION_SQL = `
+  SELECT s.id::text AS id,
+         GREATEST(
+           COALESCE(s.total_amount, 0)
+           + COALESCE(movements.debit_notes, 0)
+           - COALESCE(movements.total_credit, 0),
+           0
+         )::text AS outstanding,
+         COALESCE(
+           s.receipt_number,
+           NULLIF(regexp_replace(COALESCE(s.sale_number, ''), '\\D', '', 'g'), '')::bigint,
+           0
+         )::int AS receipt_number,
+         COALESCE(NULLIF(s.sale_number, ''), 'Remito #' || COALESCE(
+           s.receipt_number,
+           NULLIF(regexp_replace(COALESCE(s.sale_number, ''), '\\D', '', 'g'), '')::bigint,
+           0
+         )::text) AS sale_number,
+         s.sale_date::text AS sale_date,
+         COALESCE(s.total_amount, 0)::text AS total
+  FROM sales s
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
+           COALESCE(SUM(cam.debit) FILTER (
+             WHERE cam.description ILIKE 'nota de debito%'
+                OR cam.description ILIKE 'anulacion de cobro%'
+           ), 0) AS debit_notes
+    FROM current_account_movements cam
+    WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
+  ) movements ON true
+  WHERE s.empresa_id = $1
+    AND s.client_id = $2::uuid
+    AND COALESCE(s.order_status, s.status, 'cargado') IN ('entregado')
+    AND COALESCE(s.collection_status, 'pendiente') IN (
+      'pendiente', 'vencido', 'pendiente_aprobacion', 'en_proceso'
+    )
+    AND (
+      s.source_sheet IS NULL OR s.source_sheet = ''
+      OR s.source_sheet = '12lzgmYiRh-sIAFv-EnhPVnbAfZMuNZYi8uwTj-ooJIE:ENTREGAS MACRO'
+      OR (s.sale_date < DATE '2026-07-01' AND s.source_sheet = '1Ocl4Y9gcTS5LqNIePCebV3mtgYk7v6pa5Vy8uHDc75M:VENTAS ANUAL')
+    )
+    AND GREATEST(
+      COALESCE(s.total_amount, 0)
+      + COALESCE(movements.debit_notes, 0)
+      - COALESCE(movements.total_credit, 0),
+      0
+    ) > 0.005
+`;
+
+export async function listOpenCustomerRemittances(companyId: number, clientId: string): Promise<OpenCustomerRemittance[]> {
+  const rows = await queryWithCompanyContext<OpenSaleForAllocation & {
+    sale_number: string; sale_date: string; total: string;
+  }>(
+    companyId,
+    `${OPEN_SALES_FOR_ALLOCATION_SQL} ORDER BY s.sale_date ASC, s.created_at ASC, s.id ASC`,
+    [companyId, clientId],
+    { cache: false },
+  );
+  return rows.rows.map((row) => ({
+    saleId: row.id,
+    number: row.sale_number,
+    date: row.sale_date,
+    total: Number(row.total),
+    outstanding: Number(row.outstanding),
+  }));
+}
 
 export function allocatePaymentAmount(
   amount: number,
@@ -405,6 +483,30 @@ export function allocatePaymentAmount(
   return { allocations, allocated: money(amount - remaining), unallocated: remaining };
 }
 
+function validateExplicitAllocations(
+  amount: number,
+  requestedAllocations: CustomerPaymentAllocation[],
+  sales: OpenSaleForAllocation[],
+) {
+  const byId = new Map(sales.map((sale) => [sale.id, sale]));
+  if (byId.size !== requestedAllocations.length) {
+    throw new ApiError(409, "Uno de los remitos seleccionados ya no tiene saldo pendiente");
+  }
+  const allocations = requestedAllocations.map((requested) => {
+    const sale = byId.get(requested.saleId)!;
+    const outstanding = money(Number(sale.outstanding));
+    if (requested.amount - outstanding > 0.005) {
+      throw new ApiError(409, `El importe aplicado al remito #${String(sale.receipt_number).padStart(4, "0")} supera su saldo pendiente`);
+    }
+    return { saleId: sale.id, receiptNumber: sale.receipt_number, amount: money(requested.amount) };
+  });
+  const allocated = money(allocations.reduce((sum, item) => sum + item.amount, 0));
+  if (Math.abs(allocated - amount) > 0.005) {
+    throw new ApiError(400, "El total del pago debe coincidir con lo imputado a los remitos");
+  }
+  return { allocations, allocated, unallocated: 0 };
+}
+
 async function postAllocatedCustomerPayment(
   client: PoolClient,
   companyId: number,
@@ -415,63 +517,28 @@ async function postAllocatedCustomerPayment(
     date: string;
     description: string;
     clientName: string;
+    allocations?: CustomerPaymentAllocation[];
   },
 ) {
+  const requestedIds = input.allocations?.map((item) => item.saleId) ?? [];
   const sales = await client.query<OpenSaleForAllocation>(
-    `
-      SELECT s.id::text AS id,
-             GREATEST(
-               COALESCE(s.total_amount, 0)
-               + COALESCE(movements.debit_notes, 0)
-               - COALESCE(movements.total_credit, 0),
-               0
-             )::text AS outstanding,
-             COALESCE(
-               s.receipt_number,
-               NULLIF(regexp_replace(COALESCE(s.sale_number, ''), '\\D', '', 'g'), '')::bigint,
-               0
-             )::int AS receipt_number
-      FROM sales s
-      LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
-               COALESCE(SUM(cam.debit) FILTER (
-                 WHERE cam.description ILIKE 'nota de debito%'
-                    OR cam.description ILIKE 'anulacion de cobro%'
-               ), 0) AS debit_notes
-        FROM current_account_movements cam
-        WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
-      ) movements ON true
-      WHERE s.empresa_id = $1
-        AND s.client_id = $2::uuid
-        AND COALESCE(s.order_status, s.status, 'cargado') IN ('entregado')
-        AND COALESCE(s.collection_status, 'pendiente') IN (
-          'pendiente', 'vencido', 'pendiente_aprobacion', 'en_proceso'
-        )
-        AND (
-          s.source_sheet IS NULL OR s.source_sheet = ''
-          OR s.source_sheet = '12lzgmYiRh-sIAFv-EnhPVnbAfZMuNZYi8uwTj-ooJIE:ENTREGAS MACRO'
-          OR (s.sale_date < DATE '2026-07-01' AND s.source_sheet = '1Ocl4Y9gcTS5LqNIePCebV3mtgYk7v6pa5Vy8uHDc75M:VENTAS ANUAL')
-        )
-        AND GREATEST(
-          COALESCE(s.total_amount, 0)
-          + COALESCE(movements.debit_notes, 0)
-          - COALESCE(movements.total_credit, 0),
-          0
-        ) > 0.005
+    `${OPEN_SALES_FOR_ALLOCATION_SQL}
+      ${requestedIds.length ? "AND s.id = ANY($3::uuid[])" : ""}
       ORDER BY s.sale_date ASC, s.created_at ASC, s.id ASC
-      FOR UPDATE OF s
-    `,
-    [companyId, input.clientId],
+      FOR UPDATE OF s`,
+    requestedIds.length ? [companyId, input.clientId, requestedIds] : [companyId, input.clientId],
   );
 
-  const allocation = allocatePaymentAmount(
-    input.amount,
-    sales.rows.map((sale) => ({
-      id: sale.id,
-      outstanding: Number(sale.outstanding),
-      receiptNumber: sale.receipt_number,
-    })),
-  );
+  let allocation: ReturnType<typeof allocatePaymentAmount>;
+  if (input.allocations) {
+    allocation = validateExplicitAllocations(input.amount, input.allocations, sales.rows);
+  } else {
+    // Compatibilidad exclusiva para cobros pendientes creados antes de esta mejora.
+    allocation = allocatePaymentAmount(
+      input.amount,
+      sales.rows.map((sale) => ({ id: sale.id, outstanding: Number(sale.outstanding), receiptNumber: sale.receipt_number })),
+    );
+  }
   for (const item of allocation.allocations) {
     await client.query(
       `
@@ -515,12 +582,36 @@ export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput
   const notes = textField(body, "notes") || textField(body, "notas");
   const date = textField(body, "date") || textField(body, "fecha") || localDateIso();
 
+  let allocations: CustomerPaymentAllocation[] = [];
+  try {
+    const parsed = JSON.parse(textField(body, "allocations") || "[]") as unknown;
+    if (!Array.isArray(parsed)) throw new Error("invalid");
+    const seen = new Set<string>();
+    allocations = parsed.map((item) => {
+      if (!item || typeof item !== "object") throw new Error("invalid");
+      const saleId = String((item as { saleId?: unknown }).saleId ?? "");
+      const allocationAmount = money(Number((item as { amount?: unknown }).amount));
+      if (!/^[0-9a-fA-F-]{36}$/.test(saleId) || allocationAmount <= 0 || seen.has(saleId)) {
+        throw new Error("invalid");
+      }
+      seen.add(saleId);
+      return { saleId, amount: allocationAmount };
+    });
+  } catch {
+    throw new ApiError(400, "La imputacion de remitos no es valida");
+  }
+
   if (amount <= 0) throw new ApiError(400, "El monto debe ser mayor a cero");
   if (!PAYMENT_METHODS.has(method)) throw new ApiError(400, "Metodo de cobro invalido");
   if (!destination) throw new ApiError(400, "El destino es obligatorio");
   if (collectionMethodRequiresOperation(method) && !operation) throw new ApiError(400, "La operacion es obligatoria");
+  if (!allocations.length) throw new ApiError(400, "Selecciona al menos un remito para aplicar el pago");
+  const allocatedTotal = money(allocations.reduce((sum, item) => sum + item.amount, 0));
+  if (Math.abs(allocatedTotal - amount) > 0.005) {
+    throw new ApiError(400, "El total del pago debe coincidir con lo imputado a los remitos");
+  }
 
-  return { clientId, amount, date, method, destination, operation, notes };
+  return { clientId, amount, date, method, destination, operation, notes, allocations };
 }
 
 export async function registerCustomerPayment(session: AuthSession, input: CustomerPaymentInput) {
@@ -536,6 +627,16 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
     if (clientInfo.rows.length === 0) throw new ApiError(404, "Cliente no encontrado");
     const clientName = clientInfo.rows[0]?.name ?? "";
     const reference = [input.operation, input.notes].filter(Boolean).join(" | ");
+    const explicitAllocations = input.allocations ?? [];
+    if (explicitAllocations.length) {
+      const selectedSales = await client.query<OpenSaleForAllocation>(
+        `${OPEN_SALES_FOR_ALLOCATION_SQL}
+         AND s.id = ANY($3::uuid[])
+         ORDER BY s.sale_date ASC, s.created_at ASC, s.id ASC`,
+        [session.companyId, input.clientId, explicitAllocations.map((item) => item.saleId)],
+      );
+      validateExplicitAllocations(input.amount, explicitAllocations, selectedSales.rows);
+    }
 
     const payment = await client.query(
       `
@@ -553,6 +654,15 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
     );
     const paymentId = payment.rows[0].id as string;
 
+    for (const requested of explicitAllocations) {
+      await client.query(
+        `INSERT INTO customer_payment_allocation_requests (
+           empresa_id, payment_id, sale_id, requested_amount
+         ) VALUES ($1, $2::uuid, $3::uuid, $4)`,
+        [session.companyId, paymentId, requested.saleId, requested.amount],
+      );
+    }
+
     let allocation = { allocated: 0, unallocated: input.amount };
     if (status === "registrado") {
       allocation = await postAllocatedCustomerPayment(client, session.companyId, {
@@ -562,6 +672,7 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
         date: input.date,
         description: `Cobro - ${input.method} | Destino ${input.destination} | ${reference}`.trim(),
         clientName,
+        allocations: explicitAllocations.length ? explicitAllocations : undefined,
       });
     }
 
@@ -618,6 +729,14 @@ export async function approveCustomerPayment(session: AuthSession, paymentId: st
     const payment = found.rows[0];
     if (!payment) throw new ApiError(409, "El pago ya no esta pendiente de aprobacion");
 
+    const requested = await client.query<{ sale_id: string; amount: string }>(
+      `SELECT sale_id::text AS sale_id, requested_amount::text AS amount
+       FROM customer_payment_allocation_requests
+       WHERE empresa_id = $1 AND payment_id = $2::uuid
+       ORDER BY created_at ASC, id ASC`,
+      [session.companyId, paymentId],
+    );
+
     const allocation = await postAllocatedCustomerPayment(client, session.companyId, {
       clientId: payment.client_id,
       paymentId,
@@ -625,6 +744,9 @@ export async function approveCustomerPayment(session: AuthSession, paymentId: st
       date: localDateIso(),
       description: `Cobro aprobado - ${payment.method} | ${payment.reference}`.trim(),
       clientName: payment.entity_name,
+      allocations: requested.rows.length
+        ? requested.rows.map((item) => ({ saleId: item.sale_id, amount: Number(item.amount) }))
+        : undefined,
     });
     await client.query(
       `UPDATE payments SET status = 'registrado', updated_at = now() WHERE id = $1::uuid AND empresa_id = $2`,
