@@ -9,6 +9,10 @@ test("portal replaces manual proof review with multi-document Mercado Pago check
   assert.match(portal, /Seleccioná qué querés pagar/);
   assert.match(portal, /selectedSales/);
   assert.match(portal, /Generar QR de Mercado Pago/);
+  assert.match(portal, /setCheckoutLoading/);
+  assert.match(portal, /resultado-pago/);
+  assert.match(portal, /scrollIntoView/);
+  assert.match(portal, /QR generado correctamente/);
   assert.doesNotMatch(portal, /Enviar a revisión|Informar un pago|Adjuntá el comprobante/);
 });
 

@@ -37,6 +37,7 @@ export function PortalApp() {
   const [branch, setBranch] = useState("");
   const [selectedSales, setSelectedSales] = useState<string[]>([]);
   const [checkout, setCheckout] = useState<{ amount: number; checkoutUrl: string; qrDataUrl: string } | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   useEffect(() => {
     if (!client) return;
@@ -53,6 +54,11 @@ export function PortalApp() {
       .catch((cause) => setError(cause instanceof Error ? cause.message : "No pudimos cargar tu cuenta"))
       .finally(() => setLoading(false));
   }, [session]);
+
+  useEffect(() => {
+    if (!checkout) return;
+    window.requestAnimationFrame(() => document.getElementById("resultado-pago")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }, [checkout]);
 
   async function requestAccess(event: FormEvent) {
     event.preventDefault(); setError(""); setMessage("");
@@ -109,14 +115,14 @@ export function PortalApp() {
 
   async function createCheckout() {
     if (!session || !branch || !selectedSales.length) return;
-    setLoading(true); setError(""); setMessage(""); setCheckout(null);
+    setCheckoutLoading(true); setError(""); setMessage(""); setCheckout(null);
     try {
       const response = await fetch("/api/portal/checkout", { method: "POST", headers: { authorization: `Bearer ${session.access_token}`, "content-type": "application/json" }, body: JSON.stringify({ clientId: branch, saleIds: selectedSales }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "No pudimos iniciar el pago");
       setCheckout(payload.data);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos iniciar el pago"); }
-    finally { setLoading(false); }
+    finally { setCheckoutLoading(false); }
   }
 
   async function savePreferences(key: keyof Summary["preferences"], checked: boolean) {
@@ -149,7 +155,7 @@ export function PortalApp() {
       <div className="scroll-mt-5" id="pedidos"><PortalDocumentTable title="Historial de pedidos" empty="Todavía no hay pedidos para esta sucursal." rows={sales.map((sale) => ({ id: sale.id, cells: [sale.date, sale.number || "Pedido", sale.status, money.format(Number(sale.total))] }))} onOpen={(id) => openDocument(`/api/portal/documents/orders/${id}`)} /></div>
       <div className="scroll-mt-5" id="facturas"><PortalDocumentTable title="Facturas" empty="Todavía no hay facturas emitidas para esta sucursal." rows={invoices.map((invoice) => ({ id: invoice.id, cells: [invoice.date, `Factura ${invoice.number}`, money.format(Number(invoice.total))] }))} onOpen={(id) => openDocument(`/api/portal/documents/invoices/${id}`)} /></div>
       <div className="scroll-mt-5" id="pagos"><PortalTable title="Pagos realizados y registrados" empty="No hay pagos aprobados registrados." rows={payments.map((payment) => [payment.date, payment.description, `Pago ${money.format(Number(payment.amount))}`])} /></div>
-      <PaymentCheckout checkout={checkout} loading={loading} onCreate={createCheckout} onToggle={(id) => { setCheckout(null); setSelectedSales((current) => { const position = payableSales.findIndex((sale) => sale.id === id); return current.includes(id) ? payableSales.slice(0, position).map((sale) => sale.id) : payableSales.slice(0, position + 1).map((sale) => sale.id); }); }} sales={payableSales} selected={selectedSales} />
+      <PaymentCheckout checkout={checkout} loading={checkoutLoading} onCreate={createCheckout} onToggle={(id) => { setCheckout(null); setSelectedSales((current) => { const position = payableSales.findIndex((sale) => sale.id === id); return current.includes(id) ? payableSales.slice(0, position).map((sale) => sale.id) : payableSales.slice(0, position + 1).map((sale) => sale.id); }); }} sales={payableSales} selected={selectedSales} />
       <section className="scroll-mt-5 rounded-2xl border border-[#dbe5f1] bg-white p-5" id="preferencias"><h2 className="text-xl font-black">Avisos por correo</h2><p className="mt-1 text-sm text-[#64748b]">Elegí qué novedades querés recibir en {summary.profile.email}.</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><Preference checked={summary.preferences.notify_orders} label="Estado de pedidos" onChange={(v) => savePreferences("notify_orders", v)} /><Preference checked={summary.preferences.notify_invoices} label="Facturas y vencimientos" onChange={(v) => savePreferences("notify_invoices", v)} /><Preference checked={summary.preferences.notify_offers} label="Ofertas y novedades" onChange={(v) => savePreferences("notify_offers", v)} /></div></section>
       <section className="rounded-2xl border border-[#dbe5f1] bg-white p-5"><h2 className="text-xl font-black">Contraseña de acceso</h2><p className="mt-1 text-sm text-[#64748b]">Creala después de ingresar por primera vez o cambiala cuando quieras.</p><form className="mt-4 flex flex-wrap gap-3" onSubmit={savePassword}><input autoComplete="new-password" className="min-h-11 min-w-64 flex-1 rounded-xl border border-[#cbd8e8] px-4" minLength={8} onChange={(event) => setNewPassword(event.target.value)} placeholder="Nueva contraseña (mínimo 8 caracteres)" required type="password" value={newPassword} /><button className="min-h-11 rounded-xl bg-[#075ac7] px-5 font-bold text-white" type="submit">Guardar contraseña</button></form></section>
     </div> : null}</section>}
@@ -174,7 +180,7 @@ function PaymentCheckout({ sales, selected, checkout, loading, onToggle, onCreat
       return <label className="grid cursor-pointer items-center gap-3 px-5 py-4 hover:bg-[#f7faff] sm:grid-cols-[auto_1.2fr_1fr_1fr_auto]" key={sale.id}><input checked={selected.includes(sale.id)} className="size-5 accent-[#075ac7]" onChange={() => onToggle(sale.id)} type="checkbox" /><strong>{sale.invoice_number ? `Factura ${sale.invoice_number}` : sale.number || "Pedido"}</strong><span className="text-sm text-[#64748b]">{sale.date}</span><span><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold ${partiallyPaid ? "bg-amber-100 text-amber-800" : "bg-red-50 text-red-700"}`}>{partiallyPaid ? "Pago parcial" : "Impago"}</span>{partiallyPaid ? <small className="mt-1 block font-semibold text-[#64748b]">Original {money.format(Number(sale.total))}</small> : null}</span><strong className="text-red-600">{money.format(outstanding)}</strong></label>;
     })}{sales.length > 3 ? <ShowMoreButton expanded={showAll} hiddenCount={sales.length - 3} onClick={() => setShowAll((value) => !value)} /> : null}</div> : <p className="p-5 font-bold text-emerald-700">No tenés comprobantes pendientes para esta sucursal.</p>}
     {sales.length ? <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[#e4ebf3] bg-[#f8fbff] p-5"><div><span className="text-sm font-bold text-[#64748b]">Total seleccionado</span><strong className="block text-2xl font-black text-[#172033]">{money.format(total)}</strong></div><button className="min-h-12 rounded-xl bg-[#075ac7] px-6 font-extrabold text-white disabled:opacity-50" disabled={!selected.length || loading} onClick={onCreate} type="button">{loading ? "Preparando pago…" : "Generar QR de Mercado Pago"}</button></div> : null}
-    {checkout ? <div className="grid items-center gap-5 border-t border-[#bcd5ef] p-5 md:grid-cols-[auto_1fr]"><Image alt="QR para pagar con Mercado Pago" className="mx-auto size-56 rounded-2xl border border-[#dbe5f1]" height={224} src={checkout.qrDataUrl} unoptimized width={224} /><div><h3 className="text-xl font-black">Escaneá y pagá {money.format(checkout.amount)}</h3><p className="mt-2 text-sm text-[#64748b]">Al acreditarse, el pago se aplicará automáticamente a los comprobantes elegidos.</p><a className="mt-4 inline-flex min-h-12 items-center rounded-xl bg-[#009ee3] px-5 font-extrabold text-white" href={checkout.checkoutUrl} rel="noreferrer" target="_blank">Abrir Mercado Pago</a></div></div> : null}
+    {checkout ? <div aria-live="polite" className="scroll-mt-6 grid items-center gap-5 border-t border-[#bcd5ef] p-5 md:grid-cols-[auto_1fr]" id="resultado-pago" role="status"><Image alt="QR para pagar con Mercado Pago" className="mx-auto size-56 rounded-2xl border border-[#dbe5f1]" height={224} src={checkout.qrDataUrl} unoptimized width={224} /><div><h3 className="text-xl font-black">Escaneá y pagá {money.format(checkout.amount)}</h3><p className="mt-2 text-sm text-[#64748b]">QR generado correctamente. Al acreditarse, el pago se aplicará automáticamente a los comprobantes elegidos.</p><a className="mt-4 inline-flex min-h-12 items-center rounded-xl bg-[#009ee3] px-5 font-extrabold text-white" href={checkout.checkoutUrl} rel="noreferrer" target="_blank">Abrir Mercado Pago</a></div></div> : null}
   </section>;
 }
 
