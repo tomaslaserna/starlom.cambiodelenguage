@@ -96,9 +96,13 @@ type ListResult<T> = {
 };
 
 export type ProductStockTotals = {
+  units: number;
   outOfStock: number;
   negativeStock: number;
   inventoryValue: number;
+  withoutSupplier: number;
+  withoutImage: number;
+  incompleteData: number;
 };
 
 export type ProductsResult = ListResult<Product> & {
@@ -436,17 +440,30 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
   const where = filters.join(" AND ");
   const countResult = await queryWithCompanyContext<{
     total: string;
+    units: string;
     out_of_stock: string;
     negative_stock: string;
     inventory_value: string;
+    without_supplier: string;
+    without_image: string;
+    incomplete_data: string;
   }>(
     companyId,
     `
       SELECT
         COUNT(*)::text AS total,
+        COALESCE(SUM(COALESCE(stock.stock_real, 0)), 0)::text AS units,
         COUNT(*) FILTER (WHERE COALESCE(stock.stock_real, 0) = 0)::text AS out_of_stock,
         COUNT(*) FILTER (WHERE COALESCE(stock.stock_real, 0) < 0)::text AS negative_stock,
-        COALESCE(SUM(GREATEST(COALESCE(stock.stock_real, 0), 0) * COALESCE(p.cost, 0)), 0)::text AS inventory_value
+        COALESCE(SUM(GREATEST(COALESCE(stock.stock_real, 0), 0) * COALESCE(p.cost, 0)), 0)::text AS inventory_value,
+        COUNT(*) FILTER (WHERE p.supplier_id IS NULL OR s.id IS NULL)::text AS without_supplier,
+        COUNT(*) FILTER (WHERE NULLIF(trim(COALESCE(p.image_path, '')), '') IS NULL)::text AS without_image,
+        COUNT(*) FILTER (
+          WHERE NULLIF(trim(COALESCE(p.sku, '')), '') IS NULL
+             OR NULLIF(trim(COALESCE(p.category, '')), '') IS NULL
+             OR COALESCE(p.cost, 0) <= 0
+             OR COALESCE(p.presentation_units, 0) <= 0
+        )::text AS incomplete_data
       FROM products p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id${STOCK_MOVEMENTS_LATERAL}
       WHERE ${where}
@@ -525,9 +542,13 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
   const totalsRow = countResult.rows[0];
   const total = Number.parseInt(totalsRow?.total ?? "0", 10);
   const stockTotals: ProductStockTotals = {
+    units: Number(totalsRow?.units ?? 0),
     outOfStock: Number.parseInt(totalsRow?.out_of_stock ?? "0", 10),
     negativeStock: Number.parseInt(totalsRow?.negative_stock ?? "0", 10),
     inventoryValue: Number(totalsRow?.inventory_value ?? "0"),
+    withoutSupplier: Number.parseInt(totalsRow?.without_supplier ?? "0", 10),
+    withoutImage: Number.parseInt(totalsRow?.without_image ?? "0", 10),
+    incompleteData: Number.parseInt(totalsRow?.incomplete_data ?? "0", 10),
   };
 
   return {

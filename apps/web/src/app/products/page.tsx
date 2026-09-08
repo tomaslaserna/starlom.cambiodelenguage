@@ -19,7 +19,6 @@ import {
 import { listProducts } from "@/lib/catalog";
 import { formatCurrency, formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
-import { ProductPriceDetails } from "@/app/products/product-price-details";
 import { sessionCanReadProducts } from "@/lib/route-auth";
 import { updateProductPresentationAction } from "@/app/products/actions";
 
@@ -111,20 +110,6 @@ function FilterIcon() {
   );
 }
 
-function DocumentIcon() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
-      <path
-        d="M7 3.75h7l3 3V20.25H7V3.75Z"
-        stroke="currentColor"
-        strokeLinejoin="round"
-        strokeWidth="1.7"
-      />
-      <path d="M14 3.75v3h3M9.5 12h5m-5 3h5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
-    </svg>
-  );
-}
-
 function ProductIcon() {
   return (
     <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
@@ -158,14 +143,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     page: params.page,
     pageSize: "25",
   });
-  const pageProductCount = result.data.length;
-  const outOfStockCount = result.data.filter((product) => product.stockReal === 0).length;
-  const negativeStockCount = result.data.filter((product) => product.stockReal < 0).length;
-  const inventoryValue = result.data.reduce(
-    (total, product) => total + Math.max(0, product.stockReal) * product.cost,
-    0,
-  );
-  const pageDetail = `Página ${result.meta.page} · ${formatNumber(pageProductCount)} visibles`;
+  const scopeDetail = result.meta.query ? "Todo el resultado del filtro" : "Todo el inventario";
 
   return (
     <ModulePage
@@ -201,24 +179,12 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                 type="search"
               />
             </div>
-            <div className="grid grid-cols-3 gap-2 sm:flex sm:items-center">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
               <Button className="h-11 min-h-11 px-4" leadingIcon={<FilterIcon />} type="submit">
                 Buscar
               </Button>
               <ButtonLink className="h-11 min-h-11 px-4" href="/products" variant="ghost">
                 Limpiar
-              </ButtonLink>
-              <ButtonLink
-                aria-label="Abrir lista PDF de precios en una pestaña nueva"
-                className="h-11 min-h-11 px-4"
-                href="/api/pdfs/pricing/price-list?list=1"
-                leadingIcon={<DocumentIcon />}
-                prefetch={false}
-                rel="noreferrer"
-                target="_blank"
-                variant="outline"
-              >
-                Lista PDF
               </ButtonLink>
             </div>
           </form>
@@ -226,14 +192,21 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <InventoryMetric
-            detail={result.meta.query ? "Coinciden con el filtro actual" : "Activos en el catálogo"}
+            detail={scopeDetail}
             icon={<ProductIcon />}
             label={result.meta.query ? "Productos encontrados" : "Total de productos"}
             tone="accent"
             value={formatNumber(result.meta.total)}
           />
           <InventoryMetric
-            detail={pageDetail}
+            detail={scopeDetail}
+            icon={<span className="text-lg font-black">U</span>}
+            label="Unidades en stock"
+            tone="success"
+            value={formatNumber(result.stockTotals.units)}
+          />
+          <InventoryMetric
+            detail={scopeDetail}
             icon={
               <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.8" />
@@ -242,10 +215,10 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             }
             label="Sin stock"
             tone="warning"
-            value={formatNumber(outOfStockCount)}
+            value={formatNumber(result.stockTotals.outOfStock)}
           />
           <InventoryMetric
-            detail={pageDetail}
+            detail={scopeDetail}
             icon={
               <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
                 <path d="M12 4v16m0 0-5-5m5 5 5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
@@ -253,22 +226,43 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             }
             label="Stock negativo"
             tone="danger"
-            value={formatNumber(negativeStockCount)}
+            value={formatNumber(result.stockTotals.negativeStock)}
           />
           <InventoryMetric
-            detail={`Costo estimado · ${pageDetail.toLowerCase()}`}
+            detail={`Costo estimado · ${scopeDetail.toLowerCase()}`}
             icon={<span className="text-xl font-bold">$</span>}
             label="Valor de inventario"
             tone="success"
-            value={formatCurrency(inventoryValue)}
+            value={formatCurrency(result.stockTotals.inventoryValue)}
+          />
+          <InventoryMetric
+            detail={scopeDetail}
+            icon={<span className="text-xl font-black">!</span>}
+            label="Sin proveedor"
+            tone={result.stockTotals.withoutSupplier ? "warning" : "success"}
+            value={formatNumber(result.stockTotals.withoutSupplier)}
+          />
+          <InventoryMetric
+            detail={scopeDetail}
+            icon={<span className="text-xl font-black">□</span>}
+            label="Sin fotografía"
+            tone={result.stockTotals.withoutImage ? "warning" : "success"}
+            value={formatNumber(result.stockTotals.withoutImage)}
+          />
+          <InventoryMetric
+            detail="Sin código, categoría, costo o presentación"
+            icon={<span className="text-xl font-black">?</span>}
+            label="Datos incompletos"
+            tone={result.stockTotals.incompleteData ? "warning" : "success"}
+            value={formatNumber(result.stockTotals.incompleteData)}
           />
         </div>
 
         <Card className="overflow-hidden border-[#d9e2ef] shadow-[0_10px_30px_rgba(15,23,42,0.055)]">
           <DataTable
-            caption="Listado paginado de productos con cantidad, costo, precios y márgenes"
+            caption="Listado paginado de productos con cantidad, presentación y costo"
             className="rounded-none border-0 shadow-none"
-            minWidth="1180px"
+            minWidth="1040px"
             tableLabel="Productos"
           >
             <DataTableHeader className="bg-[#f8fafc] text-[#58677d]">
@@ -280,13 +274,12 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                 <DataTableHead align="center" className="px-4 py-2.5">Cantidad</DataTableHead>
                 <DataTableHead align="center" className="px-4 py-2.5">Presentación</DataTableHead>
                 <DataTableHead align="right" className="px-4 py-2.5">Costo</DataTableHead>
-                <DataTableHead align="center" className="px-4 py-2.5">Precios y margen</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={8}>
+                  <DataTableCell colSpan={7}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -348,9 +341,6 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                     </DataTableCell>
                     <DataTableCell align="right" className="whitespace-nowrap px-4 py-2 font-mono text-xs font-semibold">
                       {formatCurrency(product.cost)}
-                    </DataTableCell>
-                    <DataTableCell align="center" className="px-4 py-2">
-                      <ProductPriceDetails prices={product.prices} />
                     </DataTableCell>
                   </DataTableRow>
                 ))

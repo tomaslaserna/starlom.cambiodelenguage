@@ -1772,11 +1772,23 @@ test("stock exposes separate modification and information windows", () => {
   assert.match(productsPage, /Información de stock/);
   assert.doesNotMatch(productsPage, /href="\/stock(?:\?|\")/);
   assert.match(productsPage, /Cantidad/);
+  assert.doesNotMatch(productsPage, /ProductPriceDetails|Lista PDF|Ver precios/);
+  assert.match(productsPage, /result\.stockTotals\.outOfStock/);
+  assert.match(productsPage, /result\.stockTotals\.inventoryValue/);
+  assert.match(productsPage, /Sin proveedor/);
+  assert.match(productsPage, /Sin fotografía/);
+  assert.match(productsPage, /Datos incompletos/);
   assert.match(priceDetails, /Ganancia/);
   assert.match(priceDetails, /% sobre costo/);
   assert.match(catalog, /jsonb_agg/);
   assert.match(catalog, /margenes_listas/);
   assert.doesNotMatch(inventory, /p\.description/);
+
+  const presentationMigration = read("supabase/migrations/20260908150149_set_category_presentations.sql");
+  assert.match(presentationMigration, /WHEN 'TEXTIL' THEN 12/);
+  assert.match(presentationMigration, /WHEN 'LIMPIEZA' THEN 6/);
+  assert.match(presentationMigration, /empresa_id = 1/);
+  assert.match(presentationMigration, /presentation_units IS DISTINCT FROM/);
 });
 
 test("operational record deletion is restricted to explicitly granted profiles", () => {
