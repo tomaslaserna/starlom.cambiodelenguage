@@ -15,6 +15,8 @@ type Summary = {
   balance: number;
 };
 
+type CheckoutState = { intentId: string; amount: number; checkoutUrl: string; qrDataUrl: string; status: "created" | "checking" | "pending" | "approved" | "rejected" | "cancelled" };
+
 function supabaseBrowser() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -36,7 +38,7 @@ export function PortalApp() {
   const [loading, setLoading] = useState(true);
   const [branch, setBranch] = useState("");
   const [selectedSales, setSelectedSales] = useState<string[]>([]);
-  const [checkout, setCheckout] = useState<{ amount: number; checkoutUrl: string; qrDataUrl: string } | null>(null);
+  const [checkout, setCheckout] = useState<CheckoutState | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
 
   useEffect(() => {
@@ -59,6 +61,32 @@ export function PortalApp() {
     if (!checkout) return;
     window.requestAnimationFrame(() => document.getElementById("resultado-pago")?.scrollIntoView({ behavior: "smooth", block: "center" }));
   }, [checkout]);
+
+  useEffect(() => {
+    const intentId = checkout?.intentId;
+    if (!intentId || !session) return;
+    let active = true;
+    const checkPayment = async () => {
+      setCheckout((current) => current ? { ...current, status: "checking" } : current);
+      try {
+        const response = await fetch(`/api/portal/checkout/${encodeURIComponent(intentId)}/status`, { headers: { authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "No pudimos verificar el pago");
+        if (!active) return;
+        const status = payload.data.status as CheckoutState["status"];
+        setCheckout((current) => current ? { ...current, status } : current);
+        if (["approved", "rejected", "cancelled"].includes(status)) window.clearInterval(timer);
+        if (status === "approved") {
+          const summaryResponse = await fetch("/api/portal/summary", { headers: { authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
+          const summaryPayload = await summaryResponse.json();
+          if (active && summaryResponse.ok) { setSummary(summaryPayload.data as Summary); setSelectedSales([]); }
+        }
+      } catch { if (active) setCheckout((current) => current ? { ...current, status: "pending" } : current); }
+    };
+    void checkPayment();
+    const timer = window.setInterval(checkPayment, 3_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [checkout?.intentId, session]);
 
   async function requestAccess(event: FormEvent) {
     event.preventDefault(); setError(""); setMessage("");
@@ -120,7 +148,7 @@ export function PortalApp() {
       const response = await fetch("/api/portal/checkout", { method: "POST", headers: { authorization: `Bearer ${session.access_token}`, "content-type": "application/json" }, body: JSON.stringify({ clientId: branch, saleIds: selectedSales }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "No pudimos iniciar el pago");
-      setCheckout(payload.data);
+      setCheckout({ ...payload.data, status: "created" });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos iniciar el pago"); }
     finally { setCheckoutLoading(false); }
   }
@@ -165,7 +193,7 @@ export function PortalApp() {
 function PaymentCheckout({ sales, selected, checkout, loading, onToggle, onCreate }: {
   sales: Summary["sales"];
   selected: string[];
-  checkout: { amount: number; checkoutUrl: string; qrDataUrl: string } | null;
+  checkout: CheckoutState | null;
   loading: boolean;
   onToggle: (id: string) => void;
   onCreate: () => void;
@@ -180,9 +208,11 @@ function PaymentCheckout({ sales, selected, checkout, loading, onToggle, onCreat
       return <label className="grid cursor-pointer items-center gap-3 px-5 py-4 hover:bg-[#f7faff] sm:grid-cols-[auto_1.2fr_1fr_1fr_auto]" key={sale.id}><input checked={selected.includes(sale.id)} className="size-5 accent-[#075ac7]" onChange={() => onToggle(sale.id)} type="checkbox" /><strong>{sale.invoice_number ? `Factura ${sale.invoice_number}` : sale.number || "Pedido"}</strong><span className="text-sm text-[#64748b]">{sale.date}</span><span><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-extrabold ${partiallyPaid ? "bg-amber-100 text-amber-800" : "bg-red-50 text-red-700"}`}>{partiallyPaid ? "Pago parcial" : "Impago"}</span>{partiallyPaid ? <small className="mt-1 block font-semibold text-[#64748b]">Original {money.format(Number(sale.total))}</small> : null}</span><strong className="text-red-600">{money.format(outstanding)}</strong></label>;
     })}{sales.length > 3 ? <ShowMoreButton expanded={showAll} hiddenCount={sales.length - 3} onClick={() => setShowAll((value) => !value)} /> : null}</div> : <p className="p-5 font-bold text-emerald-700">No tenés comprobantes pendientes para esta sucursal.</p>}
     {sales.length ? <div className="flex flex-wrap items-center justify-between gap-4 border-t border-[#e4ebf3] bg-[#f8fbff] p-5"><div><span className="text-sm font-bold text-[#64748b]">Total seleccionado</span><strong className="block text-2xl font-black text-[#172033]">{money.format(total)}</strong></div><button className="min-h-12 rounded-xl bg-[#075ac7] px-6 font-extrabold text-white disabled:opacity-50" disabled={!selected.length || loading} onClick={onCreate} type="button">{loading ? "Preparando pago…" : "Generar QR de Mercado Pago"}</button></div> : null}
-    {checkout ? <div aria-live="polite" className="scroll-mt-6 grid items-center gap-5 border-t border-[#bcd5ef] p-5 md:grid-cols-[auto_1fr]" id="resultado-pago" role="status"><Image alt="QR para pagar con Mercado Pago" className="mx-auto size-56 rounded-2xl border border-[#dbe5f1]" height={224} src={checkout.qrDataUrl} unoptimized width={224} /><div><h3 className="text-xl font-black">Escaneá y pagá {money.format(checkout.amount)}</h3><p className="mt-2 text-sm text-[#64748b]">QR generado correctamente. Al acreditarse, el pago se aplicará automáticamente a los comprobantes elegidos.</p><a className="mt-4 inline-flex min-h-12 items-center rounded-xl bg-[#009ee3] px-5 font-extrabold text-white" href={checkout.checkoutUrl} rel="noreferrer" target="_blank">Abrir Mercado Pago</a></div></div> : null}
+    {checkout ? <div aria-live="polite" className="scroll-mt-6 border-t border-[#bcd5ef] p-5" id="resultado-pago" role="status">{checkout.status === "approved" ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center"><span className="mx-auto grid size-12 place-items-center rounded-full bg-emerald-600 text-2xl font-black text-white">✓</span><h3 className="mt-3 text-2xl font-black text-emerald-800">Pago confirmado</h3><p className="mt-2 font-semibold text-emerald-700">Recibimos {money.format(checkout.amount)} y ya actualizamos tu cuenta.</p></div> : <div className="grid items-center gap-5 md:grid-cols-[auto_1fr]"><Image alt="QR para pagar con Mercado Pago" className="mx-auto size-56 rounded-2xl border border-[#dbe5f1]" height={224} src={checkout.qrDataUrl} unoptimized width={224} /><div><h3 className="text-xl font-black">Escaneá y pagá {money.format(checkout.amount)}</h3><div className="mt-4 grid gap-2 text-sm font-bold"><PaymentStep active label="QR generado" /><PaymentStep active={checkout.status !== "created"} label="Verificando acreditación" /><PaymentStep active={false} label="Aplicando a tu cuenta" /></div><p className="mt-4 text-sm text-[#64748b]">{checkout.status === "rejected" ? "Mercado Pago rechazó el pago. Podés intentarlo nuevamente." : "Esta pantalla se actualiza automáticamente. No hace falta recargarla."}</p><a className="mt-4 inline-flex min-h-12 items-center rounded-xl bg-[#009ee3] px-5 font-extrabold text-white" href={checkout.checkoutUrl} rel="noreferrer" target="_blank">Abrir Mercado Pago</a></div></div>}</div> : null}
   </section>;
 }
+
+function PaymentStep({ label, active }: { label: string; active: boolean }) { return <span className={`flex items-center gap-2 ${active ? "text-[#075ac7]" : "text-[#94a3b8]"}`}><span className={`size-2.5 rounded-full ${active ? "animate-pulse bg-[#075ac7]" : "bg-[#cbd5e1]"}`} />{label}</span>; }
 
 function PortalMetric({ label, value }: { label: string; value: string }) { const pending = label === "Saldo actual" && value !== money.format(0); return <div className="rounded-2xl border border-[#dbe5f1] bg-white p-5 shadow-sm"><span className="text-xs font-extrabold uppercase tracking-[.08em] text-[#64748b]">{label}</span><strong className={`mt-2 block text-2xl font-black ${pending ? "text-red-600" : ""}`}>{value}</strong>{pending ? <span className="mt-1 block text-xs font-bold text-red-600">Pendiente de pago</span> : null}</div>; }
 function Preference({ checked, label, onChange }: { checked: boolean; label: string; onChange: (value: boolean) => void }) { return <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-[#dbe5f1] p-4 font-bold"><input checked={checked} className="size-5 accent-[#075ac7]" onChange={(event) => onChange(event.target.checked)} type="checkbox" />{label}</label>; }

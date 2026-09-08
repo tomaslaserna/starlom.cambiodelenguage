@@ -12,7 +12,8 @@ test("portal replaces manual proof review with multi-document Mercado Pago check
   assert.match(portal, /setCheckoutLoading/);
   assert.match(portal, /resultado-pago/);
   assert.match(portal, /scrollIntoView/);
-  assert.match(portal, /QR generado correctamente/);
+  assert.match(portal, /Pago confirmado/);
+  assert.match(portal, /setInterval\(checkPayment, 3_000\)/);
   assert.doesNotMatch(portal, /Enviar a revisión|Informar un pago|Adjuntá el comprobante/);
 });
 
@@ -40,8 +41,13 @@ test("portal reconciles remittances to the account balance and enforces oldest-f
 test("Mercado Pago webhook validates signatures and posts approved payments idempotently", () => {
   const webhook = read("src/app/api/webhooks/mercadopago/route.ts");
   const mp = read("src/lib/mercadopago.ts");
+  const processor = read("src/lib/portal-payment-processing.ts");
+  const status = read("src/app/api/portal/checkout/[id]/status/route.ts");
   assert.match(webhook, /validWebhookSignature/);
-  assert.match(webhook, /intent\.status === "approved"/);
-  assert.match(webhook, /current_account_movements/);
+  assert.match(webhook, /processPortalPayment/);
+  assert.match(processor, /intent\.status === "approved"/);
+  assert.match(processor, /current_account_movements/);
+  assert.match(status, /findPaymentByExternalReference/);
+  assert.match(status, /processPortalPayment/);
   assert.match(mp, /timingSafeEqual/);
 });

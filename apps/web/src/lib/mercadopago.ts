@@ -38,6 +38,12 @@ export async function createPreference(input: { intentId: string; amount: number
 
 export async function getPayment(id: string) { return mpFetch(`/v1/payments/${encodeURIComponent(id)}`); }
 
+export async function findPaymentByExternalReference(intentId: string) {
+  const payload = await mpFetch(`/v1/payments/search?external_reference=${encodeURIComponent(intentId)}&sort=date_created&criteria=desc`);
+  const results = Array.isArray(payload?.results) ? payload.results : [];
+  return results.find((payment: { status?: string }) => payment.status === "approved") || results[0] || null;
+}
+
 export function validWebhookSignature(request: Request, dataId: string) {
   const secret = envValue("MERCADOPAGO_WEBHOOK_SECRET");
   const signature = request.headers.get("x-signature") || "";
