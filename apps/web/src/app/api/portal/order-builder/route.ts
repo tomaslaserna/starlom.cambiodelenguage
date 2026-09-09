@@ -1,3 +1,5 @@
+import QRCode from "qrcode";
+import { randomUUID } from "node:crypto";
 import { ApiError, handleApiError, ok } from "@/lib/api-response";
 import { withCompanyContext } from "@/lib/db";
 import {
@@ -5,7 +7,10 @@ import {
   priceForList,
   resolvePriceListName,
 } from "@/lib/order-pricing";
+import { createPreference } from "@/lib/mercadopago";
 import { requirePortalIdentity } from "@/lib/portal-auth";
+import { acceptQuote } from "@/lib/quotes";
+import type { AuthSession } from "@/lib/auth";
 
 import { publicProductImageUrl } from "@/lib/storage";
 
@@ -209,6 +214,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       clientId?: string;
       paymentMethod?: string;
+      invoiceChoice?: "sin_factura" | "con_factura";
       items?: { productId?: string; quantity?: number }[];
     };
     const clientId = String(body.clientId ?? "");
@@ -274,7 +280,13 @@ export async function POST(request: Request) {
             sum + priceForList(prices, "L3 - caro") * Number(item.quantity)
           );
         }, 0);
-        const rapidPayment = body.paymentMethod === "contado";
+        const paymentMethod = ["cuenta_corriente", "efectivo", "qr"].includes(
+          String(body.paymentMethod),
+        )
+          ? String(body.paymentMethod)
+          : "cuenta_corriente";
+        const rapidPayment =
+          paymentMethod === "efectivo" || paymentMethod === "qr";
         const list = resolvePriceListName(
           rapidPayment
             ? "L1 - suave"
@@ -308,7 +320,26 @@ export async function POST(request: Request) {
             total: pricing.total,
           };
         });
-        const total = lines.reduce((sum, line) => sum + line.total, 0);
+        const netAmount = roundMoney(
+          lines.reduce((sum, line) => sum + line.total, 0),
+        );
+        if (netAmount < 50_000)
+          throw new ApiError(
+            400,
+            "El pedido mínimo es de $50.000 netos. Faltan $" +
+              roundMoney(50_000 - netAmount).toLocaleString("es-AR"),
+          );
+        const invoiceChoice =
+          body.invoiceChoice === "con_factura" ? "con_factura" : "sin_factura";
+        const vatRate = invoiceChoice === "con_factura" ? 21 : 10.5;
+        const vatAmount = roundMoney((netAmount * vatRate) / 100);
+        const total = roundMoney(netAmount + vatAmount);
+        const desiredDocument =
+          invoiceChoice === "con_factura"
+            ? /responsable.*inscripto/i.test(customer.fiscal_condition)
+              ? "factura_a"
+              : "factura_b"
+            : "remito";
         const fallbackSeller =
           customer.seller_id ??
           (
@@ -327,15 +358,33 @@ export async function POST(request: Request) {
           [identity.companyId],
         );
         const number = `P-${String(Number(seq.rows[0]?.value ?? 1)).padStart(4, "0")}`;
-        const note = `Pedido solicitado desde portal · Pago: ${body.paymentMethod === "contado" ? "contado" : "cuenta corriente"}`;
+        const paymentLabel =
+          paymentMethod === "qr"
+            ? "QR Mercado Pago"
+            : paymentMethod === "efectivo"
+              ? "efectivo"
+              : "cuenta corriente";
+        const note = `Pedido solicitado desde portal · Pago: ${paymentLabel}${paymentMethod === "qr" ? " · Esperando acreditación" : ""}`;
         const quote = await client.query<{ id: string }>(
-          `INSERT INTO quotes (quote_number,client_id,seller_id,status,total_amount,validity_days,include_vat,vat_rate,desired_document,active_price_list,price_list_name,discount_percent,net_amount,discount_amount,subtotal_amount,vat_amount,client_name,client_legal_name,client_document,client_fiscal_condition,client_phone,client_address,notes,empresa_id,visible_to_all) VALUES ($1,$2::uuid,$3::uuid,'pendiente',$4,15,false,0,'remito',1,$5,0,$4,0,$4,0,$6,$7,$8,$9,$10,$11,$12,$13,true) RETURNING id::text`,
+          `INSERT INTO quotes (
+             quote_number,client_id,seller_id,status,total_amount,validity_days,include_vat,vat_rate,desired_document,
+             active_price_list,price_list_name,discount_percent,net_amount,discount_amount,subtotal_amount,vat_amount,
+             client_name,client_legal_name,client_document,client_fiscal_condition,client_phone,client_address,
+             notes,empresa_id,visible_to_all
+           ) VALUES (
+             $1,$2::uuid,$3::uuid,'pendiente',$4,15,true,$5,$6,1,$7,0,$8,0,$8,$9,
+             $10,$11,$12,$13,$14,$15,$16,$17,$18
+           ) RETURNING id::text`,
           [
             number,
             clientId,
             fallbackSeller,
             total,
+            vatRate,
+            desiredDocument,
             list,
+            netAmount,
+            vatAmount,
             customer.name,
             customer.legal_name,
             customer.tax_id,
@@ -344,6 +393,7 @@ export async function POST(request: Request) {
             customer.address,
             note,
             identity.companyId,
+            paymentMethod !== "qr",
           ],
         );
         for (const line of lines)
@@ -359,10 +409,82 @@ export async function POST(request: Request) {
               identity.companyId,
             ],
           );
-        return { quoteId: quote.rows[0]!.id, quoteNumber: number };
+        return {
+          quoteId: quote.rows[0]!.id,
+          quoteNumber: number,
+          sellerId: fallbackSeller,
+          paymentMethod,
+          amount: total,
+        };
       },
     );
-    return ok({ data: result });
+    if (result.paymentMethod === "qr") {
+      const intentId = randomUUID();
+      await withCompanyContext(identity.companyId, (client) =>
+        client.query(
+          `INSERT INTO customer_portal_payment_intents (id,empresa_id,portal_account_id,client_id,sale_ids,amount,portal_user_id) VALUES ($1,$2,$3::uuid,$4::uuid,ARRAY[$7::uuid],$5,$6::uuid)`,
+          [
+            intentId,
+            identity.companyId,
+            identity.accountId,
+            clientId,
+            result.amount,
+            identity.userId,
+            result.quoteId,
+          ],
+        ),
+      );
+      const preference = await createPreference({
+        intentId,
+        amount: result.amount,
+        description: `Pedido Starlim ${result.quoteNumber}`,
+        email: identity.email,
+        origin: new URL(request.url).origin,
+      });
+      const checkoutUrl = String(preference.init_point || "");
+      if (!checkoutUrl)
+        throw new ApiError(502, "Mercado Pago no devolvió el enlace de pago");
+      await withCompanyContext(identity.companyId, (client) =>
+        client.query(
+          `UPDATE customer_portal_payment_intents SET mp_preference_id=$1,updated_at=now() WHERE id=$2::uuid AND empresa_id=$3`,
+          [preference.id, intentId, identity.companyId],
+        ),
+      );
+      return ok(
+        {
+          data: {
+            quoteNumber: result.quoteNumber,
+            checkout: {
+              intentId,
+              amount: result.amount,
+              checkoutUrl,
+              qrDataUrl: await QRCode.toDataURL(checkoutUrl, {
+                width: 320,
+                margin: 1,
+              }),
+              status: "created",
+            },
+          },
+        },
+        201,
+      );
+    }
+
+    const systemSession: AuthSession = {
+      userId: result.sellerId,
+      username: identity.displayName,
+      email: identity.email,
+      displayName: identity.displayName,
+      role: "vendedor",
+      companyId: identity.companyId,
+      companyName: "Starlim",
+      expiresAt: Math.floor(Date.now() / 1000) + 300,
+    };
+    const accepted = await acceptQuote(systemSession, result.quoteId);
+    return ok(
+      { data: { quoteNumber: result.quoteNumber, orderId: accepted.orderId } },
+      201,
+    );
   } catch (error) {
     return handleApiError(error);
   }

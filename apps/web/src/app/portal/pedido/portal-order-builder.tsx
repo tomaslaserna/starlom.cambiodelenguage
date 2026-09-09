@@ -39,10 +39,19 @@ type Data = {
   offers: Offer[];
 };
 type Cart = Record<string, number>;
+type CheckoutState = {
+  intentId: string;
+  amount: number;
+  checkoutUrl: string;
+  qrDataUrl: string;
+  status: "created" | "pending" | "approved" | "rejected" | "cancelled";
+  orderNumber?: string | null;
+};
 const money = new Intl.NumberFormat("es-AR", {
   style: "currency",
   currency: "ARS",
 });
+const MINIMUM_ORDER = 50_000;
 const VOLUME_THRESHOLD = 100_000;
 
 function portalLinePricing(
@@ -94,9 +103,13 @@ export function PortalOrderBuilder({
   const [data, setData] = useState<Data | null>(null);
   const [cart, setCart] = useState<Cart>({});
   const [query, setQuery] = useState("");
-  const [payment, setPayment] = useState<"cuenta_corriente" | "contado">(
-    "cuenta_corriente",
-  );
+  const [payment, setPayment] = useState<
+    "cuenta_corriente" | "efectivo" | "qr"
+  >("cuenta_corriente");
+  const [checkout, setCheckout] = useState<CheckoutState | null>(null);
+  const [invoiceChoice, setInvoiceChoice] = useState<
+    "sin_factura" | "con_factura"
+  >("sin_factura");
   const [photo, setPhoto] = useState<Product | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -151,7 +164,7 @@ export function PortalOrderBuilder({
     (sum, row) => sum + priceForList(row.product.prices, "L3 - caro") * row.qty,
     0,
   );
-  const rapidPayment = payment === "contado";
+  const rapidPayment = payment === "efectivo" || payment === "qr";
   const activePriceList = rapidPayment
     ? "L1 - suave"
     : baseTotal >= VOLUME_THRESHOLD
@@ -160,10 +173,12 @@ export function PortalOrderBuilder({
   const price = (p: Product) => priceForList(p.prices, activePriceList);
   const pricing = (p: Product, qty: number) =>
     portalLinePricing(p, qty, activePriceList, rapidPayment);
-  const total = rows.reduce(
-    (sum, row) => sum + pricing(row.product, row.qty).subtotal,
-    0,
+  const netSubtotal = roundMoney(
+    rows.reduce((sum, row) => sum + pricing(row.product, row.qty).subtotal, 0),
   );
+  const vatRate = invoiceChoice === "con_factura" ? 21 : 10.5;
+  const vatAmount = roundMoney((netSubtotal * vatRate) / 100);
+  const total = roundMoney(netSubtotal + vatAmount);
   const regularTotal = rows.reduce(
     (sum, row) =>
       sum +
@@ -188,6 +203,11 @@ export function PortalOrderBuilder({
         ),
     ),
   );
+  const totalSavings = Math.max(
+    0,
+    roundMoney(baseTotal * (1 + vatRate / 100) - total),
+  );
+  const amountToMinimum = Math.max(0, roundMoney(MINIMUM_ORDER - netSubtotal));
   const amountToVolume = Math.max(0, roundMoney(VOLUME_THRESHOLD - baseTotal));
   const recommended = (data?.recommendations ?? [])
     .map((id) => productsById.get(id))
@@ -236,6 +256,7 @@ export function PortalOrderBuilder({
         body: JSON.stringify({
           clientId: data.customer.id,
           paymentMethod: payment,
+          invoiceChoice,
           items: rows.map((r) => ({
             productId: r.product.id,
             quantity: r.qty,
@@ -244,13 +265,59 @@ export function PortalOrderBuilder({
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error);
-      setCreated(payload.data.quoteNumber);
+      if (payload.data.checkout) {
+        setCheckout({ ...payload.data.checkout, status: "created" });
+        window.setTimeout(
+          () =>
+            document
+              .getElementById("pago-pedido")
+              ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+          50,
+        );
+      } else {
+        setCreated(payload.data.quoteNumber);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "No pudimos enviar el pedido");
     } finally {
       setSending(false);
     }
   }
+  useEffect(() => {
+    if (
+      !checkout ||
+      !session ||
+      ["approved", "rejected", "cancelled"].includes(checkout.status)
+    )
+      return;
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await fetch(
+          "/api/portal/checkout/" +
+            encodeURIComponent(checkout.intentId) +
+            "/status",
+          {
+            headers: { authorization: "Bearer " + session.access_token },
+            cache: "no-store",
+          },
+        );
+        const payload = await response.json();
+        if (!response.ok) return;
+        setCheckout((current) =>
+          current
+            ? {
+                ...current,
+                status: payload.data.status,
+                orderNumber: payload.data.orderNumber,
+              }
+            : current,
+        );
+      } catch {
+        // La próxima consulta vuelve a intentar sin interrumpir al cliente.
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [checkout, session]);
   if (!clientId)
     return <Centered text="Volvé al portal y elegí una sucursal." />;
   if (loading) return <Centered text="Preparando tu pedido…" />;
@@ -315,11 +382,18 @@ export function PortalOrderBuilder({
               placeholder="Ej.: detergente, rejilla o código"
               value={query}
             />
-            <p className="mt-2 text-xs font-semibold text-[#64748b]">
+          </div>
+          <div>
+            <h2 className="text-lg font-black">
               {query
                 ? "Resultados de búsqueda"
                 : "Recomendados según tus compras habituales"}
-            </p>
+            </h2>
+            {!query ? (
+              <p className="mt-1 text-sm text-[#64748b]">
+                Productos elegidos a partir de tu historial de compras.
+              </p>
+            ) : null}
           </div>
           <div className="grid gap-2">
             {results.map((product) => (
@@ -379,6 +453,17 @@ export function PortalOrderBuilder({
                 {rows.length} productos
               </span>
             </div>
+            {amountToMinimum > 0 ? (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <strong className="text-sm text-amber-900">
+                  Pedido mínimo: faltan {money.format(amountToMinimum)}
+                </strong>
+                <p className="mt-1 text-xs text-amber-800">
+                  El mínimo es de {money.format(MINIMUM_ORDER)} netos en
+                  mercadería.
+                </p>
+              </div>
+            ) : null}
             {rows.length ? (
               <div className="mt-4 grid gap-3">
                 {rows.map(({ product, qty }) => (
@@ -421,17 +506,43 @@ export function PortalOrderBuilder({
               </p>
             )}
             <fieldset className="mt-4">
-              <legend className="text-xs font-extrabold">Forma de pago</legend>
+              <legend className="text-xs font-extrabold">Comprobante</legend>
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <Choice
-                  active={payment === "cuenta_corriente"}
-                  label="Cuenta corriente"
-                  onClick={() => setPayment("cuenta_corriente")}
+                  active={invoiceChoice === "sin_factura"}
+                  label="Sin factura · IVA 10,5%"
+                  onClick={() => setInvoiceChoice("sin_factura")}
                 />
                 <Choice
-                  active={payment === "contado"}
-                  label="Contado / QR"
-                  onClick={() => setPayment("contado")}
+                  active={invoiceChoice === "con_factura"}
+                  label="Con factura · IVA 21%"
+                  onClick={() => setInvoiceChoice("con_factura")}
+                />
+              </div>
+            </fieldset>
+            <fieldset className="mt-4">
+              <legend className="text-xs font-extrabold">Forma de pago</legend>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                <Choice
+                  active={payment === "cuenta_corriente"}
+                  label="Cta. corriente"
+                  onClick={() => {
+                    setPayment("cuenta_corriente");
+                    setCheckout(null);
+                  }}
+                />
+                <Choice
+                  active={payment === "efectivo"}
+                  label="Efectivo"
+                  onClick={() => {
+                    setPayment("efectivo");
+                    setCheckout(null);
+                  }}
+                />
+                <Choice
+                  active={payment === "qr"}
+                  label="QR"
+                  onClick={() => setPayment("qr")}
                 />
               </div>
             </fieldset>
@@ -445,15 +556,40 @@ export function PortalOrderBuilder({
               </strong>
               <span className="mt-1 block text-xs text-[#64748b]">
                 {rapidPayment
-                  ? "Sujeto a acreditación del pago."
+                  ? "El precio se confirma con la acreditación del pago."
                   : baseTotal >= VOLUME_THRESHOLD
                     ? "Aplicado automáticamente por superar los $100.000."
                     : "Mejora automáticamente al alcanzar $100.000."}
               </span>
             </div>
-            <div className="mt-5 flex items-end justify-between border-t border-[#dbe5f1] pt-4">
-              <span className="font-bold">Total estimado</span>
-              <strong className="text-2xl">{money.format(total)}</strong>
+
+            {rows.length ? (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <span className="text-xs font-extrabold uppercase tracking-wide text-emerald-700">
+                  Ahorro acumulado
+                </span>
+                <strong className="mt-1 block text-2xl font-black text-emerald-700">
+                  {money.format(totalSavings)}
+                </strong>
+                <span className="text-xs text-emerald-800">
+                  Precio sin beneficios:{" "}
+                  {money.format(roundMoney(baseTotal * (1 + vatRate / 100)))}
+                </span>
+              </div>
+            ) : null}
+            <div className="mt-5 grid gap-1 border-t border-[#dbe5f1] pt-4 text-sm">
+              <div className="flex justify-between">
+                <span>Mercadería neta</span>
+                <strong>{money.format(netSubtotal)}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span>IVA {String(vatRate).replace(".", ",")}%</span>
+                <strong>{money.format(vatAmount)}</strong>
+              </div>
+              <div className="mt-2 flex items-end justify-between">
+                <span className="font-bold">Total estimado</span>
+                <strong className="text-2xl">{money.format(total)}</strong>
+              </div>
             </div>
             <p className="mt-1 text-xs text-[#64748b]">
               El equipo comercial confirmará disponibilidad y condición final.
@@ -463,12 +599,81 @@ export function PortalOrderBuilder({
             ) : null}
             <button
               className="mt-4 min-h-12 w-full rounded-xl bg-[#075ac7] font-black text-white disabled:opacity-50"
-              disabled={!rows.length || sending}
+              disabled={!rows.length || sending || amountToMinimum > 0}
               onClick={submit}
               type="button"
             >
-              {sending ? "Enviando pedido…" : "Enviar pedido"}
+              {sending
+                ? "Procesando…"
+                : payment === "qr"
+                  ? "Generar QR y pagar"
+                  : "Enviar pedido"}
             </button>
+            {checkout ? (
+              <div
+                className="mt-4 scroll-mt-24 rounded-2xl border border-[#9fc8ef] bg-[#f5fbff] p-4"
+                id="pago-pedido"
+                aria-live="polite"
+              >
+                {checkout.status === "approved" ? (
+                  <div className="text-center">
+                    <span className="mx-auto grid size-12 place-items-center rounded-full bg-emerald-600 text-2xl font-black text-white">
+                      ✓
+                    </span>
+                    <h3 className="mt-3 text-xl font-black text-emerald-800">
+                      Pago confirmado
+                    </h3>
+                    <p className="mt-1 text-sm font-semibold text-emerald-700">
+                      Tu pedido {checkout.orderNumber || ""} ya ingresó al ERP y
+                      está pendiente de entrega.
+                    </p>
+                    <Link
+                      className="mt-4 inline-flex rounded-xl bg-[#075ac7] px-4 py-3 font-black text-white"
+                      href="/portal"
+                    >
+                      Ver mi pedido
+                    </Link>
+                  </div>
+                ) : (
+                  <div>
+                    <Image
+                      alt="QR de Mercado Pago para abonar el pedido"
+                      className="mx-auto size-52 rounded-xl border border-[#dbe5f1] bg-white"
+                      height={208}
+                      src={checkout.qrDataUrl}
+                      unoptimized
+                      width={208}
+                    />
+                    <h3 className="mt-3 text-center text-lg font-black">
+                      Pagá {money.format(checkout.amount)}
+                    </h3>
+                    <div className="mt-4 grid gap-2 text-sm font-bold">
+                      <PaymentStep active label="QR generado" />
+                      <PaymentStep
+                        active={checkout.status === "pending"}
+                        label="Esperando acreditación"
+                      />
+                      <PaymentStep
+                        active={false}
+                        label="Enviando pedido al ERP"
+                      />
+                    </div>
+                    <p className="mt-3 text-center text-xs text-[#64748b]">
+                      La pantalla se actualiza sola. El pedido se crea
+                      únicamente cuando Mercado Pago confirma el pago.
+                    </p>
+                    <a
+                      className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-[#009ee3] font-extrabold text-white"
+                      href={checkout.checkoutUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Abrir Mercado Pago
+                    </a>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </section>
           <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
             <div className="flex items-center justify-between">
@@ -495,15 +700,15 @@ export function PortalOrderBuilder({
               {!rapidPayment && rapidSaving > 0 ? (
                 <button
                   className="rounded-xl bg-white p-3 text-left"
-                  onClick={() => setPayment("contado")}
+                  onClick={() => setPayment("efectivo")}
                   type="button"
                 >
                   <strong className="text-sm">
                     Ahorrá {money.format(rapidSaving)} pagando ahora
                   </strong>
                   <span className="mt-1 block text-xs text-[#64748b]">
-                    Elegí contado o QR de Mercado Pago para acceder al precio de
-                    pago rápido.
+                    Elegí efectivo o QR de Mercado Pago para acceder al precio
+                    de pago rápido.
                   </span>
                 </button>
               ) : null}
@@ -605,6 +810,24 @@ export function PortalOrderBuilder({
         </div>
       ) : null}
     </main>
+  );
+}
+function PaymentStep({ active, label }: { active: boolean; label: string }) {
+  return (
+    <div
+      className={
+        "flex items-center gap-2 rounded-lg px-3 py-2 " +
+        (active ? "bg-emerald-50 text-emerald-700" : "bg-white text-[#64748b]")
+      }
+    >
+      <span
+        className={
+          "size-2.5 rounded-full " +
+          (active ? "bg-emerald-500" : "bg-[#cbd5e1]")
+        }
+      />
+      {label}
+    </div>
   );
 }
 function Choice({
