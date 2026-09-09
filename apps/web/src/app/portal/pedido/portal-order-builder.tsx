@@ -675,10 +675,21 @@ export function PortalOrderBuilder({
               </div>
             ) : null}
           </section>
-          <section className="rounded-3xl border border-amber-200 bg-amber-50 p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-black">Beneficios no aprovechados</h2>
-              <span className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-black">
+          <section className="relative overflow-hidden rounded-3xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-[0_16px_40px_rgba(245,158,11,0.16)] ring-4 ring-amber-100/70">
+            <div className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-amber-300/20 blur-2xl" />
+            <div className="relative flex items-start justify-between gap-3">
+              <div>
+                <span className="inline-flex items-center gap-2 rounded-full bg-amber-400 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-amber-950">
+                  ✨ Ahorrá más
+                </span>
+                <h2 className="mt-2 text-xl font-black text-[#17243d]">
+                  Beneficios por aprovechar
+                </h2>
+                <p className="mt-1 text-sm font-medium text-amber-900/75">
+                  Estás muy cerca de mejorar el precio de tu pedido.
+                </p>
+              </div>
+              <span className="grid min-h-11 min-w-11 place-items-center rounded-2xl bg-amber-400 px-3 text-base font-black text-amber-950 shadow-sm">
                 {benefits.length +
                   presentationBenefits.length +
                   (amountToVolume > 0 ? 1 : 0) +
@@ -687,7 +698,7 @@ export function PortalOrderBuilder({
             </div>
             <div className="mt-3 grid gap-3">
               {amountToVolume > 0 ? (
-                <div className="rounded-xl bg-white p-3">
+                <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
                   <strong className="text-sm">
                     Mejorá el precio de todo el pedido
                   </strong>
@@ -699,7 +710,7 @@ export function PortalOrderBuilder({
               ) : null}
               {!rapidPayment && rapidSaving > 0 ? (
                 <button
-                  className="rounded-xl bg-white p-3 text-left"
+                  className="rounded-2xl border border-amber-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-md"
                   onClick={() => setPayment("efectivo")}
                   type="button"
                 >
@@ -714,7 +725,7 @@ export function PortalOrderBuilder({
               ) : null}
               {presentationBenefits.map(({ product, missing }) => (
                 <div
-                  className="rounded-xl bg-white p-3"
+                  className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm"
                   key={`presentation-${product.id}`}
                 >
                   <strong className="text-sm">
@@ -726,7 +737,7 @@ export function PortalOrderBuilder({
                     acceder al precio mejorado.
                   </p>
                   <button
-                    className="mt-2 text-xs font-black text-[#075ac7]"
+                    className="mt-3 rounded-full bg-[#075ac7] px-3 py-2 text-xs font-black text-white shadow-sm"
                     onClick={() =>
                       setQty(product.id, (cart[product.id] ?? 0) + missing)
                     }
@@ -737,7 +748,10 @@ export function PortalOrderBuilder({
                 </div>
               ))}
               {benefits.map(({ offer, missing }) => (
-                <div className="rounded-xl bg-white p-3" key={offer.id}>
+                <div
+                  className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm"
+                  key={offer.id}
+                >
                   <strong className="text-sm">{offer.name}</strong>
                   <p className="mt-1 text-xs text-[#64748b]">
                     Agregá{" "}
@@ -747,7 +761,7 @@ export function PortalOrderBuilder({
                     para completar la promoción.
                   </p>
                   <button
-                    className="mt-2 text-xs font-black text-[#075ac7]"
+                    className="mt-3 rounded-full bg-[#075ac7] px-3 py-2 text-xs font-black text-white shadow-sm"
                     onClick={() =>
                       missing.forEach((item) =>
                         setQty(
