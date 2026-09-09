@@ -1,6 +1,12 @@
 import { ApiError } from "@/lib/api-response";
 import { withCompanyContext } from "@/lib/db";
 import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
+import {
+  STARLIM_CHALLENGE_MINIMUM,
+  STARLIM_CHALLENGE_RADIUS_KM,
+  STARLIM_CHALLENGE_SECONDS,
+  starlimChallengeDistanceKm,
+} from "@/lib/starlim-challenge";
 
 const COMPANY_ID = 1;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -30,14 +36,6 @@ export type StorefrontRequest = {
 
 function clean(value: unknown, max = 180) {
   return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, max);
-}
-
-function geographicDistanceKm(latitude: number, longitude: number, targetLatitude: number, targetLongitude: number) {
-  const radians = (degrees: number) => degrees * Math.PI / 180;
-  const dLat = radians(latitude - targetLatitude);
-  const dLon = radians(longitude - targetLongitude);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(targetLatitude)) * Math.cos(radians(latitude)) * Math.sin(dLon / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export function parseStorefrontRequest(value: unknown): StorefrontRequest {
@@ -94,13 +92,13 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
     const challengeStart = input.challengeStartedAt ? new Date(input.challengeStartedAt) : null;
     const challengeRequested = Boolean(challengeStart && Number.isFinite(challengeStart.getTime()));
     const challengeDistance = input.latitude !== null && input.longitude !== null
-      ? geographicDistanceKm(input.latitude, input.longitude, -31.4201, -64.1888) : null;
-    const challengeExpiresAt = challengeRequested ? new Date(challengeStart!.getTime() + 15 * 60_000) : null;
+      ? starlimChallengeDistanceKm(input.latitude, input.longitude) : null;
+    const challengeExpiresAt = challengeRequested ? new Date(challengeStart!.getTime() + STARLIM_CHALLENGE_SECONDS * 1000) : null;
     const challengeEligible = Boolean(challengeRequested
       && challengeStart!.getTime() <= Date.now() + 60_000
       && challengeExpiresAt!.getTime() >= Date.now()
-      && challengeDistance !== null && challengeDistance <= 12
-      && estimatedAmount >= 150_000);
+      && challengeDistance !== null && challengeDistance <= STARLIM_CHALLENGE_RADIUS_KM
+      && estimatedAmount >= STARLIM_CHALLENGE_MINIMUM);
     if (challengeRequested && !challengeEligible) throw new ApiError(400, "El Desafío Starlim venció o no cumple ubicación y compra mínima");
 
     const seller = (await client.query<{ id: string; identity: string }>(

@@ -7,6 +7,7 @@ import { getPublicClosedSalesCount } from "@/lib/public-metrics";
 import { safeLocalReturnPath } from "@/lib/safe-return-path";
 import { TestimonialsCarousel } from "./testimonials-carousel";
 import { CustomerWhatsAppButton } from "@/components/customer-whatsapp-button";
+import { LandingChallenge } from "./landing-challenge";
 
 type LoginPageProps = {
   searchParams: Promise<{
@@ -167,6 +168,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         </div>
       </section>
       </div>
+
+      <LandingChallenge />
 
       <section className="border-t border-[#dbe5f1] bg-white px-5 py-16 sm:px-8 lg:px-12 lg:py-24">
         <div className="mx-auto max-w-[1320px]">

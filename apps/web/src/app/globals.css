@@ -662,3 +662,56 @@ body::after {
     padding-top: 1rem;
   }
 }
+
+@keyframes challenge-flame-button {
+  0%, 100% { box-shadow: 0 0 8px #ffcf55, 0 0 22px #ff781f, 0 0 42px rgba(225, 45, 12, 0.75); }
+  35% { box-shadow: -5px -7px 12px #fff078, 5px 4px 30px #ff5418, 0 0 58px rgba(255, 116, 24, 0.95); }
+  70% { box-shadow: 6px -3px 15px #ffc130, -5px 6px 26px #e62d0d, 0 0 48px rgba(255, 184, 46, 0.9); }
+}
+
+@keyframes challenge-fire-border {
+  0%, 100% {
+    border-color: #ffbd39;
+    box-shadow: inset 0 0 14px #ffcc4d, inset 0 0 34px rgba(255, 78, 18, 0.65), 0 0 18px rgba(255, 85, 20, 0.8);
+  }
+  33% {
+    border-color: #ff5b1a;
+    box-shadow: inset 8px -4px 20px #ff7a1a, inset -8px 5px 42px rgba(229, 38, 10, 0.78), 0 0 26px #ffbd39;
+  }
+  66% {
+    border-color: #ffe169;
+    box-shadow: inset -7px 5px 18px #ffd34f, inset 7px -6px 38px rgba(255, 79, 15, 0.72), 0 0 24px #e63b11;
+  }
+}
+
+.challenge-flame-button {
+  animation: challenge-flame-button 1.05s ease-in-out infinite;
+  isolation: isolate;
+  position: relative;
+}
+
+.challenge-flame-button::before {
+  background: conic-gradient(from 20deg, #ffef83, #ff681c, #d9230f, #ffb62e, #fff18b, #ff4b16, #ffef83);
+  border-radius: inherit;
+  content: "";
+  filter: blur(7px);
+  inset: -6px;
+  opacity: 0.72;
+  position: absolute;
+  z-index: -1;
+}
+
+.challenge-fire-screen::before {
+  animation: challenge-fire-border 1.15s ease-in-out infinite;
+  border: 5px solid #ff8b24;
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: fixed;
+  z-index: 49;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .challenge-flame-button,
+  .challenge-fire-screen::before { animation: none; }
+}

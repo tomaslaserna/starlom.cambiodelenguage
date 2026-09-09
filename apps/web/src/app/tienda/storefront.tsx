@@ -5,6 +5,14 @@ import { createClient } from "@supabase/supabase-js";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { CUSTOMER_BUSINESS_SEGMENTS } from "@/lib/customer-segments";
 import type { SegmentRecommendation } from "@/lib/segment-recommendations";
+import {
+  STARLIM_CHALLENGE_MINIMUM,
+  STARLIM_CHALLENGE_RADIUS_KM,
+  STARLIM_CHALLENGE_SECONDS,
+  STARLIM_CHALLENGE_STORAGE_KEY,
+  starlimChallengeDistanceKm,
+  type StarlimChallengeSession,
+} from "@/lib/starlim-challenge";
 
 type Availability = "available" | "check" | "out";
 type Product = { id: string; name: string; code: string; category: string; brand: string; imageUrl: string | null; available: Availability; estimatedPrice: number };
@@ -37,6 +45,7 @@ const gastronomyNeeds = [
   { label: "Esponja", terms: ["esponja"] },
 ];
 
+<<<<<<< HEAD
 const CHALLENGE_MINIMUM = 150_000;
 const CHALLENGE_SECONDS = 15 * 60;
 const CORDOBA_CENTER = { latitude: -31.4201, longitude: -64.1888 };
@@ -56,6 +65,8 @@ const customWork = [
   { title: "Papel higiénico", description: "Portarrollos institucionales preparados para grandes consumos.", image: "/custom-services/dispensador-papel-higienico-personalizado.png" },
 ];
 
+=======
+>>>>>>> 4e75f32 (Mejorar activación del Desafío Starlim)
 const categoryPresentation: Record<string, { eyebrow: string; description: string; accent: string; icon: string }> = {
   descartables: { eyebrow: "Servicio ágil", description: "Vasos, bandejas, cubiertos y soluciones para cada entrega.", accent: "from-[#075ac7] to-[#0a79df]", icon: "◯" },
   papeleria: { eyebrow: "Reposición diaria", description: "Papeles, bobinas, servilletas y productos institucionales.", accent: "from-[#176b87] to-[#2b91a8]", icon: "▤" },
@@ -98,6 +109,8 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   const [challengeSeconds, setChallengeSeconds] = useState(0);
   const [challengeDistance, setChallengeDistance] = useState<number | null>(null);
   const [challengeLocating, setChallengeLocating] = useState(false);
+  const [challengeIdentityOpen, setChallengeIdentityOpen] = useState(false);
+  const [challengeCustomer, setChallengeCustomer] = useState({ name: "", phone: "", businessName: "" });
   const catalogRef = useRef<HTMLDivElement>(null);
   const recommendationRef = useRef<HTMLDivElement>(null);
   const categoryCounts = useMemo(() => products.reduce((counts, product) => {
@@ -160,7 +173,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   const totalUnits = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
   const estimatedCartAmount = selected.reduce((sum, product) => sum + product.estimatedPrice * (cart[product.id] ?? 0), 0);
   const challengeActive = challengeStartedAt > 0 && challengeSeconds > 0;
-  const challengeMinimumReached = estimatedCartAmount >= CHALLENGE_MINIMUM;
+  const challengeMinimumReached = estimatedCartAmount >= STARLIM_CHALLENGE_MINIMUM;
   const visibleCombos = combos.filter((combo) => !combo.businessSegment || !discovery.businessType || combo.businessSegment === discovery.businessType);
   const showCatalog = browseAll || Boolean(category || brand || query.trim());
   const mapUrl = location.latitude && location.longitude
@@ -168,8 +181,26 @@ export function Storefront({ products, recommendations = [], combos = [], portal
     : "https://www.openstreetmap.org/export/embed.html?bbox=-64.35%2C-31.55%2C-64.05%2C-31.25&layer=mapnik";
 
   useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(STARLIM_CHALLENGE_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as StarlimChallengeSession;
+      if (!saved.startedAt || saved.expiresAt <= Date.now() || starlimChallengeDistanceKm(saved.latitude, saved.longitude) > STARLIM_CHALLENGE_RADIUS_KM) {
+        sessionStorage.removeItem(STARLIM_CHALLENGE_STORAGE_KEY);
+        return;
+      }
+      setChallengeStartedAt(saved.startedAt);
+      setChallengeSeconds(Math.max(0, Math.ceil((saved.expiresAt - Date.now()) / 1000)));
+      setChallengeDistance(starlimChallengeDistanceKm(saved.latitude, saved.longitude));
+      setChallengeCustomer({ name: saved.name, phone: saved.phone, businessName: saved.businessName });
+      setLocation((current) => ({ ...current, latitude: String(saved.latitude), longitude: String(saved.longitude) }));
+      setBrowseAll(true);
+    } catch { sessionStorage.removeItem(STARLIM_CHALLENGE_STORAGE_KEY); }
+  }, []);
+
+  useEffect(() => {
     if (!challengeStartedAt) return;
-    const update = () => setChallengeSeconds(Math.max(0, CHALLENGE_SECONDS - Math.floor((Date.now() - challengeStartedAt) / 1000)));
+    const update = () => setChallengeSeconds(Math.max(0, STARLIM_CHALLENGE_SECONDS - Math.floor((Date.now() - challengeStartedAt) / 1000)));
     update();
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
@@ -226,20 +257,39 @@ export function Storefront({ products, recommendations = [], combos = [], portal
     if (!navigator.geolocation) { setError("Necesitamos tu ubicación para validar el área del Desafío Starlim."); return; }
     setChallengeLocating(true);
     navigator.geolocation.getCurrentPosition(({ coords }) => {
-      const distance = distanceKm(coords.latitude, coords.longitude);
+      const distance = starlimChallengeDistanceKm(coords.latitude, coords.longitude);
       setChallengeDistance(distance);
       setLocation((current) => ({ ...current, latitude: String(coords.latitude), longitude: String(coords.longitude) }));
-      if (distance > CIRCUNVALACION_RADIUS_KM) {
+      if (distance > STARLIM_CHALLENGE_RADIUS_KM) {
         setError("Tu ubicación está fuera del área habilitada por el Desafío Starlim. Igual podés navegar y enviar un pedido normal.");
       } else {
-        setChallengeStartedAt(Date.now());
-        setChallengeSeconds(CHALLENGE_SECONDS);
-        setBrowseAll(true);
+        setChallengeIdentityOpen(true);
       }
       setChallengeLocating(false);
     }, () => { setError("No pudimos validar tu ubicación. Permití el acceso para activar el desafío."); setChallengeLocating(false); }, { enableHighAccuracy: true, timeout: 12000 });
   }
 
+
+  function beginChallenge(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const latitude = Number(location.latitude);
+    const longitude = Number(location.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    const form = new FormData(event.currentTarget);
+    const customer = {
+      name: String(form.get("challengeName") ?? "").trim(),
+      phone: String(form.get("challengePhone") ?? "").trim(),
+      businessName: String(form.get("challengeBusinessName") ?? "").trim(),
+    };
+    const startedAt = Date.now();
+    const session: StarlimChallengeSession = { ...customer, startedAt, expiresAt: startedAt + STARLIM_CHALLENGE_SECONDS * 1000, latitude, longitude };
+    sessionStorage.setItem(STARLIM_CHALLENGE_STORAGE_KEY, JSON.stringify(session));
+    setChallengeCustomer(customer);
+    setChallengeStartedAt(startedAt);
+    setChallengeSeconds(STARLIM_CHALLENGE_SECONDS);
+    setChallengeIdentityOpen(false);
+    setBrowseAll(true);
+  }
   function locate() {
     setError(""); setLocating(true);
     if (!navigator.geolocation) { setError("Tu navegador no permite obtener la ubicación. Podés completar la dirección manualmente."); setLocating(false); return; }
@@ -274,15 +324,19 @@ export function Storefront({ products, recommendations = [], combos = [], portal
 
   if (step === "success") return <section className="mx-auto grid min-h-[520px] max-w-3xl place-items-center px-5 py-16 text-center"><div className="rounded-[22px] border border-[#b8e3cf] bg-white p-8 shadow-xl sm:p-12"><span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#e7f8ef] text-3xl text-[#07834f]">✓</span><h2 className="mt-6 text-3xl font-extrabold">Hemos recibido tu pedido</h2><p className="mt-4 text-lg leading-7 text-[#5b6b82]">A la brevedad un comercial se contactará con usted.</p><button className="mt-8 rounded-[11px] bg-[#075ac7] px-6 py-3 font-bold text-white" onClick={() => { setCart({}); setStep("catalog"); }} type="button">Volver a la tienda</button></div></section>;
 
-  return <section className="mx-auto max-w-[1380px] px-4 py-8 sm:px-8">
+  return <section className={`${challengeActive ? "challenge-fire-screen " : ""}mx-auto max-w-[1380px] px-4 py-8 sm:px-8`}>
     {step === "catalog" ? <>
       <section className="mb-8 overflow-hidden rounded-[24px] border border-[#ffb45c] bg-[linear-gradient(120deg,#5d160e,#b82b16_55%,#f47a22)] text-white shadow-[0_18px_55px_rgba(163,43,20,.24)]">
         <div className="grid items-center gap-6 p-6 sm:p-8 lg:grid-cols-[1fr_auto]">
-          <div><span className="text-xs font-black uppercase tracking-[.15em] text-[#ffd39c]">Entrega garantizada</span><h2 className="mt-2 text-3xl font-black tracking-[-.04em]">Desafío Starlim</h2><p className="mt-3 max-w-3xl font-medium leading-7 text-white/85">Validá tu ubicación y tenés 15 minutos para armar una solicitud desde $150.000. Cuando Starlim la confirma, comienzan las 24 horas hábiles: si no llegamos a tiempo, recibís 20% OFF.</p>
+          <div><span className="text-xs font-black uppercase tracking-[.15em] text-[#ffd39c]">Entrega garantizada</span><h2 className="mt-2 text-3xl font-black tracking-[-.04em]">Desafío Starlim</h2><p className="mt-3 max-w-3xl font-medium leading-7 text-white/85">Validá tu ubicación, dejá tus datos y tenés 20 minutos para armar una solicitud desde $150.000. Cuando Starlim la confirma, comienzan las 24 horas hábiles: si no llegamos a tiempo, recibís 20% OFF.</p>
           {challengeStartedAt ? <div className="mt-5 flex flex-wrap items-center gap-3"><strong className="rounded-full bg-white px-4 py-2 text-xl tabular-nums text-[#861f13]">{String(Math.floor(challengeSeconds / 60)).padStart(2, "0")}:{String(challengeSeconds % 60).padStart(2, "0")}</strong><span className="font-bold">{challengeActive ? "Desafío activo" : "El tiempo terminó; podés activarlo nuevamente."}</span><span className={`rounded-full px-3 py-1.5 text-sm font-black ${challengeMinimumReached ? "bg-emerald-100 text-emerald-800" : "bg-white/15 text-white"}`}>{challengeMinimumReached ? "Mínimo alcanzado" : "Todavía no alcanzaste el mínimo"}</span>{challengeDistance !== null ? <span className="text-sm font-bold text-white/80">Ubicación validada a {challengeDistance.toFixed(1)} km del centro</span> : null}</div> : null}</div>
-          <button className="min-h-14 rounded-full border-2 border-white/60 bg-[#ffb13b] px-7 text-lg font-black text-[#542009] shadow-[0_0_30px_rgba(255,183,77,.65)] transition hover:scale-105 disabled:opacity-60" disabled={challengeLocating || challengeActive} onClick={activateChallenge} type="button">{challengeLocating ? "Validando ubicación…" : challengeActive ? "Desafío activado" : "🔥 Activar desafío"}</button>
+          <button className="challenge-flame-button min-h-14 rounded-full border-2 border-white/60 bg-[#ffb13b] px-7 text-lg font-black text-[#542009] transition hover:scale-105 disabled:opacity-60" disabled={challengeLocating || challengeActive} onClick={activateChallenge} type="button">{challengeLocating ? "Validando ubicación…" : challengeActive ? "Desafío activado" : "🔥 Activar desafío"}</button>
         </div>
-        {challengeDistance !== null ? <div className="border-t border-white/20 bg-[#4b140f]/35 p-4 sm:px-8"><iframe className="h-52 w-full rounded-2xl border border-white/30" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapUrl} title="Ubicación para el Desafío Starlim" /><p className="mt-2 text-xs font-semibold text-white/75">Área promocional: radio operativo de 12 km alrededor del centro de Córdoba, como aproximación al anillo de Circunvalación.</p></div> : null}
+        {challengeDistance !== null ? <div className="border-t border-white/20 bg-[#4b140f]/35 p-4 sm:px-8"><iframe className="h-52 w-full rounded-2xl border border-white/30" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapUrl} title="Ubicación para el Desafío Starlim" /><p className="mt-2 text-xs font-semibold text-white/75">Área promocional aproximada: radio operativo de 18 km alrededor del centro de Córdoba, incluyendo el corredor señalado alrededor de Circunvalación.</p></div> : null}
+      {challengeIdentityOpen ? <div aria-modal="true" className="fixed inset-0 z-[60] grid place-items-center bg-[#2b0905]/75 p-4 backdrop-blur-sm" role="dialog"><form className="w-full max-w-lg rounded-[26px] border border-[#ffb15a] bg-white p-6 text-[#172033] shadow-2xl sm:p-8" onSubmit={beginChallenge}><button aria-label="Cerrar" className="float-right grid size-10 place-items-center rounded-full bg-[#fff1e8] font-black text-[#a32618]" onClick={() => setChallengeIdentityOpen(false)} type="button">×</button><span className="text-xs font-black uppercase tracking-[.13em] text-[#c13a1e]">Ubicación validada</span><h2 className="mt-2 text-3xl font-black">Antes de empezar</h2><p className="mt-2 text-[#64748b]">Dejanos tus datos y al continuar comienzan tus 20 minutos.</p><div className="mt-6 grid gap-3"><input className={fieldClass} name="challengeName" placeholder="Nombre y apellido" required /><input className={fieldClass} name="challengePhone" placeholder="WhatsApp o teléfono" required /><input className={fieldClass} name="challengeBusinessName" placeholder="Nombre del negocio (opcional)" /><button className="challenge-flame-button mt-2 min-h-14 rounded-full bg-[#ffb13b] px-5 font-black text-[#4c1908]" type="submit">Comenzar mi pedido →</button></div></form></div> : null}
+
+
+
       </section>
 
       {visibleCombos.length > 0 ? <section className="mb-8 rounded-[24px] border border-[#c6d9ef] bg-white p-6 shadow-[0_14px_38px_rgba(35,74,118,.11)] sm:p-8">
@@ -365,7 +419,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
       <div className="sticky bottom-4 z-20 mt-8 flex items-center justify-between gap-4 rounded-[16px] bg-[#102d52] px-5 py-4 text-white shadow-2xl"><div><strong className="block text-lg">{totalUnits} {totalUnits === 1 ? "unidad" : "unidades"}</strong><span className="text-sm text-white/70">{selected.length} {selected.length === 1 ? "producto" : "productos"} en el carrito</span></div><button className="rounded-[11px] bg-[#ffb74d] px-5 py-3 font-extrabold text-[#173052] disabled:opacity-50" disabled={!totalUnits} onClick={goToCheckout} type="button">Continuar</button></div>
       </>}
     </> : <form className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]" onSubmit={submit}>
-      <div className="rounded-[18px] border border-[#dbe5f1] bg-white p-5 shadow-sm sm:p-7"><button className="mb-5 text-sm font-bold text-[#075ac7]" onClick={() => setStep("catalog")} type="button">← Volver al catálogo</button><span className="text-xs font-extrabold uppercase tracking-[0.12em] text-[#075ac7]">Último paso</span><h2 className="mt-2 text-2xl font-extrabold">¿A dónde te enviamos la propuesta?</h2><p className="mt-2 text-[#64748b]">Ya elegiste lo que te interesa. Ahora un comercial prepara la cotización y te contacta.</p><div className="mt-6 grid gap-4 sm:grid-cols-2">{[["name","Nombre y apellido *"],["phone","WhatsApp o teléfono *"],["brand","Marca o nombre comercial"],["taxId","CUIT"],["businessName","Razón social"]].map(([name,label]) => <label className="grid gap-1.5 text-sm font-bold" key={name}>{label}<input className={fieldClass} name={name} required={name === "name" || name === "phone"} /></label>)}<label className="grid gap-1.5 text-sm font-bold">Rubro<input className={fieldClass} name="industry" onChange={(event) => setDiscovery((current) => ({ ...current, industry: event.target.value }))} value={discovery.industry} /></label></div>
+      <div className="rounded-[18px] border border-[#dbe5f1] bg-white p-5 shadow-sm sm:p-7"><button className="mb-5 text-sm font-bold text-[#075ac7]" onClick={() => setStep("catalog")} type="button">← Volver al catálogo</button><span className="text-xs font-extrabold uppercase tracking-[0.12em] text-[#075ac7]">Último paso</span><h2 className="mt-2 text-2xl font-extrabold">¿A dónde te enviamos la propuesta?</h2><p className="mt-2 text-[#64748b]">Ya elegiste lo que te interesa. Ahora un comercial prepara la cotización y te contacta.</p><div className="mt-6 grid gap-4 sm:grid-cols-2">{[["name","Nombre y apellido *"],["phone","WhatsApp o teléfono *"],["brand","Marca o nombre comercial"],["taxId","CUIT"],["businessName","Razón social"]].map(([name,label]) => <label className="grid gap-1.5 text-sm font-bold" key={name}>{label}<input className={fieldClass} defaultValue={name === "name" ? challengeCustomer.name : name === "phone" ? challengeCustomer.phone : name === "businessName" ? challengeCustomer.businessName : ""} name={name} required={name === "name" || name === "phone"} /></label>)}<label className="grid gap-1.5 text-sm font-bold">Rubro<input className={fieldClass} name="industry" onChange={(event) => setDiscovery((current) => ({ ...current, industry: event.target.value }))} value={discovery.industry} /></label></div>
       {(discovery.businessType || discovery.usualPurchases.length > 0) && <div className="mt-5 rounded-[12px] bg-[#eef5ff] p-4 text-sm text-[#315170]"><strong className="block">Perfil de compra guardado</strong><span>{[discovery.businessType, discovery.usualPurchases.join(", ")].filter(Boolean).join(" · ")}</span></div>}
       <div className="mt-7 flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-extrabold">Dirección de entrega</h3><p className="text-sm text-[#64748b]">Usá el mapa o completala manualmente.</p></div><button className="rounded-[10px] border border-[#075ac7] px-4 py-2 text-sm font-bold text-[#075ac7]" disabled={locating} onClick={locate} type="button">{locating ? "Ubicando…" : "Usar mi ubicación"}</button></div>
       <iframe className="mt-4 h-[260px] w-full rounded-[12px] border border-[#cbd8e8]" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapUrl} title="Mapa de ubicación" />

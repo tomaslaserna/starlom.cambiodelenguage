@@ -1165,6 +1165,7 @@ test("public store creates a price-free cart and hands it to CRM as a lead plus 
   const client = read("apps/web/src/app/tienda/storefront.tsx");
   const catalog = read("apps/web/src/lib/catalog.ts");
   const storefront = read("apps/web/src/lib/storefront.ts");
+  const challenge = read("apps/web/src/lib/starlim-challenge.ts");
   const route = read("apps/web/src/app/api/storefront/requests/route.ts");
 
   assert.match(login, /href="\/tienda"[^>]*>TIENDA/);
@@ -1191,16 +1192,19 @@ test("public store creates a price-free cart and hands it to CRM as a lead plus 
   assert.match(client, /Dirección completa/);
   assert.match(client, /Conocé nuestros combos/);
   assert.match(client, /Desafío Starlim/);
-  assert.match(client, /CHALLENGE_SECONDS = 15 \* 60/);
-  assert.match(client, /CHALLENGE_MINIMUM = 150_000/);
-  assert.match(client, /CIRCUNVALACION_RADIUS_KM = 12/);
+  assert.match(login, /LandingChallenge/);
+  assert.match(client, /challenge-fire-screen/);
+  assert.match(client, /STARLIM_CHALLENGE_STORAGE_KEY/);
+  assert.match(challenge, /STARLIM_CHALLENGE_SECONDS = 20 \* 60/);
+  assert.match(challenge, /STARLIM_CHALLENGE_MINIMUM = 150_000/);
+  assert.match(challenge, /STARLIM_CHALLENGE_RADIUS_KM = 18/);
   assert.doesNotMatch(client, /formatCurrency|unitPrice|precio[^s]/i);
   assert.match(storefront, /INSERT INTO crm_leads/);
   assert.match(storefront, /INSERT INTO quotes/);
   assert.match(storefront, /INSERT INTO quote_items/);
   assert.match(storefront, /withCompanyContext/);
   assert.match(storefront, /storefront_challenge_eligible/);
-  assert.match(storefront, /estimatedAmount >= 150_000/);
+  assert.match(storefront, /estimatedAmount >= STARLIM_CHALLENGE_MINIMUM/);
   assert.match(route, /parseStorefrontRequest/);
   assert.match(page, /CustomerWhatsAppButton/);
   assert.doesNotMatch(route, /requireApiSession/);
