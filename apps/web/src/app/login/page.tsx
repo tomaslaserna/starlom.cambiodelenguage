@@ -177,31 +177,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
       <LandingChallenge />
 
-      <section aria-labelledby="custom-work-title" className="border-t border-[#dbe5f1] bg-[#f7faff] px-5 py-16 sm:px-8 lg:px-12 lg:py-24">
-        <div className="mx-auto max-w-[1320px] overflow-hidden rounded-[24px] border border-[#d7e3ef] bg-white shadow-[0_16px_46px_rgba(26,55,96,0.12)]">
-          <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
-            <div className="relative min-h-[320px] overflow-hidden bg-[#e8edf1] sm:min-h-[420px]">
-              <Image alt="Línea de dispensadores personalizados Starlim" className="object-cover" fill sizes="(max-width: 1023px) 100vw, 52vw" src="/custom-services/dispensadores-personalizados-starlim.png" />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#081a30]/35 via-transparent to-transparent" />
-            </div>
-            <div className="flex flex-col justify-center p-6 sm:p-9 lg:p-11">
-              <span className="erp-display-font text-xs font-semibold uppercase tracking-[0.08em] text-[#1769e8]">También realizamos</span>
-              <h2 className="mt-3 text-[clamp(2rem,4vw,3.5rem)] font-bold leading-tight tracking-[-0.045em] text-[#13213a]" id="custom-work-title">Soluciones personalizadas para cada espacio</h2>
-              <p className="mt-5 max-w-xl text-base leading-7 text-[#68778e] sm:text-lg">Desarrollamos equipamiento institucional personalizado. Este apartado crecerá con nuevos trabajos, como servilletas impresas y otros productos especiales.</p>
-              <a className="erp-display-font mt-7 inline-flex w-fit min-h-12 items-center rounded-[12px] bg-[#1769e8] px-6 font-extrabold text-white shadow-sm transition hover:bg-[#0a47ad]" href="https://wa.me/543543683594?text=Hola%2C%20quiero%20consultar%20por%20un%20trabajo%20personalizado" rel="noreferrer" target="_blank">Consultar un proyecto →</a>
-            </div>
-          </div>
-          <div className="grid gap-4 border-t border-[#dfe8f2] bg-[#f7faff] p-5 sm:grid-cols-3 sm:p-7">
-            {customWork.map((item) => (
-              <article className="overflow-hidden rounded-[17px] border border-[#dbe5f1] bg-white shadow-sm" key={item.title}>
-                <div className="relative aspect-[4/3] bg-[#eef2f5]"><Image alt={item.title} className="object-cover" fill sizes="(max-width: 639px) 100vw, 33vw" src={item.image} /></div>
-                <div className="p-4"><h3 className="text-lg font-extrabold text-[#172033]">{item.title}</h3><p className="mt-2 text-sm font-medium leading-6 text-[#64748b]">{item.description}</p></div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
       <section className="border-t border-[#dbe5f1] bg-white px-5 py-16 sm:px-8 lg:px-12 lg:py-24">
         <div className="mx-auto max-w-[1320px]">
           <div className="max-w-3xl">
@@ -240,6 +215,31 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               <h3 className="mt-3 text-2xl font-bold">Experiencia construida cliente a cliente</h3>
               <p className="mt-4 leading-7 text-[#68778e]">Nuestra trayectoria se sostiene en la cercanía, el conocimiento del consumo y la capacidad de resolver con agilidad.</p>
             </article>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="custom-work-title" className="border-t border-[#dbe5f1] bg-[#f7faff] px-5 py-16 sm:px-8 lg:px-12 lg:py-24">
+        <div className="mx-auto max-w-[1320px] overflow-hidden rounded-[24px] border border-[#d7e3ef] bg-white shadow-[0_16px_46px_rgba(26,55,96,0.12)]">
+          <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="relative min-h-[320px] overflow-hidden bg-[#e8edf1] sm:min-h-[420px]">
+              <Image alt="Línea de dispensadores personalizados Starlim" className="object-cover" fill sizes="(max-width: 1023px) 100vw, 52vw" src="/custom-services/dispensadores-personalizados-starlim.png" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#081a30]/35 via-transparent to-transparent" />
+            </div>
+            <div className="flex flex-col justify-center p-6 sm:p-9 lg:p-11">
+              <span className="erp-display-font text-xs font-semibold uppercase tracking-[0.08em] text-[#1769e8]">También realizamos</span>
+              <h2 className="mt-3 text-[clamp(2rem,4vw,3.5rem)] font-bold leading-tight tracking-[-0.045em] text-[#13213a]" id="custom-work-title">Soluciones personalizadas para cada espacio</h2>
+              <p className="mt-5 max-w-xl text-base leading-7 text-[#68778e] sm:text-lg">Desarrollamos equipamiento institucional personalizado. Proveemos más que productos: ofrecemos un servicio que acompaña a tu marca y la convierte en protagonista de tus baños y cocinas, con impresiones personalizadas en dispensadores y servilletas.</p>
+              <a className="erp-display-font mt-7 inline-flex w-fit min-h-12 items-center rounded-[12px] bg-[#1769e8] px-6 font-extrabold text-white shadow-sm transition hover:bg-[#0a47ad]" href="https://wa.me/543543683594?text=Hola%2C%20quiero%20consultar%20por%20un%20trabajo%20personalizado" rel="noreferrer" target="_blank">Consultar un proyecto →</a>
+            </div>
+          </div>
+          <div className="grid gap-4 border-t border-[#dfe8f2] bg-[#f7faff] p-5 sm:grid-cols-3 sm:p-7">
+            {customWork.map((item) => (
+              <article className="overflow-hidden rounded-[17px] border border-[#dbe5f1] bg-white shadow-sm" key={item.title}>
+                <div className="relative aspect-[4/3] bg-[#eef2f5]"><Image alt={item.title} className="object-cover" fill sizes="(max-width: 639px) 100vw, 33vw" src={item.image} /></div>
+                <div className="p-4"><h3 className="text-lg font-extrabold text-[#172033]">{item.title}</h3><p className="mt-2 text-sm font-medium leading-6 text-[#64748b]">{item.description}</p></div>
+              </article>
+            ))}
           </div>
         </div>
       </section>
