@@ -1,13 +1,43 @@
 import { ApiError, handleApiError, ok } from "@/lib/api-response";
 import { withCompanyContext } from "@/lib/db";
-import { priceForList, resolvePriceListName } from "@/lib/order-pricing";
+import {
+  money as roundMoney,
+  priceForList,
+  resolvePriceListName,
+} from "@/lib/order-pricing";
 import { requirePortalIdentity } from "@/lib/portal-auth";
-import { presentationPriceForLine } from "@/lib/presentation-pricing";
+
 import { publicProductImageUrl } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const VOLUME_THRESHOLD = 100_000;
+
+function portalLineTotal(
+  prices: Record<string, number>,
+  presentationUnits: number,
+  quantity: number,
+  priceListName: string,
+  rapidPayment: boolean,
+) {
+  const presentation = Math.max(1, Math.trunc(presentationUnits || 1));
+  const volumeQuantity =
+    presentation > 1 ? Math.floor(quantity / presentation) * presentation : 0;
+  const regularQuantity = quantity - volumeQuantity;
+  const regularUnitPrice = priceForList(prices, priceListName);
+  const volumeUnitPrice =
+    priceForList(prices, "L1 - suave") * (rapidPayment ? 0.95 : 1);
+  const total = roundMoney(
+    volumeQuantity * volumeUnitPrice + regularQuantity * regularUnitPrice,
+  );
+  return {
+    total,
+    effectiveUnitPrice:
+      quantity > 0 ? roundMoney(total / quantity) : regularUnitPrice,
+  };
+}
 
 export async function GET(request: Request) {
   try {
@@ -15,20 +45,47 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const clientId = url.searchParams.get("clientId") ?? "";
     const repeatSaleId = url.searchParams.get("repeatSaleId") ?? "";
-    if (!identity.clientIds.includes(clientId)) throw new ApiError(403, "Esa sucursal no pertenece a tu cuenta");
+    if (!identity.clientIds.includes(clientId))
+      throw new ApiError(403, "Esa sucursal no pertenece a tu cuenta");
 
-    const data = await withCompanyContext(identity.companyId, async (client) => {
-      const customer = (await client.query<{
-        id: string; name: string; price_list_name: string | null; payment_term_days: number | null;
-      }>(`SELECT id::text, display_name AS name, price_list_name, payment_term_days FROM clients WHERE empresa_id=$1 AND id=$2::uuid`, [identity.companyId, clientId])).rows[0];
-      if (!customer) throw new ApiError(404, "Cliente no encontrado");
+    const data = await withCompanyContext(
+      identity.companyId,
+      async (client) => {
+        const customer = (
+          await client.query<{
+            id: string;
+            name: string;
+            price_list_name: string | null;
+            payment_term_days: number | null;
+          }>(
+            `SELECT id::text, display_name AS name, price_list_name, payment_term_days FROM clients WHERE empresa_id=$1 AND id=$2::uuid`,
+            [identity.companyId, clientId],
+          )
+        ).rows[0];
+        if (!customer) throw new ApiError(404, "Cliente no encontrado");
 
-      const lists = (await client.query<{ name: string }>(`SELECT nombre AS name FROM listas_precio WHERE empresa_id=$1 AND activa=1 AND (blocked_until IS NULL OR blocked_until<CURRENT_DATE) ORDER BY orden,id`, [identity.companyId])).rows.map((row) => row.name);
-      const selectedList = resolvePriceListName(customer.price_list_name, lists);
-      const products = await client.query<{
-        id: string; code: string; name: string; image_path: string | null; presentation_units: number;
-        available: string; prices: Record<string, string | number> | null; purchase_count: number; usual_quantity: string;
-      }>(`
+        const lists = (
+          await client.query<{ name: string }>(
+            `SELECT nombre AS name FROM listas_precio WHERE empresa_id=$1 AND activa=1 AND (blocked_until IS NULL OR blocked_until<CURRENT_DATE) ORDER BY orden,id`,
+            [identity.companyId],
+          )
+        ).rows.map((row) => row.name);
+        const selectedList = resolvePriceListName(
+          customer.price_list_name,
+          lists,
+        );
+        const products = await client.query<{
+          id: string;
+          code: string;
+          name: string;
+          image_path: string | null;
+          presentation_units: number;
+          available: string;
+          prices: Record<string, string | number> | null;
+          purchase_count: number;
+          usual_quantity: string;
+        }>(
+          `
         SELECT p.id::text, COALESCE(p.sku,p.category_code,'') AS code, p.name, p.image_path,
                COALESCE(p.presentation_units,1) AS presentation_units,
                GREATEST(COALESCE(stock.real,0)-COALESCE(reserved.qty,0),0)::text AS available,
@@ -42,51 +99,271 @@ export async function GET(request: Request) {
           LEFT JOIN LATERAL (SELECT COALESCE(SUM(si.quantity),0) qty FROM sale_items si JOIN sales s ON s.id=si.sale_id AND s.empresa_id=si.empresa_id WHERE si.empresa_id=p.empresa_id AND si.product_id=p.id AND COALESCE(s.order_status,s.status,'') IN ('cargado','confirmado','pendiente')) reserved ON true
           LEFT JOIN LATERAL (SELECT COUNT(DISTINCT si.sale_id)::int purchase_count, ROUND(AVG(si.quantity)) usual_quantity FROM sale_items si JOIN sales s ON s.id=si.sale_id AND s.empresa_id=si.empresa_id WHERE si.empresa_id=p.empresa_id AND si.product_id=p.id AND s.client_id=$2::uuid) history ON true
          WHERE p.empresa_id=$1 AND p.active=true
-         ORDER BY COALESCE(history.purchase_count,0) DESC,p.name ASC`, [identity.companyId, clientId]);
+         ORDER BY COALESCE(history.purchase_count,0) DESC,p.name ASC`,
+          [identity.companyId, clientId],
+        );
 
-      let repeatItems: { productId: string; quantity: number }[] = [];
-      if (repeatSaleId) {
-        if (!UUID_RE.test(repeatSaleId)) throw new ApiError(400, "Pedido anterior inválido");
-        repeatItems = (await client.query<{ product_id: string; quantity: string }>(`SELECT si.product_id::text,si.quantity::text FROM sale_items si JOIN sales s ON s.id=si.sale_id AND s.empresa_id=si.empresa_id WHERE si.empresa_id=$1 AND si.sale_id=$2::uuid AND s.client_id=$3::uuid ORDER BY si.id`, [identity.companyId, repeatSaleId, clientId])).rows.map((row) => ({ productId: row.product_id, quantity: Number(row.quantity) }));
-      }
-      const offers = (await client.query<{ id: string; name: string; price_mode: string; fixed_price: string | null; discount_percent: string | null; product_id: string; product_name: string; quantity: string }>(`SELECT o.id::text,o.name,o.price_mode,o.fixed_price::text,o.discount_percent::text,i.product_id::text,p.name product_name,i.quantity::text FROM price_offers o JOIN price_offer_items i ON i.offer_id=o.id AND i.empresa_id=o.empresa_id JOIN products p ON p.id=i.product_id AND p.empresa_id=i.empresa_id WHERE o.empresa_id=$1 AND o.active=true AND (o.valid_from IS NULL OR o.valid_from<=CURRENT_DATE) AND (o.valid_to IS NULL OR o.valid_to>=CURRENT_DATE) ORDER BY o.created_at DESC,i.id`, [identity.companyId])).rows;
-      const offerMap = new Map<string, { id: string; name: string; priceMode: string; fixedPrice: number | null; discountPercent: number | null; items: { productId: string; productName: string; quantity: number }[] }>();
-      for (const row of offers) { const offer = offerMap.get(row.id) ?? { id: row.id, name: row.name, priceMode: row.price_mode, fixedPrice: row.fixed_price === null ? null : Number(row.fixed_price), discountPercent: row.discount_percent === null ? null : Number(row.discount_percent), items: [] }; offer.items.push({ productId: row.product_id, productName: row.product_name, quantity: Number(row.quantity) }); offerMap.set(row.id, offer); }
-      return { customer: { ...customer, selectedList }, lists, products: products.rows.map((row) => ({ id: row.id, code: row.code, name: row.name, imageUrl: row.image_path ? publicProductImageUrl(row.image_path) : null, presentationUnits: row.presentation_units, available: Number(row.available), usualQuantity: Number(row.usual_quantity), purchaseCount: row.purchase_count, prices: Object.fromEntries(Object.entries(row.prices ?? {}).map(([key,value]) => [key,Number(value)])) })), recommendations: products.rows.filter((row) => row.purchase_count > 0).slice(0,12).map((row) => row.id), repeatItems, offers: [...offerMap.values()] };
-    });
+        let repeatItems: { productId: string; quantity: number }[] = [];
+        if (repeatSaleId) {
+          if (!UUID_RE.test(repeatSaleId))
+            throw new ApiError(400, "Pedido anterior inválido");
+          repeatItems = (
+            await client.query<{ product_id: string; quantity: string }>(
+              `SELECT si.product_id::text,si.quantity::text FROM sale_items si JOIN sales s ON s.id=si.sale_id AND s.empresa_id=si.empresa_id WHERE si.empresa_id=$1 AND si.sale_id=$2::uuid AND s.client_id=$3::uuid ORDER BY si.id`,
+              [identity.companyId, repeatSaleId, clientId],
+            )
+          ).rows.map((row) => ({
+            productId: row.product_id,
+            quantity: Number(row.quantity),
+          }));
+        }
+        const offers = (
+          await client.query<{
+            id: string;
+            name: string;
+            price_mode: string;
+            fixed_price: string | null;
+            discount_percent: string | null;
+            product_id: string;
+            product_name: string;
+            quantity: string;
+          }>(
+            `SELECT o.id::text,o.name,o.price_mode,o.fixed_price::text,o.discount_percent::text,i.product_id::text,p.name product_name,i.quantity::text FROM price_offers o JOIN price_offer_items i ON i.offer_id=o.id AND i.empresa_id=o.empresa_id JOIN products p ON p.id=i.product_id AND p.empresa_id=i.empresa_id WHERE o.empresa_id=$1 AND o.active=true AND (o.valid_from IS NULL OR o.valid_from<=CURRENT_DATE) AND (o.valid_to IS NULL OR o.valid_to>=CURRENT_DATE) ORDER BY o.created_at DESC,i.id`,
+            [identity.companyId],
+          )
+        ).rows;
+        const offerMap = new Map<
+          string,
+          {
+            id: string;
+            name: string;
+            priceMode: string;
+            fixedPrice: number | null;
+            discountPercent: number | null;
+            items: {
+              productId: string;
+              productName: string;
+              quantity: number;
+            }[];
+          }
+        >();
+        for (const row of offers) {
+          const offer = offerMap.get(row.id) ?? {
+            id: row.id,
+            name: row.name,
+            priceMode: row.price_mode,
+            fixedPrice:
+              row.fixed_price === null ? null : Number(row.fixed_price),
+            discountPercent:
+              row.discount_percent === null
+                ? null
+                : Number(row.discount_percent),
+            items: [],
+          };
+          offer.items.push({
+            productId: row.product_id,
+            productName: row.product_name,
+            quantity: Number(row.quantity),
+          });
+          offerMap.set(row.id, offer);
+        }
+        return {
+          customer: { ...customer, selectedList },
+          lists,
+          products: products.rows.map((row) => ({
+            id: row.id,
+            code: row.code,
+            name: row.name,
+            imageUrl: row.image_path
+              ? publicProductImageUrl(row.image_path)
+              : null,
+            presentationUnits: row.presentation_units,
+            available: Number(row.available),
+            usualQuantity: Number(row.usual_quantity),
+            purchaseCount: row.purchase_count,
+            prices: Object.fromEntries(
+              Object.entries(row.prices ?? {}).map(([key, value]) => [
+                key,
+                Number(value),
+              ]),
+            ),
+          })),
+          recommendations: products.rows
+            .filter((row) => row.purchase_count > 0)
+            .slice(0, 12)
+            .map((row) => row.id),
+          repeatItems,
+          offers: [...offerMap.values()],
+        };
+      },
+    );
     return ok({ data });
-  } catch (error) { return handleApiError(error); }
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
 export async function POST(request: Request) {
   try {
     const identity = await requirePortalIdentity(request);
-    const body = await request.json() as { clientId?: string; list?: string; paymentMethod?: string; items?: { productId?: string; quantity?: number }[] };
+    const body = (await request.json()) as {
+      clientId?: string;
+      paymentMethod?: string;
+      items?: { productId?: string; quantity?: number }[];
+    };
     const clientId = String(body.clientId ?? "");
-    if (!identity.clientIds.includes(clientId)) throw new ApiError(403, "Esa sucursal no pertenece a tu cuenta");
-    const requested = (Array.isArray(body.items) ? body.items : []).filter((item) => UUID_RE.test(String(item.productId ?? "")) && Number.isInteger(Number(item.quantity)) && Number(item.quantity) > 0).slice(0,100);
-    if (!requested.length) throw new ApiError(400, "Agregá al menos un producto");
-    const result = await withCompanyContext(identity.companyId, async (client) => {
-      const customer = (await client.query<{ name: string; legal_name: string; tax_id: string; fiscal_condition: string; phone: string; address: string; price_list_name: string; seller_id: string | null }>(`SELECT c.display_name name,COALESCE(c.legal_name,'') legal_name,COALESCE(c.tax_id,'') tax_id,COALESCE(c.fiscal_condition,'') fiscal_condition,COALESCE(c.phone,'') phone,COALESCE(c.address,'') address,COALESCE(c.price_list_name,'') price_list_name,(SELECT p.id::text FROM usuario_empresa ue JOIN profiles p ON p.id=ue.id_usuario WHERE ue.empresa_id=c.empresa_id AND ue.activo=true AND (lower(COALESCE(p.full_name,''))=lower(COALESCE(c.seller_name,'')) OR lower(COALESCE(p.username,''))=lower(COALESCE(c.seller_name,''))) LIMIT 1) seller_id FROM clients c WHERE c.empresa_id=$1 AND c.id=$2::uuid`, [identity.companyId,clientId])).rows[0];
-      if (!customer) throw new ApiError(404,"Cliente no encontrado");
-      const lists = (await client.query<{ name: string }>(`SELECT nombre name FROM listas_precio WHERE empresa_id=$1 AND activa=1 AND (blocked_until IS NULL OR blocked_until<CURRENT_DATE)`,[identity.companyId])).rows.map((row)=>row.name);
-      const list = resolvePriceListName(body.list || customer.price_list_name,lists);
-      const ids = requested.map((item)=>item.productId);
-      const rows = await client.query<{ id:string; name:string; presentation_units:number; prices:Record<string,string|number> }>(`SELECT p.id::text,p.name,COALESCE(p.presentation_units,1) presentation_units,COALESCE(jsonb_object_agg(lp.nombre,COALESCE(NULLIF(ROUND(COALESCE(p.cost,0)*NULLIF(ml.multiplicador,1),2),0),p.sale_price,p.cost,0)) FILTER (WHERE lp.id IS NOT NULL),'{}'::jsonb) prices FROM products p LEFT JOIN listas_precio lp ON lp.empresa_id=p.empresa_id AND lp.activa=1 LEFT JOIN margenes_listas ml ON ml.empresa_id=lp.empresa_id AND ml.lista_id=lp.id AND ml.codigo=CASE WHEN NULLIF(REGEXP_REPLACE(UPPER(COALESCE(p.category_code,'')),'[^A-Z0-9]','','g'),'') IS NOT NULL THEN LEFT(REGEXP_REPLACE(UPPER(p.category_code),'[^A-Z0-9]','','g'),10) ELSE 'CAT'||UPPER(SUBSTRING(MD5(COALESCE(p.category,'Sin categoria')) FROM 1 FOR 7)) END WHERE p.empresa_id=$1 AND p.active=true AND p.id=ANY($2::uuid[]) GROUP BY p.id`,[identity.companyId,ids]);
-      if (rows.rows.length!==new Set(ids).size) throw new ApiError(400,"Uno de los productos ya no está disponible");
-      const byId=new Map(rows.rows.map((row)=>[row.id,row]));
-      const lines=requested.map((item)=>{const product=byId.get(String(item.productId))!; const prices=Object.fromEntries(Object.entries(product.prices).map(([k,v])=>[k,Number(v)])); const unit=priceForList(prices,list); if(unit<=0) throw new ApiError(400,`${product.name} no tiene precio en ${list}`); const pricing=presentationPriceForLine({prices,priceListName:list,presentationUnits:product.presentation_units,quantity:Number(item.quantity)}); return { ...product, quantity:Number(item.quantity), unit:pricing.effectiveUnitPrice, total:pricing.subtotal };});
-      const total=lines.reduce((sum,line)=>sum+line.total,0);
-      const fallbackSeller = customer.seller_id ?? (await client.query<{id:string}>(`SELECT p.id::text FROM usuario_empresa ue JOIN profiles p ON p.id=ue.id_usuario WHERE ue.empresa_id=$1 AND ue.activo=true AND ue.role::text IN ('vendedor','jefe','administrador') ORDER BY CASE ue.role::text WHEN 'vendedor' THEN 0 WHEN 'jefe' THEN 1 ELSE 2 END LIMIT 1`,[identity.companyId])).rows[0]?.id;
-      if(!fallbackSeller) throw new ApiError(503,"No hay un comercial disponible");
-      await client.query("SELECT pg_advisory_xact_lock(83011,$1::int)",[identity.companyId]);
-      const seq=await client.query<{value:string}>(`SELECT (COALESCE(MAX(substring(quote_number FROM '^P-([0-9]+)$')::bigint),0)+1)::text value FROM quotes WHERE empresa_id=$1 AND quote_number~'^P-[0-9]+$'`,[identity.companyId]);
-      const number=`P-${String(Number(seq.rows[0]?.value??1)).padStart(4,"0")}`;
-      const note=`Pedido solicitado desde portal · Pago: ${body.paymentMethod === "contado" ? "contado" : "cuenta corriente"}`;
-      const quote=await client.query<{id:string}>(`INSERT INTO quotes (quote_number,client_id,seller_id,status,total_amount,validity_days,include_vat,vat_rate,desired_document,active_price_list,price_list_name,discount_percent,net_amount,discount_amount,subtotal_amount,vat_amount,client_name,client_legal_name,client_document,client_fiscal_condition,client_phone,client_address,notes,empresa_id,visible_to_all) VALUES ($1,$2::uuid,$3::uuid,'pendiente',$4,15,false,0,'remito',1,$5,0,$4,0,$4,0,$6,$7,$8,$9,$10,$11,$12,$13,true) RETURNING id::text`,[number,clientId,fallbackSeller,total,list,customer.name,customer.legal_name,customer.tax_id,customer.fiscal_condition,customer.phone,customer.address,note,identity.companyId]);
-      for(const line of lines) await client.query(`INSERT INTO quote_items (quote_id,product_id,description,quantity,unit_price,discount,total_amount,empresa_id) VALUES ($1::uuid,$2::uuid,$3,$4,$5,0,$6,$7)`,[quote.rows[0]!.id,line.id,line.name,line.quantity,line.unit,line.total,identity.companyId]);
-      return {quoteId:quote.rows[0]!.id,quoteNumber:number};
-    });
-    return ok({data:result});
-  } catch(error){return handleApiError(error);}
+    if (!identity.clientIds.includes(clientId))
+      throw new ApiError(403, "Esa sucursal no pertenece a tu cuenta");
+    const requested = (Array.isArray(body.items) ? body.items : [])
+      .filter(
+        (item) =>
+          UUID_RE.test(String(item.productId ?? "")) &&
+          Number.isInteger(Number(item.quantity)) &&
+          Number(item.quantity) > 0,
+      )
+      .slice(0, 100);
+    if (!requested.length)
+      throw new ApiError(400, "Agregá al menos un producto");
+    const result = await withCompanyContext(
+      identity.companyId,
+      async (client) => {
+        const customer = (
+          await client.query<{
+            name: string;
+            legal_name: string;
+            tax_id: string;
+            fiscal_condition: string;
+            phone: string;
+            address: string;
+            price_list_name: string;
+            seller_id: string | null;
+          }>(
+            `SELECT c.display_name name,COALESCE(c.legal_name,'') legal_name,COALESCE(c.tax_id,'') tax_id,COALESCE(c.fiscal_condition,'') fiscal_condition,COALESCE(c.phone,'') phone,COALESCE(c.address,'') address,COALESCE(c.price_list_name,'') price_list_name,(SELECT p.id::text FROM usuario_empresa ue JOIN profiles p ON p.id=ue.id_usuario WHERE ue.empresa_id=c.empresa_id AND ue.activo=true AND (lower(COALESCE(p.full_name,''))=lower(COALESCE(c.seller_name,'')) OR lower(COALESCE(p.username,''))=lower(COALESCE(c.seller_name,''))) LIMIT 1) seller_id FROM clients c WHERE c.empresa_id=$1 AND c.id=$2::uuid`,
+            [identity.companyId, clientId],
+          )
+        ).rows[0];
+        if (!customer) throw new ApiError(404, "Cliente no encontrado");
+        const lists = (
+          await client.query<{ name: string }>(
+            `SELECT nombre name FROM listas_precio WHERE empresa_id=$1 AND activa=1 AND (blocked_until IS NULL OR blocked_until<CURRENT_DATE)`,
+            [identity.companyId],
+          )
+        ).rows.map((row) => row.name);
+        const ids = requested.map((item) => item.productId);
+        const rows = await client.query<{
+          id: string;
+          name: string;
+          presentation_units: number;
+          prices: Record<string, string | number>;
+        }>(
+          `SELECT p.id::text,p.name,COALESCE(p.presentation_units,1) presentation_units,COALESCE(jsonb_object_agg(lp.nombre,COALESCE(NULLIF(ROUND(COALESCE(p.cost,0)*NULLIF(ml.multiplicador,1),2),0),p.sale_price,p.cost,0)) FILTER (WHERE lp.id IS NOT NULL),'{}'::jsonb) prices FROM products p LEFT JOIN listas_precio lp ON lp.empresa_id=p.empresa_id AND lp.activa=1 LEFT JOIN margenes_listas ml ON ml.empresa_id=lp.empresa_id AND ml.lista_id=lp.id AND ml.codigo=CASE WHEN NULLIF(REGEXP_REPLACE(UPPER(COALESCE(p.category_code,'')),'[^A-Z0-9]','','g'),'') IS NOT NULL THEN LEFT(REGEXP_REPLACE(UPPER(p.category_code),'[^A-Z0-9]','','g'),10) ELSE 'CAT'||UPPER(SUBSTRING(MD5(COALESCE(p.category,'Sin categoria')) FROM 1 FOR 7)) END WHERE p.empresa_id=$1 AND p.active=true AND p.id=ANY($2::uuid[]) GROUP BY p.id`,
+          [identity.companyId, ids],
+        );
+        if (rows.rows.length !== new Set(ids).size)
+          throw new ApiError(400, "Uno de los productos ya no está disponible");
+        const byId = new Map(rows.rows.map((row) => [row.id, row]));
+        const baseTotal = requested.reduce((sum, item) => {
+          const product = byId.get(String(item.productId))!;
+          const prices = Object.fromEntries(
+            Object.entries(product.prices).map(([key, value]) => [
+              key,
+              Number(value),
+            ]),
+          );
+          return (
+            sum + priceForList(prices, "L3 - caro") * Number(item.quantity)
+          );
+        }, 0);
+        const rapidPayment = body.paymentMethod === "contado";
+        const list = resolvePriceListName(
+          rapidPayment
+            ? "L1 - suave"
+            : baseTotal >= VOLUME_THRESHOLD
+              ? "L2 - ANCLA"
+              : "L3 - caro",
+          lists,
+        );
+        const lines = requested.map((item) => {
+          const product = byId.get(String(item.productId))!;
+          const prices = Object.fromEntries(
+            Object.entries(product.prices).map(([k, v]) => [k, Number(v)]),
+          );
+          const unit = priceForList(prices, list);
+          if (unit <= 0)
+            throw new ApiError(
+              400,
+              `${product.name} no tiene precio en ${list}`,
+            );
+          const pricing = portalLineTotal(
+            prices,
+            product.presentation_units,
+            Number(item.quantity),
+            list,
+            rapidPayment,
+          );
+          return {
+            ...product,
+            quantity: Number(item.quantity),
+            unit: pricing.effectiveUnitPrice,
+            total: pricing.total,
+          };
+        });
+        const total = lines.reduce((sum, line) => sum + line.total, 0);
+        const fallbackSeller =
+          customer.seller_id ??
+          (
+            await client.query<{ id: string }>(
+              `SELECT p.id::text FROM usuario_empresa ue JOIN profiles p ON p.id=ue.id_usuario WHERE ue.empresa_id=$1 AND ue.activo=true AND ue.role::text IN ('vendedor','jefe','administrador') ORDER BY CASE ue.role::text WHEN 'vendedor' THEN 0 WHEN 'jefe' THEN 1 ELSE 2 END LIMIT 1`,
+              [identity.companyId],
+            )
+          ).rows[0]?.id;
+        if (!fallbackSeller)
+          throw new ApiError(503, "No hay un comercial disponible");
+        await client.query("SELECT pg_advisory_xact_lock(83011,$1::int)", [
+          identity.companyId,
+        ]);
+        const seq = await client.query<{ value: string }>(
+          `SELECT (COALESCE(MAX(substring(quote_number FROM '^P-([0-9]+)$')::bigint),0)+1)::text value FROM quotes WHERE empresa_id=$1 AND quote_number~'^P-[0-9]+$'`,
+          [identity.companyId],
+        );
+        const number = `P-${String(Number(seq.rows[0]?.value ?? 1)).padStart(4, "0")}`;
+        const note = `Pedido solicitado desde portal · Pago: ${body.paymentMethod === "contado" ? "contado" : "cuenta corriente"}`;
+        const quote = await client.query<{ id: string }>(
+          `INSERT INTO quotes (quote_number,client_id,seller_id,status,total_amount,validity_days,include_vat,vat_rate,desired_document,active_price_list,price_list_name,discount_percent,net_amount,discount_amount,subtotal_amount,vat_amount,client_name,client_legal_name,client_document,client_fiscal_condition,client_phone,client_address,notes,empresa_id,visible_to_all) VALUES ($1,$2::uuid,$3::uuid,'pendiente',$4,15,false,0,'remito',1,$5,0,$4,0,$4,0,$6,$7,$8,$9,$10,$11,$12,$13,true) RETURNING id::text`,
+          [
+            number,
+            clientId,
+            fallbackSeller,
+            total,
+            list,
+            customer.name,
+            customer.legal_name,
+            customer.tax_id,
+            customer.fiscal_condition,
+            customer.phone,
+            customer.address,
+            note,
+            identity.companyId,
+          ],
+        );
+        for (const line of lines)
+          await client.query(
+            `INSERT INTO quote_items (quote_id,product_id,description,quantity,unit_price,discount,total_amount,empresa_id) VALUES ($1::uuid,$2::uuid,$3,$4,$5,0,$6,$7)`,
+            [
+              quote.rows[0]!.id,
+              line.id,
+              line.name,
+              line.quantity,
+              line.unit,
+              line.total,
+              identity.companyId,
+            ],
+          );
+        return { quoteId: quote.rows[0]!.id, quoteNumber: number };
+      },
+    );
+    return ok({ data: result });
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
