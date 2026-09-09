@@ -918,6 +918,7 @@ export async function acceptQuote(
       client_phone: string | null;
       client_address: string | null;
       seller_name: string | null;
+      notes: string | null;
       valid: boolean;
     }>(
       `
@@ -940,6 +941,7 @@ export async function acceptQuote(
                COALESCE(NULLIF(q.client_phone, ''), c.phone, '') AS client_phone,
                COALESCE(NULLIF(q.client_address, ''), c.address, '') AS client_address,
                COALESCE(p.username, p.full_name, '') AS seller_name,
+               COALESCE(q.notes, '') AS notes,
                (q.created_at::date + q.validity_days >= CURRENT_DATE) AS valid
         FROM quotes q
         LEFT JOIN clients c ON c.id = q.client_id AND c.empresa_id = q.empresa_id
@@ -1151,7 +1153,10 @@ export async function acceptQuote(
         receiptType,
         quote.seller_name || session.username,
         desiredDocument,
-        `Convertido desde presupuesto ${quote.quote_number}`,
+        [
+          `Convertido desde presupuesto ${quote.quote_number}`,
+          quote.notes ? `Observación del cliente: ${quote.notes}` : "",
+        ].filter(Boolean).join("\n"),
         session.companyId,
       ],
     );

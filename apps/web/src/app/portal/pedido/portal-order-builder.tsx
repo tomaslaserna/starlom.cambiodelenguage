@@ -107,9 +107,7 @@ export function PortalOrderBuilder({
     "cuenta_corriente" | "efectivo" | "qr"
   >("cuenta_corriente");
   const [checkout, setCheckout] = useState<CheckoutState | null>(null);
-  const [invoiceChoice, setInvoiceChoice] = useState<
-    "sin_factura" | "con_factura"
-  >("sin_factura");
+  const [customerObservation, setCustomerObservation] = useState("");
   const [photo, setPhoto] = useState<Product | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -176,7 +174,7 @@ export function PortalOrderBuilder({
   const netSubtotal = roundMoney(
     rows.reduce((sum, row) => sum + pricing(row.product, row.qty).subtotal, 0),
   );
-  const vatRate = invoiceChoice === "con_factura" ? 21 : 10.5;
+  const vatRate = 21;
   const vatAmount = roundMoney((netSubtotal * vatRate) / 100);
   const total = roundMoney(netSubtotal + vatAmount);
   const regularTotal = rows.reduce(
@@ -237,6 +235,11 @@ export function PortalOrderBuilder({
       ? [{ product, missing: detail.unitsToNextPresentation }]
       : [];
   });
+  const benefitCount =
+    benefits.length +
+    presentationBenefits.length +
+    (amountToVolume > 0 ? 1 : 0) +
+    (!rapidPayment && rapidSaving > 0 ? 1 : 0);
   const setQty = (id: string, qty: number) =>
     setCart((current) => ({
       ...current,
@@ -256,7 +259,7 @@ export function PortalOrderBuilder({
         body: JSON.stringify({
           clientId: data.customer.id,
           paymentMethod: payment,
-          invoiceChoice,
+          customerObservation,
           items: rows.map((r) => ({
             productId: r.product.id,
             quantity: r.qty,
@@ -354,7 +357,7 @@ export function PortalOrderBuilder({
           </div>
         </div>
       </header>
-      <div className="mx-auto grid max-w-[1320px] gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_430px]">
+      <div className="mx-auto grid max-w-[1440px] gap-7 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_500px]">
         <section className="grid content-start gap-5">
           <div>
             <span className="text-xs font-black uppercase tracking-[.13em] text-[#075ac7]">
@@ -449,9 +452,26 @@ export function PortalOrderBuilder({
           <section className="rounded-3xl border border-[#cbdbea] bg-white p-5 shadow-lg">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-black">Tu pedido</h2>
-              <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#075ac7]">
-                {rows.length} productos
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#075ac7]">
+                  {rows.length} productos
+                </span>
+                <button
+                  className="rounded-full bg-amber-400 px-3 py-1 text-xs font-black text-amber-950 shadow-sm transition hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+                  onClick={() =>
+                    document
+                      .getElementById("beneficios-pedido")
+                      ?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                      })
+                  }
+                  type="button"
+                >
+                  {benefitCount}{" "}
+                  {benefitCount === 1 ? "beneficio" : "beneficios"}
+                </button>
+              </div>
             </div>
             {amountToMinimum > 0 ? (
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
@@ -505,21 +525,26 @@ export function PortalOrderBuilder({
                 Todavía no agregaste productos.
               </p>
             )}
-            <fieldset className="mt-4">
-              <legend className="text-xs font-extrabold">Comprobante</legend>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <Choice
-                  active={invoiceChoice === "sin_factura"}
-                  label="Sin factura · IVA 10,5%"
-                  onClick={() => setInvoiceChoice("sin_factura")}
-                />
-                <Choice
-                  active={invoiceChoice === "con_factura"}
-                  label="Con factura · IVA 21%"
-                  onClick={() => setInvoiceChoice("con_factura")}
-                />
-              </div>
-            </fieldset>
+            <label
+              className="mt-4 block text-xs font-extrabold"
+              htmlFor="customer-observation"
+            >
+              Observación para la entrega
+            </label>
+            <textarea
+              className="mt-2 min-h-24 w-full resize-y rounded-xl border border-[#bfd0e4] bg-white px-3 py-3 text-sm outline-none transition focus:border-[#075ac7] focus:ring-2 focus:ring-[#075ac7]/15"
+              id="customer-observation"
+              maxLength={500}
+              onChange={(event) => setCustomerObservation(event.target.value)}
+              placeholder="Ej.: entregar por la puerta lateral, horario de recepción de 8 a 13 o llamar antes de llegar."
+              value={customerObservation}
+            />
+            <div className="mt-1 flex justify-between gap-3 text-[11px] text-[#64748b]">
+              <span>
+                La verán administración y reparto, y aparecerá en el remito.
+              </span>
+              <span>{customerObservation.length}/500</span>
+            </div>
             <fieldset className="mt-4">
               <legend className="text-xs font-extrabold">Forma de pago</legend>
               <div className="mt-2 grid grid-cols-3 gap-2">
@@ -675,9 +700,12 @@ export function PortalOrderBuilder({
               </div>
             ) : null}
           </section>
-          <section className="relative overflow-hidden rounded-3xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-[0_16px_40px_rgba(245,158,11,0.16)] ring-4 ring-amber-100/70">
-            <div className="pointer-events-none absolute inset-0 animate-pulse rounded-3xl border-2 border-amber-400/70 motion-reduce:animate-none" />
-            <div className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 animate-pulse rounded-full bg-amber-300/30 blur-2xl motion-reduce:animate-none" />
+          <section
+            className="portal-benefit-heartbeat relative scroll-mt-24 overflow-hidden rounded-3xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 ring-4 ring-amber-100/70"
+            id="beneficios-pedido"
+          >
+            <div className="pointer-events-none absolute inset-0 rounded-3xl border-2 border-amber-400/70" />
+            <div className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-amber-300/30 blur-2xl" />
             <div className="relative flex items-start justify-between gap-3">
               <div>
                 <span className="inline-flex items-center gap-2 rounded-full bg-amber-400 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-amber-950">
@@ -691,10 +719,7 @@ export function PortalOrderBuilder({
                 </p>
               </div>
               <span className="grid min-h-11 min-w-11 place-items-center rounded-2xl bg-amber-400 px-3 text-base font-black text-amber-950 shadow-sm">
-                {benefits.length +
-                  presentationBenefits.length +
-                  (amountToVolume > 0 ? 1 : 0) +
-                  (!rapidPayment && rapidSaving > 0 ? 1 : 0)}
+                {benefitCount}
               </span>
             </div>
             <div className="mt-3 grid gap-3">

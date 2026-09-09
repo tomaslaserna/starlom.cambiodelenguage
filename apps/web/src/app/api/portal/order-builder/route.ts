@@ -214,7 +214,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       clientId?: string;
       paymentMethod?: string;
-      invoiceChoice?: "sin_factura" | "con_factura";
+      customerObservation?: string;
       items?: { productId?: string; quantity?: number }[];
     };
     const clientId = String(body.clientId ?? "");
@@ -280,6 +280,9 @@ export async function POST(request: Request) {
             sum + priceForList(prices, "L3 - caro") * Number(item.quantity)
           );
         }, 0);
+        const customerObservation = String(body.customerObservation ?? "")
+          .trim()
+          .slice(0, 500);
         const paymentMethod = ["cuenta_corriente", "efectivo", "qr"].includes(
           String(body.paymentMethod),
         )
@@ -329,17 +332,14 @@ export async function POST(request: Request) {
             "El pedido mínimo es de $50.000 netos. Faltan $" +
               roundMoney(50_000 - netAmount).toLocaleString("es-AR"),
           );
-        const invoiceChoice =
-          body.invoiceChoice === "con_factura" ? "con_factura" : "sin_factura";
-        const vatRate = invoiceChoice === "con_factura" ? 21 : 10.5;
+        const vatRate = 21;
         const vatAmount = roundMoney((netAmount * vatRate) / 100);
         const total = roundMoney(netAmount + vatAmount);
-        const desiredDocument =
-          invoiceChoice === "con_factura"
-            ? /responsable.*inscripto/i.test(customer.fiscal_condition)
-              ? "factura_a"
-              : "factura_b"
-            : "remito";
+        const desiredDocument = /responsable.*inscripto/i.test(
+          customer.fiscal_condition,
+        )
+          ? "factura_a"
+          : "factura_b";
         const fallbackSeller =
           customer.seller_id ??
           (
@@ -362,11 +362,11 @@ export async function POST(request: Request) {
           `INSERT INTO quotes (
              quote_number,client_id,seller_id,status,total_amount,validity_days,include_vat,vat_rate,desired_document,
              active_price_list,price_list_name,discount_percent,net_amount,discount_amount,subtotal_amount,vat_amount,
-             client_name,client_legal_name,client_document,client_fiscal_condition,client_phone,client_address,
+             client_name,client_legal_name,client_document,client_fiscal_condition,client_phone,client_address,notes,
              empresa_id,visible_to_all
            ) VALUES (
              $1,$2::uuid,$3::uuid,'pendiente',$4,15,true,$5,$6,1,$7,0,$8,0,$8,$9,
-             $10,$11,$12,$13,$14,$15,$16,$17
+             $10,$11,$12,$13,$14,$15,$16,$17,$18
            ) RETURNING id::text`,
           [
             number,
@@ -384,6 +384,7 @@ export async function POST(request: Request) {
             customer.fiscal_condition,
             customer.phone,
             customer.address,
+            customerObservation,
             identity.companyId,
             paymentMethod !== "qr",
           ],
@@ -473,6 +474,18 @@ export async function POST(request: Request) {
       expiresAt: Math.floor(Date.now() / 1000) + 300,
     };
     const accepted = await acceptQuote(systemSession, result.quoteId);
+    if (result.paymentMethod === "efectivo") {
+      await withCompanyContext(identity.companyId, (client) =>
+        client.query(
+          `UPDATE sales
+              SET payment_condition='efectivo contra entrega',
+                  notes=CONCAT_WS(E'\n', NULLIF(notes,''), 'COBRAR EN EFECTIVO AL ENTREGAR: el cliente abonará cuando reciba la mercadería.'),
+                  updated_at=now()
+            WHERE empresa_id=$1 AND id=$2::uuid`,
+          [identity.companyId, accepted.orderId],
+        ),
+      );
+    }
     return ok(
       { data: { quoteNumber: result.quoteNumber, orderId: accepted.orderId } },
       201,

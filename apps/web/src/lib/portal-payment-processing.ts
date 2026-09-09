@@ -114,7 +114,12 @@ export async function processPortalPayment(
         ],
       );
       await client.query(
-        `UPDATE sales SET collection_status='recibido',payment_condition='contado',updated_at=now() WHERE empresa_id=$1 AND id=$2::uuid`,
+        `UPDATE sales
+            SET collection_status='recibido',
+                payment_condition='Mercado Pago - pagado',
+                notes=CONCAT_WS(E'\n', NULLIF(notes,''), 'PEDIDO PAGADO — NO COBRAR AL ENTREGAR. Pago acreditado por Mercado Pago el ' || TO_CHAR(CURRENT_DATE, 'DD/MM/YYYY') || '.'),
+                updated_at=now()
+          WHERE empresa_id=$1 AND id=$2::uuid`,
         [companyId, order.orderId],
       );
       await client.query(
