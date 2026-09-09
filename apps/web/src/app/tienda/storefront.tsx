@@ -45,28 +45,12 @@ const gastronomyNeeds = [
   { label: "Esponja", terms: ["esponja"] },
 ];
 
-<<<<<<< HEAD
-const CHALLENGE_MINIMUM = 150_000;
-const CHALLENGE_SECONDS = 15 * 60;
-const CORDOBA_CENTER = { latitude: -31.4201, longitude: -64.1888 };
-const CIRCUNVALACION_RADIUS_KM = 12;
-
-function distanceKm(latitude: number, longitude: number) {
-  const radians = (degrees: number) => degrees * Math.PI / 180;
-  const dLat = radians(latitude - CORDOBA_CENTER.latitude);
-  const dLon = radians(longitude - CORDOBA_CENTER.longitude);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(CORDOBA_CENTER.latitude)) * Math.cos(radians(latitude)) * Math.sin(dLon / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 const customWork = [
   { title: "Dispensadores de jabón", description: "Equipamiento personalizado para reforzar la identidad de tu negocio.", image: "/custom-services/dispensador-jabon-personalizado.png" },
   { title: "Toalla en rollo", description: "Dispensadores resistentes para espacios de uso intensivo.", image: "/custom-services/dispensador-toalla-rollo-personalizado.png" },
   { title: "Papel higiénico", description: "Portarrollos institucionales preparados para grandes consumos.", image: "/custom-services/dispensador-papel-higienico-personalizado.png" },
 ];
 
-=======
->>>>>>> 4e75f32 (Mejorar activación del Desafío Starlim)
 const categoryPresentation: Record<string, { eyebrow: string; description: string; accent: string; icon: string }> = {
   descartables: { eyebrow: "Servicio ágil", description: "Vasos, bandejas, cubiertos y soluciones para cada entrega.", accent: "from-[#075ac7] to-[#0a79df]", icon: "◯" },
   papeleria: { eyebrow: "Reposición diaria", description: "Papeles, bobinas, servilletas y productos institucionales.", accent: "from-[#176b87] to-[#2b91a8]", icon: "▤" },
