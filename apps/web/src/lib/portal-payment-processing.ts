@@ -122,10 +122,6 @@ export async function processPortalPayment(
         [paymentReference, intentId, companyId],
       );
       await client.query(
-        `UPDATE quotes SET notes=regexp_replace(COALESCE(notes,''),' · Esperando acreditación','','g'),updated_at=now() WHERE empresa_id=$1 AND id=$2::uuid`,
-        [companyId, intent.quote_id],
-      );
-      await client.query(
         `INSERT INTO audit_log (action,entity_table,entity_id,new_data,empresa_id) VALUES ('customer_order.mercadopago_approved','sales',$1::uuid,$2::jsonb,$3)`,
         [
           order.orderId,

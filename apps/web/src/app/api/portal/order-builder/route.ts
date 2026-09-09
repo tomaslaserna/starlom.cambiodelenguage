@@ -358,22 +358,15 @@ export async function POST(request: Request) {
           [identity.companyId],
         );
         const number = `P-${String(Number(seq.rows[0]?.value ?? 1)).padStart(4, "0")}`;
-        const paymentLabel =
-          paymentMethod === "qr"
-            ? "QR Mercado Pago"
-            : paymentMethod === "efectivo"
-              ? "efectivo"
-              : "cuenta corriente";
-        const note = `Pedido solicitado desde portal · Pago: ${paymentLabel}${paymentMethod === "qr" ? " · Esperando acreditación" : ""}`;
         const quote = await client.query<{ id: string }>(
           `INSERT INTO quotes (
              quote_number,client_id,seller_id,status,total_amount,validity_days,include_vat,vat_rate,desired_document,
              active_price_list,price_list_name,discount_percent,net_amount,discount_amount,subtotal_amount,vat_amount,
              client_name,client_legal_name,client_document,client_fiscal_condition,client_phone,client_address,
-             notes,empresa_id,visible_to_all
+             empresa_id,visible_to_all
            ) VALUES (
              $1,$2::uuid,$3::uuid,'pendiente',$4,15,true,$5,$6,1,$7,0,$8,0,$8,$9,
-             $10,$11,$12,$13,$14,$15,$16,$17,$18
+             $10,$11,$12,$13,$14,$15,$16,$17
            ) RETURNING id::text`,
           [
             number,
@@ -391,7 +384,6 @@ export async function POST(request: Request) {
             customer.fiscal_condition,
             customer.phone,
             customer.address,
-            note,
             identity.companyId,
             paymentMethod !== "qr",
           ],
