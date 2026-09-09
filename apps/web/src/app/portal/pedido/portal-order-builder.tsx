@@ -354,7 +354,7 @@ export function PortalOrderBuilder({
           </div>
         </div>
       </header>
-      <div className="mx-auto grid max-w-6xl gap-5 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="mx-auto grid max-w-[1320px] gap-6 px-4 py-6 lg:grid-cols-[minmax(0,1fr)_430px]">
         <section className="grid content-start gap-5">
           <div>
             <span className="text-xs font-black uppercase tracking-[.13em] text-[#075ac7]">
@@ -676,7 +676,8 @@ export function PortalOrderBuilder({
             ) : null}
           </section>
           <section className="relative overflow-hidden rounded-3xl border-2 border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-[0_16px_40px_rgba(245,158,11,0.16)] ring-4 ring-amber-100/70">
-            <div className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 rounded-full bg-amber-300/20 blur-2xl" />
+            <div className="pointer-events-none absolute inset-0 animate-pulse rounded-3xl border-2 border-amber-400/70 motion-reduce:animate-none" />
+            <div className="pointer-events-none absolute -right-10 -top-12 h-32 w-32 animate-pulse rounded-full bg-amber-300/30 blur-2xl motion-reduce:animate-none" />
             <div className="relative flex items-start justify-between gap-3">
               <div>
                 <span className="inline-flex items-center gap-2 rounded-full bg-amber-400 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-amber-950">
