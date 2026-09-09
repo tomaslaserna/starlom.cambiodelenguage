@@ -50,6 +50,12 @@ function distanceKm(latitude: number, longitude: number) {
   return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+const customWork = [
+  { title: "Dispensadores de jabón", description: "Equipamiento personalizado para reforzar la identidad de tu negocio.", image: "/custom-services/dispensador-jabon-personalizado.png" },
+  { title: "Toalla en rollo", description: "Dispensadores resistentes para espacios de uso intensivo.", image: "/custom-services/dispensador-toalla-rollo-personalizado.png" },
+  { title: "Papel higiénico", description: "Portarrollos institucionales preparados para grandes consumos.", image: "/custom-services/dispensador-papel-higienico-personalizado.png" },
+];
+
 const categoryPresentation: Record<string, { eyebrow: string; description: string; accent: string; icon: string }> = {
   descartables: { eyebrow: "Servicio ágil", description: "Vasos, bandejas, cubiertos y soluciones para cada entrega.", accent: "from-[#075ac7] to-[#0a79df]", icon: "◯" },
   papeleria: { eyebrow: "Reposición diaria", description: "Papeles, bobinas, servilletas y productos institucionales.", accent: "from-[#176b87] to-[#2b91a8]", icon: "▤" },
@@ -287,6 +293,28 @@ export function Storefront({ products, recommendations = [], combos = [], portal
       <section className="mb-8 grid overflow-hidden rounded-[24px] bg-[#102d52] text-white shadow-[0_18px_50px_rgba(16,45,82,0.18)] lg:grid-cols-[1fr_auto]">
         <div className="p-6 sm:p-8"><span className="text-xs font-extrabold uppercase tracking-[0.13em] text-[#9fc9ff]">Compra más simple</span><h2 className="mt-2 text-2xl font-extrabold tracking-[-0.03em] sm:text-3xl">Contanos qué tipo de negocio tenés</h2><p className="mt-3 max-w-2xl leading-7 text-white/75">En menos de un minuto te orientamos hacia los productos que más se usan en tu rubro. No hace falta registrarse ni dejar un teléfono.</p></div>
         <div className="flex items-center p-6 pt-0 sm:p-8 lg:pl-0"><button className="w-full rounded-[13px] bg-[#ffb74d] px-6 py-4 font-extrabold text-[#173052] transition hover:bg-[#ffc66f] lg:w-auto" onClick={() => { setDiscoveryStep(1); setShowDiscovery(true); }} type="button">Ayudame a elegir →</button></div>
+      </section>
+      <section aria-labelledby="custom-work-title" className="mb-8 overflow-hidden rounded-[24px] border border-[#d7e3ef] bg-white shadow-[0_16px_46px_rgba(26,55,96,0.12)]">
+        <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="relative min-h-[320px] overflow-hidden bg-[#e8edf1] sm:min-h-[420px]">
+            <Image alt="Línea de dispensadores personalizados Starlim" className="object-cover" fill sizes="(max-width: 1023px) 100vw, 52vw" src="/custom-services/dispensadores-personalizados-starlim.png" />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#081a30]/35 via-transparent to-transparent" />
+          </div>
+          <div className="flex flex-col justify-center p-6 sm:p-9 lg:p-11">
+            <span className="text-xs font-extrabold uppercase tracking-[0.14em] text-[#075ac7]">También realizamos</span>
+            <h2 className="mt-3 text-3xl font-extrabold tracking-[-0.04em] text-[#172033] sm:text-4xl" id="custom-work-title">Soluciones personalizadas para tu espacio</h2>
+            <p className="mt-4 max-w-xl font-medium leading-7 text-[#64748b]">Desarrollamos y personalizamos equipamiento institucional para que cada punto de contacto acompañe la imagen de tu negocio.</p>
+            <a className="mt-7 inline-flex w-fit items-center rounded-[12px] bg-[#075ac7] px-5 py-3 font-extrabold text-white shadow-sm transition hover:bg-[#064da9] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#ffb74d]" href="https://wa.me/543543683594?text=Hola%2C%20quiero%20consultar%20por%20un%20trabajo%20personalizado" rel="noreferrer" target="_blank">Consultar un proyecto →</a>
+          </div>
+        </div>
+        <div className="grid gap-4 border-t border-[#dfe8f2] bg-[#f7faff] p-5 sm:grid-cols-3 sm:p-7">
+          {customWork.map((item) => (
+            <article className="overflow-hidden rounded-[17px] border border-[#dbe5f1] bg-white shadow-sm" key={item.title}>
+              <div className="relative aspect-square bg-[#eef2f5]"><Image alt={item.title} className="object-cover" fill sizes="(max-width: 639px) 100vw, 33vw" src={item.image} /></div>
+              <div className="p-4"><h3 className="text-lg font-extrabold text-[#172033]">{item.title}</h3><p className="mt-2 text-sm font-medium leading-6 text-[#64748b]">{item.description}</p></div>
+            </article>
+          ))}
+        </div>
       </section>
       {showDiscovery && <div aria-modal="true" className="fixed inset-0 z-50 grid place-items-end bg-[#07182d]/65 p-0 backdrop-blur-sm sm:place-items-center sm:p-5" role="dialog">
         <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-[26px] bg-white p-6 shadow-2xl sm:max-w-2xl sm:rounded-[26px] sm:p-8">
