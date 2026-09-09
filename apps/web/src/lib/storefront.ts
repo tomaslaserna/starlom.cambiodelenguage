@@ -123,20 +123,22 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
     const leadNotes = [`Solicitud web ${quoteNumber}`, challengeEligible && `DESAFÍO STARLIM validado · estimado $${estimatedAmount.toFixed(2)} · distancia ${challengeDistance!.toFixed(2)} km`, `Marca: ${input.brand || "-"}`, input.companyName && `Negocio informado: ${input.companyName}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || input.businessType || "-"}`, input.usualPurchases.length && `Compra habitualmente: ${input.usualPurchases.join(", ")}`, input.currentSupplier && `Proveedor actual: ${input.currentSupplier}`, input.supplierCount && `Cantidad de proveedores: ${input.supplierCount}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
 
     const portalClient = portalClientId ? (await client.query<{ id: string; name: string; legal_name: string; tax_id: string; phone: string; address: string; fiscal_condition: string }>(`SELECT id::text, display_name AS name, COALESCE(legal_name,'') AS legal_name, COALESCE(tax_id,'') AS tax_id, COALESCE(phone,'') AS phone, COALESCE(address,'') AS address, COALESCE(fiscal_condition,'') AS fiscal_condition FROM clients WHERE empresa_id=$1 AND id=$2::uuid`, [COMPANY_ID, portalClientId])).rows[0] : null;
+    const requestSource = challengeEligible ? "Desafío Starlim" : "Tienda web";
+    const followUpDays = challengeEligible ? 0 : 1;
     const lead = portalClient ? null : await client.query<{ id: string }>(
       `INSERT INTO crm_leads (empresa_id, assigned_seller, name, phone, locality, source, stage, next_followup, notes, created_by, business_segment)
-       VALUES ($1,$2,$3,$4,$5,'Tienda web','nuevo',CURRENT_DATE + 3,$6,'tienda-web',NULLIF($7,'')) RETURNING id::text`,
-      [COMPANY_ID, seller.identity, input.name, input.phone, [input.city, input.province].filter(Boolean).join(", "), leadNotes, input.businessType],
+       VALUES ($1,$2,$3,$4,$5,$8,'nuevo',CURRENT_DATE + $9::int,$6,'tienda-web',NULLIF($7,'')) RETURNING id::text`,
+      [COMPANY_ID, seller.identity, input.name, input.phone, [input.city, input.province].filter(Boolean).join(", "), leadNotes, input.businessType, requestSource, followUpDays],
     );
     const quote = await client.query<{ id: string }>(
       `INSERT INTO quotes (quote_number, client_id, seller_id, status, total_amount, validity_days, include_vat, vat_rate,
         desired_document, active_price_list, price_list_name, discount_percent, net_amount, discount_amount, subtotal_amount,
-        vat_amount, client_name, client_legal_name, client_document, client_fiscal_condition, client_phone, client_address,
+        vat_amount, client_name, client_legal_name, client_document, client_fiscal_condition, client_phone, client_address, notes, source_sheet,
         empresa_id, visible_to_all, storefront_challenge_started_at, storefront_challenge_expires_at,
         storefront_challenge_eligible, storefront_estimated_amount, storefront_distance_km)
-       VALUES ($1,$9::uuid,$2::uuid,'pendiente',0,15,false,0,'remito',1,'A cotizar',0,0,0,0,0,$3,$4,$5,$10,$6,$7,$8,true,$11,$12,$13,$14,$15)
+       VALUES ($1,$9::uuid,$2::uuid,'pendiente',0,15,false,0,'remito',1,'A cotizar',0,0,0,0,0,$3,$4,$5,$10,$6,$7,$16,$17,$8,true,$11,$12,$13,$14,$15)
        RETURNING id::text`,
-      [quoteNumber, seller.id, portalClient?.name || input.brand || input.name, portalClient?.legal_name || input.businessName, portalClient?.tax_id || input.taxId, portalClient?.phone || input.phone, portalClient?.address || fullAddress, COMPANY_ID, portalClient?.id || null, portalClient?.fiscal_condition || "", challengeStart, challengeExpiresAt, challengeEligible, estimatedAmount, challengeDistance],
+      [quoteNumber, seller.id, portalClient?.name || input.brand || input.name, portalClient?.legal_name || input.businessName, portalClient?.tax_id || input.taxId, portalClient?.phone || input.phone, portalClient?.address || fullAddress, COMPANY_ID, portalClient?.id || null, portalClient?.fiscal_condition || "", challengeStart, challengeExpiresAt, challengeEligible, estimatedAmount, challengeDistance, leadNotes, requestSource],
     );
     for (const item of input.items) {
       await client.query(

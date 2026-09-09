@@ -362,11 +362,11 @@ export async function POST(request: Request) {
           `INSERT INTO quotes (
              quote_number,client_id,seller_id,status,total_amount,validity_days,include_vat,vat_rate,desired_document,
              active_price_list,price_list_name,discount_percent,net_amount,discount_amount,subtotal_amount,vat_amount,
-             client_name,client_legal_name,client_document,client_fiscal_condition,client_phone,client_address,notes,
+             client_name,client_legal_name,client_document,client_fiscal_condition,client_phone,client_address,notes,source_sheet,
              empresa_id,visible_to_all
            ) VALUES (
              $1,$2::uuid,$3::uuid,'pendiente',$4,15,true,$5,$6,1,$7,0,$8,0,$8,$9,
-             $10,$11,$12,$13,$14,$15,$16,$17,$18
+             $10,$11,$12,$13,$14,$15,$16,'Portal de clientes',$17,$18
            ) RETURNING id::text`,
           [
             number,
