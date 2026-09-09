@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { ModulePage } from "@/components/module-page";
 import {
   AppIcon,
@@ -30,6 +31,12 @@ type Shortcut = { href: string; label: string; icon: AppIconName };
 type TaskList = Awaited<ReturnType<typeof listTasks>>;
 type PendingTask = TaskList["personal"][number] | TaskList["received"][number];
 type AssignedTask = TaskList["assigned"][number];
+
+const customWork = [
+  { title: "Dispensadores de jabón", description: "Personalizados para acompañar la identidad de cada negocio.", image: "/custom-services/dispensador-jabon-personalizado.png" },
+  { title: "Toalla en rollo", description: "Equipamiento resistente para espacios de uso intensivo.", image: "/custom-services/dispensador-toalla-rollo-personalizado.png" },
+  { title: "Papel higiénico", description: "Portarrollos institucionales preparados para grandes consumos.", image: "/custom-services/dispensador-papel-higienico-personalizado.png" },
+];
 
 function statusTone(status: string): StatusBadgeTone {
   const normalized = status.toLowerCase();
@@ -195,6 +202,29 @@ export default async function Home() {
               >
                 {shortcut.label}
               </ButtonLink>
+            ))}
+          </div>
+        </section>
+
+        <section aria-labelledby="custom-work-title" className="overflow-hidden rounded-[18px] border border-[#d7e3ef] bg-white shadow-[0_12px_34px_rgba(26,55,96,0.09)]">
+          <div className="grid lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="relative min-h-[260px] overflow-hidden bg-[#e8edf1] sm:min-h-[340px]">
+              <Image alt="Línea de dispensadores personalizados Starlim" className="object-cover" fill sizes="(max-width: 1023px) 100vw, 55vw" src="/custom-services/dispensadores-personalizados-starlim.png" />
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#081a30]/30 via-transparent to-transparent" />
+            </div>
+            <div className="flex flex-col justify-center p-5 sm:p-8">
+              <span className="erp-text-caption font-black uppercase tracking-[0.14em] text-[#2563eb]">También realizamos</span>
+              <h2 className="mt-2 text-2xl font-black tracking-[-0.035em] text-[#0f172a] sm:text-3xl" id="custom-work-title">Soluciones personalizadas para cada espacio</h2>
+              <p className="mt-3 max-w-xl font-medium leading-7 text-[#64748b]">Desarrollamos equipamiento institucional personalizado. Este apartado crecerá con nuevos trabajos y productos especiales.</p>
+              <a className="mt-6 inline-flex w-fit items-center rounded-[10px] bg-[#2563eb] px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#1d4ed8]" href="https://wa.me/543543683594?text=Hola%2C%20quiero%20consultar%20por%20un%20trabajo%20personalizado" rel="noreferrer" target="_blank">Consultar un proyecto →</a>
+            </div>
+          </div>
+          <div className="grid gap-3 border-t border-[#e2e8f0] bg-[#f8fafc] p-4 sm:grid-cols-3 sm:p-5">
+            {customWork.map((item) => (
+              <article className="flex items-center gap-3 rounded-[12px] border border-[#dbe5f1] bg-white p-3 shadow-[var(--shadow-xs)]" key={item.title}>
+                <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-[9px] bg-[#eef2f5]"><Image alt={item.title} className="object-cover" fill sizes="96px" src={item.image} /></div>
+                <div className="min-w-0"><h3 className="font-black text-[#0f172a]">{item.title}</h3><p className="mt-1 text-xs font-medium leading-5 text-[#64748b]">{item.description}</p></div>
+              </article>
             ))}
           </div>
         </section>
