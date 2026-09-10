@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
-import { PresenceIndicator } from "@/components/presence-indicator";
+import { PresenceIndicator, PresenceProvider } from "@/components/presence-indicator";
 import { SessionKeepAlive } from "@/components/session-keep-alive";
 import { ShellNavigation } from "@/components/shell-navigation";
 import { SellerMobileNavigation } from "@/components/seller-mobile-navigation";
@@ -113,6 +113,7 @@ export async function ModulePage({
   ).catch(() => emptyNavigationIndicators());
 
   return (
+    <PresenceProvider>
     <div className={cn("min-h-screen overflow-visible bg-[#f5f7fb] text-foreground lg:grid lg:h-screen lg:grid-cols-[260px_minmax(0,1fr)] lg:overflow-hidden lg:overscroll-none", sellerMobile && "seller-mobile-shell")}>
       <SessionKeepAlive />
       <aside className="erp-sidebar-texture sticky top-0 hidden h-screen overflow-hidden overscroll-none border-r border-[#0750bd] bg-[linear-gradient(180deg,#0b6cff_0%,#075ac7_48%,#073f94_100%)] text-white shadow-[8px_0_30px_rgba(7,63,148,0.22)] lg:flex lg:flex-col">
@@ -184,5 +185,6 @@ export async function ModulePage({
         {sellerMobile ? <SellerMobileNavigation /> : null}
       </main>
     </div>
+    </PresenceProvider>
   );
 }

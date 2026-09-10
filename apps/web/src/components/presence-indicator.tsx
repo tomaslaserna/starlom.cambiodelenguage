@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/components/ui";
+import { useVisibilityAwarePolling } from "@/components/use-visibility-aware-polling";
 import type { OnlineUser, PresenceSnapshot } from "@/lib/presence";
 
-const HEARTBEAT_MS = 30_000;
+const HEARTBEAT_MS = 60_000;
+const PresenceContext = createContext<PresenceSnapshot | null>(null);
 
 async function heartbeat(signal: AbortSignal): Promise<PresenceSnapshot> {
   const response = await fetch("/api/presence", {
@@ -23,40 +25,30 @@ async function heartbeat(signal: AbortSignal): Promise<PresenceSnapshot> {
   return { count: payload.data.count ?? 0, online: payload.data.online ?? [] };
 }
 
-export function PresenceIndicator({ compact = false }: { compact?: boolean }) {
+export function PresenceProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<PresenceSnapshot | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
+
+  useVisibilityAwarePolling(async () => {
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    try {
+      setSnapshot(await heartbeat(controller.signal));
+    } catch {
+      // Keep the last known snapshot on transient errors.
+    }
+  }, { intervalMs: HEARTBEAT_MS });
+
+  useEffect(() => () => controllerRef.current?.abort(), []);
+
+  return <PresenceContext.Provider value={snapshot}>{children}</PresenceContext.Provider>;
+}
+
+export function PresenceIndicator({ compact = false }: { compact?: boolean }) {
+  const snapshot = useContext(PresenceContext);
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let active = true;
-    let controller = new AbortController();
-
-    const tick = async () => {
-      controller.abort();
-      controller = new AbortController();
-      try {
-        const next = await heartbeat(controller.signal);
-        if (active) setSnapshot(next);
-      } catch {
-        // Keep the last known snapshot on transient errors.
-      }
-    };
-
-    void tick();
-    const interval = setInterval(() => void tick(), HEARTBEAT_MS);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void tick();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-
-    return () => {
-      active = false;
-      controller.abort();
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, []);
 
   useEffect(() => {
     if (!open) return;

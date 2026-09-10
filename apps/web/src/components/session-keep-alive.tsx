@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui";
+import { useVisibilityAwarePolling } from "@/components/use-visibility-aware-polling";
 
 const REFRESH_INTERVAL_MS = 4 * 60 * 1000;
 
@@ -16,7 +17,6 @@ function loginHref() {
 
 export function SessionKeepAlive() {
   const [status, setStatus] = useState<SessionStatus>("active");
-  const lastCheckRef = useRef(0);
   const checkingRef = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -30,7 +30,6 @@ export function SessionKeepAlive() {
         credentials: "same-origin",
         headers: { accept: "application/json" },
       });
-      lastCheckRef.current = Date.now();
       setStatus(response.status === 401 ? "expired" : "active");
     } catch {
       // Una falla de red no equivale a cerrar la sesion. Se vuelve a probar al recuperar foco.
@@ -40,24 +39,7 @@ export function SessionKeepAlive() {
     }
   }, []);
 
-  useEffect(() => {
-    const initialCheck = window.setTimeout(() => void refresh(), 0);
-    const timer = window.setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
-    const onVisibilityChange = () => {
-      if (
-        document.visibilityState === "visible" &&
-        Date.now() - lastCheckRef.current >= REFRESH_INTERVAL_MS
-      ) {
-        void refresh();
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      window.clearTimeout(initialCheck);
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [refresh]);
+  useVisibilityAwarePolling(refresh, { intervalMs: REFRESH_INTERVAL_MS });
 
   if (status !== "expired") return null;
 

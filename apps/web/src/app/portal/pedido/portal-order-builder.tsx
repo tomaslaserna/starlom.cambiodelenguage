@@ -3,8 +3,13 @@
 import { createClient, type Session } from "@supabase/supabase-js";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useVisibilityAwarePolling } from "@/components/use-visibility-aware-polling";
 import { money as roundMoney, priceForList } from "@/lib/order-pricing";
+
+const PAYMENT_FAST_POLL_MS = 3_000;
+const PAYMENT_FAST_WINDOW_MS = 60_000;
+const PAYMENT_SLOW_POLL_MS = 10_000;
 
 type Product = {
   id: string;
@@ -286,18 +291,19 @@ export function PortalOrderBuilder({
       setSending(false);
     }
   }
-  useEffect(() => {
-    if (
-      !checkout ||
-      !session ||
-      ["approved", "rejected", "cancelled"].includes(checkout.status)
-    )
-      return;
-    const timer = window.setInterval(async () => {
+  const paymentIntentId = checkout?.intentId;
+  const paymentPollingEnabled = Boolean(
+    paymentIntentId &&
+    session &&
+    checkout &&
+    !["approved", "rejected", "cancelled"].includes(checkout.status),
+  );
+  const checkPayment = useCallback(async () => {
+    if (!paymentIntentId || !session) return;
       try {
         const response = await fetch(
           "/api/portal/checkout/" +
-            encodeURIComponent(checkout.intentId) +
+            encodeURIComponent(paymentIntentId) +
             "/status",
           {
             headers: { authorization: "Bearer " + session.access_token },
@@ -318,9 +324,13 @@ export function PortalOrderBuilder({
       } catch {
         // La próxima consulta vuelve a intentar sin interrumpir al cliente.
       }
-    }, 3000);
-    return () => window.clearInterval(timer);
-  }, [checkout, session]);
+  }, [paymentIntentId, session]);
+  useVisibilityAwarePolling(checkPayment, {
+    enabled: paymentPollingEnabled,
+    intervalMs: PAYMENT_FAST_POLL_MS,
+    slowAfterMs: PAYMENT_FAST_WINDOW_MS,
+    slowIntervalMs: PAYMENT_SLOW_POLL_MS,
+  });
   if (!clientId)
     return <Centered text="Volvé al portal y elegí una sucursal." />;
   if (loading) return <Centered text="Preparando tu pedido…" />;

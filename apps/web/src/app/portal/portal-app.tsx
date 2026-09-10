@@ -3,8 +3,9 @@
 import { createClient, type Session } from "@supabase/supabase-js";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { CustomerWhatsAppButton } from "@/components/customer-whatsapp-button";
+import { useVisibilityAwarePolling } from "@/components/use-visibility-aware-polling";
 
 type Summary = {
   profile: { email: string; displayName: string };
@@ -25,6 +26,9 @@ function supabaseBrowser() {
 }
 
 const money = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" });
+const PAYMENT_FAST_POLL_MS = 3_000;
+const PAYMENT_FAST_WINDOW_MS = 60_000;
+const PAYMENT_SLOW_POLL_MS = 10_000;
 
 export function PortalApp() {
   const client = useMemo(() => supabaseBrowser(), []);
@@ -66,31 +70,35 @@ export function PortalApp() {
     window.requestAnimationFrame(() => document.getElementById("resultado-pago")?.scrollIntoView({ behavior: "smooth", block: "center" }));
   }, [checkout]);
 
-  useEffect(() => {
-    const intentId = checkout?.intentId;
-    if (!intentId || !session) return;
-    let active = true;
-    const checkPayment = async () => {
+  const paymentIntentId = checkout?.intentId;
+  const paymentPollingEnabled = Boolean(
+    paymentIntentId &&
+    session &&
+    checkout &&
+    !["approved", "rejected", "cancelled"].includes(checkout.status),
+  );
+  const checkPayment = useCallback(async () => {
+    if (!paymentIntentId || !session) return;
       setCheckout((current) => current ? { ...current, status: "checking" } : current);
       try {
-        const response = await fetch(`/api/portal/checkout/${encodeURIComponent(intentId)}/status`, { headers: { authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
+        const response = await fetch(`/api/portal/checkout/${encodeURIComponent(paymentIntentId)}/status`, { headers: { authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "No pudimos verificar el pago");
-        if (!active) return;
         const status = payload.data.status as CheckoutState["status"];
         setCheckout((current) => current ? { ...current, status } : current);
-        if (["approved", "rejected", "cancelled"].includes(status)) window.clearInterval(timer);
         if (status === "approved") {
           const summaryResponse = await fetch("/api/portal/summary", { headers: { authorization: `Bearer ${session.access_token}` }, cache: "no-store" });
           const summaryPayload = await summaryResponse.json();
-          if (active && summaryResponse.ok) { setSummary(summaryPayload.data as Summary); setSelectedSales([]); }
+          if (summaryResponse.ok) { setSummary(summaryPayload.data as Summary); setSelectedSales([]); }
         }
-      } catch { if (active) setCheckout((current) => current ? { ...current, status: "pending" } : current); }
-    };
-    void checkPayment();
-    const timer = window.setInterval(checkPayment, 3_000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [checkout?.intentId, session]);
+      } catch { setCheckout((current) => current ? { ...current, status: "pending" } : current); }
+  }, [paymentIntentId, session]);
+  useVisibilityAwarePolling(checkPayment, {
+    enabled: paymentPollingEnabled,
+    intervalMs: PAYMENT_FAST_POLL_MS,
+    slowAfterMs: PAYMENT_FAST_WINDOW_MS,
+    slowIntervalMs: PAYMENT_SLOW_POLL_MS,
+  });
 
   async function requestAccess(event: FormEvent) {
     event.preventDefault(); setError(""); setMessage("");

@@ -13,7 +13,8 @@ test("portal replaces manual proof review with multi-document Mercado Pago check
   assert.match(portal, /resultado-pago/);
   assert.match(portal, /scrollIntoView/);
   assert.match(portal, /Pago confirmado/);
-  assert.match(portal, /setInterval\(checkPayment, 3_000\)/);
+  assert.match(portal, /PAYMENT_FAST_POLL_MS = 3_000/);
+  assert.match(portal, /useVisibilityAwarePolling\(checkPayment/);
   assert.doesNotMatch(portal, /Enviar a revisión|Informar un pago|Adjuntá el comprobante/);
 });
 
