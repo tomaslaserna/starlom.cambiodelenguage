@@ -82,6 +82,12 @@ test("customerPaymentFromBody valida monto, metodo y operacion", () => {
   assert.equal(ok.amount, 10);
   assert.equal(ok.method, "efectivo");
   assert.deepEqual(ok.allocations, [{ saleId: "11111111-1111-4111-8111-111111111111", amount: 10 }]);
+  const withCredit = mod.customerPaymentFromBody({ amount: "15", method: "efectivo", destination: "caja", clientId: "c1", allocations: allocation });
+  assert.equal(withCredit.amount, 15);
+  assert.throws(
+    () => mod.customerPaymentFromBody({ amount: "5", method: "efectivo", destination: "caja", clientId: "c1", allocations: allocation }),
+    /no puede superar el monto recibido/i,
+  );
 });
 
 test("registerCustomerPayment: admin registra directo, vendedor deja pendiente", async () => {
@@ -144,6 +150,14 @@ test("el formulario permite elegir remitos e importes parciales", () => {
   assert.match(dialog, /Aplicar a remitos pendientes/);
   assert.match(dialog, /importe parcial/i);
   assert.match(dialog, /name="allocations"/);
+  assert.match(dialog, /Importe recibido/);
+  assert.match(dialog, /Saldo a favor/);
+});
+
+test("el excedente del cobro se registra como saldo a favor", () => {
+  assert.match(source, /allocation\.unallocated > 0\.005/);
+  assert.match(source, /Saldo a favor \|/);
+  assert.match(source, /payment_id, movement_date, debit, credit/);
 });
 
 const approvalsSource = readFileSync(new URL("../src/lib/approvals.ts", import.meta.url), "utf8");

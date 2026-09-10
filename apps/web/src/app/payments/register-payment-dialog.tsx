@@ -44,6 +44,7 @@ export function RegisterPaymentDialog({
   const [destination, setDestination] = useState(() => suggestedCollectionDestination(COLLECTION_METHODS[0]));
   const [remittances, setRemittances] = useState<OpenRemittance[]>([]);
   const [allocationAmounts, setAllocationAmounts] = useState<Record<string, string>>({});
+  const [paymentAmountInput, setPaymentAmountInput] = useState("");
   const [loadingRemittances, setLoadingRemittances] = useState(false);
   const [remittanceError, setRemittanceError] = useState("");
   const operationRequired = collectionMethodRequiresOperation(method);
@@ -58,6 +59,10 @@ export function RegisterPaymentDialog({
     [allocationAmounts, remittances],
   );
   const allocatedTotal = Math.round(allocations.reduce((sum, item) => sum + item.amount, 0) * 100) / 100;
+  const paymentAmount = paymentAmountInput === ""
+    ? allocatedTotal
+    : Math.round(Number(paymentAmountInput || 0) * 100) / 100;
+  const creditBalance = Math.max(0, Math.round((paymentAmount - allocatedTotal) * 100) / 100);
 
   useEffect(() => {
     if (!open || !clientId) return;
@@ -98,6 +103,7 @@ export function RegisterPaymentDialog({
     setDestination(suggestedCollectionDestination(COLLECTION_METHODS[0]));
     setRemittances([]);
     setAllocationAmounts({});
+    setPaymentAmountInput("");
   }
 
   function toggleRemittance(sale: OpenRemittance) {
@@ -181,8 +187,18 @@ export function RegisterPaymentDialog({
                   />
                 </Field>
               )}
-              <input id={amountInputId} name="amount" type="hidden" value={allocatedTotal || ""} />
               <input name="allocations" type="hidden" value={JSON.stringify(allocations)} />
+              <Field className="sm:col-span-2" htmlFor={amountInputId} label="Importe recibido" required>
+                <Input
+                  id={amountInputId}
+                  min="0.01"
+                  name="amount"
+                  onChange={(event) => setPaymentAmountInput(event.target.value)}
+                  step="0.01"
+                  type="number"
+                  value={paymentAmountInput === "" ? (allocatedTotal || "") : paymentAmountInput}
+                />
+              </Field>
               <div className="sm:col-span-2">
                 <div className="mb-2 flex items-end justify-between gap-3">
                   <div>
@@ -190,7 +206,7 @@ export function RegisterPaymentDialog({
                     <p className="mt-0.5 text-xs font-medium text-[#64748b]">Elegí uno o varios. Podés abonar el total o escribir un importe parcial.</p>
                   </div>
                   <div className="text-right">
-                    <span className="block text-[11px] font-bold uppercase tracking-wide text-[#64748b]">Total del pago</span>
+                    <span className="block text-[11px] font-bold uppercase tracking-wide text-[#64748b]">Aplicado a remitos</span>
                     <strong className="text-lg font-black text-[#075ac7]">{currency.format(allocatedTotal)}</strong>
                   </div>
                 </div>
@@ -232,6 +248,15 @@ export function RegisterPaymentDialog({
                   })}
                 </div>
               </div>
+              {creditBalance > 0 ? (
+                <div className="sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+                  <strong>Saldo a favor: {currency.format(creditBalance)}</strong>
+                  <p className="mt-1 text-xs font-medium">El excedente quedará disponible en la cuenta corriente del cliente.</p>
+                </div>
+              ) : null}
+              {paymentAmount > 0 && allocatedTotal - paymentAmount > 0.005 ? (
+                <p className="sm:col-span-2 text-sm font-bold text-red-600" role="alert">El importe recibido no alcanza para cubrir lo aplicado a los remitos.</p>
+              ) : null}
               <Field htmlFor={dateInputId} label="Fecha">
                 <Input className="min-h-10 px-2 text-sm" defaultValue={today} id={dateInputId} name="date" required type="date" />
               </Field>
@@ -277,7 +302,7 @@ export function RegisterPaymentDialog({
                 <Button onClick={() => setOpen(false)} size="sm" type="button" variant="secondary">
                   Cancelar
                 </Button>
-                <Button disabled={allocatedTotal <= 0 || loadingRemittances} size="sm" type="submit">
+                <Button disabled={paymentAmount <= 0 || allocations.length === 0 || allocatedTotal - paymentAmount > 0.005 || loadingRemittances} size="sm" type="submit">
                   Registrar
                 </Button>
               </div>

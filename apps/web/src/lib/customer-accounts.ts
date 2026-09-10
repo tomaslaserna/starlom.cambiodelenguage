@@ -502,10 +502,10 @@ function validateExplicitAllocations(
     return { saleId: sale.id, receiptNumber: sale.receipt_number, amount: money(requested.amount) };
   });
   const allocated = money(allocations.reduce((sum, item) => sum + item.amount, 0));
-  if (Math.abs(allocated - amount) > 0.005) {
-    throw new ApiError(400, "El total del pago debe coincidir con lo imputado a los remitos");
+  if (allocated - amount > 0.005) {
+    throw new ApiError(400, "El total imputado a los remitos no puede superar el monto recibido");
   }
-  return { allocations, allocated, unallocated: 0 };
+  return { allocations, allocated, unallocated: money(amount - allocated) };
 }
 
 async function postAllocatedCustomerPayment(
@@ -571,6 +571,27 @@ async function postAllocatedCustomerPayment(
     );
   }
 
+  if (allocation.unallocated > 0.005) {
+    await client.query(
+      `
+        INSERT INTO current_account_movements (
+          client_id, payment_id, movement_date, debit, credit,
+          description, entity_type, entity_name, empresa_id
+        )
+        VALUES ($1::uuid, $2::uuid, $3, 0, $4, $5, 'cliente', $6, $7)
+      `,
+      [
+        input.clientId,
+        input.paymentId,
+        input.date,
+        allocation.unallocated,
+        `Saldo a favor | ${input.description}`,
+        input.clientName,
+        companyId,
+      ],
+    );
+  }
+
   return { allocated: allocation.allocated, unallocated: allocation.unallocated };
 }
 
@@ -608,8 +629,8 @@ export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput
   if (collectionMethodRequiresOperation(method) && !operation) throw new ApiError(400, "La operacion es obligatoria");
   if (!allocations.length) throw new ApiError(400, "Selecciona al menos un remito para aplicar el pago");
   const allocatedTotal = money(allocations.reduce((sum, item) => sum + item.amount, 0));
-  if (Math.abs(allocatedTotal - amount) > 0.005) {
-    throw new ApiError(400, "El total del pago debe coincidir con lo imputado a los remitos");
+  if (allocatedTotal - amount > 0.005) {
+    throw new ApiError(400, "El total imputado a los remitos no puede superar el monto recibido");
   }
 
   return { clientId, amount, date, method, destination, operation, notes, allocations };
