@@ -3,7 +3,7 @@ import { formatCurrency, formatNumber } from "@/lib/format";
 import { getBalanceDashboard } from "@/lib/finance";
 import { getEarliestSalesMonth, getMonthlySeries } from "@/lib/admin-metrics";
 import { requireStaffSession } from "@/lib/auth";
-import { getCustomerChurn } from "@/lib/messages";
+import { getCustomerChurn } from "@/lib/customer-follow-up";
 import { currentMonth } from "@/lib/month-range";
 import { getDeliveryTimes } from "@/lib/orders";
 import { requirePagePermission } from "@/lib/page-auth";

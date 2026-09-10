@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
-import { createTask, listTasks } from "@/lib/messages";
+import { createTask, listTasks } from "@/lib/tasks";
 import { readRequestBody } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 

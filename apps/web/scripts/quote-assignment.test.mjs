@@ -176,7 +176,7 @@ test("getVendorQuotes incluye OR visible_to_all en el filtro", async () => {
     "@/lib/crm-quotes": { classifyQuote: () => null, topQuoteClients: () => [] },
     "@/lib/customer-accounts": { listOpenCustomerAccounts: async () => ({ accounts: [], totals: { debit: 0, credit: 0 } }) },
     "@/lib/db": { queryWithCompanyContext: async (_c, sql) => { calls.push(sql); return { rows: [] }; } },
-    "@/lib/messages": { getCustomerFollowUp: async () => ({ groups: {} }) },
+    "@/lib/customer-follow-up": { getCustomerFollowUp: async () => ({ groups: {} }) },
     "@/lib/order-status": { normalizedOrderStatusSql: () => "estado" },
     "@/lib/pricing": { listPriceListParameters: async () => [] },
     "@/lib/sales-source-sql": { canonicalSalesSourceSql: () => "true" },

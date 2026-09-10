@@ -264,7 +264,7 @@ function SectionAccordion({
 }
 
 // Segundo mundo del CRM: retorno al sistema + Modo CRM (items planos) + Inicio
-// (menu incondicional compartido: escritorio, calendario, mensajes, banco).
+// (menu incondicional compartido: escritorio, calendario, banco).
 function CrmWorldNavigation({
   active,
   current,

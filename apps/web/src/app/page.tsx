@@ -16,7 +16,7 @@ import { PizarronBoard } from "@/app/pizarron-board";
 import { boardCoworkers, listBoardNotes } from "@/lib/board";
 import { requireStaffSession } from "@/lib/auth";
 import { formatDateTime } from "@/lib/format";
-import { listTasks } from "@/lib/messages";
+import { listTasks } from "@/lib/tasks";
 import {
   ORDERS_CREATE_PERMISSION,
   PRODUCTS_READ_PERMISSION,

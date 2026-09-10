@@ -124,26 +124,11 @@ export async function updateBoardNote(
       const valid = coworkersResult.rows.map((row) => row.usuario).filter((usuario) => usuario && usuario !== session.username);
       const newMentions = parseMentions(String(patch.text), valid);
 
-      const previous = await client.query<{ mentioned_username: string }>(
-        `SELECT mentioned_username FROM board_note_mentions WHERE note_id = $1::uuid AND empresa_id = $2`,
-        [id, session.companyId],
-      );
-      const previousSet = new Set(previous.rows.map((row) => row.mentioned_username));
-
       await client.query(`DELETE FROM board_note_mentions WHERE note_id = $1::uuid AND empresa_id = $2`, [id, session.companyId]);
       for (const username of newMentions) {
         await client.query(
           `INSERT INTO board_note_mentions (note_id, empresa_id, mentioned_username) VALUES ($1::uuid, $2, $3)`,
           [id, session.companyId, username],
-        );
-      }
-
-      // Aviso interno solo a los recién mencionados en esta edición.
-      for (const username of newMentions.filter((mentioned) => !previousSet.has(mentioned))) {
-        await client.query(
-          `INSERT INTO mensajes (de, para, asunto, cuerpo, tipo, importancia, estado, empresa_id)
-           VALUES ($1, $2, $3, $4, 'directo', 'normal', 'enviado', $5)`,
-          [session.username, username, "Te mencionaron en el pizarrón", String(patch.text).slice(0, 500), session.companyId],
         );
       }
     }

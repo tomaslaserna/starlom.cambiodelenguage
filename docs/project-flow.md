@@ -23,7 +23,7 @@ flowchart TB
   R --> Perms["Autorizacion<br/>route-auth.ts + page-auth.ts"]
   Perms --> PermDb["profile_permissions<br/>role_permissions<br/>app_permissions"]
 
-  R --> Libs["Librerias de dominio<br/>orders, quotes, purchases, collections, messages, pricing"]
+  R --> Libs["Librerias de dominio<br/>orders, quotes, purchases, collections, tasks, customer-follow-up, pricing"]
   Libs --> DB["db.ts<br/>Pool pg + transaccion"]
   DB --> Ctx["set_config app.current_empresa_id"]
   Ctx --> PG["Supabase Postgres"]
@@ -93,7 +93,7 @@ flowchart LR
   Authz --> Allowed["sessionAllows por cada permiso requerido"]
   Allowed --> Sections["authorizedNavigationSections"]
   Module --> Badges["getNavigationIndicators"]
-  Badges --> BadgeSql["consultas a mensajes, tareas, sales, quotes, purchases"]
+  Badges --> BadgeSql["consultas a tareas, sales, quotes, purchases"]
   Sections --> Nav["ShellNavigation"]
   Badges --> Nav
   Nav --> UserMenu["Menu lateral filtrado<br/>solo modulos permitidos"]
@@ -101,7 +101,7 @@ flowchart LR
 
 Los grupos principales del menu salen de `apps/web/src/lib/navigation.ts`:
 
-- Inicio: escritorio, calendario, mensajes.
+- Inicio: escritorio, calendario.
 - Operaciones: pedidos, ventas, presupuestos, fiscal.
 - Datos: precios, clientes, seguimiento, proveedores, stock.
 - Compras: nueva compra, recompra MRP, registro.
@@ -249,28 +249,17 @@ Excepciones intencionales observadas:
 - `/api/health`: health check de runtime y DB.
 - `/api/auth/logout`: publica para cerrar cookie.
 
-## 8. Flujo de soporte interno: mensajes, tareas y seguimiento
+## 8. Flujo de soporte interno: tareas y seguimiento
 
 ```mermaid
 flowchart TB
   Home["/ Inicio"] --> Tasks["listTasks"]
-  Home --> Messages["listMessageCenter"]
   Tasks --> Reminders["recordatorios"]
   Tasks --> Assigned["tareas_asignadas"]
-  Messages --> MsgTable["mensajes"]
-  Messages --> Attachments["mensaje_adjuntos"]
-  Composer["Nuevo mensaje"] --> SignUpload["/api/messages/attachments/sign"]
-  SignUpload --> Staged["mensaje_cargas<br/>token temporal"]
-  SignUpload --> DirectStorage["carga directa firmada<br/>Supabase Storage privado"]
-  Staged --> Attachments
-  Attachments --> Download["/api/messages/:id/attachments/:id<br/>valida emisor o destinatario"]
-  Download --> DirectStorage
 
   Calendar["/calendar"] --> CreateTask["createTask"]
   CreateTask -->|tarea propia| Reminders
   CreateTask -->|asignada a usuario| Assigned
-  CreateTask --> Notify["mensaje tipo tarea_asignada"]
-  Notify --> MsgTable
 
   FollowUp["/customers/follow-up"] --> History["sales entregadas por cliente"]
   History --> Buckets["al_dia, contactar, riesgo, perdido, sin_historial"]
@@ -284,5 +273,4 @@ flowchart TB
 - Integridad comercial: presupuestos se convierten atomica y trazablemente en pedidos.
 - Integridad de stock: entrega de pedidos descuenta stock; revision de compras suma stock.
 - Integridad financiera: cobros/pagos impactan `payments` y `current_account_movements`.
-- Operacion diaria: inicio, mensajes, tareas e indicadores salen de las mismas tablas operativas.
-- Adjuntos internos: la carga evita el limite de las funciones de Vercel mediante URLs firmadas, y la descarga exige pertenecer al mensaje antes de emitir una URL temporal.
+- Operacion diaria: inicio, tareas e indicadores salen de las mismas tablas operativas.

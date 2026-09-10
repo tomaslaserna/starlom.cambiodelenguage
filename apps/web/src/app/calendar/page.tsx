@@ -1,6 +1,6 @@
 import { ModulePage } from "@/components/module-page";
 import { formatDateTime } from "@/lib/format";
-import { listMessageCenter, listTasks } from "@/lib/messages";
+import { listTaskAssignees, listTasks } from "@/lib/tasks";
 import { requireStaffSession } from "@/lib/auth";
 import { normalizeRole } from "@/lib/auth";
 import { getVendorLeads } from "@/lib/leads";
@@ -28,9 +28,9 @@ import {
 export default async function CalendarPage({ crmMode = false }: { crmMode?: boolean }) {
   const session = await requireStaffSession();
   const canManageLeads = normalizeRole(session.role) === "vendedor" && await sessionCanUseCrm(session);
-  const [tasks, center, vendorLeads] = await Promise.all([
+  const [tasks, employees, vendorLeads] = await Promise.all([
     listTasks(session),
-    listMessageCenter(session),
+    listTaskAssignees(session),
     canManageLeads ? getVendorLeads(session) : Promise.resolve(null),
   ]);
   const pending = [...tasks.personal, ...tasks.received];
@@ -114,7 +114,7 @@ export default async function CalendarPage({ crmMode = false }: { crmMode?: bool
               <Field htmlFor="calendar-assigned-to" label="Asignar a">
                 <Select id="calendar-assigned-to" name="assignedTo">
                   <option value="">Recordatorio propio</option>
-                  {center.employees.map((employee) => (
+                  {employees.map((employee) => (
                     <option key={employee} value={employee}>{employee}</option>
                   ))}
                 </Select>

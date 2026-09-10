@@ -291,14 +291,6 @@ test("admin read smoke covers every documented project flow within latency budge
       assertData: (data) => assert.ok(data.data),
     },
     {
-      flow: "support/messages",
-      path: "/api/messages",
-      assertData: (data) => {
-        assert.ok(Array.isArray(data.data.inbox));
-        assert.ok(Array.isArray(data.data.sent));
-      },
-    },
-    {
       flow: "support/tasks",
       path: "/api/tasks",
       assertData: (data) => {

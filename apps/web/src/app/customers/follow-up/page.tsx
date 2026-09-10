@@ -1,7 +1,7 @@
 import { ModulePage } from "@/components/module-page";
 import { Button, ButtonLink, Card, DataTable, DataTableBody, DataTableCell, DataTableHead, DataTableHeader, DataTableRow, EmptyState, PageHeader, StatCard, StatusBadge } from "@/components/ui";
 import { createCustomerFollowUpTaskAction } from "@/app/customers/follow-up/actions";
-import { getCustomerFollowUp } from "@/lib/messages";
+import { getCustomerFollowUp } from "@/lib/customer-follow-up";
 import { formatDate, formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";

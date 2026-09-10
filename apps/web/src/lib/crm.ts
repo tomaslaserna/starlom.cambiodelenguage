@@ -9,7 +9,7 @@ import {
 } from "@/lib/crm-quotes";
 import { listOpenCustomerAccounts } from "@/lib/customer-accounts";
 import { queryWithCompanyContext } from "@/lib/db";
-import { getCustomerFollowUp } from "@/lib/messages";
+import { getCustomerFollowUp } from "@/lib/customer-follow-up";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { parsePagination } from "@/lib/pagination";
 import { listPriceListParameters } from "@/lib/pricing";

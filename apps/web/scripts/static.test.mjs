@@ -778,7 +778,7 @@ test("Cash flow exposes 7/15/30 horizons and a calendar view", () => {
 });
 
 test("customer follow-up can create reminders from recommerce risk rows", () => {
-  const messages = read("apps/web/src/lib/messages.ts");
+  const messages = read("apps/web/src/lib/customer-follow-up.ts");
   assert.match(messages, /export async function getCustomerFollowUp/);
   assert.match(messages, /customerId: customer\.id/);
   assert.match(messages, /expectedNextPurchase/);
@@ -814,7 +814,6 @@ test("form controls tolerate browser extension attributes during hydration", () 
     "apps/web/src/app/calendar/page.tsx",
     "apps/web/src/app/collections/register-collection-dialog.tsx",
     "apps/web/src/app/employees/page.tsx",
-    "apps/web/src/app/messages/messages-client.tsx",
     "apps/web/src/app/orders/page.tsx",
     "apps/web/src/app/orders/new/order-confirmation-preview.tsx",
     "apps/web/src/app/orders/new/order-entry-fields.tsx",
@@ -869,7 +868,6 @@ test("reported ERP controls keep consistent spacing, dates, menus, and whole qua
   const format = read("apps/web/src/lib/format.ts");
   const modulePage = read("apps/web/src/components/module-page.tsx");
   const presence = read("apps/web/src/components/presence-indicator.tsx");
-  const messages = read("apps/web/src/app/messages/messages-client.tsx");
   const orderFields = read("apps/web/src/app/orders/new/order-entry-fields.tsx");
   const orders = read("apps/web/src/lib/orders.ts");
   const ordersPage = read("apps/web/src/app/orders/page.tsx");
@@ -885,9 +883,6 @@ test("reported ERP controls keep consistent spacing, dates, menus, and whole qua
   assert.match(modulePage, /flex h-10 max-w-\[360px\] items-center/);
   assert.match(modulePage, /<LogoutButton className="h-10 min-h-10 px-4"/);
   assert.match(presence, /flex h-\[var\(--control-height-md\)\] items-center/);
-  assert.match(messages, /\[&>span\]:items-center \[&>span\]:justify-center/);
-  assert.match(messages, /style=\{\{ paddingInline: 0 \}\}/);
-  assert.match(messages, /block h-5 w-5 -translate-x-px/);
 
   const globals = read("apps/web/src/app/globals.css");
   assert.doesNotMatch(globals, /button,[\s\S]*summary \{\s*font: inherit;/);
@@ -910,76 +905,6 @@ test("reported ERP controls keep consistent spacing, dates, menus, and whole qua
   assert.doesNotMatch(salesPage, /DataTableHead[^>]*>Comprobante<\/DataTableHead>/);
   assert.match(salesPage, /TableHoverActionMenu[\s\S]*Comprobantes asociados/);
   assert.match(salesPage, /ConfirmDeleteButton/);
-});
-
-test("message center groups messages into WhatsApp-style contact conversations with private attachments", () => {
-  const db = read("apps/web/src/lib/db.ts");
-  const page = read("apps/web/src/app/messages/page.tsx");
-  const client = read("apps/web/src/app/messages/messages-client.tsx");
-  const messages = read("apps/web/src/lib/messages.ts");
-  const attachments = read("apps/web/src/lib/message-attachments.ts");
-  const signRoute = read("apps/web/src/app/api/messages/attachments/sign/route.ts");
-  const downloadRoute = read("apps/web/src/app/api/messages/[messageId]/attachments/[attachmentId]/route.ts");
-  const migration = read("supabase/migrations/20260720212657_messaging_attachments.sql");
-
-  assert.match(page, /MessagesClient/);
-  assert.match(page, /initialContact/);
-  assert.match(page, /initialRevision=\{center\.meta\.revision\}/);
-  assert.match(page, /\.\.\.center\.inbox, \.\.\.center\.sent/);
-  assert.match(client, /Buscar o iniciar un chat/);
-  assert.match(client, /message-contact-search/);
-  assert.match(client, /selectedConversation/);
-  assert.match(client, /Chat con/);
-  assert.match(client, /markConversationReadAction/);
-  assert.match(client, /MESSAGE_REFRESH_INTERVAL_MS = 3_000/);
-  assert.match(client, /\/api\/messages\?mode=revision/);
-  assert.match(client, /revision !== revisionRef\.current/);
-  assert.match(client, /await refreshMessages\(signal\)/);
-  assert.match(client, /refreshWhenAvailable\(\)/);
-  assert.match(client, /visibilitychange/);
-  assert.match(client, /window\.addEventListener\("online"/);
-  assert.match(client, /refreshInFlightRef/);
-  assert.match(client, /Reconectando mensajes/);
-  assert.match(client, /credentials: "same-origin"/);
-  assert.match(client, /shiftKey/);
-  assert.match(client, /whitespace-pre-wrap break-words/);
-  assert.match(client, /aria-label="Adjuntar archivos"/);
-  assert.match(client, /aria-label=\{sending \? "Enviando mensaje" : "Enviar mensaje"\}/);
-  assert.match(client, /rounded-\[22px\][\s\S]*focus-within:ring-2/);
-  assert.doesNotMatch(client, /name="importance"/);
-  assert.doesNotMatch(client, />\s*Adjuntar\s*</);
-  assert.doesNotMatch(client, />\s*Enviar\s*</);
-  assert.match(client, /uploadToSignedUrl/);
-  assert.match(client, /MESSAGE_ATTACHMENT_MAX_FILES/);
-  assert.match(client, /attachment\.downloadUrl/);
-  assert.match(messages, /json_agg/);
-  assert.match(messages, /LEFT JOIN mensaje_adjuntos/);
-  assert.match(messages, /attachPreparedMessageUploads/);
-  assert.match(messages, /AND \(\$3::bigint IS NULL OR id = \$3\)/);
-  assert.match(messages, /export async function markConversationRead/);
-  assert.match(messages, /export async function getMessageCenterRevision/);
-  assert.ok((messages.match(/\{ cache: false \}/g) ?? []).length >= 3);
-  assert.match(db, /options: \{ cache\?: boolean \} = \{\}/);
-  assert.match(db, /const readOnly = isCacheableRead\(sql\)/);
-  assert.match(db, /options\.cache !== false && readOnly/);
-  assert.match(db, /else if \(!readOnly\)/);
-  assert.match(messages, /AND de = \$3/);
-  assert.match(attachments, /AND \(m\.de = \$4 OR m\.para = \$4\)/);
-  assert.match(attachments, /storageObjectInfo/);
-  assert.match(signRoute, /requireApiSession/);
-  assert.match(downloadRoute, /getMessageAttachment/);
-  assert.match(downloadRoute, /createSignedStorageUrl/);
-  const messagesRoute = read("apps/web/src/app/api/messages/route.ts");
-  assert.match(messagesRoute, /private, no-store, max-age=0/);
-  assert.match(messagesRoute, /messages\.read\.completed/);
-  assert.match(messagesRoute, /messages\.send\.completed/);
-  assert.match(messagesRoute, /Server-Timing/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.mensaje_adjuntos/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.mensaje_cargas/);
-  assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
-  assert.match(migration, /REVOKE ALL ON TABLE public\.mensaje_cargas FROM anon, authenticated/);
-  assert.match(migration, /public = false/);
-  assert.match(migration, /20971520/);
 });
 
 test("shared button variants keep a consistent action hierarchy", () => {
@@ -1845,7 +1770,7 @@ test("project flow diagram stays aligned with active ERP flows and smoke coverag
   assert.match(diagram, /Flujo operativo de compras, stock y pagos proveedor/);
   assert.match(diagram, /Flujo de datos multiempresa/);
   assert.match(diagram, /Flujo de APIs privadas/);
-  assert.match(diagram, /mensajes, tareas y seguimiento/);
+  assert.match(diagram, /tareas y seguimiento/);
 
   const sourceByLabel = {
     "auth.ts": "apps/web/src/lib/auth.ts",
@@ -1858,7 +1783,7 @@ test("project flow diagram stays aligned with active ERP flows and smoke coverag
     "quotes": "apps/web/src/lib/quotes.ts",
     "purchases": "apps/web/src/lib/purchases.ts",
     "collections": "apps/web/src/lib/collections.ts",
-    "messages": "apps/web/src/lib/messages.ts",
+    "customer-follow-up": "apps/web/src/lib/customer-follow-up.ts",
     "storage.ts": "apps/web/src/lib/storage.ts",
   };
 
@@ -1882,7 +1807,6 @@ test("project flow diagram stays aligned with active ERP flows and smoke coverag
     "payments",
     "current_account_movements",
     "stock_movements",
-    "mensajes",
     "recordatorios",
     "tareas_asignadas",
   ]) {
@@ -1904,7 +1828,6 @@ test("project flow diagram stays aligned with active ERP flows and smoke coverag
     "/api/admin/accounts-payable",
     "/api/collections/pending",
     "/api/admin/cashflow",
-    "/api/messages",
     "/api/tasks",
     "/api/customers/follow-up",
   ]) {

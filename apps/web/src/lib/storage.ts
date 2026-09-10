@@ -4,8 +4,8 @@ import { ApiError } from "@/lib/api-response";
 import { envValue } from "@/lib/env";
 
 const DEFAULT_BUCKET = "uploads";
-// Dedicated private bucket for the "Banco" file storage feature. Kept separate
-// from the message-uploads bucket so it has its own size/mime limits.
+// Dedicated private bucket for the "Banco" file storage feature, with its own
+// size/mime limits independent of receipt uploads.
 export const BANK_BUCKET = "bank";
 // Public bucket for product images (catalog thumbnails).
 export const PRODUCT_IMAGES_BUCKET = "product-images";

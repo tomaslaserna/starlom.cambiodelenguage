@@ -40,7 +40,7 @@ function makeCrm(queryImpl, { allCustomerAccess = false } = {}) {
         return queryImpl(sql, params);
       },
     },
-    "@/lib/messages": { getCustomerFollowUp: async () => ({ groups: {} }) },
+    "@/lib/customer-follow-up": { getCustomerFollowUp: async () => ({ groups: {} }) },
     "@/lib/order-status": { normalizedOrderStatusSql: () => "estado" },
     "@/lib/pricing": { listPriceListParameters: async () => [] },
     "@/lib/sales-vat": { adjustedSalesAmountSql: (amount) => amount },

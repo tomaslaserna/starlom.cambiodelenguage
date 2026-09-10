@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { completeTask, completionInputFromBody, createTask } from "@/lib/messages";
+import { completeTask, completionInputFromBody, createTask } from "@/lib/tasks";
 import { positiveId, uuidParam } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
 import { scheduleLeadReminder } from "@/lib/leads";

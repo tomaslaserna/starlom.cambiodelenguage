@@ -1,5 +1,5 @@
 import { handleApiError, ok } from "@/lib/api-response";
-import { getCustomerFollowUp } from "@/lib/messages";
+import { getCustomerFollowUp } from "@/lib/customer-follow-up";
 import { requireApiSession } from "@/lib/route-auth";
 
 export const runtime = "nodejs";
