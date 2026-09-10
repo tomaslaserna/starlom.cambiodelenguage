@@ -29,3 +29,19 @@ lecturas, adjuntos y los dos componentes de avisos. Las rutas `/messages` y
 El código histórico permanece en Git y las copias de seguridad existentes siguen
 su retención habitual. La eliminación aplica al sistema activo; no purga backups
 ni reescribe el historial del repositorio.
+
+## Verificación de producción, 10 de septiembre de 2026
+
+- Publicación del código `8886b32`: Vercel confirmó éxito; `/messages` y las cinco
+  rutas de API retiradas devolvieron 404. `/portal` y `/api/health` devolvieron 200.
+- Eliminados 46 mensajes, 2 registros de adjuntos, 3 cargas preparadas y los 3
+  objetos de Storage (44.608 bytes en total). Las tres tablas ya no existen y
+  quedan cero permisos y cero objetos de mensajería.
+- Antes y después: 3.108 productos, 847 ventas, 96 imágenes de productos,
+  1 tarea asignada, 10 recordatorios, 5 notas, 3 cuentas y 3 membresías del portal.
+- Calendario y seguimiento de clientes verificados con sesión real después de
+  eliminar las tablas. La lista de colaboradores del calendario sigue cargando.
+- Compilación, TypeScript, lint de archivos modificados, análisis de seguridad y
+  las 7 pruebas de retirada: correctos. La suite general conserva 3 fallos ajenos:
+  mocks sin alias de `customer-receipt-types`/`month-range` y un fallback vacío en
+  `customers/page.tsx`; los archivos que los provocan no fueron modificados.

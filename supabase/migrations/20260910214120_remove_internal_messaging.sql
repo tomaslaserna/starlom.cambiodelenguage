@@ -1,4 +1,5 @@
 -- Apply only after the application release that removes internal messaging.
+-- Version matches the migration applied to STARLIM ERP on 2026-09-10.
 -- Delete objects using the Storage API first; never delete storage.objects rows.
 DO $$
 BEGIN
