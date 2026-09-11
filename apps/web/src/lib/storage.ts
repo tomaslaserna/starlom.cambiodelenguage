@@ -19,6 +19,7 @@ function assertAllowedBucket(bucket: string) {
 
 // Public read URL for an object in the product-images bucket.
 export function publicProductImageUrl(path: string): string {
+  if (path.startsWith("/")) return path;
   const config = storageConfig();
   return `${config.url}/storage/v1/object/public/${PRODUCT_IMAGES_BUCKET}/${encodedObjectPath(path)}`;
 }
