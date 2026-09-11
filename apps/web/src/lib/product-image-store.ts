@@ -118,7 +118,14 @@ export async function importVerifiedProductImage(
   });
   if (current) return { status: "existing" as const, imageUrl: publicProductImageUrl(current) };
 
-  const response = await fetch(source, { signal: AbortSignal.timeout(20_000) });
+  const response = await fetch(source, {
+    headers: {
+      Accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5",
+      "User-Agent": "Mozilla/5.0 (compatible; StarlimProductImageImporter/1.0)",
+    },
+    redirect: "follow",
+    signal: AbortSignal.timeout(20_000),
+  });
   const contentType = (response.headers.get("content-type") ?? "").split(";")[0].toLowerCase();
   const extension = EXTENSION_BY_MIME[contentType];
   if (!response.ok || !extension) throw new ApiError(502, "La fuente no devolvió una imagen válida");

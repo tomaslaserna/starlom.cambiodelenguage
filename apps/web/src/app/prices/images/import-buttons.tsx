@@ -11,6 +11,7 @@ export function ImportButtons({ sources }: { sources: SourceRow[] }) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
+  const [summary, setSummary] = useState("");
 
   async function importOne(source: SourceRow) {
     const response = await fetch("/api/products/image/import", {
@@ -25,15 +26,26 @@ export function ImportButtons({ sources }: { sources: SourceRow[] }) {
   async function importAll() {
     setBusy(true);
     setError("");
+    setSummary("");
     setProgress(0);
+    const failures: string[] = [];
+    let imported = 0;
     try {
       for (let index = 0; index < pending.length; index += 1) {
-        await importOne(pending[index]);
+        const source = pending[index];
+        try {
+          await importOne(source);
+          imported += 1;
+        } catch (caught) {
+          const reason = caught instanceof Error ? caught.message : "Error desconocido";
+          failures.push(source.productName + ": " + reason);
+        }
         setProgress(index + 1);
       }
-      router.refresh();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "No se pudo completar la importación");
+      if (imported > 0) setSummary(imported + " " + (imported === 1 ? "imagen importada." : "imágenes importadas."));
+      if (failures.length > 0) {
+        setError(failures.length + " " + (failures.length === 1 ? "imagen no pudo importarse: " : "imágenes no pudieron importarse: ") + failures.join(" · "));
+      }
       router.refresh();
     } finally {
       setBusy(false);
@@ -51,6 +63,7 @@ export function ImportButtons({ sources }: { sources: SourceRow[] }) {
         {busy ? `Importando ${progress}/${pending.length}…` : `Importar ${pending.length} verificadas`}
       </button>
       {error ? <span className="text-sm font-semibold text-[#dc2626]">{error}</span> : null}
+      {summary ? <span className="text-sm font-semibold text-[#15803d]">{summary}</span> : null}
       {!error && pending.length === 0 ? (
         <span className="text-sm font-semibold text-[#15803d]">La tanda ya está cargada.</span>
       ) : null}
