@@ -49,6 +49,23 @@ function money(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+export function capOpenSalesToAccountBalance<T extends { outstanding: number | string }>(
+  sales: T[],
+  accountBalance: number,
+): Array<Omit<T, "outstanding"> & { outstanding: number }> {
+  let remainingBalance = Math.max(0, money(accountBalance));
+  const result: Array<Omit<T, "outstanding"> & { outstanding: number }> = [];
+  for (const sale of sales) {
+    if (remainingBalance <= 0.005) break;
+    const saleOutstanding = Math.max(0, money(Number(sale.outstanding)));
+    const outstanding = money(Math.min(saleOutstanding, remainingBalance));
+    if (outstanding <= 0.005) continue;
+    result.push({ ...sale, outstanding });
+    remainingBalance = money(remainingBalance - outstanding);
+  }
+  return result;
+}
+
 export function collapsePaymentAllocations(movements: AccountMovementRow[]): StatementMovement[] {
   const result: Array<StatementMovement & { allocationCount?: number }> = [];
   const groupedIndexes = new Map<string, number>();
@@ -396,7 +413,7 @@ export type OpenCustomerRemittance = {
 
 type OpenSaleForAllocation = {
   id: string;
-  outstanding: string;
+  outstanding: string | number;
   receipt_number: number;
 };
 
@@ -449,21 +466,42 @@ const OPEN_SALES_FOR_ALLOCATION_SQL = `
     ) > 0.005
 `;
 
+const CUSTOMER_ACCOUNT_BALANCE_SQL = `
+  SELECT COALESCE(SUM(cam.debit - cam.credit), 0)::text AS balance
+  FROM current_account_movements cam
+  LEFT JOIN sales linked_sale
+    ON linked_sale.id = cam.sale_id AND linked_sale.empresa_id = cam.empresa_id
+  WHERE cam.empresa_id = $1
+    AND cam.client_id = $2::uuid
+    AND ${activeAccountMovementWhereSql("cam", "linked_sale")}
+`;
+
+async function currentCustomerAccountBalance(client: PoolClient, companyId: number, clientId: string) {
+  const result = await client.query<{ balance: string }>(CUSTOMER_ACCOUNT_BALANCE_SQL, [companyId, clientId]);
+  return money(Number(result.rows[0]?.balance ?? 0));
+}
+
 export async function listOpenCustomerRemittances(companyId: number, clientId: string): Promise<OpenCustomerRemittance[]> {
-  const rows = await queryWithCompanyContext<OpenSaleForAllocation & {
-    sale_number: string; sale_date: string; total: string;
-  }>(
-    companyId,
-    `${OPEN_SALES_FOR_ALLOCATION_SQL} ORDER BY s.sale_date ASC, s.created_at ASC, s.id ASC`,
-    [companyId, clientId],
-    { cache: false },
-  );
-  return rows.rows.map((row) => ({
+  const [rows, balance] = await Promise.all([
+    queryWithCompanyContext<OpenSaleForAllocation & {
+      sale_number: string; sale_date: string; total: string;
+    }>(
+      companyId,
+      `${OPEN_SALES_FOR_ALLOCATION_SQL} ORDER BY s.sale_date ASC, s.created_at ASC, s.id ASC`,
+      [companyId, clientId],
+      { cache: false },
+    ),
+    queryWithCompanyContext<{ balance: string }>(
+      companyId, CUSTOMER_ACCOUNT_BALANCE_SQL, [companyId, clientId], { cache: false },
+    ),
+  ]);
+  const effectiveRows = capOpenSalesToAccountBalance(rows.rows, Number(balance.rows[0]?.balance ?? 0));
+  return effectiveRows.map((row) => ({
     saleId: row.id,
     number: row.sale_number,
     date: row.sale_date,
     total: Number(row.total),
-    outstanding: Number(row.outstanding),
+    outstanding: row.outstanding,
   }));
 }
 
@@ -521,23 +559,33 @@ async function postAllocatedCustomerPayment(
     allocations?: CustomerPaymentAllocation[];
   },
 ) {
-  const requestedIds = input.allocations?.map((item) => item.saleId) ?? [];
+  await client.query(
+    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+    [`${companyId}:${input.clientId}`],
+  );
   const sales = await client.query<OpenSaleForAllocation>(
     `${OPEN_SALES_FOR_ALLOCATION_SQL}
-      ${requestedIds.length ? "AND s.id = ANY($3::uuid[])" : ""}
       ORDER BY s.sale_date ASC, s.created_at ASC, s.id ASC
       FOR UPDATE OF s`,
-    requestedIds.length ? [companyId, input.clientId, requestedIds] : [companyId, input.clientId],
+    [companyId, input.clientId],
   );
+  const effectiveSales = capOpenSalesToAccountBalance(
+    sales.rows,
+    await currentCustomerAccountBalance(client, companyId, input.clientId),
+  );
+  const requestedIds = new Set(input.allocations?.map((item) => item.saleId) ?? []);
+  const payableSales = input.allocations
+    ? effectiveSales.filter((sale) => requestedIds.has(sale.id))
+    : effectiveSales;
 
   let allocation: ReturnType<typeof allocatePaymentAmount>;
   if (input.allocations) {
-    allocation = validateExplicitAllocations(input.amount, input.allocations, sales.rows);
+    allocation = validateExplicitAllocations(input.amount, input.allocations, payableSales);
   } else {
     // Compatibilidad exclusiva para cobros pendientes creados antes de esta mejora.
     allocation = allocatePaymentAmount(
       input.amount,
-      sales.rows.map((sale) => ({ id: sale.id, outstanding: Number(sale.outstanding), receiptNumber: sale.receipt_number })),
+      payableSales.map((sale) => ({ id: sale.id, outstanding: sale.outstanding, receiptNumber: sale.receipt_number })),
     );
   }
   for (const item of allocation.allocations) {
@@ -561,7 +609,7 @@ async function postAllocatedCustomerPayment(
       ],
     );
     const originalOutstanding = Number(
-      sales.rows.find((sale) => sale.id === item.saleId)?.outstanding ?? 0,
+      payableSales.find((sale) => sale.id === item.saleId)?.outstanding ?? 0,
     );
     await client.query(
       `UPDATE sales
@@ -650,15 +698,6 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
     const clientName = clientInfo.rows[0]?.name ?? "";
     const reference = [input.operation, input.notes].filter(Boolean).join(" | ");
     const explicitAllocations = input.allocations ?? [];
-    if (explicitAllocations.length) {
-      const selectedSales = await client.query<OpenSaleForAllocation>(
-        `${OPEN_SALES_FOR_ALLOCATION_SQL}
-         AND s.id = ANY($3::uuid[])
-         ORDER BY s.sale_date ASC, s.created_at ASC, s.id ASC`,
-        [session.companyId, input.clientId, explicitAllocations.map((item) => item.saleId)],
-      );
-      validateExplicitAllocations(input.amount, explicitAllocations, selectedSales.rows);
-    }
 
     const payment = await client.query(
       `

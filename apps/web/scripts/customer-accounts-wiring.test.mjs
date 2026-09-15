@@ -99,6 +99,7 @@ test("registerCustomerPayment: admin registra directo, vendedor deja pendiente",
         if (/FROM sales s/i.test(sql)) {
           return { rows: [{ id: "s1", outstanding: "100", receipt_number: 1 }] };
         }
+        if (/SUM\(cam\.debit - cam\.credit\)/i.test(sql)) return { rows: [{ balance: "100" }] };
         if (/SELECT COALESCE\(display_name/i.test(sql)) return { rows: [{ name: "Cliente" }] };
         return { rows: [{ id: "p1" }] };
       },
