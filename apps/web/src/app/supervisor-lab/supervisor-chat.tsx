@@ -315,7 +315,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
           ) : null}
           {timedOut ? (
             <div className="rounded-lg border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm font-semibold text-[#92400e]">
-              La consulta superó los 32 segundos y fue detenida. Probá nuevamente; LA TIRRA ia.1.1 no debe quedar pensando indefinidamente.
+              La consulta superó los 75 segundos y fue detenida. Probá nuevamente; LA TIRRA ia.1.1 no debe quedar pensando indefinidamente.
             </div>
           ) : null}
           {completedWithoutText ? (

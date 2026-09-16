@@ -131,7 +131,7 @@ test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   assert.match(chat, /sendMessage\(\{ text: value \}\)/);
   assert.match(chat, /quickPrompts\.map/);
   assert.match(chat, /75_000/);
-  assert.match(chat, /La consulta superó los 32 segundos/);
+  assert.match(chat, /La consulta superó los 75 segundos/);
   assert.match(chat, /La consulta terminó, pero no se redactó la respuesta/);
   assert.match(chat, /Reintentar respuesta/);
   assert.match(chat, /<MessageResponse[^>]*>\{part\.text\}<\/MessageResponse>/);
