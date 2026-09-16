@@ -123,7 +123,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
     const timeoutId = window.setTimeout(() => {
       setTimedOut(true);
       void stop();
-    }, 32_000);
+    }, 75_000);
     return () => window.clearTimeout(timeoutId);
   }, [busy, stop]);
 

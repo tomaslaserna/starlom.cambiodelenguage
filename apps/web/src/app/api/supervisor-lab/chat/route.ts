@@ -16,6 +16,7 @@ import {
 import type { StarlimSupervisorMessage } from "@/lib/supervisor-lab/agent";
 
 export const runtime = "nodejs";
+export const maxDuration = 90;
 
 async function requireSupervisorReadPermission() {
   const session = await requireApiSession();
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
       originalMessages: uiMessages,
       generateMessageId: randomUUID,
       abortSignal: request.signal,
-      timeout: { totalMs: 28_000 },
+      timeout: { totalMs: 65_000 },
       sendSources: true,
       onStepEnd: ({ stepNumber, finishReason, text, toolCalls }) => {
         console.info(JSON.stringify({

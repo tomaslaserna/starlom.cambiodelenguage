@@ -77,7 +77,8 @@ test("la ruta experimental exige sesion, configuracion y limites", () => {
   assert.match(route, /requireApiSession\(\)/);
   assert.match(route, /assertSupervisorAiConfigured\(\)/);
   assert.match(route, /createAgentUIStreamResponse/);
-  assert.match(route, /timeout: \{ totalMs: 28_000 \}/);
+  assert.match(route, /timeout: \{ totalMs: 65_000 \}/);
+  assert.match(route, /export const maxDuration = 90/);
   assert.match(route, /Supervisor request started/);
   assert.match(route, /Supervisor request completed/);
   assert.match(route, /Supervisor step completed/);
@@ -129,7 +130,7 @@ test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   assert.match(chat, /DefaultChatTransport<StarlimSupervisorMessage>/);
   assert.match(chat, /sendMessage\(\{ text: value \}\)/);
   assert.match(chat, /quickPrompts\.map/);
-  assert.match(chat, /32_000/);
+  assert.match(chat, /75_000/);
   assert.match(chat, /La consulta superó los 32 segundos/);
   assert.match(chat, /La consulta terminó, pero no se redactó la respuesta/);
   assert.match(chat, /Reintentar respuesta/);
