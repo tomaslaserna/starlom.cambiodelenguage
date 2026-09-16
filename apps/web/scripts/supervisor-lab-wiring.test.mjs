@@ -45,6 +45,9 @@ test("el agente usa herramientas tipadas, de servidor y solo lectura", () => {
   assert.match(agent, /"Folex" suele referirse a LAMINA AD/);
   assert.match(tools, /getCustomerProductPattern/);
   assert.match(tools, /summarizeCustomerProductPatterns/);
+  assert.match(tools, /searchSupervisorCustomers\(session, search\)/);
+  assert.match(tools, /selectUnambiguousCustomerMatch\(matches, search\)/);
+  assert.match(agent, /getCustomerProductPattern con search igual al nombre/);
   assert.match(tools, /getWorkPriorities/);
   assert.match(tools, /getSalesMetrics/);
   assert.match(tools, /getCustomerAccountBalance/);

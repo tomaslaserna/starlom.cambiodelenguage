@@ -10,6 +10,18 @@ export type SupervisorProductPattern = {
   customers: string[];
 };
 
+export function selectUnambiguousCustomerMatch<T extends { customerName: string }>(
+  matches: T[],
+  search: string,
+): T | null {
+  const normalized = search.trim().replace(/\s+/g, " ").toLocaleLowerCase("es");
+  const exact = matches.filter((match) =>
+    match.customerName.trim().replace(/\s+/g, " ").toLocaleLowerCase("es") === normalized,
+  );
+  if (exact.length === 1) return exact[0];
+  if (exact.length > 1) return null;
+  return matches.length === 1 ? matches[0] : null;
+}
 export function summarizeCustomerProductPatterns(
   histories: SupervisorCustomerHistory[],
 ): SupervisorProductPattern[] {

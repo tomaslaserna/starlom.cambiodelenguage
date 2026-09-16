@@ -15,7 +15,7 @@ import {
   searchSupervisorCatalogForCleaning,
   searchSupervisorCustomers,
 } from "@/lib/supervisor-lab/read-model";
-import { summarizeCustomerProductPatterns } from "@/lib/supervisor-lab/product-pattern";
+import { selectUnambiguousCustomerMatch, summarizeCustomerProductPatterns } from "@/lib/supervisor-lab/product-pattern";
 import { getSupervisorLandingSummary } from "@/lib/supervisor-lab/landing-summary";
 import { getErpGuide } from "@/lib/supervisor-lab/system-guide";
 import { searchCompanyManual } from "@/lib/supervisor-lab/company-manual";
@@ -141,13 +141,31 @@ export function createSupervisorTools(session: AuthSession) {
       })),
     }),
     getCustomerProductPattern: tool({
-      description: "Resume la frecuencia y cantidad promedio de productos comprados por uno o varios registros del mismo cliente. Usar para interpretar y pasar en limpio pedidos informales; prioriza el patron completo y no un unico remito.",
+      description: "Busca al cliente por nombre y resume la frecuencia y cantidad promedio de sus productos comprados. Para interpretar pedidos informales usa search con el nombre mencionado (por ejemplo PINAR EVENTOS); no necesitas buscar IDs antes. Si hay varios clientes posibles, pide aclaracion.",
       inputSchema: z.object({
-        customerIds: z.array(z.string().uuid()).min(1).max(5),
-      }),
-      execute: async ({ customerIds }) => {
+        search: z.string().trim().min(2).max(120).optional(),
+        customerIds: z.array(z.string().uuid()).min(1).max(5).optional(),
+      }).refine((input) => Boolean(input.search || input.customerIds?.length), "Indica search o customerIds"),
+      execute: async ({ search, customerIds }) => {
+        let resolvedIds = customerIds ?? [];
+        if (search) {
+          const matches = await searchSupervisorCustomers(session, search);
+          const selected = selectUnambiguousCustomerMatch(matches, search);
+          if (!selected) {
+            return {
+              customerNames: [],
+              products: [],
+              sources: [],
+              matches,
+              clarification: matches.length === 0
+                ? "No se encontro un cliente accesible con ese nombre. Solicita el nombre exacto."
+                : "Hay varios clientes posibles. Solicita que el operador elija uno antes de interpretar el pedido.",
+            };
+          }
+          resolvedIds = [selected.customerId];
+        }
         const histories = (await Promise.all(
-          [...new Set(customerIds)].map((customerId) => getSupervisorCustomerHistory(session, customerId)),
+          [...new Set(resolvedIds)].map((customerId) => getSupervisorCustomerHistory(session, customerId)),
         )).filter((history) => history !== null);
         return {
           customerNames: histories.map((history) => history.customerName),

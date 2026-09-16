@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { summarizeCustomerProductPatterns } from "../src/lib/supervisor-lab/product-pattern.ts";
+import { selectUnambiguousCustomerMatch, summarizeCustomerProductPatterns } from "../src/lib/supervisor-lab/product-pattern.ts";
 
 test("resume frecuencia y promedio entre alias sin depender de un solo remito", () => {
   const patterns = summarizeCustomerProductPatterns([
@@ -41,4 +41,14 @@ test("resume frecuencia y promedio entre alias sin depender de un solo remito", 
   });
   assert.equal(patterns[1].name, "FILM PVC");
   assert.equal(patterns[1].purchaseCount, 1);
+});
+
+test("resuelve PINAR por nombre exacto sin elegir otra coincidencia", () => {
+  const matches = [
+    { customerId: "otro", customerName: "PINAR EVENTOS SUR" },
+    { customerId: "pinar", customerName: "PINAR EVENTOS" },
+  ];
+  assert.equal(selectUnambiguousCustomerMatch(matches, "  Pinar   Eventos ")?.customerId, "pinar");
+  assert.equal(selectUnambiguousCustomerMatch(matches, "PINAR"), null);
+  assert.equal(selectUnambiguousCustomerMatch(matches.slice(0, 1), "PINAR"), matches[0]);
 });
