@@ -8,18 +8,21 @@ import { SUPERVISOR_RESPONSE_CONTRACT } from "@/lib/supervisor-lab/response-cont
 
 const DEFAULT_MODEL = "google/gemini-3.5-flash";
 
-export function createStarlimSupervisorAgent(session: AuthSession, summary: SupervisorLandingSummary) {
+export function createStarlimSupervisorAgent(session: AuthSession, summary: Pick<SupervisorLandingSummary, "mode" | "profileLabel">) {
+  const model = process.env.SUPERVISOR_AI_MODEL || DEFAULT_MODEL;
   const roleFocus = summary.mode === "sales"
     ? "Tu interlocutor trabaja en ventas. Prioriza seguimiento de clientes, ritmo de recompra, pedidos, cobranzas y oportunidades comerciales. No lo distraigas con tareas internas administrativas salvo que las solicite y tenga acceso."
     : "Tu interlocutor trabaja en administracion. Prioriza facturas solicitadas, autorizaciones, pedidos pendientes, entregas, cobranzas y control documental. No conviertas la respuesta en un reporte comercial salvo que lo solicite.";
   return new ToolLoopAgent({
-    model: process.env.SUPERVISOR_AI_MODEL || DEFAULT_MODEL,
+    model,
+    ...(model === DEFAULT_MODEL ? {
+      providerOptions: { google: { thinkingConfig: { thinkingLevel: "low" } } },
+    } : {}),
     stopWhen: stepCountIs(3),
     prepareStep: ({ stepNumber }) =>
       stepNumber >= 1
         ? { toolChoice: "none" as const }
         : {},
-    temperature: 0.1,
     tools: createSupervisorTools(session),
     instructions: `Sos LA TIRRA ia.1.1, el asistente interno del ERP Starlim y asesor de limpieza de la empresa.
 

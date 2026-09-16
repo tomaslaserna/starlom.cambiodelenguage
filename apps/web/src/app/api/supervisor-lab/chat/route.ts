@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { normalizeRole } from "@/lib/auth";
 import { createAgentUIStreamResponse } from "ai";
 import { ApiError, handleApiError, ok } from "@/lib/api-response";
 import { CRM_READ_PERMISSION, requireApiSession, sessionAllows } from "@/lib/route-auth";
 import { createStarlimSupervisorAgent } from "@/lib/supervisor-lab/agent";
 import { assertSupervisorAiConfigured } from "@/lib/supervisor-lab/availability";
 import { parseSupervisorRequestBody } from "@/lib/supervisor-lab/request-guard";
-import { getSupervisorLandingSummary } from "@/lib/supervisor-lab/landing-summary";
 import { compactSupervisorMessages } from "@/lib/supervisor-lab/message-compact";
 import {
   clearSupervisorChatMemory,
@@ -83,7 +83,15 @@ export async function POST(request: Request) {
     );
     console.info(JSON.stringify({ level: "info", event: "Supervisor request started", requestId, messageCount: uiMessages.length }));
     await saveSupervisorChatMemory(session, uiMessages);
-    const summary = await getSupervisorLandingSummary(session);
+    const role = normalizeRole(session.role);
+    const summary = {
+      mode: role === "vendedor" ? "sales" as const : "administrative" as const,
+      profileLabel: role === "vendedor" ? "Vendedor" : role === "operador" ? "Administrativo auxiliar" : "Administrador general",
+    };
+    console.info(JSON.stringify({
+      level: "info", event: "Supervisor response starting", requestId,
+      preflightMs: Date.now() - startedAt,
+    }));
     return createAgentUIStreamResponse({
       agent: createStarlimSupervisorAgent(session, summary),
       uiMessages,
