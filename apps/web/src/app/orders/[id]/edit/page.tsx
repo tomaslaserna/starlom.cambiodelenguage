@@ -43,6 +43,15 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
         quantity: String(line.quantity),
         discount: String(line.discount),
       })),
+    occasionalLines: order.lines
+      .filter((line) => !line.productId)
+      .map((line) => ({
+        description: line.name,
+        quantity: String(line.quantity),
+        discount: String(line.discount),
+        unitCost: String(line.unitCost),
+        unitPrice: String(line.unitPrice),
+      })),
   };
   const availableOffers = breakEven.reached
     ? offers.map((offer) => ({ id: offer.id, title: offer.title, description: offer.description }))

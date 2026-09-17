@@ -39,6 +39,16 @@ type OrderLineState = OrderLineDraft & {
   id: string;
 };
 
+type OccasionalLineDraft = {
+  description: string;
+  quantity: string;
+  discount: string;
+  unitCost: string;
+  unitPrice: string;
+};
+
+type OccasionalLineState = OccasionalLineDraft & { id: string };
+
 export type OrderEntryInitialValue = {
   customerId: string;
   date: string;
@@ -46,6 +56,7 @@ export type OrderEntryInitialValue = {
   priceListOverride: string;
   vatRate?: number;
   lines: OrderLineDraft[];
+  occasionalLines?: OccasionalLineDraft[];
 };
 
 type OrderEntryFieldsProps = {
@@ -62,6 +73,8 @@ type OrderEntryFieldsProps = {
 };
 
 const emptyLine = (): OrderLineDraft => ({ productId: "", quantity: "1", discount: "0" });
+const emptyOccasionalLine = (): OccasionalLineDraft => ({ description: "", quantity: "1", discount: "0", unitCost: "", unitPrice: "" });
+const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
 function numericInput(value: string, fallback = 0) {
   const numberValue = Number(value);
@@ -92,15 +105,28 @@ export function OrderEntryFields({
       id: `order-line-${index}`,
     })),
   );
+  const [occasionalLines, setOccasionalLines] = useState<OccasionalLineState[]>(() =>
+    (initialValue?.occasionalLines ?? []).map((line, index) => ({ ...line, id: `occasional-line-${index}` })),
+  );
+  const [occasionalDraft, setOccasionalDraft] = useState<OccasionalLineDraft>(emptyOccasionalLine());
+  const [showOccasional, setShowOccasional] = useState(false);
   const [date, setDate] = useState(() => initialValue?.date || localDateIso());
   const [observation, setObservation] = useState(initialValue?.observation ?? "");
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
   const [requestedDocument, setRequestedDocument] = useState<"habitual" | "remito" | "factura">("habitual");
   const [draftError, setDraftError] = useState("");
+  const [addedProducts, setAddedProducts] = useState<OrderFormProduct[]>([]);
+  const [showNewProduct, setShowNewProduct] = useState(false);
+  const [newProductName, setNewProductName] = useState("");
+  const [newProductCost, setNewProductCost] = useState("");
+  const [newProductMargin, setNewProductMargin] = useState("");
+  const [creatingProduct, setCreatingProduct] = useState(false);
   const lineIdRef = useRef(initialValue?.lines.length ?? 0);
+  const occasionalIdRef = useRef(initialValue?.occasionalLines?.length ?? 0);
 
   const selectedClient = clients.find((client) => client.id === customerId) ?? null;
-  const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const allProducts = useMemo(() => [...products, ...addedProducts], [products, addedProducts]);
+  const productMap = useMemo(() => new Map(allProducts.map((product) => [product.id, product])), [allProducts]);
   const clientOptions = useMemo(
     () =>
       clients.map((client) => ({
@@ -126,14 +152,39 @@ export function OrderEntryFields({
   const activePriceList = resolvePriceListName(priceListOverride || customerPriceList, priceListOptions);
   const productOptions = useMemo(
     () =>
-      products.map((product) => ({
+      allProducts.map((product) => ({
         value: product.id,
         label: product.name,
         description: `${product.code || "Sin codigo"} - Presentación: ${product.presentationUnits} u. - Disponible: ${formatNumber(product.available)} - Precio neto: ${formatCurrency(priceForList(product.prices, activePriceList))}`,
         searchText: product.code,
       })),
-    [activePriceList, products],
+    [activePriceList, allProducts],
   );
+
+  async function createNewProduct() {
+    setDraftError("");
+    setCreatingProduct(true);
+    try {
+      const response = await fetch("/api/orders/new-product", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: newProductName, cost: newProductCost, margin: newProductMargin }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "No se pudo crear el producto");
+      const product = result.data as OrderFormProduct;
+      setAddedProducts((current) => [...current, product]);
+      setDraftLine((current) => ({ ...current, productId: product.id }));
+      setNewProductName("");
+      setNewProductCost("");
+      setNewProductMargin("");
+      setShowNewProduct(false);
+    } catch (error) {
+      setDraftError(error instanceof Error ? error.message : "No se pudo crear el producto");
+    } finally {
+      setCreatingProduct(false);
+    }
+  }
 
   const calculatedLines = lines
     .map((line) => {
@@ -155,10 +206,31 @@ export function OrderEntryFields({
     })
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
 
-  const netAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0);
-  const totalCost = calculatedLines.reduce((total, line) => total + line.product.cost * line.quantity, 0);
+  const calculatedOccasionalLines = occasionalLines.map((line) => {
+    const quantity = Math.max(0, Math.trunc(numericInput(line.quantity, 0)));
+    const discount = Math.min(100, Math.max(0, numericInput(line.discount, 0)));
+    const unitCost = roundMoney(numericInput(line.unitCost, 0));
+    const unitPrice = roundMoney(numericInput(line.unitPrice, 0));
+    const subtotal = roundMoney(quantity * unitPrice * (1 - discount / 100));
+    return {
+      ...line,
+      quantity,
+      discount,
+      unitCost,
+      unitPrice,
+      subtotal,
+      marginPercent: grossMarginPercent(subtotal, unitCost * quantity),
+    };
+  });
+  const netAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0)
+    + calculatedOccasionalLines.reduce((total, line) => total + line.subtotal, 0);
+  const totalCost = calculatedLines.reduce((total, line) => total + line.product.cost * line.quantity, 0)
+    + calculatedOccasionalLines.reduce((total, line) => total + line.unitCost * line.quantity, 0);
   const orderMarginPercent = grossMarginPercent(netAmount, totalCost);
-  const lowMarginLines = calculatedLines.filter((line) => line.quantity > 0 && marginRisk(line.marginPercent) !== "none");
+  const lowMarginLines = [
+    ...calculatedLines.map((line) => ({ ...line, name: line.product.name })),
+    ...calculatedOccasionalLines.map((line) => ({ ...line, name: line.description })),
+  ].filter((line) => line.quantity > 0 && marginRisk(line.marginPercent) !== "none");
   const orderMarginRisk = marginRisk(orderMarginPercent);
   const orderTotals = vatAmountsFromNet(netAmount, vatRate);
   const pricedLines = calculatedLines
@@ -168,7 +240,12 @@ export function OrderEntryFields({
       name: line.product.name,
       unitPrice: line.unitPrice,
       subtotal: line.subtotal,
-    }));
+    })).concat(calculatedOccasionalLines.filter((line) => line.quantity > 0).map((line) => ({
+      quantity: line.quantity,
+      name: line.description,
+      unitPrice: line.unitPrice,
+      subtotal: line.subtotal,
+    })));
   const pricingSuggestions = calculatedLines.flatMap((line) => {
     const suggestion = presentationSuggestion(line.product.name, line.presentationPricing);
     return suggestion ? [suggestion] : [];
@@ -183,15 +260,47 @@ export function OrderEntryFields({
   const missingDraftPrice = Boolean(draftProduct && !draftHasPrice);
   const canAddLine = Boolean(selectedClient && draftProduct && draftQuantity > 0 && draftHasPrice);
   const canSubmit = Boolean(selectedClient)
-    && calculatedLines.some((line) => line.quantity > 0)
+    && (calculatedLines.some((line) => line.quantity > 0) || calculatedOccasionalLines.some((line) => line.quantity > 0))
     && hasConfiguredDocument
     && (initialValue?.vatRate === undefined || initialValue.vatRate > 0);
 
-  const payload = calculatedLines.map((line) => ({
+  const payload: Array<Record<string, string | number>> = calculatedLines.map((line) => ({
     productId: line.product.id,
     quantity: line.quantity,
     discount: line.discount,
   }));
+  payload.push(...calculatedOccasionalLines.map((line) => ({
+    type: "occasional",
+    description: line.description,
+    quantity: line.quantity,
+    discount: line.discount,
+    unitCost: line.unitCost,
+    unitPrice: line.unitPrice,
+  })));
+
+  const occasionalCost = numericInput(occasionalDraft.unitCost, 0);
+  const occasionalPrice = numericInput(occasionalDraft.unitPrice, 0);
+  const occasionalMargin = occasionalPrice > 0
+    ? ((occasionalPrice - occasionalCost) / occasionalPrice) * 100
+    : 0;
+
+  function addOccasionalLine() {
+    const description = occasionalDraft.description.trim();
+    const quantity = numericInput(occasionalDraft.quantity, 0);
+    if (!selectedClient || !description || description.length > 180 || !Number.isInteger(quantity)
+      || quantity <= 0 || occasionalDraft.unitCost === "" || occasionalCost < 0 || occasionalPrice <= 0) {
+      setDraftError("Elegí un cliente y completá nombre, cantidad, costo y precio del artículo ocasional.");
+      return;
+    }
+    setOccasionalLines((current) => [...current, {
+      ...occasionalDraft,
+      id: `occasional-line-${occasionalIdRef.current++}`,
+      description,
+    }]);
+    setOccasionalDraft(emptyOccasionalLine());
+    setShowOccasional(false);
+    setDraftError("");
+  }
 
   function updateDraftLine(next: Partial<OrderLineDraft>) {
     setDraftError("");
@@ -227,7 +336,7 @@ export function OrderEntryFields({
   function applyOffer(offer: PriceOffer) {
     const items = offer.items
       .map((item) => {
-        const product = products.find((candidate) => candidate.id === item.productId);
+        const product = allProducts.find((candidate) => candidate.id === item.productId);
         if (!product) return null;
         const price = priceForList(product.prices, activePriceList);
         return price > 0 ? { productId: product.id, quantity: item.quantity, price } : null;
@@ -347,6 +456,76 @@ export function OrderEntryFields({
       <Card className="overflow-visible shadow-none">
         <CardContent className="grid gap-4 p-4">
           <div className="grid gap-3 rounded-md border border-[color:var(--border)] bg-white p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-[color:var(--muted)]">¿El artículo no figura en el catálogo?</p>
+              <Button size="sm" type="button" variant="secondary" onClick={() => setShowNewProduct((current) => !current)}>
+                {showNewProduct ? "Cancelar alta" : "+ Crear producto nuevo"}
+              </Button>
+            </div>
+            {showNewProduct ? (
+              <div className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4 md:grid-cols-[minmax(200px,1fr)_150px_150px_auto] md:items-end">
+                <Field htmlFor="order-new-product-name" label="Nombre del producto">
+                  <Input id="order-new-product-name" maxLength={180} value={newProductName} onChange={(event) => setNewProductName(event.target.value)} />
+                </Field>
+                <Field htmlFor="order-new-product-cost" label="Costo neto">
+                  <Input id="order-new-product-cost" type="number" min="0.01" step="0.01" inputMode="decimal" value={newProductCost} onChange={(event) => setNewProductCost(event.target.value)} />
+                </Field>
+                <Field htmlFor="order-new-product-margin" label="Margen bruto %">
+                  <Input id="order-new-product-margin" type="number" min="0" max="89.99" step="0.01" inputMode="decimal" value={newProductMargin} onChange={(event) => setNewProductMargin(event.target.value)} />
+                </Field>
+                <Button type="button" disabled={creatingProduct || !newProductName.trim() || Number(newProductCost) <= 0 || newProductMargin === ""} onClick={createNewProduct}>
+                  {creatingProduct ? "Guardando…" : "Guardar producto"}
+                </Button>
+                {Number(newProductCost) > 0 && newProductMargin !== "" && Number(newProductMargin) >= 0 && Number(newProductMargin) < 90 ? (
+                  <p className="text-sm font-bold text-[color:var(--accent)] md:col-span-4">
+                    Precio neto estimado: {formatCurrency(Number(newProductCost) / (1 - Number(newProductMargin) / 100))}
+                  </p>
+                ) : null}
+                <p className="text-xs text-[color:var(--muted)] md:col-span-4">
+                  Precio neto = costo ÷ (1 − margen). El producto se guarda en el catálogo con stock inicial 0 y se selecciona aquí; después indicá la cantidad del pedido.
+                </p>
+              </div>
+            ) : null}
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-bold text-amber-950">Artículo ocasional · solo para este pedido</p>
+                  <p className="text-xs text-amber-900">Figura en el remito y en la ganancia, pero no se incorpora al catálogo ni al stock.</p>
+                </div>
+                <Button size="sm" type="button" variant="secondary" onClick={() => setShowOccasional((current) => !current)}>
+                  {showOccasional ? "Cancelar" : "+ Agregar artículo ocasional"}
+                </Button>
+              </div>
+              {showOccasional ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_90px_130px_130px_130px_auto] xl:items-end">
+                  <Field htmlFor="occasional-name" label="Nombre en el remito">
+                    <Input id="occasional-name" maxLength={180} value={occasionalDraft.description} onChange={(event) => setOccasionalDraft((current) => ({ ...current, description: event.target.value }))} />
+                  </Field>
+                  <Field htmlFor="occasional-quantity" label="Cantidad">
+                    <Input id="occasional-quantity" type="number" min="1" step="1" value={occasionalDraft.quantity} onChange={(event) => {
+                      if (isWholeQuantityInput(event.target.value)) setOccasionalDraft((current) => ({ ...current, quantity: event.target.value }));
+                    }} />
+                  </Field>
+                  <Field htmlFor="occasional-cost" label="Costo neto/u.">
+                    <Input id="occasional-cost" type="number" min="0" step="0.01" value={occasionalDraft.unitCost} onChange={(event) => setOccasionalDraft((current) => ({ ...current, unitCost: event.target.value }))} />
+                  </Field>
+                  <Field htmlFor="occasional-margin" label="Margen bruto %">
+                    <Input id="occasional-margin" type="number" min="0" max="89.99" step="0.01" value={occasionalDraft.unitPrice ? roundMoney(occasionalMargin) : ""} onChange={(event) => {
+                      const margin = Number(event.target.value);
+                      if (event.target.value === "" || !Number.isFinite(margin) || margin < 0 || margin >= 90) return;
+                      setOccasionalDraft((current) => ({ ...current, unitPrice: String(roundMoney(numericInput(current.unitCost, 0) / (1 - margin / 100))) }));
+                    }} />
+                  </Field>
+                  <Field htmlFor="occasional-price" label="Precio neto/u.">
+                    <Input id="occasional-price" type="number" min="0.01" step="0.01" value={occasionalDraft.unitPrice} onChange={(event) => setOccasionalDraft((current) => ({ ...current, unitPrice: event.target.value }))} />
+                  </Field>
+                  <Button type="button" disabled={!selectedClient || !occasionalDraft.description.trim() || occasionalDraft.unitCost === "" || occasionalPrice <= 0} onClick={addOccasionalLine}>
+                    Agregar
+                  </Button>
+                  <p className="text-xs text-amber-900 md:col-span-2 xl:col-span-6">Podés indicar el margen para calcular el precio, o escribir directamente el precio neto. No se reserva ni descuenta stock.</p>
+                </div>
+              ) : null}
+            </div>
             <div className="grid gap-3 xl:grid-cols-[minmax(280px,1fr)_120px_120px] xl:items-end 2xl:grid-cols-[minmax(320px,1fr)_120px_120px_130px_130px_auto]">
               <Field className="min-w-0" htmlFor="order-product-draft" label="Producto">
                 <SearchableSelect
@@ -461,14 +640,15 @@ export function OrderEntryFields({
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
-                {calculatedLines.length === 0 ? (
+                {calculatedLines.length === 0 && calculatedOccasionalLines.length === 0 ? (
                   <DataTableRow>
                     <DataTableCell className="py-6 text-center text-[color:var(--muted)]" colSpan={6}>
                       Sin productos
                     </DataTableCell>
                   </DataTableRow>
                 ) : (
-                  calculatedLines.map((line, index) => (
+                  <>
+                  {calculatedLines.map((line, index) => (
                     <DataTableRow key={line.id}>
                       <DataTableCell>
                         <div className="max-w-[360px] truncate font-semibold">{line.product.name}</div>
@@ -521,7 +701,49 @@ export function OrderEntryFields({
                         </Button>
                       </DataTableCell>
                     </DataTableRow>
-                  ))
+                  ))}
+                  {calculatedOccasionalLines.map((line, index) => (
+                    <DataTableRow key={line.id}>
+                      <DataTableCell>
+                        <div className="max-w-[360px] truncate font-semibold">{line.description}</div>
+                        <div className="text-xs font-semibold text-amber-700">Artículo ocasional · sin catálogo ni stock</div>
+                      </DataTableCell>
+                      <DataTableCell align="right">
+                        <Input
+                          aria-label={`Cantidad ${line.description}`}
+                          className="ml-auto w-24 text-right"
+                          inputMode="numeric"
+                          min="1"
+                          step="1"
+                          type="number"
+                          value={line.quantity}
+                          onChange={(event) => {
+                            if (isWholeQuantityInput(event.target.value)) {
+                              setOccasionalLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantity: event.target.value } : item));
+                            }
+                          }}
+                        />
+                      </DataTableCell>
+                      <DataTableCell align="right">
+                        <Input
+                          aria-label={`Descuento ${line.description}`}
+                          className="ml-auto w-24 text-right"
+                          max="100"
+                          min="0"
+                          step="0.01"
+                          type="number"
+                          value={line.discount}
+                          onChange={(event) => setOccasionalLines((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, discount: event.target.value } : item))}
+                        />
+                      </DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono font-semibold">{formatCurrency(line.unitPrice)}</DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono font-bold">{formatCurrency(line.subtotal)}</DataTableCell>
+                      <DataTableCell align="right">
+                        <Button size="sm" type="button" variant="secondary" onClick={() => setOccasionalLines((current) => current.filter((_, itemIndex) => itemIndex !== index))}>Quitar</Button>
+                      </DataTableCell>
+                    </DataTableRow>
+                  ))}
+                  </>
                 )}
             </DataTableBody>
           </DataTable>
@@ -539,7 +761,7 @@ export function OrderEntryFields({
               <ul className="mt-2 grid gap-1 text-sm">
                 {lowMarginLines.map((line) => (
                   <li key={line.id}>
-                    <b>{line.product.name}</b>: {line.marginPercent.toFixed(1).replace(".", ",")}% de margen
+                    <b>{line.name}</b>: {line.marginPercent.toFixed(1).replace(".", ",")}% de margen
                     {line.discount > 0 ? ` · ${line.discount}% de descuento` : ""}
                   </li>
                 ))}
@@ -596,7 +818,8 @@ export function OrderEntryFields({
         deliveryDate={date}
         lines={calculatedLines
           .filter((line) => line.quantity > 0)
-          .map((line) => ({ quantity: line.quantity, name: line.product.name }))}
+          .map((line) => ({ quantity: line.quantity, name: line.product.name }))
+          .concat(calculatedOccasionalLines.filter((line) => line.quantity > 0).map((line) => ({ quantity: line.quantity, name: line.description })))}
         offers={offers}
         pricedLines={pricedLines}
         offersEnabled={offersEnabled}

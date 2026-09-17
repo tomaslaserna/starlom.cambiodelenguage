@@ -103,6 +103,7 @@ export type OrderDetailLine = {
   unitPrice: number;
   discount: number;
   subtotal: number;
+  unitCost: number;
 };
 
 export type OrderDetail = OrderSummary & {
@@ -136,7 +137,10 @@ export type OrderFormProduct = {
 export type OrderFormPriceList = PriceListOption;
 
 type BasicOrderLineInput = {
-  productId: string;
+  productId: string | null;
+  description?: string;
+  unitCost?: number;
+  unitPrice?: number;
   quantity: number;
   discount: number;
 };
@@ -519,6 +523,7 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
     precio_unit: string;
     descuento: string;
     subtotal: string;
+    unit_cost: string;
   }>(
     companyId,
     `
@@ -527,7 +532,8 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
              d.quantity::text AS cantidad,
              d.unit_price::text AS precio_unit,
              COALESCE(d.discount, 0)::text AS descuento,
-             d.total_amount::text AS subtotal
+             d.total_amount::text AS subtotal,
+             COALESCE(d.unit_cost_snapshot, 0)::text AS unit_cost
       FROM sale_items d
       LEFT JOIN products p ON p.id = d.product_id AND p.empresa_id = d.empresa_id
       WHERE d.sale_id = $1::uuid AND d.empresa_id = $2
@@ -546,6 +552,7 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
       unitPrice: Number(line.precio_unit),
       discount: Number(line.descuento),
       subtotal: Number(line.subtotal),
+      unitCost: Number(line.unit_cost),
     })),
   };
 }
@@ -609,7 +616,7 @@ type OrderCustomerRow = {
 };
 
 type ResolvedOrderDetailLine = {
-  productId: string;
+  productId: string | null;
   description: string;
   quantity: number;
   discount: number;
@@ -675,10 +682,13 @@ async function resolveBasicOrderDetail(
   }
   const receiptType = receiptTypeCode(desiredDocument);
   const priceListKey = normalizePriceListKey(priceListName);
-  const productIds = input.lines.map((line) => line.productId);
-  const quantities = input.lines.map((line) => line.quantity);
-  const discounts = input.lines.map((line) => line.discount);
-  const sortOrders = input.lines.map((_, index) => index);
+  const catalogLines = input.lines.flatMap((line, index) =>
+    line.productId ? [{ ...line, productId: line.productId, sortOrder: index }] : [],
+  );
+  const productIds = catalogLines.map((line) => line.productId);
+  const quantities = catalogLines.map((line) => line.quantity);
+  const discounts = catalogLines.map((line) => line.discount);
+  const sortOrders = catalogLines.map((line) => line.sortOrder);
   const unitPriceExpression = dynamicPriceSqlExpression(priceListKey);
   const improvedUnitPriceExpression = dynamicPriceSqlExpression("1", "l1_margin");
 
@@ -741,11 +751,11 @@ async function resolveBasicOrderDetail(
     [productIds, quantities, discounts, sortOrders, companyId, priceListName],
   );
 
-  if (products.rowCount !== input.lines.length) {
+  if (products.rowCount !== catalogLines.length) {
     throw new ApiError(400, "Uno o mas productos del pedido no existen o estan inactivos");
   }
 
-  const detail = products.rows.map<ResolvedOrderDetailLine>((product) => {
+  const catalogDetail = new Map(products.rows.map((product): [number, ResolvedOrderDetailLine] => {
     const quantity = Number(product.quantity);
     const discount = Number(product.discount);
     const regularUnitPrice = money(Number(product.unit_price));
@@ -763,7 +773,7 @@ async function resolveBasicOrderDetail(
     if (unitPrice <= 0) {
       throw new ApiError(400, `El producto ${product.description} no tiene precio para la lista del cliente`);
     }
-    return {
+    return [product.sort_order, {
       productId: product.product_id,
       description: product.description,
       quantity,
@@ -773,6 +783,32 @@ async function resolveBasicOrderDetail(
       unitCost,
       grossProfit,
       marginPercent,
+      priceListName,
+    }];
+  }));
+
+  const detail = input.lines.map((line, index): ResolvedOrderDetailLine => {
+    if (line.productId) {
+      const catalogLine = catalogDetail.get(index);
+      if (!catalogLine) throw new ApiError(400, "Producto del pedido no encontrado");
+      return catalogLine;
+    }
+    const quantity = line.quantity;
+    const discount = line.discount;
+    const unitCost = money(line.unitCost ?? 0);
+    const unitPrice = money(line.unitPrice ?? 0);
+    const subtotal = money(quantity * unitPrice * (1 - discount / 100));
+    const grossProfit = money(subtotal - quantity * unitCost);
+    return {
+      productId: null,
+      description: line.description ?? "",
+      quantity,
+      discount,
+      unitPrice,
+      subtotal,
+      unitCost,
+      grossProfit,
+      marginPercent: subtotal > 0 ? (grossProfit / subtotal) * 100 : 0,
       priceListName,
     };
   });
@@ -988,14 +1024,30 @@ export function basicOrderInputFromBody(body: RequestBody) {
 
   const parsedLines = rawLines
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
-    .map<BasicOrderLineInput>((item) => ({
-      productId: uuidParam(
-        String(item.productId ?? item.product_id ?? item.id_producto ?? item.id ?? "").trim(),
-        "Producto",
-      ),
-      quantity: numericItemValue(item, ["quantity", "cantidad"], 0),
-      discount: numericItemValue(item, ["discount", "descuento"], 0),
-    }));
+    .map<BasicOrderLineInput>((item) => {
+      const quantity = numericItemValue(item, ["quantity", "cantidad"], 0);
+      const discount = numericItemValue(item, ["discount", "descuento"], 0);
+      if (item.type === "occasional") {
+        const description = String(item.description ?? "").trim();
+        const unitCost = numericItemValue(item, ["unitCost"], -1);
+        const unitPrice = numericItemValue(item, ["unitPrice"], 0);
+        if (!description || description.length > 180) {
+          throw new ApiError(400, "El artículo ocasional debe tener un nombre de hasta 180 caracteres");
+        }
+        if (unitCost < 0 || unitPrice <= 0) {
+          throw new ApiError(400, "El artículo ocasional necesita costo no negativo y precio mayor a cero");
+        }
+        return { productId: null, description, unitCost, unitPrice, quantity, discount };
+      }
+      return {
+        productId: uuidParam(
+          String(item.productId ?? item.product_id ?? item.id_producto ?? item.id ?? "").trim(),
+          "Producto",
+        ),
+        quantity,
+        discount,
+      };
+    });
 
   if (parsedLines.some((line) => !Number.isInteger(line.quantity))) {
     throw new ApiError(400, "La cantidad de cada producto debe ser un numero entero");
