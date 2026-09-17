@@ -115,18 +115,11 @@ export function OrderEntryFields({
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
   const [requestedDocument, setRequestedDocument] = useState<"habitual" | "remito" | "factura">("habitual");
   const [draftError, setDraftError] = useState("");
-  const [addedProducts, setAddedProducts] = useState<OrderFormProduct[]>([]);
-  const [showNewProduct, setShowNewProduct] = useState(false);
-  const [newProductName, setNewProductName] = useState("");
-  const [newProductCost, setNewProductCost] = useState("");
-  const [newProductMargin, setNewProductMargin] = useState("");
-  const [creatingProduct, setCreatingProduct] = useState(false);
   const lineIdRef = useRef(initialValue?.lines.length ?? 0);
   const occasionalIdRef = useRef(initialValue?.occasionalLines?.length ?? 0);
 
   const selectedClient = clients.find((client) => client.id === customerId) ?? null;
-  const allProducts = useMemo(() => [...products, ...addedProducts], [products, addedProducts]);
-  const productMap = useMemo(() => new Map(allProducts.map((product) => [product.id, product])), [allProducts]);
+  const productMap = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
   const clientOptions = useMemo(
     () =>
       clients.map((client) => ({
@@ -152,39 +145,14 @@ export function OrderEntryFields({
   const activePriceList = resolvePriceListName(priceListOverride || customerPriceList, priceListOptions);
   const productOptions = useMemo(
     () =>
-      allProducts.map((product) => ({
+      products.map((product) => ({
         value: product.id,
         label: product.name,
         description: `${product.code || "Sin codigo"} - Presentación: ${product.presentationUnits} u. - Disponible: ${formatNumber(product.available)} - Precio neto: ${formatCurrency(priceForList(product.prices, activePriceList))}`,
         searchText: product.code,
       })),
-    [activePriceList, allProducts],
+    [activePriceList, products],
   );
-
-  async function createNewProduct() {
-    setDraftError("");
-    setCreatingProduct(true);
-    try {
-      const response = await fetch("/api/orders/new-product", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: newProductName, cost: newProductCost, margin: newProductMargin }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "No se pudo crear el producto");
-      const product = result.data as OrderFormProduct;
-      setAddedProducts((current) => [...current, product]);
-      setDraftLine((current) => ({ ...current, productId: product.id }));
-      setNewProductName("");
-      setNewProductCost("");
-      setNewProductMargin("");
-      setShowNewProduct(false);
-    } catch (error) {
-      setDraftError(error instanceof Error ? error.message : "No se pudo crear el producto");
-    } finally {
-      setCreatingProduct(false);
-    }
-  }
 
   const calculatedLines = lines
     .map((line) => {
@@ -336,7 +304,7 @@ export function OrderEntryFields({
   function applyOffer(offer: PriceOffer) {
     const items = offer.items
       .map((item) => {
-        const product = allProducts.find((candidate) => candidate.id === item.productId);
+        const product = products.find((candidate) => candidate.id === item.productId);
         if (!product) return null;
         const price = priceForList(product.prices, activePriceList);
         return price > 0 ? { productId: product.id, quantity: item.quantity, price } : null;
@@ -456,36 +424,6 @@ export function OrderEntryFields({
       <Card className="overflow-visible shadow-none">
         <CardContent className="grid gap-4 p-4">
           <div className="grid gap-3 rounded-md border border-[color:var(--border)] bg-white p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-[color:var(--muted)]">¿El artículo no figura en el catálogo?</p>
-              <Button size="sm" type="button" variant="secondary" onClick={() => setShowNewProduct((current) => !current)}>
-                {showNewProduct ? "Cancelar alta" : "+ Crear producto nuevo"}
-              </Button>
-            </div>
-            {showNewProduct ? (
-              <div className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4 md:grid-cols-[minmax(200px,1fr)_150px_150px_auto] md:items-end">
-                <Field htmlFor="order-new-product-name" label="Nombre del producto">
-                  <Input id="order-new-product-name" maxLength={180} value={newProductName} onChange={(event) => setNewProductName(event.target.value)} />
-                </Field>
-                <Field htmlFor="order-new-product-cost" label="Costo neto">
-                  <Input id="order-new-product-cost" type="number" min="0.01" step="0.01" inputMode="decimal" value={newProductCost} onChange={(event) => setNewProductCost(event.target.value)} />
-                </Field>
-                <Field htmlFor="order-new-product-margin" label="Margen bruto %">
-                  <Input id="order-new-product-margin" type="number" min="0" max="89.99" step="0.01" inputMode="decimal" value={newProductMargin} onChange={(event) => setNewProductMargin(event.target.value)} />
-                </Field>
-                <Button type="button" disabled={creatingProduct || !newProductName.trim() || Number(newProductCost) <= 0 || newProductMargin === ""} onClick={createNewProduct}>
-                  {creatingProduct ? "Guardando…" : "Guardar producto"}
-                </Button>
-                {Number(newProductCost) > 0 && newProductMargin !== "" && Number(newProductMargin) >= 0 && Number(newProductMargin) < 90 ? (
-                  <p className="text-sm font-bold text-[color:var(--accent)] md:col-span-4">
-                    Precio neto estimado: {formatCurrency(Number(newProductCost) / (1 - Number(newProductMargin) / 100))}
-                  </p>
-                ) : null}
-                <p className="text-xs text-[color:var(--muted)] md:col-span-4">
-                  Precio neto = costo ÷ (1 − margen). El producto se guarda en el catálogo con stock inicial 0 y se selecciona aquí; después indicá la cantidad del pedido.
-                </p>
-              </div>
-            ) : null}
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
