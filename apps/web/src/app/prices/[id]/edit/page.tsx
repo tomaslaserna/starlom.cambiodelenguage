@@ -3,7 +3,7 @@ import { ModulePage } from "@/components/module-page";
 import { Button, ButtonLink, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
 import { sessionAllows } from "@/lib/route-auth";
-import { getProduct } from "@/lib/catalog-management";
+import { getProduct, listSupplierOptions } from "@/lib/catalog-management";
 import { listMargins } from "@/lib/pricing";
 import { uuidParam } from "@/lib/request-body";
 import { updatePriceProductAction } from "@/app/prices/actions";
@@ -15,9 +15,10 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
   if (!(await sessionAllows(session, [{ resource: "productos", action: "editar" }]))) redirect("/prices");
   const { id } = await params;
   const productId = uuidParam(id, "Producto");
-  const [product, margins] = await Promise.all([
+  const [product, margins, suppliers] = await Promise.all([
     getProduct(session.companyId, productId),
     listMargins(session.companyId),
+    listSupplierOptions(session.companyId),
   ]);
 
   return (
@@ -40,6 +41,12 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
             </Field>
             <Field htmlFor="edit-product-presentation" label="Presentación" description="Cantidad de unidades por paquete o bulto.">
               <Input defaultValue={product.presentationUnits} id="edit-product-presentation" max="9999" min="1" name="presentationUnits" required step="1" type="number" />
+            </Field>
+            <Field htmlFor="edit-product-supplier" label="Proveedor" description="Seleccioná uno de los proveedores activos.">
+              <Select defaultValue={product.supplierId ?? ""} id="edit-product-supplier" name="supplierId">
+                <option value="">Sin proveedor</option>
+                {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+              </Select>
             </Field>
             <Field htmlFor="edit-product-justification" label="Motivo del cambio" required>
               <Input id="edit-product-justification" maxLength={300} name="justification" placeholder="Ej.: actualización de costo del proveedor" required />
