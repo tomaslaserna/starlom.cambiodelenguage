@@ -289,6 +289,7 @@ test("cuentas abiertas usa listOpenCustomerAccounts y linkea al detalle", () => 
   assert.match(src, /aging\.d7/);
   assert.match(src, /aging\.d15/);
   assert.match(src, /aging\.d30/);
+  assert.match(src, /aging\.d30Plus/);
   assert.doesNotMatch(src, /aging\.d60|aging\.d90/);
 });
 

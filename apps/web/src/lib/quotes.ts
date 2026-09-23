@@ -1127,13 +1127,15 @@ export async function acceptQuote(
       `
         INSERT INTO sales (
           sale_number, commercial_number, client_id, seller_id, client_name, client_document, price_list_name,
-          total_amount, vat_rate, receipt_number, receipt_type, payment_condition, sale_date, seller_name,
+          total_amount, vat_rate, receipt_number, receipt_type, payment_condition, source_payment_term_days, sale_date, seller_name,
           collection_status, order_status, desired_document, notes,
           stock_discounted, status, empresa_id
         )
         VALUES (
           $1, $2, $3::uuid, $4::uuid, $5, $6, $7,
-          $8, $9, $10, $11, 'pendiente', CURRENT_DATE, $12,
+          $8, $9, $10, $11, 'pendiente',
+          COALESCE((SELECT payment_term_days FROM clients WHERE id = $3::uuid AND empresa_id = $15), 0),
+          CURRENT_DATE, $12,
           'no_aplica', 'cargado', $13, $14,
           false, 'cargado', $15
         )

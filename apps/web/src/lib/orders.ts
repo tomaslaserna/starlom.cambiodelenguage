@@ -1106,12 +1106,12 @@ export async function createBasicOrder(
       `
         INSERT INTO sales (
           sale_number, commercial_number, client_id, seller_id, client_name, client_document, price_list_name,
-          total_amount, receipt_number, receipt_type, payment_condition, sale_date, seller_name,
+          total_amount, receipt_number, receipt_type, payment_condition, source_payment_term_days, sale_date, seller_name,
           collection_status, order_status, desired_document, notes, vat_rate,
           stock_discounted, status, empresa_id
         )
-        VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-                'no_aplica', 'cargado', $14, $15, $16, false, 'cargado', $17)
+        VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+                'no_aplica', 'cargado', $15, $16, $17, false, 'cargado', $18)
         RETURNING id::text AS id
       `,
       [
@@ -1126,6 +1126,7 @@ export async function createBasicOrder(
         receiptNumber,
         receiptType,
         fallbackPaymentCondition(customer.payment_term_days),
+        customer.payment_term_days ?? 0,
         input.date,
         customer.seller_name || session.username,
         desiredDocument,
@@ -1225,18 +1226,19 @@ export async function updateBasicOrder(
             price_list_name = $4,
             total_amount = $5,
             receipt_type = $6,
-            payment_condition = $7,
-            sale_date = $8,
-            seller_name = $9,
+        payment_condition = $7,
+            source_payment_term_days = $8,
+            sale_date = $9,
+            seller_name = $10,
             collection_status = 'no_aplica',
             order_status = 'cargado',
             status = 'cargado',
-            desired_document = $10,
-            notes = $11,
-            vat_rate = $12,
+            desired_document = $11,
+            notes = $12,
+            vat_rate = $13,
             stock_discounted = false,
             updated_at = now()
-        WHERE id = $13::uuid AND empresa_id = $14
+        WHERE id = $14::uuid AND empresa_id = $15
       `,
       [
         customer.id,
@@ -1246,6 +1248,7 @@ export async function updateBasicOrder(
         amounts.totalAmount,
         receiptType,
         fallbackPaymentCondition(customer.payment_term_days),
+        customer.payment_term_days ?? 0,
         input.date,
         customer.seller_name || session.username,
         desiredDocument,

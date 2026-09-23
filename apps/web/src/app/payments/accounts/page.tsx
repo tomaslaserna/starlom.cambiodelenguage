@@ -89,26 +89,27 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
           <DataTable
             caption="Cuentas corrientes abiertas de clientes"
             className="rounded-none border-0 shadow-none"
-            minWidth="1080px"
+            minWidth="1220px"
             tableLabel="Cuentas abiertas"
             tableProps={{ className: "table-fixed" }}
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[22%] px-2">Cliente</DataTableHead>
-                <DataTableHead className="w-[14%] px-2">Vendedor</DataTableHead>
+                <DataTableHead className="w-[19%] px-2">Cliente</DataTableHead>
+                <DataTableHead className="w-[12%] px-2">Vendedor</DataTableHead>
                 <DataTableHead className="w-[11%] px-2">Ult. movimiento</DataTableHead>
-                <DataTableHead align="right" className="w-[10%] px-2">Al dia</DataTableHead>
-                <DataTableHead align="right" className="w-[10%] px-2">+7 dias</DataTableHead>
-                <DataTableHead align="right" className="w-[10%] px-2">+15 dias</DataTableHead>
-                <DataTableHead align="right" className="w-[10%] px-2">+30 dias</DataTableHead>
+                <DataTableHead align="right" className="w-[9%] px-2">Al día</DataTableHead>
+                <DataTableHead align="right" className="w-[9%] px-2">1–7 días</DataTableHead>
+                <DataTableHead align="right" className="w-[9%] px-2">8–15 días</DataTableHead>
+                <DataTableHead align="right" className="w-[9%] px-2">16–30 días</DataTableHead>
+                <DataTableHead align="right" className="w-[9%] px-2">+30 días</DataTableHead>
                 <DataTableHead align="right" className="w-[13%] px-2">Saldo</DataTableHead>
               </DataTableRow>
             </DataTableHeader>
             <DataTableBody>
               {accounts.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={8}>
+                  <DataTableCell colSpan={9}>
                     <EmptyState
                       description="No hay clientes con saldo abierto para la busqueda actual."
                       title="Sin cuentas abiertas"
@@ -143,6 +144,9 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
                     </DataTableCell>
                     <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
                       {formatCurrency(account.aging.d30)}
+                    </DataTableCell>
+                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
+                      {formatCurrency(account.aging.d30Plus)}
                     </DataTableCell>
                     <DataTableCell
                       align="right"

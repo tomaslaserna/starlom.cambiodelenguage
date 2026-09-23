@@ -63,30 +63,32 @@ test("computeAgingBuckets imputa FIFO a lo más viejo y bucketea el remanente", 
   assert.equal(b.d7, 0);
   assert.equal(b.d15, 500);           // 9 días vencido
   assert.equal(b.d30, 0);
+  assert.equal(b.d30Plus, 0);
   assert.equal(b.overdueTotal, 500);  // solo lo vencido
 });
 
-test("computeAgingBuckets distribuye la mora en +7, +15 y +30 sin perder saldos antiguos", () => {
+test("computeAgingBuckets distribuye la mora en tramos no ambiguos sin perder saldos antiguos", () => {
   const debits = [
     { amount: 100, date: "2026-08-18", dueDate: "2026-08-18" },
     { amount: 200, date: "2026-08-15", dueDate: "2026-08-15" },
     { amount: 300, date: "2026-08-08", dueDate: "2026-08-08" },
-    { amount: 400, date: "2026-07-01", dueDate: "2026-07-01" },
+    { amount: 400, date: "2026-07-25", dueDate: "2026-07-25" },
+    { amount: 500, date: "2026-07-01", dueDate: "2026-07-01" },
   ];
   const b = accounts.computeAgingBuckets(debits, 0, "2026-08-18");
-  assert.deepEqual(b, { current: 100, d7: 200, d15: 300, d30: 400, overdueTotal: 900 });
+  assert.deepEqual(b, { current: 100, d7: 200, d15: 300, d30: 400, d30Plus: 500, overdueTotal: 1400 });
 });
 
 test("computeAgingBuckets: crédito mayor a la deuda deja todo en cero", () => {
   const debits = [{ amount: 200, date: "2026-01-01", dueDate: "2026-01-01" }];
   const b = accounts.computeAgingBuckets(debits, 500, "2026-08-18");
-  assert.deepEqual(b, { current: 0, d7: 0, d15: 0, d30: 0, overdueTotal: 0 });
+  assert.deepEqual(b, { current: 0, d7: 0, d15: 0, d30: 0, d30Plus: 0, overdueTotal: 0 });
 });
 
 test("computeAgingBuckets: sin vencimiento usa la fecha del movimiento", () => {
   const debits = [{ amount: 100, date: "2026-04-01", dueDate: null }];
   const b = accounts.computeAgingBuckets(debits, 0, "2026-08-18"); // >120 días
-  assert.equal(b.d30, 100);
+  assert.equal(b.d30Plus, 100);
 });
 
 test("buildCustomerStatement arranca con saldo anterior y corre el saldo", () => {
