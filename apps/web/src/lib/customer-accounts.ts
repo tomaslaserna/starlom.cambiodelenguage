@@ -66,6 +66,21 @@ export function capOpenSalesToAccountBalance<T extends { outstanding: number | s
   return result;
 }
 
+export function agingDebitsFromOpenSales(
+  sales: Array<{ outstanding: number | string; date: string; dueDate: string | null }>,
+  accountBalance: number,
+): AgingDebit[] | null {
+  const positiveBalance = Math.max(0, money(accountBalance));
+  const capped = capOpenSalesToAccountBalance(sales, positiveBalance);
+  const covered = money(capped.reduce((sum, sale) => sum + sale.outstanding, 0));
+  if (Math.abs(covered - positiveBalance) > 0.005) return null;
+  return capped.map((sale) => ({
+    amount: sale.outstanding,
+    date: sale.date,
+    dueDate: sale.dueDate,
+  }));
+}
+
 export function collapsePaymentAllocations(movements: AccountMovementRow[]): StatementMovement[] {
   const result: Array<StatementMovement & { allocationCount?: number }> = [];
   const groupedIndexes = new Map<string, number>();
@@ -178,6 +193,46 @@ const DUE_DATE_SQL = `CASE
   ))
   ELSE m.movement_date::date END`;
 
+const OPEN_SALES_FOR_AGING_SQL = `
+  SELECT s.client_id::text AS client_id,
+         s.sale_date::text AS date,
+         (s.sale_date::date + COALESCE(s.source_payment_term_days, 0))::text AS due_date,
+         GREATEST(
+           COALESCE(s.total_amount, 0)
+           + COALESCE(movements.debit_notes, 0)
+           - COALESCE(movements.total_credit, 0),
+           0
+         )::text AS outstanding
+  FROM sales s
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
+           COALESCE(SUM(cam.debit) FILTER (
+             WHERE cam.description ILIKE 'nota de debito%'
+                OR cam.description ILIKE 'anulacion de cobro%'
+           ), 0) AS debit_notes
+    FROM current_account_movements cam
+    WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
+  ) movements ON true
+  WHERE s.empresa_id = $1
+    AND s.client_id = ANY($2::uuid[])
+    AND COALESCE(s.order_status, s.status, 'cargado') IN ('entregado')
+    AND COALESCE(s.collection_status, 'pendiente') IN (
+      'pendiente', 'vencido', 'pendiente_aprobacion', 'en_proceso'
+    )
+    AND (
+      s.source_sheet IS NULL OR s.source_sheet = ''
+      OR s.source_sheet = '12lzgmYiRh-sIAFv-EnhPVnbAfZMuNZYi8uwTj-ooJIE:ENTREGAS MACRO'
+      OR (s.sale_date < DATE '2026-07-01' AND s.source_sheet = '1Ocl4Y9gcTS5LqNIePCebV3mtgYk7v6pa5Vy8uHDc75M:VENTAS ANUAL')
+    )
+    AND GREATEST(
+      COALESCE(s.total_amount, 0)
+      + COALESCE(movements.debit_notes, 0)
+      - COALESCE(movements.total_credit, 0),
+      0
+    ) > 0.005
+  ORDER BY s.client_id, s.sale_date ASC, s.created_at ASC, s.id ASC
+`;
+
 export async function listOpenCustomerAccounts(
   companyId: number,
   options: { query?: string | null; sellerNames?: string[] | null } = {},
@@ -242,10 +297,31 @@ export async function listOpenCustomerAccounts(
   );
 
   const today = localDateIso();
+  const openSalesByClient = new Map<string, Array<{ outstanding: string; date: string; dueDate: string | null }>>();
+  if (rows.rows.length) {
+    const openSales = await queryWithCompanyContext<{
+      client_id: string; outstanding: string; date: string; due_date: string | null;
+    }>(
+      companyId,
+      OPEN_SALES_FOR_AGING_SQL,
+      [companyId, rows.rows.map((row) => row.client_id)],
+    );
+    for (const sale of openSales.rows) {
+      const current = openSalesByClient.get(sale.client_id) ?? [];
+      current.push({
+        outstanding: sale.outstanding,
+        date: sale.date,
+        dueDate: sale.due_date,
+      });
+      openSalesByClient.set(sale.client_id, current);
+    }
+  }
   let totalDebit = 0;
   let totalCredit = 0;
   const accounts = rows.rows.map((row) => {
     const debits = (row.debits ?? []).map((d) => ({ amount: Number(d.amount), date: d.date, dueDate: d.due }));
+    const balance = money(Number(row.total_debit) - Number(row.total_credit));
+    const saleDebits = agingDebitsFromOpenSales(openSalesByClient.get(row.client_id) ?? [], balance);
     totalDebit = money(totalDebit + Number(row.total_debit));
     totalCredit = money(totalCredit + Number(row.total_credit));
     return {
@@ -254,8 +330,10 @@ export async function listOpenCustomerAccounts(
       sellerName: row.seller_name,
       taxId: row.tax_id,
       lastMovementDate: row.last_movement,
-      balance: money(Number(row.total_debit) - Number(row.total_credit)),
-      aging: computeAgingBuckets(debits, Number(row.total_credit), today),
+      balance,
+      aging: saleDebits
+        ? computeAgingBuckets(saleDebits, 0, today)
+        : computeAgingBuckets(debits, Number(row.total_credit), today),
     };
   });
 

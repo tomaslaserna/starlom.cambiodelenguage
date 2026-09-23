@@ -59,6 +59,8 @@ test("listOpenCustomerAccounts arma el vencimiento y reusa el filtro de movimien
   assert.match(source, /activeAccountMovementWhereSql/);
   assert.match(source, /source_payment_term_days/);
   assert.match(source, /computeAgingBuckets/);
+  assert.match(source, /OPEN_SALES_FOR_AGING_SQL/);
+  assert.match(source, /agingDebitsFromOpenSales/);
   // filtra saldos distintos de cero con epsilon
   assert.match(source, /ABS\([^)]*\)\s*>\s*0\.005/);
 });

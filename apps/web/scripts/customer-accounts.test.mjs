@@ -91,6 +91,30 @@ test("computeAgingBuckets: sin vencimiento usa la fecha del movimiento", () => {
   assert.equal(b.d30Plus, 100);
 });
 
+test("aging usa los mismos remitos abiertos que el formulario de cobro", () => {
+  const sales = [
+    { outstanding: 70_583.82, date: "2026-08-13", dueDate: "2026-08-14" },
+    { outstanding: 137_649.16, date: "2026-08-20", dueDate: "2026-08-21" },
+    { outstanding: 131_209, date: "2026-09-03", dueDate: "2026-09-04" },
+  ];
+  const debits = accounts.agingDebitsFromOpenSales(sales, 273_484.28);
+  assert.ok(debits);
+  assert.deepEqual(debits.map((item) => item.amount), [70_583.82, 137_649.16, 65_251.30]);
+
+  const buckets = accounts.computeAgingBuckets(debits, 0, "2026-09-23");
+  assert.equal(buckets.d30, 65_251.30);
+  assert.equal(buckets.d30Plus, 208_232.98);
+  assert.equal(buckets.d15, 0);
+});
+
+test("aging conserva el fallback FIFO cuando los remitos no cubren el saldo", () => {
+  const incomplete = accounts.agingDebitsFromOpenSales(
+    [{ outstanding: 50, date: "2026-09-01", dueDate: "2026-09-01" }],
+    100,
+  );
+  assert.equal(incomplete, null);
+});
+
 test("buildCustomerStatement arranca con saldo anterior y corre el saldo", () => {
   const movements = [
     { id: "1", date: "2026-07-15", description: "Remito #0400", debit: 1150000, credit: 0, kind: "remito" },
