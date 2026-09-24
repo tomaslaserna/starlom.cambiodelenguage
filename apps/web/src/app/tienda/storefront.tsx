@@ -90,6 +90,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   const requestKeyRef = useRef("");
   const [location, setLocation] = useState<Location>({ address: "", city: "", province: "", latitude: "", longitude: "" });
   const [challengeStartedAt, setChallengeStartedAt] = useState(0);
+  const [challengeToken, setChallengeToken] = useState("");
   const [challengeSeconds, setChallengeSeconds] = useState(0);
   const [challengeDistance, setChallengeDistance] = useState<number | null>(null);
   const [challengeLocating, setChallengeLocating] = useState(false);
@@ -179,12 +180,13 @@ export function Storefront({ products, recommendations = [], combos = [], portal
       const raw = sessionStorage.getItem(STARLIM_CHALLENGE_STORAGE_KEY);
       if (!raw) return;
       const saved = JSON.parse(raw) as StarlimChallengeSession;
-      if (!saved.startedAt || saved.expiresAt <= Date.now() || starlimChallengeDistanceKm(saved.latitude, saved.longitude) > STARLIM_CHALLENGE_RADIUS_KM) {
+      if (!saved.token || !saved.startedAt || saved.expiresAt <= Date.now() || starlimChallengeDistanceKm(saved.latitude, saved.longitude) > STARLIM_CHALLENGE_RADIUS_KM) {
         sessionStorage.removeItem(STARLIM_CHALLENGE_STORAGE_KEY);
         return;
       }
       window.setTimeout(() => {
         setChallengeStartedAt(saved.startedAt);
+        setChallengeToken(saved.token);
         setChallengeSeconds(Math.max(0, Math.ceil((saved.expiresAt - Date.now()) / 1000)));
         setChallengeDistance(starlimChallengeDistanceKm(saved.latitude, saved.longitude));
         setChallengeCustomer({ name: saved.name, phone: saved.phone, businessName: saved.businessName });
@@ -270,7 +272,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   }
 
 
-  function beginChallenge(event: FormEvent<HTMLFormElement>) {
+  async function beginChallenge(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const latitude = Number(location.latitude);
     const longitude = Number(location.longitude);
@@ -281,14 +283,17 @@ export function Storefront({ products, recommendations = [], combos = [], portal
       phone: String(form.get("challengePhone") ?? "").trim(),
       businessName: String(form.get("challengeBusinessName") ?? "").trim(),
     };
-    const startedAt = Date.now();
-    const session: StarlimChallengeSession = { ...customer, startedAt, expiresAt: startedAt + STARLIM_CHALLENGE_SECONDS * 1000, latitude, longitude };
-    sessionStorage.setItem(STARLIM_CHALLENGE_STORAGE_KEY, JSON.stringify(session));
-    setChallengeCustomer(customer);
-    setChallengeStartedAt(startedAt);
-    setChallengeSeconds(STARLIM_CHALLENGE_SECONDS);
-    setChallengeIdentityOpen(false);
-    setBrowseAll(true);
+    setChallengeLocating(true); setError("");
+    try {
+      const response = await fetch("/api/storefront/challenge/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...customer, latitude, longitude }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "No pudimos activar el desafío");
+      const session = payload.data as StarlimChallengeSession;
+      sessionStorage.setItem(STARLIM_CHALLENGE_STORAGE_KEY, JSON.stringify(session));
+      setChallengeCustomer(customer); setChallengeToken(session.token); setChallengeStartedAt(session.startedAt);
+      setChallengeSeconds(STARLIM_CHALLENGE_SECONDS); setChallengeIdentityOpen(false); setBrowseAll(true);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos activar el desafío"); }
+    finally { setChallengeLocating(false); }
   }
   function locate() {
     setError(""); setLocating(true);
@@ -315,7 +320,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
         if (url && key) accessToken = (await createClient(url, key).auth.getSession()).data.session?.access_token ?? "";
       }
       if (!requestKeyRef.current) requestKeyRef.current = crypto.randomUUID();
-      const response = await fetch("/api/storefront/requests", { method: "POST", headers: { "Content-Type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) }, body: JSON.stringify({ ...Object.fromEntries(form.entries()), ...discovery, usualPurchases: discovery.usualPurchases, ...location, portalClientId, requestKey: requestKeyRef.current, paymentMethod, challengeStartedAt: challengeStartedAt ? new Date(challengeStartedAt).toISOString() : "", items: selected.map((product) => ({ productId: product.id, quantity: cart[product.id] })) }) });
+      const response = await fetch("/api/storefront/requests", { method: "POST", headers: { "Content-Type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) }, body: JSON.stringify({ ...Object.fromEntries(form.entries()), ...discovery, usualPurchases: discovery.usualPurchases, ...location, portalClientId, requestKey: requestKeyRef.current, paymentMethod, challengeToken, challengeStartedAt: challengeStartedAt ? new Date(challengeStartedAt).toISOString() : "", items: selected.map((product) => ({ productId: product.id, quantity: cart[product.id] })) }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "No pudimos enviar el pedido");
       setSubmittedReference(String(payload.data?.quoteNumber ?? ""));

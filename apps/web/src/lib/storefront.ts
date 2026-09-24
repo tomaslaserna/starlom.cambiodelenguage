@@ -1,10 +1,9 @@
 import { ApiError } from "@/lib/api-response";
 import { withCompanyContext } from "@/lib/db";
 import { productMarginCodeExpression } from "@/lib/product-pricing-sql";
+import { verifyChallengeToken } from "@/lib/starlim-challenge-token.server";
 import {
   STARLIM_CHALLENGE_MINIMUM,
-  STARLIM_CHALLENGE_RADIUS_KM,
-  STARLIM_CHALLENGE_SECONDS,
   starlimChallengeDistanceKm,
 } from "@/lib/starlim-challenge";
 
@@ -32,6 +31,7 @@ export type StorefrontRequest = {
   longitude: number | null;
   notes: string;
   challengeStartedAt: string;
+  challengeToken: string;
   requestKey: string;
   paymentMethod: "cash" | "qr";
   items: StorefrontLine[];
@@ -62,6 +62,7 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
     address: clean(body.address, 300), city: clean(body.city),
     province: clean(body.province), notes: clean(body.notes, 1000), items,
     challengeStartedAt: clean(body.challengeStartedAt, 40),
+    challengeToken: clean(body.challengeToken, 4096),
     requestKey: clean(body.requestKey, 36),
     paymentMethod: clean(body.paymentMethod, 10) === "qr" ? "qr" as const : "cash" as const,
     latitude: Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
@@ -117,17 +118,14 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
       return { ...item, name: product.name, unitPrice, total: unitPrice * item.quantity };
     });
     const estimatedAmount = pricedItems.reduce((sum, item) => sum + item.total, 0);
-    const challengeStart = input.challengeStartedAt ? new Date(input.challengeStartedAt) : null;
-    const challengeRequested = Boolean(challengeStart && Number.isFinite(challengeStart.getTime()));
-    const challengeDistance = input.latitude !== null && input.longitude !== null
-      ? starlimChallengeDistanceKm(input.latitude, input.longitude) : null;
-    const challengeExpiresAt = challengeRequested ? new Date(challengeStart!.getTime() + STARLIM_CHALLENGE_SECONDS * 1000) : null;
-    const challengeEligible = Boolean(challengeRequested
-      && challengeStart!.getTime() <= Date.now() + 60_000
-      && challengeExpiresAt!.getTime() >= Date.now()
-      && challengeDistance !== null && challengeDistance <= STARLIM_CHALLENGE_RADIUS_KM
-      && estimatedAmount >= STARLIM_CHALLENGE_MINIMUM);
-    if (challengeRequested && !challengeEligible) throw new ApiError(400, "El Desafío Starlim venció o no cumple ubicación y compra mínima");
+    const challengeClaims = input.challengeToken ? verifyChallengeToken(input.challengeToken) : null;
+    const challengeRequested = Boolean(input.challengeToken || input.challengeStartedAt);
+    if (challengeRequested && !challengeClaims) throw new ApiError(400, "El Desafío Starlim venció o su validación no es válida. Activá uno nuevo.");
+    const challengeStart = challengeClaims ? new Date(challengeClaims.startedAt) : null;
+    const challengeExpiresAt = challengeClaims ? new Date(challengeClaims.expiresAt) : null;
+    const challengeDistance = challengeClaims ? starlimChallengeDistanceKm(challengeClaims.latitude, challengeClaims.longitude) : null;
+    const challengeEligible = Boolean(challengeClaims && estimatedAmount >= STARLIM_CHALLENGE_MINIMUM);
+    if (challengeClaims && !challengeEligible) throw new ApiError(400, "El Desafío Starlim no alcanza la compra mínima");
 
     const seller = (await client.query<{ id: string; identity: string }>(
       `SELECT p.id::text, COALESCE(NULLIF(p.full_name, ''), NULLIF(p.username, ''), '') AS identity

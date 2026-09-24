@@ -12,6 +12,7 @@ export type StarlimChallengeSession = {
   name: string;
   phone: string;
   businessName: string;
+  token: string;
 };
 
 export function starlimChallengeDistanceKm(latitude: number, longitude: number) {

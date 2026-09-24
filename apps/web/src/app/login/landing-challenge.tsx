@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import {
   STARLIM_CHALLENGE_RADIUS_KM,
-  STARLIM_CHALLENGE_SECONDS,
   STARLIM_CHALLENGE_STORAGE_KEY,
   starlimChallengeDistanceKm,
   type StarlimChallengeSession,
@@ -29,22 +28,18 @@ export function LandingChallenge() {
     }, () => { setError("Necesitamos permiso de ubicación para activar el desafío."); setChecking(false); }, { enableHighAccuracy: true, timeout: 12000 });
   }
 
-  function begin(event: FormEvent<HTMLFormElement>) {
+  async function begin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!coords) return;
     const form = new FormData(event.currentTarget);
-    const startedAt = Date.now();
-    const session: StarlimChallengeSession = {
-      startedAt,
-      expiresAt: startedAt + STARLIM_CHALLENGE_SECONDS * 1000,
-      latitude: coords.latitude,
-      longitude: coords.longitude,
-      name: String(form.get("name") ?? "").trim(),
-      phone: String(form.get("phone") ?? "").trim(),
-      businessName: String(form.get("businessName") ?? "").trim(),
-    };
-    sessionStorage.setItem(STARLIM_CHALLENGE_STORAGE_KEY, JSON.stringify(session));
-    router.push("/tienda?challenge=1");
+    setChecking(true); setError("");
+    try {
+      const response = await fetch("/api/storefront/challenge/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ latitude: coords.latitude, longitude: coords.longitude, name: String(form.get("name") ?? "").trim(), phone: String(form.get("phone") ?? "").trim(), businessName: String(form.get("businessName") ?? "").trim() }) });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "No pudimos activar el desafío");
+      sessionStorage.setItem(STARLIM_CHALLENGE_STORAGE_KEY, JSON.stringify(payload.data as StarlimChallengeSession));
+      router.push("/tienda?challenge=1");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos activar el desafío"); setChecking(false); }
   }
 
   return <section className="border-y border-[#ffac58] bg-[linear-gradient(115deg,#54140d,#a42416_55%,#ef6c20)] px-5 py-12 text-white sm:px-8 lg:px-12">
