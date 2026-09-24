@@ -215,7 +215,7 @@ export function RegisterPaymentDialog({
                   {loadingRemittances ? <p className="p-4 text-sm font-semibold text-[#64748b]">Buscando remitos pendientes…</p> : null}
                   {remittanceError ? <p className="p-4 text-sm font-semibold text-red-600">{remittanceError}</p> : null}
                   {!loadingRemittances && !remittanceError && clientId && remittances.length === 0 ? (
-                    <p className="p-4 text-sm font-semibold text-emerald-700">Este cliente no tiene remitos pendientes para imputar.</p>
+                    <p className="p-4 text-sm font-semibold text-emerald-700">Este cliente no tiene remitos pendientes. Podés registrar el importe completo como saldo a favor.</p>
                   ) : null}
                   {remittances.map((sale) => {
                     const selected = Object.hasOwn(allocationAmounts, sale.saleId);
@@ -238,7 +238,13 @@ export function RegisterPaymentDialog({
                           disabled={!selected}
                           max={sale.outstanding}
                           min="0.01"
-                          onChange={(event) => setAllocationAmounts((current) => ({ ...current, [sale.saleId]: event.target.value }))}
+                          onChange={(event) => {
+                            const rawValue = event.target.value;
+                            const clampedValue = rawValue === ""
+                              ? ""
+                              : String(Math.min(Math.max(Number(rawValue) || 0, 0), sale.outstanding));
+                            setAllocationAmounts((current) => ({ ...current, [sale.saleId]: clampedValue }));
+                          }}
                           step="0.01"
                           type="number"
                           value={selected ? allocationAmounts[sale.saleId] : ""}
@@ -302,7 +308,7 @@ export function RegisterPaymentDialog({
                 <Button onClick={() => setOpen(false)} size="sm" type="button" variant="secondary">
                   Cancelar
                 </Button>
-                <Button disabled={paymentAmount <= 0 || allocations.length === 0 || allocatedTotal - paymentAmount > 0.005 || loadingRemittances} size="sm" type="submit">
+                <Button disabled={paymentAmount <= 0 || allocatedTotal - paymentAmount > 0.005 || loadingRemittances} size="sm" type="submit">
                   Registrar
                 </Button>
               </div>

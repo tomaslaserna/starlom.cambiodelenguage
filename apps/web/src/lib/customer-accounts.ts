@@ -763,7 +763,6 @@ export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput
   if (!PAYMENT_METHODS.has(method)) throw new ApiError(400, "Metodo de cobro invalido");
   if (!destination) throw new ApiError(400, "El destino es obligatorio");
   if (collectionMethodRequiresOperation(method) && !operation) throw new ApiError(400, "La operacion es obligatoria");
-  if (!allocations.length) throw new ApiError(400, "Selecciona al menos un remito para aplicar el pago");
   const allocatedTotal = money(allocations.reduce((sum, item) => sum + item.amount, 0));
   if (allocatedTotal - amount > 0.005) {
     throw new ApiError(400, "El total imputado a los remitos no puede superar el monto recibido");

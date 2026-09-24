@@ -79,7 +79,8 @@ test("customerPaymentFromBody valida monto, metodo y operacion", () => {
   assert.throws(() => mod.customerPaymentFromBody({ amount: "0", method: "efectivo", destination: "caja", allocations: allocation }), /mayor a cero/);
   assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "bitcoin", destination: "caja", allocations: allocation }), /Metodo/);
   assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "transferencia", destination: "banco", allocations: allocation }), /operacion/i);
-  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "efectivo", destination: "caja", allocations: "[]" }), /remito/i);
+  const fullyUnallocated = mod.customerPaymentFromBody({ amount: "10", method: "efectivo", destination: "caja", clientId: "c1", allocations: "[]" });
+  assert.deepEqual(fullyUnallocated.allocations, []);
   const ok = mod.customerPaymentFromBody({ amount: "10", method: "efectivo", destination: "caja", clientId: "c1", allocations: allocation });
   assert.equal(ok.amount, 10);
   assert.equal(ok.method, "efectivo");
@@ -155,6 +156,14 @@ test("el formulario permite elegir remitos e importes parciales", () => {
   assert.match(dialog, /name="allocations"/);
   assert.match(dialog, /Importe recibido/);
   assert.match(dialog, /Saldo a favor/);
+});
+
+test("el formulario limita cada imputacion al saldo y permite cobros totalmente a favor", () => {
+  const dialog = readFileSync(new URL('../src/app/payments/register-payment-dialog.tsx', import.meta.url), 'utf8');
+  assert.match(dialog, /Math\.min\(Math\.max\(Number\(rawValue\)/);
+  assert.match(dialog, /sale\.outstanding/);
+  assert.doesNotMatch(dialog, /allocations\.length === 0/);
+  assert.doesNotMatch(source, /Selecciona al menos un remito para aplicar el pago/);
 });
 
 test("el excedente del cobro se registra como saldo a favor", () => {
