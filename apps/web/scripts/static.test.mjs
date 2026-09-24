@@ -740,6 +740,16 @@ test("sales receivables do not offset one client's debt with another client's cr
   );
 });
 
+test("balance delivery times include the average ticket for the same delivered sales", () => {
+  const orders = read("apps/web/src/lib/orders.ts");
+  const deliveryPanel = read("apps/web/src/app/balance/tiempos-entrega.tsx");
+  assert.match(orders, /COALESCE\(s\.total_amount, 0\)::text AS total_amount/);
+  assert.match(orders, /deliveries\.reduce\(\(sum, delivery\) => sum \+ delivery\.totalAmount, 0\) \/ deliveries\.length/);
+  assert.match(deliveryPanel, /Ticket promedio/);
+  assert.match(deliveryPanel, /Tiempo corrido de calendario/);
+  assert.match(deliveryPanel, /formatCurrency\(delivery\.totalAmount\)/);
+});
+
 test("Escritorio is listed first in the Inicio menu and links to the home page", () => {
   const navigation = read("apps/web/src/lib/navigation.ts");
   assert.match(navigation, /href: "\/",\s*label: "Escritorio",\s*active: "home",/);

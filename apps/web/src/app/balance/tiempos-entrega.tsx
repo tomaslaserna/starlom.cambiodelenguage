@@ -7,10 +7,11 @@ import {
   DataTableRow,
 } from "@/components/ui";
 import { formatDuration } from "@/lib/delivery-times";
+import { formatCurrency } from "@/lib/format";
 
-type Delivery = { saleId: string; pedido: string; cliente: string; deliveredAt: string; leadMs: number };
+type Delivery = { saleId: string; pedido: string; cliente: string; deliveredAt: string; leadMs: number; totalAmount: number };
 type Props = {
-  data: { deliveries: Delivery[]; summary: { count: number; avgMs: number | null; medianMs: number | null } };
+  data: { deliveries: Delivery[]; summary: { count: number; avgMs: number | null; medianMs: number | null; averageTicket: number | null } };
 };
 
 export function TiemposEntrega({ data }: Props) {
@@ -19,6 +20,7 @@ export function TiemposEntrega({ data }: Props) {
     { label: "Entregas", value: String(summary.count) },
     { label: "Promedio", value: summary.avgMs == null ? "—" : formatDuration(summary.avgMs) },
     { label: "Mediana", value: summary.medianMs == null ? "—" : formatDuration(summary.medianMs) },
+    { label: "Ticket promedio", value: summary.averageTicket == null ? "—" : formatCurrency(summary.averageTicket) },
   ];
 
   return (
@@ -26,11 +28,11 @@ export function TiemposEntrega({ data }: Props) {
       <div className="border-b border-[color:var(--border)] px-4 py-3">
         <h2 className="font-semibold text-[color:var(--foreground)]">Tiempos de entrega</h2>
         <p className="erp-text-caption text-[color:var(--muted)]">
-          Desde que se carga el pedido hasta que se marca entregado, en el período.
+          Tiempo corrido de calendario desde la carga hasta la entrega. El ticket corresponde al total final con IVA de esas ventas.
         </p>
       </div>
 
-      <div className="grid gap-3 p-4 sm:grid-cols-3">
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <div key={card.label} className="rounded-[12px] border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4">
             <div className="text-[1.5rem] font-bold leading-none tabular-nums text-[color:var(--foreground)]">{card.value}</div>
@@ -55,7 +57,8 @@ export function TiemposEntrega({ data }: Props) {
               <DataTableHead>Pedido</DataTableHead>
               <DataTableHead>Cliente</DataTableHead>
               <DataTableHead align="right">Entrega</DataTableHead>
-              <DataTableHead align="right">Tiempo</DataTableHead>
+              <DataTableHead align="right">Tiempo corrido</DataTableHead>
+              <DataTableHead align="right">Ticket</DataTableHead>
             </DataTableRow>
           </DataTableHeader>
           <DataTableBody>
@@ -65,6 +68,7 @@ export function TiemposEntrega({ data }: Props) {
                 <DataTableCell>{delivery.cliente || "Sin cliente"}</DataTableCell>
                 <DataTableCell align="right" className="tabular-nums">{delivery.deliveredAt}</DataTableCell>
                 <DataTableCell align="right" className="tabular-nums">{formatDuration(delivery.leadMs)}</DataTableCell>
+                <DataTableCell align="right" className="tabular-nums">{formatCurrency(delivery.totalAmount)}</DataTableCell>
               </DataTableRow>
             ))}
           </DataTableBody>

@@ -1495,20 +1495,21 @@ export async function updateOrderCollectionStatus(
   return getOrder(session.companyId, id);
 }
 
-export type Delivery = { saleId: string; pedido: string; cliente: string; deliveredAt: string; leadMs: number };
+export type Delivery = { saleId: string; pedido: string; cliente: string; deliveredAt: string; leadMs: number; totalAmount: number };
 
 // Tiempos de entrega del período a partir de los eventos pedido.entregado ya
 // registrados por updateOrderStatus. Lead time = entrega - creación del pedido.
 export async function getDeliveryTimes(
   companyId: number,
   bounds: { currentStart: string; nextStart: string },
-): Promise<{ deliveries: Delivery[]; summary: { count: number; avgMs: number | null; medianMs: number | null } }> {
+): Promise<{ deliveries: Delivery[]; summary: { count: number; avgMs: number | null; medianMs: number | null; averageTicket: number | null } }> {
   const result = await queryWithCompanyContext<{
     sale_id: string;
     pedido: string;
     cliente: string;
     started_at: string;
     delivered_at: string;
+    total_amount: string;
   }>(
     companyId,
     `
@@ -1516,7 +1517,8 @@ export async function getDeliveryTimes(
              COALESCE(NULLIF(s.sale_number, ''), '') AS pedido,
              COALESCE(NULLIF(s.client_name, ''), c.display_name, c.legal_name, '') AS cliente,
              s.created_at::text AS started_at,
-             e.created_at::text AS delivered_at
+             e.created_at::text AS delivered_at,
+             COALESCE(s.total_amount, 0)::text AS total_amount
       FROM eventos_integracion e
       JOIN sales s ON s.id = (e.datos->>'id')::uuid AND s.empresa_id = e.empresa_id
       LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
@@ -1539,8 +1541,12 @@ export async function getDeliveryTimes(
       cliente: row.cliente,
       deliveredAt: row.delivered_at.slice(0, 10),
       leadMs,
+      totalAmount: Number(row.total_amount),
     });
   }
-  const summary = summarizeDurations(deliveries.map((delivery) => delivery.leadMs));
-  return { deliveries, summary };
+  const durationSummary = summarizeDurations(deliveries.map((delivery) => delivery.leadMs));
+  const averageTicket = deliveries.length
+    ? deliveries.reduce((sum, delivery) => sum + delivery.totalAmount, 0) / deliveries.length
+    : null;
+  return { deliveries, summary: { ...durationSummary, averageTicket } };
 }
