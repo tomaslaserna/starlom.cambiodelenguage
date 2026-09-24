@@ -78,13 +78,13 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
 export async function createStorefrontRequest(input: StorefrontRequest, portalClientId = "") {
   return withCompanyContext(COMPANY_ID, async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`storefront:${input.requestKey}`]);
-    const existing = (await client.query<{ id: string; quote_number: string }>(
-      "SELECT id::text, quote_number FROM quotes WHERE empresa_id=$1 AND storefront_request_key=$2 LIMIT 1",
+    const existing = (await client.query<{ id: string; quote_number: string; storefront_challenge_eligible: boolean }>(
+      "SELECT id::text, quote_number, storefront_challenge_eligible FROM quotes WHERE empresa_id=$1 AND storefront_request_key=$2 LIMIT 1",
       [COMPANY_ID, input.requestKey],
     )).rows[0];
     if (existing) {
       const stored = (await client.query<{ total_amount: string }>("SELECT total_amount::text FROM quotes WHERE empresa_id=$1 AND id=$2::uuid", [COMPANY_ID, existing.id])).rows[0];
-      return { leadId: null, quoteId: existing.id, quoteNumber: existing.quote_number, amount: Number(stored?.total_amount ?? 0), duplicated: true };
+      return { leadId: null, quoteId: existing.id, quoteNumber: existing.quote_number, amount: Number(stored?.total_amount ?? 0), challengeEligible: existing.storefront_challenge_eligible, duplicated: true };
     }
     const productIds = input.items.map((item) => item.productId);
     const products = await client.query<{
@@ -175,6 +175,6 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
         [quote.rows[0]!.id, item.productId, item.name, item.quantity, item.unitPrice, item.total, COMPANY_ID],
       );
     }
-    return { leadId: lead?.rows[0]?.id ?? null, quoteId: quote.rows[0]!.id, quoteNumber, amount: Math.round(estimatedAmount * 1.21 * 100) / 100, duplicated: false };
+    return { leadId: lead?.rows[0]?.id ?? null, quoteId: quote.rows[0]!.id, quoteNumber, amount: Math.round(estimatedAmount * 1.21 * 100) / 100, challengeEligible, duplicated: false };
   });
 }

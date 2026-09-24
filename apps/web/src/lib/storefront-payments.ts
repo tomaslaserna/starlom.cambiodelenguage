@@ -62,6 +62,39 @@ export async function createStorefrontPayment(input: {
   };
 }
 
+export async function convertStorefrontQuoteToOrder(quoteId: string, companyId = COMPANY_ID, paymentMethod: "cash" | "qr" = "cash") {
+  const quote = (await queryWithCompanyContext<{ seller_id: string | null }>(
+    companyId,
+    "SELECT seller_id::text FROM quotes WHERE empresa_id=$1 AND id=$2::uuid LIMIT 1",
+    [companyId, quoteId],
+    { cache: false },
+  )).rows[0];
+  if (!quote?.seller_id) throw new Error("Storefront quote has no seller");
+  const session: AuthSession = {
+    userId: quote.seller_id,
+    username: "Desafío Starlim",
+    email: "tienda@starlim.com.ar",
+    displayName: "Desafío Starlim",
+    role: "vendedor",
+    companyId,
+    companyName: "Starlim",
+    expiresAt: Math.floor(Date.now() / 1000) + 300,
+  };
+  const order = await acceptQuote(session, quoteId);
+  if (paymentMethod === "cash") {
+    await withCompanyContext(companyId, (client) => client.query(
+      `UPDATE sales SET collection_status='pendiente',payment_condition='Efectivo contra entrega',
+         notes=CONCAT_WS(E'\n',NULLIF(notes,''),'COBRAR AL ENTREGAR. El cliente indicó pago en efectivo.'),updated_at=now()
+       WHERE empresa_id=$1 AND id=$2::uuid`,
+      [companyId, order.orderId],
+    ));
+  }
+  const sale = (await queryWithCompanyContext<{ sale_number: string }>(companyId,
+    "SELECT sale_number FROM sales WHERE empresa_id=$1 AND id=$2::uuid LIMIT 1",
+    [companyId, order.orderId], { cache: false })).rows[0];
+  return { ...order, orderNumber: sale?.sale_number ?? "" };
+}
+
 export async function processStorefrontPayment(payment: MercadoPagoPayment, companyId = COMPANY_ID) {
   const intentId = String(payment.external_reference || "");
   const paymentReference = String(payment.id || "");
@@ -85,12 +118,7 @@ export async function processStorefrontPayment(payment: MercadoPagoPayment, comp
     throw new Error("Mercado Pago amount mismatch");
   }
   if (!intent.seller_id) throw new Error("Storefront payment quote has no seller");
-  const session: AuthSession = {
-    userId: intent.seller_id, username: "Tienda Starlim", email: "tienda@starlim.com.ar",
-    displayName: "Tienda Starlim", role: "vendedor", companyId, companyName: "Starlim",
-    expiresAt: Math.floor(Date.now() / 1000) + 300,
-  };
-  const order = await acceptQuote(session, intent.quote_id);
+  const order = await convertStorefrontQuoteToOrder(intent.quote_id, companyId, "qr");
   await withCompanyContext(companyId, async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(83015,hashtext($1))", [paymentReference]);
     const sale = (await client.query<{ client_id: string }>(

@@ -1,7 +1,7 @@
 import { ApiError, handleApiError, ok } from "@/lib/api-response";
 import { createStorefrontRequest, parseStorefrontRequest } from "@/lib/storefront";
 import { requirePortalIdentity } from "@/lib/portal-auth";
-import { createStorefrontPayment } from "@/lib/storefront-payments";
+import { convertStorefrontQuoteToOrder, createStorefrontPayment } from "@/lib/storefront-payments";
 
 export const runtime = "nodejs";
 
@@ -21,7 +21,10 @@ export async function POST(request: Request) {
     const payment = input.paymentMethod === "qr"
       ? await createStorefrontPayment({ quoteId: result.quoteId, requestKey: input.requestKey, amount: result.amount, email: input.email, origin: new URL(request.url).origin })
       : null;
-    return ok({ data: { ...result, payment } }, 201);
+    const challengeOrder = result.challengeEligible && input.paymentMethod === "cash"
+      ? await convertStorefrontQuoteToOrder(result.quoteId, 1, "cash")
+      : null;
+    return ok({ data: { ...result, payment, challengeOrder } }, 201);
   } catch (error) {
     return handleApiError(error);
   }
