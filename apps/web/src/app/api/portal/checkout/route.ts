@@ -38,10 +38,20 @@ export async function POST(request: Request) {
       await client.query(`INSERT INTO customer_portal_payment_intents (id,empresa_id,portal_account_id,client_id,sale_ids,amount,portal_user_id) VALUES ($1,$2,$3::uuid,$4::uuid,$5::uuid[],$6,$7::uuid)`, [intentId, identity.companyId, identity.accountId, clientId, saleIds, amount, identity.userId]);
       return amount;
     });
-    const preference = await createPreference({ intentId, amount: result, description: `Pago Starlim · ${saleIds.length} comprobante${saleIds.length === 1 ? "" : "s"}`, email: identity.email, origin: new URL(request.url).origin });
-    const checkoutUrl = String(preference.init_point || "");
-    if (!checkoutUrl) throw new ApiError(502, "Mercado Pago no devolvió el enlace de pago");
-    await withCompanyContext(identity.companyId, (client) => client.query(`UPDATE customer_portal_payment_intents SET mp_preference_id=$1,updated_at=now() WHERE id=$2 AND empresa_id=$3`, [preference.id, intentId, identity.companyId]));
-    return ok({ data: { intentId, amount: result, checkoutUrl, qrDataUrl: await QRCode.toDataURL(checkoutUrl, { width: 320, margin: 1 }) } }, 201);
+    try {
+      const preference = await createPreference({ intentId, amount: result, description: `Pago Starlim · ${saleIds.length} comprobante${saleIds.length === 1 ? "" : "s"}`, email: identity.email, origin: new URL(request.url).origin });
+      const checkoutUrl = String(preference.init_point || "");
+      if (!checkoutUrl) throw new ApiError(502, "Mercado Pago no devolvió el enlace de pago");
+      await withCompanyContext(identity.companyId, (client) => client.query(`UPDATE customer_portal_payment_intents SET mp_preference_id=$1,updated_at=now() WHERE id=$2 AND empresa_id=$3`, [preference.id, intentId, identity.companyId]));
+      return ok({ data: { intentId, amount: result, checkoutUrl, qrDataUrl: await QRCode.toDataURL(checkoutUrl, { width: 320, margin: 1 }) } }, 201);
+    } catch (error) {
+      await withCompanyContext(identity.companyId, (client) =>
+        client.query(
+          `UPDATE customer_portal_payment_intents SET status='cancelled',updated_at=now() WHERE id=$1::uuid AND empresa_id=$2 AND status='created'`,
+          [intentId, identity.companyId],
+        ),
+      );
+      throw error;
+    }
   } catch (error) { return handleApiError(error); }
 }
