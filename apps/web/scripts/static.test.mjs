@@ -1113,8 +1113,8 @@ test("public store shows commercial scales and persists server-calculated prices
   assert.match(client, /Precio Lista 3/);
   assert.match(client, /para acceder a Lista 2/);
   assert.match(client, /accede a Lista 1/);
-  assert.match(client, /Hemos recibido tu pedido/);
-  assert.match(client, /A la brevedad un comercial se contactará con usted/);
+  assert.match(client, /Solicitud recibida/);
+  assert.match(client, /Ya ingresó al CRM de Starlim/);
   assert.match(client, /navigator\.geolocation/);
   assert.match(client, /Dirección completa/);
   assert.match(client, /Conocé nuestros combos/);
@@ -1134,6 +1134,9 @@ test("public store shows commercial scales and persists server-calculated prices
   assert.match(storefront, /INSERT INTO quotes/);
   assert.match(storefront, /INSERT INTO quote_items/);
   assert.match(storefront, /withCompanyContext/);
+  assert.match(storefront, /storefront_request_key/);
+  assert.match(client, /Referencia {submittedReference}/);
+  assert.match(client, /disabled={product.available === "out"}/);
   assert.match(storefront, /storefront_challenge_eligible/);
   assert.match(storefront, /estimatedAmount >= STARLIM_CHALLENGE_MINIMUM/);
   assert.match(route, /parseStorefrontRequest/);

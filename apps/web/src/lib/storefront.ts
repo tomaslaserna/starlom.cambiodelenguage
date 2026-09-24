@@ -31,6 +31,7 @@ export type StorefrontRequest = {
   longitude: number | null;
   notes: string;
   challengeStartedAt: string;
+  requestKey: string;
   items: StorefrontLine[];
 };
 
@@ -59,17 +60,25 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
     address: clean(body.address, 300), city: clean(body.city),
     province: clean(body.province), notes: clean(body.notes, 1000), items,
     challengeStartedAt: clean(body.challengeStartedAt, 40),
+    requestKey: clean(body.requestKey, 36),
     latitude: Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
     longitude: Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
   };
   if (!parsed.name || !parsed.phone) throw new ApiError(400, "Completá nombre y teléfono");
   if (!parsed.address) throw new ApiError(400, "Completá la dirección de entrega");
   if (!items.length) throw new ApiError(400, "Agregá al menos un producto");
+  if (!UUID_RE.test(parsed.requestKey)) throw new ApiError(400, "Identificador de solicitud inválido");
   return parsed;
 }
 
 export async function createStorefrontRequest(input: StorefrontRequest, portalClientId = "") {
   return withCompanyContext(COMPANY_ID, async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`storefront:${input.requestKey}`]);
+    const existing = (await client.query<{ id: string; quote_number: string }>(
+      "SELECT id::text, quote_number FROM quotes WHERE empresa_id=$1 AND storefront_request_key=$2 LIMIT 1",
+      [COMPANY_ID, input.requestKey],
+    )).rows[0];
+    if (existing) return { leadId: null, quoteId: existing.id, quoteNumber: existing.quote_number, duplicated: true };
     const productIds = input.items.map((item) => item.productId);
     const products = await client.query<{
       id: string; name: string; presentation_units: number;
@@ -147,10 +156,10 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
         desired_document, active_price_list, price_list_name, discount_percent, net_amount, discount_amount, subtotal_amount,
         vat_amount, client_name, client_legal_name, client_document, client_fiscal_condition, client_phone, client_address, notes, source_sheet,
         empresa_id, visible_to_all, storefront_challenge_started_at, storefront_challenge_expires_at,
-        storefront_challenge_eligible, storefront_estimated_amount, storefront_distance_km)
-       VALUES ($1,$9::uuid,$2::uuid,'pendiente',$14,15,false,0,'remito',1,'Tienda web · escalas L3/L2/L1',0,$14,0,$14,0,$3,$4,$5,$10,$6,$7,$16,$17,$8,true,$11,$12,$13,$14,$15)
+        storefront_challenge_eligible, storefront_estimated_amount, storefront_distance_km, storefront_request_key)
+       VALUES ($1,$9::uuid,$2::uuid,'pendiente',$14,15,false,0,'remito',1,'Tienda web · escalas L3/L2/L1',0,$14,0,$14,0,$3,$4,$5,$10,$6,$7,$16,$17,$8,true,$11,$12,$13,$14,$15,$18)
        RETURNING id::text`,
-      [quoteNumber, seller.id, portalClient?.name || input.brand || input.name, portalClient?.legal_name || input.businessName, portalClient?.tax_id || input.taxId, portalClient?.phone || input.phone, portalClient?.address || fullAddress, COMPANY_ID, portalClient?.id || null, portalClient?.fiscal_condition || "", challengeStart, challengeExpiresAt, challengeEligible, estimatedAmount, challengeDistance, leadNotes, requestSource],
+      [quoteNumber, seller.id, portalClient?.name || input.brand || input.name, portalClient?.legal_name || input.businessName, portalClient?.tax_id || input.taxId, portalClient?.phone || input.phone, portalClient?.address || fullAddress, COMPANY_ID, portalClient?.id || null, portalClient?.fiscal_condition || "", challengeStart, challengeExpiresAt, challengeEligible, estimatedAmount, challengeDistance, leadNotes, requestSource, input.requestKey],
     );
     for (const item of pricedItems) {
       await client.query(
@@ -159,6 +168,6 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
         [quote.rows[0]!.id, item.productId, item.name, item.quantity, item.unitPrice, item.total, COMPANY_ID],
       );
     }
-    return { leadId: lead?.rows[0]?.id ?? null, quoteId: quote.rows[0]!.id, quoteNumber };
+    return { leadId: lead?.rows[0]?.id ?? null, quoteId: quote.rows[0]!.id, quoteNumber, duplicated: false };
   });
 }
