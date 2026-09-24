@@ -16,7 +16,9 @@ type Summary = {
   payments: { id: string; client_id: string; sale_id: string; date: string; description: string; amount: string }[];
   invoices: { id: string; client_id: string; date: string; number: string; total: string; kind: "invoice" | "credit_note" | "debit_note" }[];
   quotes: { id: string; client_id: string; number: string; issue_date: string; expiration_date: string; total: string; status: string }[];
+  balances: Record<string, number>;
   balance: number;
+  updatedAt: string;
 };
 
 type CheckoutState = { intentId: string; amount: number; checkoutUrl: string; qrDataUrl: string; status: "created" | "checking" | "pending" | "approved" | "rejected" | "cancelled" };
@@ -131,6 +133,7 @@ export function PortalApp() {
   const payments = summary?.payments.filter((payment) => !branch || payment.client_id === branch) ?? [];
   const invoices = summary?.invoices.filter((invoice) => !branch || invoice.client_id === branch) ?? [];
   const quotes = summary?.quotes.filter((quote) => !branch || quote.client_id === branch) ?? [];
+  const branchBalance = branch ? Number(summary?.balances?.[branch] ?? 0) : Number(summary?.balance ?? 0);
   const repeatableSale = sales.find((sale) => sale.item_count > 0);
   const payableSales = sales.filter((sale) => Number(sale.outstanding) > 0.005 && sale.status === "entregado" && !["pendiente_aprobacion","en_proceso"].includes(sale.collection_status)).toSorted((a, b) => a.date.localeCompare(b.date));
 
@@ -158,9 +161,20 @@ export function PortalApp() {
 
   async function savePreferences(key: keyof Summary["preferences"], checked: boolean) {
     if (!summary || !session) return;
-    const next = { ...summary.preferences, [key]: checked };
+    setError("");
+    setMessage("");
+    const previous = summary.preferences;
+    const next = { ...previous, [key]: checked };
     setSummary({ ...summary, preferences: next });
-    await fetch("/api/portal/preferences", { method: "PATCH", headers: { authorization: `Bearer ${session.access_token}`, "content-type": "application/json" }, body: JSON.stringify({ notifyOrders: next.notify_orders, notifyInvoices: next.notify_invoices, notifyOffers: next.notify_offers }) });
+    try {
+      const response = await fetch("/api/portal/preferences", { method: "PATCH", headers: { authorization: `Bearer ${session.access_token}`, "content-type": "application/json" }, body: JSON.stringify({ notifyOrders: next.notify_orders, notifyInvoices: next.notify_invoices, notifyOffers: next.notify_offers }) });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "No pudimos guardar tus preferencias");
+      setMessage("Preferencias guardadas.");
+    } catch (cause) {
+      setSummary((current) => current ? { ...current, preferences: previous } : current);
+      setError(cause instanceof Error ? cause.message : "No pudimos guardar tus preferencias");
+    }
   }
 
   return <main className="min-h-screen bg-[#f3f7fc] text-[#172033]">
@@ -170,14 +184,15 @@ export function PortalApp() {
     : <section className="mx-auto max-w-6xl px-5 py-8">{loading ? <p className="rounded-2xl bg-white p-6 font-bold">Cargando tu cuenta…</p> : error ? <div className="rounded-2xl border border-red-200 bg-white p-6"><p className="font-bold text-red-700">{error}</p><button className="mt-4 text-sm font-bold text-[#075ac7]" onClick={() => client?.auth.signOut()} type="button">Salir</button></div> : summary ? <div className="grid gap-6">
       <div className="overflow-hidden rounded-3xl bg-gradient-to-br from-[#075ac7] via-[#096bd7] to-[#0b86df] p-6 text-white shadow-lg sm:p-8"><div className="flex flex-wrap items-end justify-between gap-4"><div><span className="text-xs font-extrabold uppercase tracking-[.14em] text-white/75">Mi cuenta Starlim</span><h1 className="mt-2 text-3xl font-black sm:text-4xl">Hola, {summary.profile.displayName || summary.profile.email}</h1><p className="mt-2 max-w-2xl text-sm text-white/80 sm:text-base">Pedidos, comprobantes y pagos en un solo lugar. Elegí qué necesitás hacer y resolvelo en pocos pasos.</p></div><button className="rounded-xl border border-white/30 bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/20" onClick={() => client?.auth.signOut()} type="button">Cerrar sesión</button></div></div>
       {summary.clients.length > 1 ? <label className="grid max-w-md gap-2 text-sm font-bold">Sucursal<select className="min-h-12 rounded-xl border border-[#cbd8e8] bg-white px-4" onChange={(event) => { setBranch(event.target.value); setSelectedSales([]); setCheckout(null); }} value={branch}>{summary.clients.map((item) => <option key={item.id} value={item.id}>{item.name}{item.locality ? ` · ${item.locality}` : ""}</option>)}</select></label> : null}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><PortalMetric label="Saldo actual" value={money.format(summary.balance)} /><PortalMetric label="Pedidos visibles" value={String(sales.length)} /><PortalMetric label="Último pedido" value={sales[0]?.date || "Sin pedidos"} /><PortalMetric label="Sucursal" value={summary.clients.find((item) => item.id === branch)?.name || "-"} /></div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><PortalMetric label="Saldo de la sucursal" value={money.format(branchBalance)} /><PortalMetric label="Pedidos visibles" value={String(sales.length)} /><PortalMetric label="Último pedido" value={sales[0]?.date || "Sin pedidos"} /><PortalMetric label="Sucursal" value={summary.clients.find((item) => item.id === branch)?.name || "-"} /></div>
+      <p className="-mt-3 text-right text-xs font-semibold text-[#64748b]">Información actualizada {new Date(summary.updatedAt).toLocaleString("es-AR")}</p>
       {message ? <p className="rounded-2xl bg-emerald-50 p-4 font-bold text-emerald-700">{message}</p> : null}
       <nav aria-label="Navegación del portal" className="flex gap-2 overflow-x-auto rounded-2xl border border-[#dbe5f1] bg-white p-2 shadow-sm">
         <PortalNavLink href="#presupuestos" label="Presupuestos" /><PortalNavLink href="#pedidos" label="Pedidos" /><PortalNavLink href="#facturas" label="Facturas" /><PortalNavLink href="#pagos" label="Pagos" /><PortalNavLink href="#pagar" label="Pagar ahora" /><PortalNavLink href="#preferencias" label="Preferencias" />
       </nav>
       <div><span className="text-xs font-extrabold uppercase tracking-[.12em] text-[#075ac7]">Acciones rápidas</span><h2 className="mt-1 text-2xl font-black">¿Qué querés hacer?</h2></div>
       <nav aria-label="Accesos rápidos del portal" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <PortalShortcut accent description="Tus productos habituales primero, con buscador y stock disponible." href={`/portal/pedido?clientId=${encodeURIComponent(branch)}`} title="Armar un pedido" />
+        <PortalShortcut accent description="Tus productos habituales primero, con buscador simple y beneficios personalizados." href={`/portal/pedido?clientId=${encodeURIComponent(branch)}`} title="Armar un pedido" />
         {repeatableSale ? <PortalShortcut description="Cargá el último pedido en un carrito editable para agregar o quitar productos." href={`/portal/pedido?clientId=${encodeURIComponent(branch)}&repeatSaleId=${encodeURIComponent(repeatableSale.id)}`} title="Repetir último pedido" /> : <div className="rounded-2xl border border-[#dbe5f1] bg-white p-5 opacity-60"><strong className="text-lg">Repetir último pedido</strong><span className="mt-2 block text-sm text-[#64748b]">Todavía no hay un pedido con productos para repetir.</span></div>}
         <PortalShortcut description="Consultá pedidos anteriores y abrí sus remitos." href="#pedidos" title="Historial de compras" />
         <PortalShortcut description="Visualizá todas las facturas emitidas." href="#facturas" title="Ver facturas" />
@@ -219,7 +234,7 @@ function PaymentCheckout({ sales, selected, checkout, loading, onToggle, onCreat
 
 function PaymentStep({ label, active }: { label: string; active: boolean }) { return <span className={`flex items-center gap-2 ${active ? "text-[#075ac7]" : "text-[#94a3b8]"}`}><span className={`size-2.5 rounded-full ${active ? "animate-pulse bg-[#075ac7]" : "bg-[#cbd5e1]"}`} />{label}</span>; }
 
-function PortalMetric({ label, value }: { label: string; value: string }) { const pending = label === "Saldo actual" && value !== money.format(0); return <div className="rounded-2xl border border-[#dbe5f1] bg-white p-5 shadow-sm"><span className="text-xs font-extrabold uppercase tracking-[.08em] text-[#64748b]">{label}</span><strong className={`mt-2 block text-2xl font-black ${pending ? "text-red-600" : ""}`}>{value}</strong>{pending ? <span className="mt-1 block text-xs font-bold text-red-600">Pendiente de pago</span> : null}</div>; }
+function PortalMetric({ label, value }: { label: string; value: string }) { const pending = label === "Saldo de la sucursal" && value !== money.format(0); return <div className="rounded-2xl border border-[#dbe5f1] bg-white p-5 shadow-sm"><span className="text-xs font-extrabold uppercase tracking-[.08em] text-[#64748b]">{label}</span><strong className={`mt-2 block text-2xl font-black ${pending ? "text-red-600" : ""}`}>{value}</strong>{pending ? <span className="mt-1 block text-xs font-bold text-red-600">Pendiente de pago</span> : null}</div>; }
 function Preference({ checked, label, onChange }: { checked: boolean; label: string; onChange: (value: boolean) => void }) { return <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-[#dbe5f1] p-4 font-bold"><input checked={checked} className="size-5 accent-[#075ac7]" onChange={(event) => onChange(event.target.checked)} type="checkbox" />{label}</label>; }
 function PortalTable({ title, rows, empty }: { title: string; rows: string[][]; empty: string }) { const [showAll, setShowAll] = useState(false); return <section className="overflow-hidden rounded-2xl border border-[#dbe5f1] bg-white shadow-sm"><RecordHeader count={rows.length} title={title} />{rows.length ? <div className="divide-y divide-[#edf1f6]">{rows.slice(0, showAll ? rows.length : 3).map((row, index) => <div className="grid gap-1 px-5 py-4 transition hover:bg-[#f8fbff] sm:grid-cols-4" key={`${row[0]}-${index}`}>{row.map((cell, cellIndex) => { const normalized = cell.toLocaleLowerCase("es"); const tone = normalized.includes("entregado") ? "font-bold text-emerald-600" : normalized.startsWith("cargo ") ? "font-bold text-red-600" : cellIndex === 1 ? "font-bold" : "text-sm text-[#53657a]"; return <span className={tone} key={cellIndex}>{cell}</span>; })}</div>)}{rows.length > 3 ? <ShowMoreButton expanded={showAll} hiddenCount={rows.length - 3} onClick={() => setShowAll((value) => !value)} /> : null}</div> : <p className="p-5 text-[#64748b]">{empty}</p>}</section>; }
 function PortalDocumentTable({ title, rows, empty, onOpen }: { title: string; rows: { id: string; cells: string[] }[]; empty: string; onOpen: (id: string) => void }) { const [showAll, setShowAll] = useState(false); return <section className="overflow-hidden rounded-2xl border border-[#dbe5f1] bg-white shadow-sm"><RecordHeader count={rows.length} title={title} />{rows.length ? <div className="divide-y divide-[#edf1f6]">{rows.slice(0, showAll ? rows.length : 3).map((row) => <div className="grid items-center gap-x-5 gap-y-3 px-5 py-4 transition hover:bg-[#f8fbff] sm:grid-cols-[minmax(110px,.8fr)_minmax(220px,1.5fr)_minmax(100px,.7fr)_minmax(120px,.8fr)_auto]" key={row.id}>{row.cells.map((cell, index) => <span className={`${index === 1 ? "font-bold" : cell.toLowerCase().includes("entregado") ? "font-bold text-emerald-600" : "text-sm text-[#53657a]"} ${index === row.cells.length - 1 ? "sm:text-right" : ""}`} key={index}>{cell}</span>)}<button className="min-h-10 rounded-lg border border-[#bcd5ef] px-4 text-sm font-bold text-[#075ac7] transition hover:border-[#075ac7] hover:bg-[#eef6ff]" onClick={() => onOpen(row.id)} type="button">Ver PDF</button></div>)}{rows.length > 3 ? <ShowMoreButton expanded={showAll} hiddenCount={rows.length - 3} onClick={() => setShowAll((value) => !value)} /> : null}</div> : <p className="p-5 text-[#64748b]">{empty}</p>}</section>; }

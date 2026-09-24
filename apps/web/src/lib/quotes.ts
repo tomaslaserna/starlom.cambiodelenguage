@@ -919,6 +919,7 @@ export async function acceptQuote(
       client_address: string | null;
       seller_name: string | null;
       notes: string | null;
+      source_sheet: string | null;
       valid: boolean;
     }>(
       `
@@ -942,6 +943,7 @@ export async function acceptQuote(
                COALESCE(NULLIF(q.client_address, ''), c.address, '') AS client_address,
                COALESCE(p.username, p.full_name, '') AS seller_name,
                COALESCE(q.notes, '') AS notes,
+               q.source_sheet,
                (q.created_at::date + q.validity_days >= CURRENT_DATE) AS valid
         FROM quotes q
         LEFT JOIN clients c ON c.id = q.client_id AND c.empresa_id = q.empresa_id
@@ -1129,7 +1131,7 @@ export async function acceptQuote(
           sale_number, commercial_number, client_id, seller_id, client_name, client_document, price_list_name,
           total_amount, vat_rate, receipt_number, receipt_type, payment_condition, source_payment_term_days, sale_date, seller_name,
           collection_status, order_status, desired_document, notes,
-          stock_discounted, status, empresa_id
+          stock_discounted, status, source_sheet, empresa_id
         )
         VALUES (
           $1, $2, $3::uuid, $4::uuid, $5, $6, $7,
@@ -1137,7 +1139,7 @@ export async function acceptQuote(
           COALESCE((SELECT payment_term_days FROM clients WHERE id = $3::uuid AND empresa_id = $15), 0),
           CURRENT_DATE, $12,
           'no_aplica', 'cargado', $13, $14,
-          false, 'cargado', $15
+          false, 'cargado', $15, $16
         )
         RETURNING id::text
       `,
@@ -1159,6 +1161,7 @@ export async function acceptQuote(
           `Convertido desde presupuesto ${quote.quote_number}`,
           quote.notes ? `Observación del cliente: ${quote.notes}` : "",
         ].filter(Boolean).join("\n"),
+        quote.source_sheet,
         session.companyId,
       ],
     );
