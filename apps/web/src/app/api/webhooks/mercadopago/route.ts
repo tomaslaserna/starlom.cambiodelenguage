@@ -1,6 +1,7 @@
 import { handleApiError, ok } from "@/lib/api-response";
 import { getPayment, validWebhookSignature } from "@/lib/mercadopago";
 import { processPortalPayment } from "@/lib/portal-payment-processing";
+import { processStorefrontPayment } from "@/lib/storefront-payments";
 
 export const runtime = "nodejs";
 
@@ -13,7 +14,8 @@ export async function POST(request: Request) {
     if (type !== "payment") return ok({ received: true });
     if (!validWebhookSignature(request, dataId)) return Response.json({ ok: false, error: "Firma inválida" }, { status: 401 });
     const payment = await getPayment(dataId);
-    await processPortalPayment(payment);
+    const portalStatus = await processPortalPayment(payment);
+    if (portalStatus === null) await processStorefrontPayment(payment);
     return ok({ received: true });
   } catch (error) { return handleApiError(error); }
 }

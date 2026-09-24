@@ -15,6 +15,7 @@ type StorefrontLine = { productId: string; quantity: number };
 export type StorefrontRequest = {
   name: string;
   phone: string;
+  email: string;
   brand: string;
   taxId: string;
   businessName: string;
@@ -32,6 +33,7 @@ export type StorefrontRequest = {
   notes: string;
   challengeStartedAt: string;
   requestKey: string;
+  paymentMethod: "cash" | "qr";
   items: StorefrontLine[];
 };
 
@@ -52,7 +54,7 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
       : [];
   }).slice(0, 100);
   const parsed = {
-    name: clean(body.name), phone: clean(body.phone, 40), brand: clean(body.brand),
+    name: clean(body.name), phone: clean(body.phone, 40), email: clean(body.email, 180), brand: clean(body.brand),
     taxId: clean(body.taxId, 20), businessName: clean(body.businessName),
     industry: clean(body.industry), businessType: clean(body.businessType), companyName: clean(body.companyName),
     usualPurchases: (Array.isArray(body.usualPurchases) ? body.usualPurchases : []).map((item) => clean(item, 80)).filter(Boolean).slice(0, 12),
@@ -61,6 +63,7 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
     province: clean(body.province), notes: clean(body.notes, 1000), items,
     challengeStartedAt: clean(body.challengeStartedAt, 40),
     requestKey: clean(body.requestKey, 36),
+    paymentMethod: clean(body.paymentMethod, 10) === "qr" ? "qr" as const : "cash" as const,
     latitude: Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
     longitude: Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
   };
@@ -68,6 +71,7 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
   if (!parsed.address) throw new ApiError(400, "Completá la dirección de entrega");
   if (!items.length) throw new ApiError(400, "Agregá al menos un producto");
   if (!UUID_RE.test(parsed.requestKey)) throw new ApiError(400, "Identificador de solicitud inválido");
+  if (parsed.paymentMethod === "qr" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(parsed.email)) throw new ApiError(400, "Ingresá un email válido para pagar con QR");
   return parsed;
 }
 
@@ -78,7 +82,10 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
       "SELECT id::text, quote_number FROM quotes WHERE empresa_id=$1 AND storefront_request_key=$2 LIMIT 1",
       [COMPANY_ID, input.requestKey],
     )).rows[0];
-    if (existing) return { leadId: null, quoteId: existing.id, quoteNumber: existing.quote_number, duplicated: true };
+    if (existing) {
+      const stored = (await client.query<{ total_amount: string }>("SELECT total_amount::text FROM quotes WHERE empresa_id=$1 AND id=$2::uuid", [COMPANY_ID, existing.id])).rows[0];
+      return { leadId: null, quoteId: existing.id, quoteNumber: existing.quote_number, amount: Number(stored?.total_amount ?? 0), duplicated: true };
+    }
     const productIds = input.items.map((item) => item.productId);
     const products = await client.query<{
       id: string; name: string; presentation_units: number;
@@ -106,7 +113,7 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
       const product = byId.get(item.productId)!;
       const presentation = Math.max(1, Number(product.presentation_units ?? 1));
       const completesPresentation = presentation > 1 && item.quantity >= presentation && item.quantity % presentation === 0;
-      const unitPrice = Number(completesPresentation ? product.price_list_1 : qualifiesForList2 ? product.price_list_2 : product.price_list_3);
+      const unitPrice = Number(input.paymentMethod === "qr" || completesPresentation ? product.price_list_1 : qualifiesForList2 ? product.price_list_2 : product.price_list_3);
       return { ...item, name: product.name, unitPrice, total: unitPrice * item.quantity };
     });
     const estimatedAmount = pricedItems.reduce((sum, item) => sum + item.total, 0);
@@ -141,7 +148,7 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
     const location = input.latitude !== null && input.longitude !== null
       ? `Ubicación: ${input.latitude.toFixed(6)}, ${input.longitude.toFixed(6)}` : "Ubicación: carga manual";
     const cartText = pricedItems.map((item) => `${item.quantity} x ${item.name} · ${item.unitPrice.toFixed(2)} c/u`).join("\n");
-    const leadNotes = [`Solicitud web ${quoteNumber}`, challengeEligible && `DESAFÍO STARLIM validado · estimado $${estimatedAmount.toFixed(2)} · distancia ${challengeDistance!.toFixed(2)} km`, `Marca: ${input.brand || "-"}`, input.companyName && `Negocio informado: ${input.companyName}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || input.businessType || "-"}`, input.usualPurchases.length && `Compra habitualmente: ${input.usualPurchases.join(", ")}`, input.currentSupplier && `Proveedor actual: ${input.currentSupplier}`, input.supplierCount && `Cantidad de proveedores: ${input.supplierCount}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
+    const leadNotes = [`Solicitud web ${quoteNumber}`, `Forma de pago: ${input.paymentMethod === "qr" ? "QR Mercado Pago" : "Efectivo contra entrega"}`, challengeEligible && `DESAFÍO STARLIM validado · estimado $${estimatedAmount.toFixed(2)} · distancia ${challengeDistance!.toFixed(2)} km`, `Marca: ${input.brand || "-"}`, input.companyName && `Negocio informado: ${input.companyName}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || input.businessType || "-"}`, input.usualPurchases.length && `Compra habitualmente: ${input.usualPurchases.join(", ")}`, input.currentSupplier && `Proveedor actual: ${input.currentSupplier}`, input.supplierCount && `Cantidad de proveedores: ${input.supplierCount}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
 
     const portalClient = portalClientId ? (await client.query<{ id: string; name: string; legal_name: string; tax_id: string; phone: string; address: string; fiscal_condition: string }>(`SELECT id::text, display_name AS name, COALESCE(legal_name,'') AS legal_name, COALESCE(tax_id,'') AS tax_id, COALESCE(phone,'') AS phone, COALESCE(address,'') AS address, COALESCE(fiscal_condition,'') AS fiscal_condition FROM clients WHERE empresa_id=$1 AND id=$2::uuid`, [COMPANY_ID, portalClientId])).rows[0] : null;
     const requestSource = challengeEligible ? "Desafío Starlim" : "Tienda web";
@@ -157,7 +164,7 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
         vat_amount, client_name, client_legal_name, client_document, client_fiscal_condition, client_phone, client_address, notes, source_sheet,
         empresa_id, visible_to_all, storefront_challenge_started_at, storefront_challenge_expires_at,
         storefront_challenge_eligible, storefront_estimated_amount, storefront_distance_km, storefront_request_key)
-       VALUES ($1,$9::uuid,$2::uuid,'pendiente',$14,15,false,0,'remito',1,'Tienda web · escalas L3/L2/L1',0,$14,0,$14,0,$3,$4,$5,$10,$6,$7,$16,$17,$8,true,$11,$12,$13,$14,$15,$18)
+       VALUES ($1,$9::uuid,$2::uuid,'pendiente',ROUND($14*1.21,2),15,true,21,'factura_b',1,'Tienda web · escalas L3/L2/L1',0,$14,0,$14,ROUND($14*0.21,2),$3,$4,$5,$10,$6,$7,$16,$17,$8,true,$11,$12,$13,$14,$15,$18)
        RETURNING id::text`,
       [quoteNumber, seller.id, portalClient?.name || input.brand || input.name, portalClient?.legal_name || input.businessName, portalClient?.tax_id || input.taxId, portalClient?.phone || input.phone, portalClient?.address || fullAddress, COMPANY_ID, portalClient?.id || null, portalClient?.fiscal_condition || "", challengeStart, challengeExpiresAt, challengeEligible, estimatedAmount, challengeDistance, leadNotes, requestSource, input.requestKey],
     );
@@ -168,6 +175,6 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
         [quote.rows[0]!.id, item.productId, item.name, item.quantity, item.unitPrice, item.total, COMPANY_ID],
       );
     }
-    return { leadId: lead?.rows[0]?.id ?? null, quoteId: quote.rows[0]!.id, quoteNumber, duplicated: false };
+    return { leadId: lead?.rows[0]?.id ?? null, quoteId: quote.rows[0]!.id, quoteNumber, amount: Math.round(estimatedAmount * 1.21 * 100) / 100, duplicated: false };
   });
 }

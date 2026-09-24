@@ -21,7 +21,7 @@ async function mpFetch(path: string, init?: RequestInit) {
   return payload;
 }
 
-export async function createPreference(input: { intentId: string; amount: number; description: string; email: string; origin: string }) {
+export async function createPreference(input: { intentId: string; amount: number; description: string; email: string; origin: string; returnPath?: string }) {
   return mpFetch("/checkout/preferences", {
     method: "POST",
     body: JSON.stringify({
@@ -29,7 +29,7 @@ export async function createPreference(input: { intentId: string; amount: number
       payer: { email: input.email },
       external_reference: input.intentId,
       notification_url: `${input.origin}/api/webhooks/mercadopago`,
-      back_urls: { success: `${input.origin}/portal?payment=success`, pending: `${input.origin}/portal?payment=pending`, failure: `${input.origin}/portal?payment=failure` },
+      back_urls: { success: `${input.origin}${input.returnPath ?? "/portal"}?payment=success`, pending: `${input.origin}${input.returnPath ?? "/portal"}?payment=pending`, failure: `${input.origin}${input.returnPath ?? "/portal"}?payment=failure` },
       auto_return: "approved",
       statement_descriptor: "STARLIM",
     }),
