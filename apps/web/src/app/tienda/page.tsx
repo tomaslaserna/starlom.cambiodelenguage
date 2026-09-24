@@ -18,7 +18,7 @@ export default async function StorePage({ searchParams }: { searchParams: Promis
     listPriceOffers(1).catch(() => []),
   ]);
   const products = storefrontProducts
-    .map(({ id, name, code, category, supplier, imageUrl, availability, estimatedPrice }) => ({ id, name, code, category, brand: supplier, imageUrl, available: availability, estimatedPrice }));
+    .map(({ id, name, code, category, brand, imageUrl, availability, presentationUnits, prices }) => ({ id, name, code, category, brand, imageUrl, available: availability, presentationUnits, prices }));
   const combos = offers.filter((offer) => offer.status === "vigente" && offer.active && offer.items.length > 0)
     .map(({ id, name, businessSegment, items }) => ({ id, name, businessSegment, items }));
   return <main className="min-h-screen bg-[#f4f8fc] text-[#172033]">
@@ -26,7 +26,7 @@ export default async function StorePage({ searchParams }: { searchParams: Promis
     <section className="relative isolate overflow-hidden bg-[linear-gradient(115deg,#063779,#075ac7)] px-5 py-10 text-white sm:px-8 sm:py-14">
       <Image alt="" aria-hidden="true" className="storefront-brand-float pointer-events-none absolute h-auto select-none" height={855} priority src="/starlim-brand-variations.png" width={848} />
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(4,48,111,0.94)_0%,rgba(5,68,148,0.72)_52%,rgba(7,90,199,0.2)_100%)]" />
-      <div className="relative z-10 mx-auto max-w-[1380px]"><span className="text-xs font-bold uppercase tracking-[0.12em] text-[#b8d8ff]">Tienda Starlim</span><h1 className="mt-3 max-w-3xl text-[clamp(2rem,5vw,4rem)] font-extrabold leading-tight tracking-[-0.045em]">Elegí los productos. Nosotros armamos tu cotización.</h1><p className="mt-4 max-w-2xl text-base font-medium leading-7 text-white/80">El catálogo no muestra precios. Indicá las cantidades y un comercial se contactará para preparar la mejor propuesta.</p></div>
+      <div className="relative z-10 mx-auto max-w-[1380px]"><span className="text-xs font-bold uppercase tracking-[0.12em] text-[#b8d8ff]">Tienda Starlim</span><h1 className="mt-3 max-w-3xl text-[clamp(2rem,5vw,4rem)] font-extrabold leading-tight tracking-[-0.045em]">Comprá más, pagá mejor.</h1><p className="mt-4 max-w-2xl text-base font-medium leading-7 text-white/80">Todos los productos parten de Lista 3. Desde $50.000 accedés a Lista 2 y, completando el bulto, ese artículo pasa a Lista 1. Precios netos; el IVA se informa en la confirmación.</p></div>
     </section>
     <Storefront combos={combos} portalClientId={portalClient} products={products} recommendations={recommendations} />
     <CustomerWhatsAppButton />

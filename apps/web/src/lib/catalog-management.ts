@@ -93,6 +93,7 @@ export type ProductDetail = {
   code: string;
   supplierId: string | null;
   supplier: string;
+  brand: string;
   name: string;
   cost: number;
   stock: number;
@@ -106,6 +107,7 @@ export type ProductUpdateInput = {
   code: string;
   category: string;
   supplierId: string | null;
+  brand: string;
   presentationUnits: number;
   justification: string;
 };
@@ -277,6 +279,7 @@ function mapProduct(row: {
   category_code: string | null;
   supplier_id: string | null;
   supplier_name: string | null;
+  brand: string | null;
   name: string;
   cost: string | null;
   stock: string;
@@ -290,6 +293,7 @@ function mapProduct(row: {
     code: row.category_code ?? row.sku ?? "",
     supplierId: row.supplier_id,
     supplier: row.supplier_name ?? "",
+    brand: row.brand ?? "",
     name: row.name,
     cost: Number(row.cost ?? 0),
     stock: Number(row.stock),
@@ -372,6 +376,7 @@ export function productUpdateInputFromBody(
     code: firstText(body, ["code", "codigo"], defaults.code).toUpperCase(),
     category: firstText(body, ["category", "categoria"], defaults.category),
     supplierId: providedText(body, ["supplierId", "supplier_id", "proveedor_id"]) ?? defaults.supplierId,
+    brand: firstText(body, ["brand", "marca"], defaults.brand),
     presentationUnits: Math.trunc(firstNumber(body, ["presentationUnits", "presentacion"], defaults.presentationUnits)),
     justification: firstText(body, ["justification", "justificacion"]),
   };
@@ -702,7 +707,7 @@ export async function getProduct(companyId: number, id: string) {
   const result = await queryWithCompanyContext<Parameters<typeof mapProduct>[0]>(
     companyId,
     `
-      SELECT p.id::text AS id, p.sku, p.category, p.category_code, p.supplier_id::text,
+      SELECT p.id::text AS id, p.sku, p.category, p.category_code, p.supplier_id::text, p.brand,
              COALESCE(s.display_name, '') AS supplier_name,
              p.name, p.cost::text, p.presentation_units, '' AS description,
              COALESCE(stock.current_stock, 0)::text AS stock
@@ -737,7 +742,7 @@ export async function updateProduct(
   const result = await withCompanyContext(session.companyId, async (client) => {
     const currentResult = await client.query<Parameters<typeof mapProduct>[0]>(
       `
-        SELECT p.id::text AS id, p.sku, p.category, p.category_code, p.supplier_id::text,
+        SELECT p.id::text AS id, p.sku, p.category, p.category_code, p.supplier_id::text, p.brand,
                COALESCE(s.display_name, '') AS supplier_name,
                p.name, p.cost::text, p.presentation_units, '' AS description,
                COALESCE(stock.current_stock, 0)::text AS stock
@@ -792,13 +797,14 @@ export async function updateProduct(
             category = $6,
             presentation_units = $7,
             supplier_id = $10::uuid,
+            brand = NULLIF($11, ''),
             legacy_sku = CASE WHEN $8::boolean THEN COALESCE(legacy_sku, sku) ELSE legacy_sku END,
             sku = $9,
             updated_at = now()
         WHERE id = $4::uuid AND empresa_id = $5 AND active = true
         RETURNING id::text AS id
       `,
-      [input.name, input.cost, input.code, id, session.companyId, categoryName, input.presentationUnits, categoryChanged, nextSku, input.supplierId],
+      [input.name, input.cost, input.code, id, session.companyId, categoryName, input.presentationUnits, categoryChanged, nextSku, input.supplierId, input.brand],
     );
     if (!updateResult.rows[0]) throw new ApiError(404, "Producto no encontrado");
 
@@ -813,6 +819,7 @@ export async function updateProduct(
       { key: "codigo", label: "Categoria", before: current.category_code ?? "", after: input.code },
       { key: "categoria", label: "Categoría del artículo", before: current.category ?? "", after: categoryName },
       { key: "proveedor", label: "Proveedor", before: current.supplier_name ?? "", after: supplierName },
+      { key: "marca", label: "Marca", before: current.brand ?? "", after: input.brand },
       { key: "presentacion", label: "Presentación", before: String(current.presentation_units ?? 1), after: String(input.presentationUnits) },
     ]
       .filter((change) => change.before !== change.after)
@@ -827,6 +834,7 @@ export async function updateProduct(
         category: categoryName,
         supplier_id: input.supplierId,
         supplier_name: supplierName,
+        brand: input.brand,
         presentation_units: input.presentationUnits,
       }),
       changedFields: changes.length,

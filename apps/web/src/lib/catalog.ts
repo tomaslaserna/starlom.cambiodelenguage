@@ -378,49 +378,29 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
 
 export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
   const result = await queryWithCompanyContext<{
-    id: string;
-    code: string;
-    category: string | null;
-    supplier: string | null;
-    name: string;
-    image_path: string | null;
-    available: string;
-    estimated_price: string;
+    id: string; code: string; category: string | null; brand: string | null; name: string;
+    image_path: string | null; available: string; presentation_units: number;
+    price_list_1: string; price_list_2: string; price_list_3: string;
   }>(
     companyId,
     `SELECT p.id::text AS id,
             COALESCE(p.sku, p.category_code, '') AS code,
-            p.category,
-            s.display_name AS supplier,
-            p.name,
-            p.image_path,
+            p.category, p.brand, p.name, p.image_path, p.presentation_units,
             COALESCE(stock.available, 0)::text AS available,
-            COALESCE(
-              NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(anchor_margin.multiplicador, 1), 2), 0),
-              NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
-              p.sale_price, p.cost, 0
-            )::text AS estimated_price
+            COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l1_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_1,
+            COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l2_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_2,
+            COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l3_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_3
        FROM products p
-       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
-       LEFT JOIN margenes m ON m.empresa_id = p.empresa_id AND m.codigo = ${productMarginCodeExpression("p")}
-       LEFT JOIN listas_precio anchor_list
-         ON anchor_list.empresa_id = p.empresa_id
-        AND anchor_list.nombre ILIKE 'L2%ANCLA%'
-        AND anchor_list.activa = 1
-       LEFT JOIN margenes_listas anchor_margin
-         ON anchor_margin.empresa_id = p.empresa_id
-        AND anchor_margin.lista_id = anchor_list.id
-        AND anchor_margin.codigo = ${productMarginCodeExpression("p")}
+       LEFT JOIN listas_precio l1 ON l1.empresa_id=p.empresa_id AND l1.nombre ILIKE 'L1%' AND l1.activa=1
+       LEFT JOIN listas_precio l2 ON l2.empresa_id=p.empresa_id AND l2.nombre ILIKE 'L2%' AND l2.activa=1
+       LEFT JOIN listas_precio l3 ON l3.empresa_id=p.empresa_id AND l3.nombre ILIKE 'L3%' AND l3.activa=1
+       LEFT JOIN margenes_listas l1_margin ON l1_margin.empresa_id=p.empresa_id AND l1_margin.lista_id=l1.id AND l1_margin.codigo=${productMarginCodeExpression("p")}
+       LEFT JOIN margenes_listas l2_margin ON l2_margin.empresa_id=p.empresa_id AND l2_margin.lista_id=l2.id AND l2_margin.codigo=${productMarginCodeExpression("p")}
+       LEFT JOIN margenes_listas l3_margin ON l3_margin.empresa_id=p.empresa_id AND l3_margin.lista_id=l3.id AND l3_margin.codigo=${productMarginCodeExpression("p")}
        LEFT JOIN LATERAL (
-         SELECT SUM(
-           CASE
-             WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
-             ELSE -sm.quantity
-           END
-         ) AS available
+         SELECT SUM(CASE WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity ELSE -sm.quantity END) AS available
            FROM stock_movements sm
-          WHERE sm.empresa_id = p.empresa_id
-            AND sm.product_id = p.id
+          WHERE sm.empresa_id = p.empresa_id AND sm.product_id = p.id
        ) stock ON TRUE
       WHERE p.empresa_id = $1 AND p.active = true
       ORDER BY p.name ASC, p.id ASC`,
@@ -431,10 +411,11 @@ export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
     id: row.id,
     code: row.code,
     category: row.category ?? "",
-    supplier: row.supplier ?? "",
+    brand: row.brand ?? "",
     name: row.name,
     imageUrl: row.image_path ? publicProductImageUrl(row.image_path) : null,
-    estimatedPrice: Number(row.estimated_price ?? 0),
+    presentationUnits: Math.max(1, Number(row.presentation_units ?? 1)),
+    prices: { list1: Number(row.price_list_1 ?? 0), list2: Number(row.price_list_2 ?? 0), list3: Number(row.price_list_3 ?? 0) },
     availability: Number(row.available) <= 0 ? "out" as const : Number(row.available) <= 5 ? "check" as const : "available" as const,
   }));
 }

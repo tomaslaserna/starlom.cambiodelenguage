@@ -1084,7 +1084,7 @@ test("billing uses real ARCA authorization state for invoices and fiscal notes",
   assert.doesNotMatch(pdfRenderer, /Starlim - documento operativo/);
 });
 
-test("public store creates a price-free cart and hands it to CRM as a lead plus draft quote", () => {
+test("public store shows commercial scales and persists server-calculated prices in the CRM quote", () => {
   const login = read("apps/web/src/app/login/page.tsx");
   const page = read("apps/web/src/app/tienda/page.tsx");
   const client = read("apps/web/src/app/tienda/storefront.tsx");
@@ -1110,7 +1110,9 @@ test("public store creates a price-free cart and hands it to CRM as a lead plus 
   assert.match(client, /groupedProducts/);
   assert.match(client, /Observación para el vendedor/);
   assert.match(client, /\(opcional\)/);
-  assert.match(client, /Los precios serán definidos por el comercial/);
+  assert.match(client, /Precio Lista 3/);
+  assert.match(client, /para acceder a Lista 2/);
+  assert.match(client, /accede a Lista 1/);
   assert.match(client, /Hemos recibido tu pedido/);
   assert.match(client, /A la brevedad un comercial se contactará con usted/);
   assert.match(client, /navigator\.geolocation/);
@@ -1123,7 +1125,11 @@ test("public store creates a price-free cart and hands it to CRM as a lead plus 
   assert.match(challenge, /STARLIM_CHALLENGE_SECONDS = 20 \* 60/);
   assert.match(challenge, /STARLIM_CHALLENGE_MINIMUM = 150_000/);
   assert.match(challenge, /STARLIM_CHALLENGE_RADIUS_KM = 18/);
-  assert.doesNotMatch(client, /formatCurrency|unitPrice|precio[^s]/i);
+  assert.match(catalog, /price_list_1/);
+  assert.match(catalog, /price_list_2/);
+  assert.match(catalog, /price_list_3/);
+  assert.match(storefront, /pricedItems/);
+  assert.match(storefront, /unit_price, discount, total_amount/);
   assert.match(storefront, /INSERT INTO crm_leads/);
   assert.match(storefront, /INSERT INTO quotes/);
   assert.match(storefront, /INSERT INTO quote_items/);

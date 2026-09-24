@@ -48,6 +48,9 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
                 {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
               </Select>
             </Field>
+            <Field htmlFor="edit-product-brand" label="Marca" description="Marca comercial real que verá el cliente. No es el proveedor.">
+              <Input defaultValue={product.brand} id="edit-product-brand" maxLength={120} name="brand" placeholder="Ej.: Glade, Elegante, Flexol" />
+            </Field>
             <Field htmlFor="edit-product-justification" label="Motivo del cambio" required>
               <Input id="edit-product-justification" maxLength={300} name="justification" placeholder="Ej.: actualización de costo del proveedor" required />
             </Field>

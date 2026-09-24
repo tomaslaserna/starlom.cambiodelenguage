@@ -15,7 +15,7 @@ import {
 } from "@/lib/starlim-challenge";
 
 type Availability = "available" | "check" | "out";
-type Product = { id: string; name: string; code: string; category: string; brand: string; imageUrl: string | null; available: Availability; estimatedPrice: number };
+type Product = { id: string; name: string; code: string; category: string; brand: string; imageUrl: string | null; available: Availability; presentationUnits: number; prices: { list1: number; list2: number; list3: number } };
 type Combo = { id: string; name: string; businessSegment: string; items: { productId: string; productName: string; code: string; quantity: number }[] };
 type Location = { address: string; city: string; province: string; latitude: string; longitude: string };
 type Discovery = { industry: string; businessType: string; companyName: string; usualPurchases: string[]; currentSupplier: string; supplierCount: string };
@@ -44,19 +44,6 @@ const gastronomyNeeds = [
   { label: "Rejilla", terms: ["rejilla"] },
   { label: "Esponja", terms: ["esponja"] },
 ];
-
-const CHALLENGE_MINIMUM = 150_000;
-const CHALLENGE_SECONDS = 15 * 60;
-const CORDOBA_CENTER = { latitude: -31.4201, longitude: -64.1888 };
-const CIRCUNVALACION_RADIUS_KM = 12;
-
-function distanceKm(latitude: number, longitude: number) {
-  const radians = (degrees: number) => degrees * Math.PI / 180;
-  const dLat = radians(latitude - CORDOBA_CENTER.latitude);
-  const dLon = radians(longitude - CORDOBA_CENTER.longitude);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(CORDOBA_CENTER.latitude)) * Math.cos(radians(latitude)) * Math.sin(dLon / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
 
 const categoryPresentation: Record<string, { eyebrow: string; description: string; accent: string; icon: string }> = {
   descartables: { eyebrow: "Servicio ágil", description: "Vasos, bandejas, cubiertos y soluciones para cada entrega.", accent: "from-[#075ac7] to-[#0a79df]", icon: "◯" },
@@ -162,7 +149,15 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   }, [filtered]);
   const selected = products.filter((product) => (cart[product.id] ?? 0) > 0);
   const totalUnits = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
-  const estimatedCartAmount = selected.reduce((sum, product) => sum + product.estimatedPrice * (cart[product.id] ?? 0), 0);
+  const list3Amount = selected.reduce((sum, product) => sum + product.prices.list3 * (cart[product.id] ?? 0), 0);
+  const qualifiesForList2 = list3Amount >= 50_000;
+  const effectiveUnitPrice = (product: Product) => {
+    const quantity = cart[product.id] ?? 0;
+    const completesPresentation = product.presentationUnits > 1 && quantity >= product.presentationUnits && quantity % product.presentationUnits === 0;
+    return completesPresentation ? product.prices.list1 : qualifiesForList2 ? product.prices.list2 : product.prices.list3;
+  };
+  const estimatedCartAmount = selected.reduce((sum, product) => sum + effectiveUnitPrice(product) * (cart[product.id] ?? 0), 0);
+  const estimatedSavings = Math.max(0, list3Amount - estimatedCartAmount);
   const challengeActive = challengeStartedAt > 0 && challengeSeconds > 0;
   const challengeMinimumReached = estimatedCartAmount >= STARLIM_CHALLENGE_MINIMUM;
   const visibleCombos = combos.filter((combo) => !combo.businessSegment || !discovery.businessType || combo.businessSegment === discovery.businessType);
@@ -180,12 +175,14 @@ export function Storefront({ products, recommendations = [], combos = [], portal
         sessionStorage.removeItem(STARLIM_CHALLENGE_STORAGE_KEY);
         return;
       }
-      setChallengeStartedAt(saved.startedAt);
-      setChallengeSeconds(Math.max(0, Math.ceil((saved.expiresAt - Date.now()) / 1000)));
-      setChallengeDistance(starlimChallengeDistanceKm(saved.latitude, saved.longitude));
-      setChallengeCustomer({ name: saved.name, phone: saved.phone, businessName: saved.businessName });
-      setLocation((current) => ({ ...current, latitude: String(saved.latitude), longitude: String(saved.longitude) }));
-      setBrowseAll(true);
+      window.setTimeout(() => {
+        setChallengeStartedAt(saved.startedAt);
+        setChallengeSeconds(Math.max(0, Math.ceil((saved.expiresAt - Date.now()) / 1000)));
+        setChallengeDistance(starlimChallengeDistanceKm(saved.latitude, saved.longitude));
+        setChallengeCustomer({ name: saved.name, phone: saved.phone, businessName: saved.businessName });
+        setLocation((current) => ({ ...current, latitude: String(saved.latitude), longitude: String(saved.longitude) }));
+        setBrowseAll(true);
+      }, 0);
     } catch { sessionStorage.removeItem(STARLIM_CHALLENGE_STORAGE_KEY); }
   }, []);
 
@@ -383,7 +380,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
         <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Secciones de productos">{sectionFilters.map((item) => <button aria-pressed={section === item.key} className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-bold ${section === item.key ? "bg-[#075ac7] text-white" : "border border-[#cbd8e8] text-[#315170] hover:bg-[#f4f8fc]"}`} key={item.key} onClick={() => { setSection(item.key); setCategory(""); setBrowseAll(true); }} type="button">{item.label}</button>)}</div>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_230px_230px]"><input className={fieldClass} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar producto, código, marca o categoría" type="search" value={query} /><select className={`${fieldClass} bg-white`} onChange={(event) => { setCategory(event.target.value); if (!event.target.value) setBrowseAll(true); }} value={category}><option value="">Todas las categorías</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><select className={`${fieldClass} bg-white`} onChange={(event) => setBrand(event.target.value)} value={brand}><option value="">Todas las marcas</option>{brands.map((value) => <option key={value}>{value}</option>)}</select></div>
       </div>
-      <div className="mt-7 grid gap-10">{groupedProducts.map(([group, groupProducts]) => <section key={group}><div className="mb-4 flex items-end justify-between gap-3 border-b border-[#cfdbea] pb-2"><h2 className="text-2xl font-extrabold tracking-[-0.025em]">{group}</h2><span className="text-sm font-bold text-[#64748b]">{groupProducts.length} {groupProducts.length === 1 ? "artículo" : "artículos"}</span></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{groupProducts.map((product) => <article className="overflow-hidden rounded-[16px] border border-[#dbe5f1] bg-white shadow-sm" key={product.id}><div className="relative aspect-[4/3] bg-white">{product.imageUrl ? <Image alt={product.name} className="object-contain p-4" fill sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 25vw" src={product.imageUrl} /> : <div className="grid h-full place-items-center bg-[#edf3f9] text-5xl text-[#9aabc0]">▧</div>}</div><div className="p-4"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-bold uppercase text-[#64748b]">{product.brand || product.category || "Producto"}</span><AvailabilityBadge available={product.available} /></div><h3 className="mt-2 min-h-12 font-extrabold leading-6">{product.name}</h3>{product.code && <p className="mt-1 text-xs text-[#718096]">Código {product.code}</p>}<div className="mt-4 flex items-center justify-between gap-2"><button aria-label={`Quitar ${product.name}`} className="h-10 w-10 rounded-full border border-[#cbd8e8] text-xl font-bold" onClick={() => changeQuantity(product.id, -1)} type="button">−</button><strong className="text-lg tabular-nums">{cart[product.id] ?? 0}</strong><button aria-label={`Agregar ${product.name}`} className="h-10 w-10 rounded-full bg-[#075ac7] text-xl font-bold text-white" onClick={() => changeQuantity(product.id, 1)} type="button">+</button></div></div></article>)}</div></section>)}</div>
+      <div className="mt-7 grid gap-10">{groupedProducts.map(([group, groupProducts]) => <section key={group}><div className="mb-4 flex items-end justify-between gap-3 border-b border-[#cfdbea] pb-2"><h2 className="text-2xl font-extrabold tracking-[-0.025em]">{group}</h2><span className="text-sm font-bold text-[#64748b]">{groupProducts.length} {groupProducts.length === 1 ? "artículo" : "artículos"}</span></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{groupProducts.map((product) => <article className="overflow-hidden rounded-[16px] border border-[#dbe5f1] bg-white shadow-sm" key={product.id}><div className="relative aspect-[4/3] bg-white">{product.imageUrl ? <Image alt={product.name} className="object-contain p-4" fill sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 25vw" src={product.imageUrl} /> : <div className="grid h-full place-items-center bg-[#edf3f9] text-5xl text-[#9aabc0]">▧</div>}</div><div className="p-4"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-bold uppercase text-[#64748b]">{product.brand || product.category || "Producto"}</span><AvailabilityBadge available={product.available} /></div><h3 className="mt-2 min-h-12 font-extrabold leading-6">{product.name}</h3>{product.code && <p className="mt-1 text-xs text-[#718096]">Código {product.code}</p>}<div className="mt-3 rounded-[10px] bg-[#f4f8fc] p-3"><span className="text-xs font-bold uppercase tracking-wide text-[#64748b]">Precio Lista 3</span><strong className="mt-1 block text-xl text-[#075ac7]">{new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(product.prices.list3)}</strong>{product.presentationUnits > 1 && <span className="mt-1 block text-xs font-semibold text-[#315170]">Bulto de {product.presentationUnits}: accede a Lista 1</span>}</div><div className="mt-4 flex items-center justify-between gap-2"><button aria-label={`Quitar ${product.name}`} className="h-10 w-10 rounded-full border border-[#cbd8e8] text-xl font-bold" onClick={() => changeQuantity(product.id, -1)} type="button">−</button><strong className="text-lg tabular-nums">{cart[product.id] ?? 0}</strong><button aria-label={`Agregar ${product.name}`} className="h-10 w-10 rounded-full bg-[#075ac7] text-xl font-bold text-white" onClick={() => changeQuantity(product.id, 1)} type="button">+</button></div></div></article>)}</div></section>)}</div>
       {!filtered.length && <p className="py-16 text-center font-semibold text-[#64748b]">No encontramos productos con ese filtro.</p>}
       <div className="sticky bottom-4 z-20 mt-8 flex items-center justify-between gap-4 rounded-[16px] bg-[#102d52] px-5 py-4 text-white shadow-2xl"><div><strong className="block text-lg">{totalUnits} {totalUnits === 1 ? "unidad" : "unidades"}</strong><span className="text-sm text-white/70">{selected.length} {selected.length === 1 ? "producto" : "productos"} en el carrito</span></div><button className="rounded-[11px] bg-[#ffb74d] px-5 py-3 font-extrabold text-[#173052] disabled:opacity-50" disabled={!totalUnits} onClick={goToCheckout} type="button">Continuar</button></div>
       </>}
@@ -393,7 +390,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
       <div className="mt-7 flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-extrabold">Dirección de entrega</h3><p className="text-sm text-[#64748b]">Usá el mapa o completala manualmente.</p></div><button className="rounded-[10px] border border-[#075ac7] px-4 py-2 text-sm font-bold text-[#075ac7]" disabled={locating} onClick={locate} type="button">{locating ? "Ubicando…" : "Usar mi ubicación"}</button></div>
       <iframe className="mt-4 h-[260px] w-full rounded-[12px] border border-[#cbd8e8]" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={mapUrl} title="Mapa de ubicación" />
       <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="grid gap-1.5 text-sm font-bold sm:col-span-2">Dirección completa *<input className={fieldClass} onChange={(event) => setLocation((value) => ({ ...value, address: event.target.value }))} required value={location.address} /></label><label className="grid gap-1.5 text-sm font-bold">Localidad<input className={fieldClass} onChange={(event) => setLocation((value) => ({ ...value, city: event.target.value }))} value={location.city} /></label><label className="grid gap-1.5 text-sm font-bold">Provincia<input className={fieldClass} onChange={(event) => setLocation((value) => ({ ...value, province: event.target.value }))} value={location.province} /></label><label className="grid gap-1.5 text-sm font-bold sm:col-span-2">Observación para el vendedor <span className="font-medium text-[#64748b]">(opcional)</span><textarea className="min-h-28 rounded-[9px] border border-[#cbd8e8] p-3 font-medium" maxLength={1000} name="notes" placeholder="Ej.: necesito asesoramiento, fecha estimada de entrega, presentación preferida…" /></label></div>{error && <p className="mt-4 rounded-[10px] bg-[#fff1f2] p-3 font-bold text-[#b4233d]" role="alert">{error}</p>}</div>
-      <aside className="h-fit rounded-[18px] border border-[#dbe5f1] bg-white p-5 shadow-sm lg:sticky lg:top-24"><h2 className="text-xl font-extrabold">Tu carrito</h2><div className="mt-4 divide-y divide-[#e5ebf2]">{selected.map((product) => <div className="flex items-center justify-between gap-4 py-3" key={product.id}><span className="font-semibold">{product.name}</span><strong className="shrink-0">× {cart[product.id]}</strong></div>)}</div><p className="mt-4 rounded-[10px] bg-[#eef5ff] p-3 text-sm font-semibold text-[#315170]">Los precios serán definidos por el comercial al preparar el presupuesto.</p>{challengeStartedAt ? <p className={`mt-3 rounded-[10px] p-3 text-sm font-bold ${challengeActive && challengeMinimumReached ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{!challengeActive ? "El temporizador del desafío venció." : challengeMinimumReached ? "Tu solicitud cumple el mínimo del Desafío Starlim." : "Sumá productos hasta alcanzar el mínimo interno de $150.000."}</p> : null}<button className="mt-5 w-full rounded-[11px] bg-[#075ac7] px-5 py-3.5 font-extrabold text-white disabled:opacity-50" disabled={submitting || Boolean(challengeStartedAt && (!challengeActive || !challengeMinimumReached))} type="submit">{submitting ? "Enviando…" : "Enviar pedido"}</button></aside>
+      <aside className="h-fit rounded-[18px] border border-[#dbe5f1] bg-white p-5 shadow-sm lg:sticky lg:top-24"><h2 className="text-xl font-extrabold">Tu carrito</h2><div className="mt-4 divide-y divide-[#e5ebf2]">{selected.map((product) => <div className="flex items-center justify-between gap-4 py-3" key={product.id}><span className="font-semibold">{product.name}</span><strong className="shrink-0">× {cart[product.id]}</strong></div>)}</div><div className="mt-4 rounded-[12px] bg-[#eef5ff] p-4 text-sm text-[#315170]"><div className="flex justify-between gap-3"><span>Precio aplicado</span><strong>{qualifiesForList2 ? "Lista 2" : "Lista 3"}</strong></div><div className="mt-2 flex justify-between gap-3 text-base"><span>Total neto estimado</span><strong>{new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(estimatedCartAmount)}</strong></div>{estimatedSavings > 0 && <p className="mt-2 font-extrabold text-emerald-700">Ahorrás {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(estimatedSavings)}</p>}{!qualifiesForList2 && <p className="mt-2 font-semibold">Sumá {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(Math.max(0, 50_000 - list3Amount))} para acceder a Lista 2.</p>}<p className="mt-2 text-xs">Los artículos con bulto completo usan Lista 1. Importes netos; IVA a confirmar.</p></div>{challengeStartedAt ? <p className={`mt-3 rounded-[10px] p-3 text-sm font-bold ${challengeActive && challengeMinimumReached ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{!challengeActive ? "El temporizador del desafío venció." : challengeMinimumReached ? "Tu solicitud cumple el mínimo del Desafío Starlim." : "Sumá productos hasta alcanzar el mínimo interno de $150.000."}</p> : null}<button className="mt-5 w-full rounded-[11px] bg-[#075ac7] px-5 py-3.5 font-extrabold text-white disabled:opacity-50" disabled={submitting || Boolean(challengeStartedAt && (!challengeActive || !challengeMinimumReached))} type="submit">{submitting ? "Enviando…" : "Enviar pedido"}</button></aside>
     </form>}
   </section>;
 }

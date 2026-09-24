@@ -71,24 +71,36 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
 export async function createStorefrontRequest(input: StorefrontRequest, portalClientId = "") {
   return withCompanyContext(COMPANY_ID, async (client) => {
     const productIds = input.items.map((item) => item.productId);
-    const products = await client.query<{ id: string; name: string; estimated_price: string }>(
-      `SELECT p.id::text, p.name,
-              COALESCE(
-                NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(anchor_margin.multiplicador, 1), 2), 0),
-                NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
-                p.sale_price, p.cost, 0
-              )::text AS estimated_price
+    const products = await client.query<{
+      id: string; name: string; presentation_units: number;
+      price_list_1: string; price_list_2: string; price_list_3: string;
+    }>(
+      `SELECT p.id::text, p.name, p.presentation_units,
+              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l1_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_1,
+              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l2_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_2,
+              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l3_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_3
          FROM products p
-         LEFT JOIN margenes m ON m.empresa_id=p.empresa_id AND m.codigo=${productMarginCodeExpression("p")}
-         LEFT JOIN listas_precio anchor_list ON anchor_list.empresa_id=p.empresa_id AND anchor_list.nombre ILIKE 'L2%ANCLA%' AND anchor_list.activa=1
-         LEFT JOIN margenes_listas anchor_margin ON anchor_margin.empresa_id=p.empresa_id AND anchor_margin.lista_id=anchor_list.id AND anchor_margin.codigo=${productMarginCodeExpression("p")}
+         LEFT JOIN listas_precio l1 ON l1.empresa_id=p.empresa_id AND l1.nombre ILIKE 'L1%' AND l1.activa=1
+         LEFT JOIN listas_precio l2 ON l2.empresa_id=p.empresa_id AND l2.nombre ILIKE 'L2%' AND l2.activa=1
+         LEFT JOIN listas_precio l3 ON l3.empresa_id=p.empresa_id AND l3.nombre ILIKE 'L3%' AND l3.activa=1
+         LEFT JOIN margenes_listas l1_margin ON l1_margin.empresa_id=p.empresa_id AND l1_margin.lista_id=l1.id AND l1_margin.codigo=${productMarginCodeExpression("p")}
+         LEFT JOIN margenes_listas l2_margin ON l2_margin.empresa_id=p.empresa_id AND l2_margin.lista_id=l2.id AND l2_margin.codigo=${productMarginCodeExpression("p")}
+         LEFT JOIN margenes_listas l3_margin ON l3_margin.empresa_id=p.empresa_id AND l3_margin.lista_id=l3.id AND l3_margin.codigo=${productMarginCodeExpression("p")}
         WHERE p.empresa_id = $1 AND p.active = true AND p.id = ANY($2::uuid[])`,
       [COMPANY_ID, productIds],
     );
-    const byId = new Map(products.rows.map((product) => [product.id, product.name]));
+    const byId = new Map(products.rows.map((product) => [product.id, product]));
     if (byId.size !== new Set(productIds).size) throw new ApiError(400, "Uno de los productos ya no está disponible");
-    const estimatedById = new Map(products.rows.map((product) => [product.id, Number(product.estimated_price)]));
-    const estimatedAmount = input.items.reduce((sum, item) => sum + (estimatedById.get(item.productId) ?? 0) * item.quantity, 0);
+    const list3Amount = input.items.reduce((sum, item) => sum + Number(byId.get(item.productId)!.price_list_3) * item.quantity, 0);
+    const qualifiesForList2 = list3Amount >= 50_000;
+    const pricedItems = input.items.map((item) => {
+      const product = byId.get(item.productId)!;
+      const presentation = Math.max(1, Number(product.presentation_units ?? 1));
+      const completesPresentation = presentation > 1 && item.quantity >= presentation && item.quantity % presentation === 0;
+      const unitPrice = Number(completesPresentation ? product.price_list_1 : qualifiesForList2 ? product.price_list_2 : product.price_list_3);
+      return { ...item, name: product.name, unitPrice, total: unitPrice * item.quantity };
+    });
+    const estimatedAmount = pricedItems.reduce((sum, item) => sum + item.total, 0);
     const challengeStart = input.challengeStartedAt ? new Date(input.challengeStartedAt) : null;
     const challengeRequested = Boolean(challengeStart && Number.isFinite(challengeStart.getTime()));
     const challengeDistance = input.latitude !== null && input.longitude !== null
@@ -119,7 +131,7 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
     const fullAddress = [input.address, input.city, input.province].filter(Boolean).join(", ");
     const location = input.latitude !== null && input.longitude !== null
       ? `Ubicación: ${input.latitude.toFixed(6)}, ${input.longitude.toFixed(6)}` : "Ubicación: carga manual";
-    const cartText = input.items.map((item) => `${item.quantity} x ${byId.get(item.productId)}`).join("\n");
+    const cartText = pricedItems.map((item) => `${item.quantity} x ${item.name} · ${item.unitPrice.toFixed(2)} c/u`).join("\n");
     const leadNotes = [`Solicitud web ${quoteNumber}`, challengeEligible && `DESAFÍO STARLIM validado · estimado $${estimatedAmount.toFixed(2)} · distancia ${challengeDistance!.toFixed(2)} km`, `Marca: ${input.brand || "-"}`, input.companyName && `Negocio informado: ${input.companyName}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || input.businessType || "-"}`, input.usualPurchases.length && `Compra habitualmente: ${input.usualPurchases.join(", ")}`, input.currentSupplier && `Proveedor actual: ${input.currentSupplier}`, input.supplierCount && `Cantidad de proveedores: ${input.supplierCount}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
 
     const portalClient = portalClientId ? (await client.query<{ id: string; name: string; legal_name: string; tax_id: string; phone: string; address: string; fiscal_condition: string }>(`SELECT id::text, display_name AS name, COALESCE(legal_name,'') AS legal_name, COALESCE(tax_id,'') AS tax_id, COALESCE(phone,'') AS phone, COALESCE(address,'') AS address, COALESCE(fiscal_condition,'') AS fiscal_condition FROM clients WHERE empresa_id=$1 AND id=$2::uuid`, [COMPANY_ID, portalClientId])).rows[0] : null;
@@ -136,15 +148,15 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
         vat_amount, client_name, client_legal_name, client_document, client_fiscal_condition, client_phone, client_address, notes, source_sheet,
         empresa_id, visible_to_all, storefront_challenge_started_at, storefront_challenge_expires_at,
         storefront_challenge_eligible, storefront_estimated_amount, storefront_distance_km)
-       VALUES ($1,$9::uuid,$2::uuid,'pendiente',0,15,false,0,'remito',1,'A cotizar',0,0,0,0,0,$3,$4,$5,$10,$6,$7,$16,$17,$8,true,$11,$12,$13,$14,$15)
+       VALUES ($1,$9::uuid,$2::uuid,'pendiente',$14,15,false,0,'remito',1,'Tienda web · escalas L3/L2/L1',0,$14,0,$14,0,$3,$4,$5,$10,$6,$7,$16,$17,$8,true,$11,$12,$13,$14,$15)
        RETURNING id::text`,
       [quoteNumber, seller.id, portalClient?.name || input.brand || input.name, portalClient?.legal_name || input.businessName, portalClient?.tax_id || input.taxId, portalClient?.phone || input.phone, portalClient?.address || fullAddress, COMPANY_ID, portalClient?.id || null, portalClient?.fiscal_condition || "", challengeStart, challengeExpiresAt, challengeEligible, estimatedAmount, challengeDistance, leadNotes, requestSource],
     );
-    for (const item of input.items) {
+    for (const item of pricedItems) {
       await client.query(
         `INSERT INTO quote_items (quote_id, product_id, description, quantity, unit_price, discount, total_amount, empresa_id)
-         VALUES ($1::uuid,$2::uuid,$3,$4,0,0,0,$5)`,
-        [quote.rows[0]!.id, item.productId, byId.get(item.productId), item.quantity, COMPANY_ID],
+         VALUES ($1::uuid,$2::uuid,$3,$4,$5,0,$6,$7)`,
+        [quote.rows[0]!.id, item.productId, item.name, item.quantity, item.unitPrice, item.total, COMPANY_ID],
       );
     }
     return { leadId: lead?.rows[0]?.id ?? null, quoteId: quote.rows[0]!.id, quoteNumber };
