@@ -293,8 +293,21 @@ test("cuentas abiertas usa listOpenCustomerAccounts y linkea al detalle", () => 
   assert.match(src, /aging\.d30/);
   assert.match(src, /aging\.d30Plus/);
   assert.doesNotMatch(src, /aging\.d60|aging\.d90/);
+  assert.match(src, /Reporte para contador/);
+  assert.match(src, /api\/pdfs\/accounts\/current\?type=cliente/);
 });
 
+test("el PDF contable agrupa toda la deuda por cliente, remito y factura", () => {
+  const route = readFileSync(new URL("../src/app/api/pdfs/accounts/current/route.ts", import.meta.url), "utf8");
+  const documents = readFileSync(new URL("../src/lib/pdf/documents.ts", import.meta.url), "utf8");
+  assert.match(route, /buildAccountsReceivablePdf/);
+  assert.match(documents, /export async function buildAccountsReceivablePdf/);
+  assert.match(documents, /Total por cobrar/);
+  assert.match(documents, /Total cliente/);
+  assert.match(documents, /delivery_documents/);
+  assert.match(documents, /fiscal_receipt_number/);
+  assert.match(documents, /allocateAccountsReceivableRows/);
+});
 const homePage = readFileSync(new URL("../src/app/page.tsx", import.meta.url), "utf8");
 test("el acceso rapido Cobranzas del Escritorio abre Cuentas corrientes", () => {
   assert.match(homePage, /href: "\/payments\/accounts", label: "Cobranzas"/);

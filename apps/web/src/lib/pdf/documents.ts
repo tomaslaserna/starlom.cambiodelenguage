@@ -605,6 +605,154 @@ export async function buildAccountStatementPdf(companyId: number, input: {
   });
 }
 
+type AccountsReceivableRow = {
+  client_id: string;
+  client_name: string;
+  tax_id: string;
+  seller_name: string;
+  sale_id: string | null;
+  movement_date: string;
+  net_amount: string;
+  sale_number: string | null;
+  delivery_number: number | null;
+  fiscal_status: string | null;
+  fiscal_receipt_type: number | null;
+  fiscal_point_of_sale: number | null;
+  fiscal_receipt_number: number | null;
+};
+
+function receivableInvoiceLabel(row: AccountsReceivableRow) {
+  if (row.fiscal_status !== "aprobado" || !row.fiscal_point_of_sale || !row.fiscal_receipt_number) return "-";
+  const letter = row.fiscal_receipt_type === 1 ? "A" : row.fiscal_receipt_type === 6 ? "B" : row.fiscal_receipt_type === 11 ? "C" : "";
+  const number = `${String(row.fiscal_point_of_sale).padStart(4, "0")}-${String(row.fiscal_receipt_number).padStart(8, "0")}`;
+  return `Factura ${letter ? `${letter} ` : ""}${number}`;
+}
+
+/** Informe conciliado: los creditos generales se aplican FIFO a los documentos abiertos. */
+export function allocateAccountsReceivableRows(rows: AccountsReceivableRow[]) {
+  const clients = new Map<string, {
+    clientId: string; name: string; taxId: string; sellerName: string;
+    documents: Array<{ date: string; remittance: string; invoice: string; amount: number }>;
+    unlinkedDebit: number; generalCredit: number;
+  }>();
+  for (const row of rows) {
+    const client = clients.get(row.client_id) ?? {
+      clientId: row.client_id,
+      name: row.client_name,
+      taxId: row.tax_id,
+      sellerName: row.seller_name,
+      documents: [],
+      unlinkedDebit: 0,
+      generalCredit: 0,
+    };
+    const amount = Number(row.net_amount);
+    if (row.sale_id && amount > 0) {
+      client.documents.push({
+        date: row.movement_date,
+        remittance: row.delivery_number ? `Remito #${String(row.delivery_number).padStart(4, "0")}` : row.sale_number || "-",
+        invoice: receivableInvoiceLabel(row),
+        amount,
+      });
+    } else if (amount > 0) {
+      client.unlinkedDebit += amount;
+    } else {
+      client.generalCredit += Math.abs(amount);
+    }
+    clients.set(row.client_id, client);
+  }
+
+  return [...clients.values()].map((client) => {
+    client.documents.sort((a, b) => a.date.localeCompare(b.date));
+    let credit = client.generalCredit;
+    const documents = client.documents.map((document) => {
+      const applied = Math.min(document.amount, credit);
+      credit -= applied;
+      return { ...document, amount: Math.round((document.amount - applied) * 100) / 100 };
+    }).filter((document) => document.amount > 0.005);
+    const unlinkedApplied = Math.min(client.unlinkedDebit, credit);
+    credit -= unlinkedApplied;
+    const unlinkedDebit = Math.round((client.unlinkedDebit - unlinkedApplied) * 100) / 100;
+    const balance = Math.round((documents.reduce((sum, document) => sum + document.amount, 0) + unlinkedDebit - credit) * 100) / 100;
+    return { ...client, documents, unlinkedDebit, unappliedCredit: credit, balance };
+  }).filter((client) => client.balance > 0.005)
+    .sort((a, b) => b.balance - a.balance || a.name.localeCompare(b.name, "es"));
+}
+
+export async function buildAccountsReceivablePdf(companyId: number, query = "") {
+  const params: unknown[] = [companyId];
+  const filters = ["m.empresa_id = $1", "m.entity_type = 'cliente'", "m.client_id IS NOT NULL", activeAccountMovementWhereSql("m", "s")];
+  const search = query.trim();
+  if (search) {
+    params.push(`%${search.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
+    filters.push(`(COALESCE(c.display_name, m.entity_name, '') ILIKE $${params.length} ESCAPE '\\' OR COALESCE(c.tax_id, '') ILIKE $${params.length} ESCAPE '\\')`);
+  }
+  const result = await queryWithCompanyContext<AccountsReceivableRow>(
+    companyId,
+    `SELECT m.client_id::text AS client_id,
+            COALESCE(c.display_name, MAX(m.entity_name), 'Sin nombre') AS client_name,
+            COALESCE(c.tax_id, '') AS tax_id,
+            COALESCE(c.seller_name, c.assigned_seller, '') AS seller_name,
+            m.sale_id::text AS sale_id,
+            MIN(m.movement_date)::text AS movement_date,
+            SUM(m.debit - m.credit)::text AS net_amount,
+            MAX(s.sale_number) AS sale_number,
+            MAX(delivery.delivery_number)::int AS delivery_number,
+            MAX(s.fiscal_status) AS fiscal_status,
+            MAX(s.fiscal_receipt_type)::int AS fiscal_receipt_type,
+            MAX(s.fiscal_point_of_sale)::int AS fiscal_point_of_sale,
+            MAX(s.fiscal_receipt_number)::int AS fiscal_receipt_number
+       FROM current_account_movements m
+       LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
+       LEFT JOIN clients c ON c.id = m.client_id AND c.empresa_id = m.empresa_id
+       LEFT JOIN LATERAL (
+         SELECT dd.delivery_number
+           FROM delivery_documents dd
+          WHERE dd.empresa_id = m.empresa_id AND dd.sale_id = m.sale_id
+          ORDER BY dd.created_at DESC, dd.id DESC LIMIT 1
+       ) delivery ON true
+      WHERE ${filters.join(" AND ")}
+      GROUP BY m.client_id, c.display_name, c.tax_id, c.seller_name, c.assigned_seller, m.sale_id
+      HAVING ABS(SUM(m.debit - m.credit)) > 0.005
+      ORDER BY client_name ASC, movement_date ASC`,
+    params,
+  );
+  const clients = allocateAccountsReceivableRows(result.rows);
+  const total = clients.reduce((sum, client) => sum + client.balance, 0);
+  const filename = `cuentas_por_cobrar_${localDateIso()}.pdf`;
+
+  return createPdfFile(filename, ({ pdf }) => {
+    pdf.drawHeader({
+      title: "Cuentas por cobrar",
+      code: "CXC",
+      number: `CXC-${localDateIso().replaceAll("-", "")}`,
+      date: pdfDate(localDateIso()),
+      extra: [search ? `Filtro: ${search}` : "Cartera completa", `Clientes: ${clients.length}`],
+      footerLeft: "Cuentas por cobrar - uso contable",
+      footerRight: `Emitido ${pdfDate(localDateIso())}`,
+      continuationSubject: "Cartera de clientes",
+    });
+    pdf.section("Resumen general");
+    pdf.totals([["Clientes con deuda", pdfNumber(clients.length)]], "Total por cobrar", pdfMoney(total));
+    pdf.note("El informe considera solo movimientos activos de clientes y distribuye por antiguedad los creditos generales que no tienen un comprobante vinculado.");
+
+    for (const client of clients) {
+      pdf.section(client.name, { density: "compact" });
+      pdf.muted([client.taxId ? `CUIT ${client.taxId}` : "CUIT no informado", client.sellerName ? `Vendedor ${client.sellerName}` : ""].filter(Boolean).join(" - "), { density: "compact" });
+      const detail: PdfTableCell[][] = client.documents.map((document) => [
+        pdfDate(document.date), document.remittance, document.invoice, pdfMoney(document.amount),
+      ]);
+      if (client.unlinkedDebit > 0.005) detail.push(["-", "Sin remito", "Movimiento sin factura", pdfMoney(client.unlinkedDebit)]);
+      if (client.unappliedCredit > 0.005) detail.push(["-", "Credito general", "Saldo a favor sin imputar", `-${pdfMoney(client.unappliedCredit)}`]);
+      pdf.table([
+        { label: "Fecha", width: 72, align: "center" },
+        { label: "Remito / venta", width: 138 },
+        { label: "Factura", width: 196 },
+        { label: "Saldo", width: 98, align: "right" },
+      ], detail, { density: "compact" });
+      pdf.totals([], "Total cliente", pdfMoney(client.balance));
+    }
+  });
+}
 export async function buildPaymentRecordPdf(companyId: number, paymentId: string) {
   const recordResult = await queryWithCompanyContext<{
     id: string;
