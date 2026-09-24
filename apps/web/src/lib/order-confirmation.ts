@@ -12,6 +12,22 @@ export type ConfirmationPricedLine = {
   subtotal: number;
 };
 
+export type ConfirmationOpportunityItem = {
+  productName: string;
+  additionalQuantity: number;
+  currentUnitPrice: number;
+  savingsUnitPrice: number;
+  savingsAmount: number;
+};
+
+export type ConfirmationOpportunity = {
+  currentSavings: number;
+  potentialSavings: number;
+  withPresentationsTotal: number;
+  withoutPresentationsTotal: number;
+  items: ConfirmationOpportunityItem[];
+};
+
 export type ConfirmationInput = {
   businessName: string;
   lines: ConfirmationLine[];
@@ -21,6 +37,8 @@ export type ConfirmationInput = {
   showPrices?: boolean;
   pricedLines?: ConfirmationPricedLine[];
   ivaRate?: IvaRate;
+  showOpportunities?: boolean;
+  opportunity?: ConfirmationOpportunity;
 };
 
 const DAYS_ES = [
@@ -111,6 +129,23 @@ export function buildWhatsappConfirmation(input: ConfirmationInput): string {
   const offer = (input.offerText ?? "").trim();
   if (offer) {
     parts.push("", `💡 ${offer}`);
+  }
+
+  const opportunity = input.opportunity;
+  if (input.showOpportunities && opportunity && opportunity.potentialSavings > 0) {
+    parts.push("", "🎯 *OPORTUNIDADES PARA APROVECHAR*");
+    if (opportunity.items.length > 0) {
+      parts.push(...opportunity.items.map((item) =>
+        `• Sumando ${formatConfirmationQuantity(item.additionalQuantity)} ${item.additionalQuantity === 1 ? "unidad" : "unidades"} de ${item.productName}, ahorrás *${formatConfirmationMoney(item.savingsAmount)}*. Precio actual ~${formatConfirmationMoney(item.currentUnitPrice)}~ → precio ahorro *${formatConfirmationMoney(item.savingsUnitPrice)}*.`,
+      ));
+    }
+    parts.push(
+      "",
+      `*Total del pedido sin ahorro:* ${formatConfirmationMoney(opportunity.withoutPresentationsTotal)}`,
+      `*Total con ahorro:* ${formatConfirmationMoney(opportunity.withPresentationsTotal)}`,
+      `*Ahorro potencial:* ${formatConfirmationMoney(opportunity.potentialSavings)}`,
+      `*Ahorro actual:* ${formatConfirmationMoney(opportunity.currentSavings)}`,
+    );
   }
 
   return parts.join("\n");

@@ -218,6 +218,37 @@ export function OrderEntryFields({
     const suggestion = presentationSuggestion(line.product.name, line.presentationPricing);
     return suggestion ? [suggestion] : [];
   });
+  const presentationLines = calculatedLines.filter((line) => line.presentationPricing.potentialSavings > 0);
+  const presentationSavingsNet = roundMoney(presentationLines.reduce(
+    (total, line) => total + line.presentationPricing.savingsApplied,
+    0,
+  ));
+  const potentialPresentationSavingsNet = roundMoney(presentationLines.reduce(
+    (total, line) => total + line.presentationPricing.potentialSavings,
+    0,
+  ));
+  const completedPresentationNet = roundMoney(
+    netAmount + presentationLines.reduce(
+      (total, line) => total + line.presentationPricing.completedSubtotal - line.subtotal,
+      0,
+    ),
+  );
+  const withoutPresentationNet = roundMoney(completedPresentationNet + potentialPresentationSavingsNet);
+  const presentationOpportunity = potentialPresentationSavingsNet > 0 ? {
+    currentSavings: vatAmountsFromNet(presentationSavingsNet, vatRate).total,
+    potentialSavings: vatAmountsFromNet(potentialPresentationSavingsNet, vatRate).total,
+    withPresentationsTotal: vatAmountsFromNet(completedPresentationNet, vatRate).total,
+    withoutPresentationsTotal: vatAmountsFromNet(withoutPresentationNet, vatRate).total,
+    items: presentationLines
+      .filter((line) => line.presentationPricing.additionalQuantity > 0)
+      .map((line) => ({
+        productName: line.product.name,
+        additionalQuantity: line.presentationPricing.additionalQuantity,
+        currentUnitPrice: vatAmountsFromNet(line.presentationPricing.regularUnitPrice, vatRate).total,
+        savingsUnitPrice: vatAmountsFromNet(line.presentationPricing.improvedUnitPrice, vatRate).total,
+        savingsAmount: vatAmountsFromNet(line.presentationPricing.potentialSavings, vatRate).total,
+      })),
+  } : null;
   const draftProduct = productMap.get(draftLine.productId) ?? null;
   const draftQuantity = Math.max(0, Math.trunc(numericInput(draftLine.quantity, 0)));
   const draftDiscount = Math.min(100, Math.max(0, numericInput(draftLine.discount, 0)));
@@ -685,6 +716,22 @@ export function OrderEntryFields({
                 )}
             </DataTableBody>
           </DataTable>
+          {presentationOpportunity ? (
+            <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-emerald-950" role="status">
+              <div className="font-black">Ahorro por presentaciones</div>
+              {presentationOpportunity.items.map((item) => (
+                <p className="mt-2 text-sm" key={item.productName}>
+                  Sumando <b>{item.additionalQuantity} {item.additionalQuantity === 1 ? "unidad" : "unidades"}</b> de {item.productName}, ahorra <b>{formatCurrency(item.savingsAmount)}</b>. Precio actual <span className="line-through">{formatCurrency(item.currentUnitPrice)}</span> → <b>{formatCurrency(item.savingsUnitPrice)}</b>.
+                </p>
+              ))}
+              <div className="mt-4 grid gap-2 border-t border-emerald-200 pt-3 text-sm sm:grid-cols-2">
+                <div>Total sin ahorro <b>{formatCurrency(presentationOpportunity.withoutPresentationsTotal)}</b></div>
+                <div>Total con ahorro <b>{formatCurrency(presentationOpportunity.withPresentationsTotal)}</b></div>
+                <div>Ahorro potencial <b>{formatCurrency(presentationOpportunity.potentialSavings)}</b></div>
+                <div>Ahorro actual <b>{formatCurrency(presentationOpportunity.currentSavings)}</b></div>
+              </div>
+            </div>
+          ) : null}
           {lowMarginLines.length > 0 ? (
             <div
               className={`rounded-lg border p-4 ${orderMarginRisk === "critical" ? "border-red-300 bg-red-50 text-red-950" : "border-amber-300 bg-amber-50 text-amber-950"}`}
@@ -767,6 +814,7 @@ export function OrderEntryFields({
         ivaRate={vatRate}
         desiredDocument={desiredDocument}
         pricingSuggestions={pricingSuggestions}
+        opportunity={presentationOpportunity}
       />
 
       <Button disabled={!canSubmit} type="submit">

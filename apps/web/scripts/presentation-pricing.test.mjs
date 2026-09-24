@@ -31,6 +31,8 @@ test("12 unidades de un cliente L2 reciben L1 en el bloque completo", () => {
   assert.equal(result.regularQuantity, 0);
   assert.equal(result.subtotal, 960);
   assert.equal(result.effectiveUnitPrice, 80);
+  assert.equal(result.savingsApplied, 240);
+  assert.equal(result.potentialSavings, 240);
 });
 
 test("13 unidades separan 12 a L1 y el excedente a L2", () => {
@@ -45,6 +47,11 @@ test("10 unidades sugieren agregar 2 para alcanzar la presentación", () => {
   const result = presentationPriceForLine({ prices, priceListName: "2", presentationUnits: 12, quantity: 10 });
   assert.equal(result.subtotal, 1000);
   assert.equal(result.unitsToNextPresentation, 2);
+  assert.equal(result.completedQuantity, 12);
+  assert.equal(result.additionalQuantity, 2);
+  assert.equal(result.completedSubtotal, 960);
+  assert.equal(result.completedRegularSubtotal, 1200);
+  assert.equal(result.potentialSavings, 240);
   assert.match(presentationSuggestion("Rejilla auto semipesada", result), /Agregando 2 unidades/);
 });
 

@@ -9,6 +9,7 @@ import {
   normalizePhoneForWhatsapp,
   type ConfirmationLine,
   type ConfirmationPricedLine,
+  type ConfirmationOpportunity,
   type IvaRate,
 } from "@/lib/order-confirmation";
 
@@ -26,6 +27,7 @@ type OrderConfirmationPreviewProps = {
   ivaRate: IvaRate;
   desiredDocument: SaleOrderDocument | null;
   pricingSuggestions: string[];
+  opportunity: ConfirmationOpportunity | null;
 };
 
 export function OrderConfirmationPreview({
@@ -42,9 +44,11 @@ export function OrderConfirmationPreview({
   ivaRate,
   desiredDocument,
   pricingSuggestions,
+  opportunity,
 }: OrderConfirmationPreviewProps) {
   const [offerText, setOfferText] = useState("");
   const [showPrices, setShowPrices] = useState(false);
+  const [showOpportunities, setShowOpportunities] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
 
@@ -59,8 +63,10 @@ export function OrderConfirmationPreview({
         showPrices,
         pricedLines,
         ivaRate,
+        showOpportunities,
+        opportunity: opportunity ?? undefined,
       }),
-    [businessName, lines, address, deliveryDate, offerText, showPrices, pricedLines, ivaRate],
+    [businessName, lines, address, deliveryDate, offerText, showPrices, pricedLines, ivaRate, showOpportunities, opportunity],
   );
 
   const waPhone = useMemo(() => normalizePhoneForWhatsapp(phone), [phone]);
@@ -147,6 +153,17 @@ export function OrderConfirmationPreview({
           type="checkbox"
         />
         Mostrar precios al cliente
+      </label>
+
+      <label className="erp-text-body-sm flex items-center gap-2 font-medium">
+        <input
+          checked={showOpportunities}
+          disabled={!opportunity || opportunity.potentialSavings <= 0}
+          onChange={(event) => setShowOpportunities(event.target.checked)}
+          suppressHydrationWarning
+          type="checkbox"
+        />
+        Incluir oportunidades y ahorro potencial
       </label>
 
       {ready ? (

@@ -14,6 +14,13 @@ export type PresentationPriceResult = {
   regularUnitPrice: number;
   effectiveUnitPrice: number;
   subtotal: number;
+  regularSubtotal: number;
+  savingsApplied: number;
+  completedQuantity: number;
+  additionalQuantity: number;
+  completedSubtotal: number;
+  completedRegularSubtotal: number;
+  potentialSavings: number;
   unitsToNextPresentation: number | null;
   appliesImprovedPrice: boolean;
 };
@@ -43,11 +50,20 @@ export function presentationPriceForLine(input: {
   );
   const discount = Math.min(100, Math.max(0, Number(input.discount) || 0));
   const subtotal = lineSubtotal(undiscountedSubtotal, 1, discount);
+  const regularSubtotal = lineSubtotal(quantity * regularUnitPrice, 1, discount);
   const effectiveUnitPrice = quantity > 0 ? money(undiscountedSubtotal / quantity) : regularUnitPrice;
   const remainder = quantity % presentationUnits;
   const unitsToNextPresentation = eligible && quantity > 0 && remainder > 0
     ? presentationUnits - remainder
     : null;
+  const completedQuantity = unitsToNextPresentation ? quantity + unitsToNextPresentation : quantity;
+  const additionalQuantity = completedQuantity - quantity;
+  const completedSubtotal = eligible && completedQuantity > 0
+    ? lineSubtotal(completedQuantity * improvedUnitPrice, 1, discount)
+    : subtotal;
+  const completedRegularSubtotal = eligible && completedQuantity > 0
+    ? lineSubtotal(completedQuantity * regularUnitPrice, 1, discount)
+    : regularSubtotal;
 
   return {
     presentationUnits,
@@ -57,6 +73,13 @@ export function presentationPriceForLine(input: {
     regularUnitPrice,
     effectiveUnitPrice,
     subtotal,
+    regularSubtotal,
+    savingsApplied: money(Math.max(0, regularSubtotal - subtotal)),
+    completedQuantity,
+    additionalQuantity,
+    completedSubtotal,
+    completedRegularSubtotal,
+    potentialSavings: money(Math.max(0, completedRegularSubtotal - completedSubtotal)),
     unitsToNextPresentation,
     appliesImprovedPrice: improvedQuantity > 0 && improvedUnitPrice < regularUnitPrice,
   };

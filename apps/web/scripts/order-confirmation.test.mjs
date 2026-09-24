@@ -53,6 +53,34 @@ test("con precios discrimina unitarios netos, IVA y total final", () => {
   assert.match(text, /\*Total:\* \$1\.105,00/);
 });
 
+test("las oportunidades son opcionales e incluyen ahorro y comparacion final", () => {
+  const opportunity = {
+    currentSavings: 29298.46,
+    potentialSavings: 36466.83,
+    withPresentationsTotal: 362095.53,
+    withoutPresentationsTotal: 398562.36,
+    items: [{
+      productName: "Jabón",
+      additionalQuantity: 2,
+      currentUnitPrice: 11947.23,
+      savingsUnitPrice: 10751.50,
+      savingsAmount: 7168.38,
+    }],
+  };
+  assert.ok(!buildWhatsappConfirmation({ ...baseInput, opportunity }).includes("OPORTUNIDADES"));
+
+  const text = buildWhatsappConfirmation({ ...baseInput, opportunity, showOpportunities: true });
+  assert.match(text, /OPORTUNIDADES PARA APROVECHAR/);
+  assert.match(text, /\$398\.562,36/);
+  assert.match(text, /\$362\.095,53/);
+  assert.ok(text.includes("Sumando 2 unidades de Jabón, ahorrás *$7.168,38*"));
+  assert.ok(text.includes("Precio actual ~$11.947,23~ → precio ahorro *$10.751,50*"));
+  assert.ok(text.includes("*Total del pedido sin ahorro:* $398.562,36"));
+  assert.ok(text.includes("*Total con ahorro:* $362.095,53"));
+  assert.ok(text.includes("*Ahorro potencial:* $36.466,83"));
+  assert.ok(text.includes("*Ahorro actual:* $29.298,46"));
+});
+
 test("formatDeliveryDate: DD.MM.YY con dia en espanol", () => {
   assert.equal(formatDeliveryDate("2026-06-30"), "30.06.26 (Martes)");
   assert.equal(formatDeliveryDate(""), "");
