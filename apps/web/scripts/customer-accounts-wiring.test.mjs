@@ -307,6 +307,9 @@ test("el PDF contable agrupa toda la deuda por cliente, remito y factura", () =>
   assert.match(documents, /delivery_documents/);
   assert.match(documents, /fiscal_receipt_number/);
   assert.match(documents, /allocateAccountsReceivableRows/);
+  assert.match(documents, /Stock actual valorizado/);
+  assert.match(documents, /stock_movements/);
+  assert.match(documents, /Activos informados/);
 });
 const homePage = readFileSync(new URL("../src/app/page.tsx", import.meta.url), "utf8");
 test("el acceso rapido Cobranzas del Escritorio abre Cuentas corrientes", () => {

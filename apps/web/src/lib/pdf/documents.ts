@@ -718,6 +718,36 @@ export async function buildAccountsReceivablePdf(companyId: number, query = "") 
   );
   const clients = allocateAccountsReceivableRows(result.rows);
   const total = clients.reduce((sum, client) => sum + client.balance, 0);
+  const stockResult = await queryWithCompanyContext<{
+    stock_value: string;
+    stock_units: string;
+    products_with_stock: string;
+    products_without_cost: string;
+  }>(
+    companyId,
+    `SELECT COALESCE(SUM(current_stock * unit_cost) FILTER (WHERE current_stock > 0), 0)::text AS stock_value,
+            COALESCE(SUM(current_stock) FILTER (WHERE current_stock > 0), 0)::text AS stock_units,
+            COUNT(*) FILTER (WHERE current_stock > 0)::text AS products_with_stock,
+            COUNT(*) FILTER (WHERE current_stock > 0 AND unit_cost <= 0)::text AS products_without_cost
+       FROM (
+         SELECT p.id,
+                COALESCE(p.cost, 0) AS unit_cost,
+                COALESCE(SUM(CASE
+                  WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
+                  ELSE -sm.quantity
+                END), 0) AS current_stock
+           FROM products p
+           LEFT JOIN stock_movements sm ON sm.product_id = p.id AND sm.empresa_id = p.empresa_id
+          WHERE p.empresa_id = $1 AND p.active = true
+          GROUP BY p.id, p.cost
+       ) product_stock`,
+    [companyId],
+  );
+  const stock = stockResult.rows[0];
+  const stockValue = Number(stock?.stock_value ?? 0);
+  const stockUnits = Number(stock?.stock_units ?? 0);
+  const productsWithStock = Number(stock?.products_with_stock ?? 0);
+  const productsWithoutCost = Number(stock?.products_without_cost ?? 0);
   const filename = `cuentas_por_cobrar_${localDateIso()}.pdf`;
 
   return createPdfFile(filename, ({ pdf }) => {
@@ -732,8 +762,20 @@ export async function buildAccountsReceivablePdf(companyId: number, query = "") 
       continuationSubject: "Cartera de clientes",
     });
     pdf.section("Resumen general");
-    pdf.totals([["Clientes con deuda", pdfNumber(clients.length)]], "Total por cobrar", pdfMoney(total));
-    pdf.note("El informe considera solo movimientos activos de clientes y distribuye por antiguedad los creditos generales que no tienen un comprobante vinculado.");
+    pdf.totals([
+      ["Clientes con deuda", pdfNumber(clients.length)],
+      ["Total por cobrar", pdfMoney(total)],
+      ["Stock actual a costo", pdfMoney(stockValue)],
+    ], "Activos informados", pdfMoney(total + stockValue));
+    pdf.section("Stock actual valorizado", { density: "compact" });
+    pdf.table([
+      { label: "Criterio", width: 220 },
+      { label: "Productos con stock", width: 104, align: "right" },
+      { label: "Unidades", width: 90, align: "right" },
+      { label: "Valor", width: 90, align: "right" },
+    ], [["Existencias positivas x costo vigente", pdfNumber(productsWithStock), pdfNumber(stockUnits), pdfMoney(stockValue)]], { density: "compact" });
+    pdf.note(`El stock se valua al costo vigente registrado, no a precio de venta. Solo se incluyen existencias positivas.${productsWithoutCost > 0 ? ` Hay ${pdfNumber(productsWithoutCost)} productos con stock sin costo, por lo que el valor expuesto es parcial.` : " Todos los productos con stock tienen costo cargado."}`);
+    pdf.note("Las cuentas por cobrar consideran solo movimientos activos de clientes y distribuyen por antiguedad los creditos generales que no tienen un comprobante vinculado.");
 
     for (const client of clients) {
       pdf.section(client.name, { density: "compact" });
