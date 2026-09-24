@@ -234,14 +234,20 @@ export async function getSalesSummary(companyId: number, period: string | null) 
   const collectionsQuery = queryWithCompanyContext<{ pendiente: string; vencido: string }>(
     companyId,
     `
-      WITH account_balance AS (
-        SELECT GREATEST(COALESCE(SUM(cam.debit - cam.credit), 0), 0) AS total
+      WITH client_balances AS (
+        SELECT cam.client_id,
+               COALESCE(SUM(cam.debit - cam.credit), 0) AS balance
         FROM current_account_movements cam
         LEFT JOIN sales account_sale
           ON account_sale.id = cam.sale_id AND account_sale.empresa_id = cam.empresa_id
         WHERE cam.empresa_id = $1
           AND cam.entity_type = 'cliente'
+          AND cam.client_id IS NOT NULL
           AND ${activeAccountMovementWhereSql("cam", "account_sale")}
+        GROUP BY cam.client_id
+      ), account_balance AS (
+        SELECT COALESCE(SUM(GREATEST(balance, 0)), 0) AS total
+        FROM client_balances
       ), overdue_documents AS (
         SELECT COALESCE(SUM(GREATEST(
           COALESCE(s.total_amount, 0)

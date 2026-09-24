@@ -730,6 +730,16 @@ test("sales reporting uses the canonical imported sales source", () => {
   assert.match(vendorsManagement, /BTRIM\(s\.seller_name\) AS vendor/);
 });
 
+test("sales receivables do not offset one client's debt with another client's credit", () => {
+  const salesAdmin = read("apps/web/src/lib/sales-admin.ts");
+  assert.match(salesAdmin, /GROUP BY cam\.client_id/);
+  assert.match(salesAdmin, /SUM\(GREATEST\(balance, 0\)\)/);
+  assert.doesNotMatch(
+    salesAdmin,
+    /GREATEST\(COALESCE\(SUM\(cam\.debit - cam\.credit\), 0\), 0\) AS total/,
+  );
+});
+
 test("Escritorio is listed first in the Inicio menu and links to the home page", () => {
   const navigation = read("apps/web/src/lib/navigation.ts");
   assert.match(navigation, /href: "\/",\s*label: "Escritorio",\s*active: "home",/);
