@@ -41,8 +41,12 @@ export default async function BalancePage({
   const { metrics, payables, cashflow } = await getBalanceDashboard(session.companyId, period);
   const year = period.key.slice(0, 4);
   const series = await getMonthlySeries(session.companyId, year);
-  const churn = await getCustomerChurn(session.companyId, periodBounds(period));
-  const entregas = await getDeliveryTimes(session.companyId, periodBounds(period));
+  const bounds = periodBounds(period);
+  const [churn, entregas, entregasAnteriores] = await Promise.all([
+    getCustomerChurn(session.companyId, bounds),
+    getDeliveryTimes(session.companyId, bounds),
+    getDeliveryTimes(session.companyId, { currentStart: bounds.previousStart, nextStart: bounds.currentStart }),
+  ]);
   const incomeRows = [
     { label: "Ventas entregadas (neto, sin IVA facturado)", amount: metrics.sales.current },
     { label: "Costo de mercaderia vendida", amount: -metrics.margin.grossCost },
@@ -169,7 +173,11 @@ export default async function BalancePage({
 
         <ChurnClientes churn={churn} />
 
-        <TiemposEntrega data={entregas} />
+        <TiemposEntrega
+          comparisonLabel={period.kind === "month" ? "mes anterior" : "año anterior"}
+          data={entregas}
+          previousSummary={entregasAnteriores.summary}
+        />
       </div>
     </ModulePage>
   );

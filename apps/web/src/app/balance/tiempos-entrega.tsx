@@ -10,17 +10,25 @@ import { formatDuration } from "@/lib/delivery-times";
 import { formatCurrency } from "@/lib/format";
 
 type Delivery = { saleId: string; pedido: string; cliente: string; deliveredAt: string; leadMs: number; totalAmount: number };
+type Summary = { count: number; avgMs: number | null; medianMs: number | null; averageTicket: number | null };
 type Props = {
-  data: { deliveries: Delivery[]; summary: { count: number; avgMs: number | null; medianMs: number | null; averageTicket: number | null } };
+  data: { deliveries: Delivery[]; summary: Summary };
+  previousSummary: Summary;
+  comparisonLabel: string;
 };
 
-export function TiemposEntrega({ data }: Props) {
+function variation(current: number | null, previous: number | null) {
+  if (current == null || previous == null || previous === 0) return null;
+  return ((current - previous) / Math.abs(previous)) * 100;
+}
+
+export function TiemposEntrega({ data, previousSummary, comparisonLabel }: Props) {
   const { deliveries, summary } = data;
   const cards = [
-    { label: "Entregas", value: String(summary.count) },
-    { label: "Promedio", value: summary.avgMs == null ? "—" : formatDuration(summary.avgMs) },
-    { label: "Mediana", value: summary.medianMs == null ? "—" : formatDuration(summary.medianMs) },
-    { label: "Ticket promedio", value: summary.averageTicket == null ? "—" : formatCurrency(summary.averageTicket) },
+    { label: "Entregas", value: String(summary.count), change: variation(summary.count, previousSummary.count), lowerIsBetter: false },
+    { label: "Promedio", value: summary.avgMs == null ? "—" : formatDuration(summary.avgMs), change: variation(summary.avgMs, previousSummary.avgMs), lowerIsBetter: true },
+    { label: "Mediana", value: summary.medianMs == null ? "—" : formatDuration(summary.medianMs), change: variation(summary.medianMs, previousSummary.medianMs), lowerIsBetter: true },
+    { label: "Ticket promedio", value: summary.averageTicket == null ? "—" : formatCurrency(summary.averageTicket), change: variation(summary.averageTicket, previousSummary.averageTicket), lowerIsBetter: false },
   ];
 
   return (
@@ -37,6 +45,17 @@ export function TiemposEntrega({ data }: Props) {
           <div key={card.label} className="rounded-[12px] border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4">
             <div className="text-[1.5rem] font-bold leading-none tabular-nums text-[color:var(--foreground)]">{card.value}</div>
             <div className="erp-text-body mt-1 font-semibold text-[color:var(--foreground)]">{card.label}</div>
+            {card.change == null ? (
+              <div className="mt-1 text-xs font-semibold text-[color:var(--muted)]">Sin base del {comparisonLabel}</div>
+            ) : (
+              <div
+                className={`mt-1 text-xs font-bold tabular-nums ${
+                  (card.lowerIsBetter ? card.change <= 0 : card.change >= 0) ? "text-emerald-600" : "text-red-600"
+                }`}
+              >
+                {card.change > 0 ? "+" : ""}{card.change.toFixed(1)}% vs. {comparisonLabel}
+              </div>
+            )}
           </div>
         ))}
       </div>

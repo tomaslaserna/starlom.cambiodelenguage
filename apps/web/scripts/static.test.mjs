@@ -748,6 +748,11 @@ test("balance delivery times include the average ticket for the same delivered s
   assert.match(deliveryPanel, /Ticket promedio/);
   assert.match(deliveryPanel, /Tiempo corrido de calendario/);
   assert.match(deliveryPanel, /formatCurrency\(delivery\.totalAmount\)/);
+  assert.match(deliveryPanel, /% vs\. \{comparisonLabel\}/);
+  assert.match(deliveryPanel, /text-emerald-600/);
+  assert.match(deliveryPanel, /text-red-600/);
+  const balancePage = read("apps/web/src/app/balance/page.tsx");
+  assert.match(balancePage, /previousSummary=\{entregasAnteriores\.summary\}/);
 });
 
 test("Escritorio is listed first in the Inicio menu and links to the home page", () => {
