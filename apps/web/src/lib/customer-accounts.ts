@@ -71,10 +71,10 @@ export function agingDebitsFromOpenSales(
   accountBalance: number,
 ): AgingDebit[] | null {
   const positiveBalance = Math.max(0, money(accountBalance));
-  const capped = capOpenSalesToAccountBalance(sales, positiveBalance);
-  const covered = money(capped.reduce((sum, sale) => sum + sale.outstanding, 0));
+  const direct = sales.map((sale) => ({ ...sale, outstanding: Math.max(0, money(Number(sale.outstanding))) })).filter((sale) => sale.outstanding > 0.005);
+  const covered = money(direct.reduce((sum, sale) => sum + sale.outstanding, 0));
   if (Math.abs(covered - positiveBalance) > 0.005) return null;
-  return capped.map((sale) => ({
+  return direct.map((sale) => ({
     amount: sale.outstanding,
     date: sale.date,
     dueDate: sale.dueDate,
@@ -198,35 +198,27 @@ const OPEN_SALES_FOR_AGING_SQL = `
          s.sale_date::text AS date,
          (s.sale_date::date + COALESCE(s.source_payment_term_days, 0))::text AS due_date,
          GREATEST(
-           COALESCE(s.total_amount, 0)
-           + COALESCE(movements.debit_notes, 0)
+           COALESCE(movements.total_debit, 0)
            - COALESCE(movements.total_credit, 0),
            0
          )::text AS outstanding
   FROM sales s
   LEFT JOIN LATERAL (
     SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
-           COALESCE(SUM(cam.debit) FILTER (
-             WHERE cam.description ILIKE 'nota de debito%'
-                OR cam.description ILIKE 'anulacion de cobro%'
-           ), 0) AS debit_notes
+           COALESCE(SUM(cam.debit), 0) AS total_debit
     FROM current_account_movements cam
     WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
   ) movements ON true
   WHERE s.empresa_id = $1
     AND s.client_id = ANY($2::uuid[])
     AND COALESCE(s.order_status, s.status, 'cargado') IN ('entregado')
-    AND COALESCE(s.collection_status, 'pendiente') IN (
-      'pendiente', 'vencido', 'pendiente_aprobacion', 'en_proceso'
-    )
     AND (
       s.source_sheet IS NULL OR s.source_sheet = ''
       OR s.source_sheet = '12lzgmYiRh-sIAFv-EnhPVnbAfZMuNZYi8uwTj-ooJIE:ENTREGAS MACRO'
       OR (s.sale_date < DATE '2026-07-01' AND s.source_sheet = '1Ocl4Y9gcTS5LqNIePCebV3mtgYk7v6pa5Vy8uHDc75M:VENTAS ANUAL')
     )
     AND GREATEST(
-      COALESCE(s.total_amount, 0)
-      + COALESCE(movements.debit_notes, 0)
+      COALESCE(movements.total_debit, 0)
       - COALESCE(movements.total_credit, 0),
       0
     ) > 0.005
@@ -508,8 +500,7 @@ type OpenSaleForAllocation = {
 const OPEN_SALES_FOR_ALLOCATION_SQL = `
   SELECT s.id::text AS id,
          GREATEST(
-           COALESCE(s.total_amount, 0)
-           + COALESCE(movements.debit_notes, 0)
+           COALESCE(movements.total_debit, 0)
            - COALESCE(movements.total_credit, 0),
            0
          )::text AS outstanding,
@@ -528,68 +519,40 @@ const OPEN_SALES_FOR_ALLOCATION_SQL = `
   FROM sales s
   LEFT JOIN LATERAL (
     SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
-           COALESCE(SUM(cam.debit) FILTER (
-             WHERE cam.description ILIKE 'nota de debito%'
-                OR cam.description ILIKE 'anulacion de cobro%'
-           ), 0) AS debit_notes
+           COALESCE(SUM(cam.debit), 0) AS total_debit
     FROM current_account_movements cam
     WHERE cam.empresa_id = s.empresa_id AND cam.sale_id = s.id
   ) movements ON true
   WHERE s.empresa_id = $1
     AND s.client_id = $2::uuid
     AND COALESCE(s.order_status, s.status, 'cargado') IN ('entregado')
-    AND COALESCE(s.collection_status, 'pendiente') IN (
-      'pendiente', 'vencido', 'pendiente_aprobacion', 'en_proceso'
-    )
     AND (
       s.source_sheet IS NULL OR s.source_sheet = ''
       OR s.source_sheet = '12lzgmYiRh-sIAFv-EnhPVnbAfZMuNZYi8uwTj-ooJIE:ENTREGAS MACRO'
       OR (s.sale_date < DATE '2026-07-01' AND s.source_sheet = '1Ocl4Y9gcTS5LqNIePCebV3mtgYk7v6pa5Vy8uHDc75M:VENTAS ANUAL')
     )
     AND GREATEST(
-      COALESCE(s.total_amount, 0)
-      + COALESCE(movements.debit_notes, 0)
+      COALESCE(movements.total_debit, 0)
       - COALESCE(movements.total_credit, 0),
       0
     ) > 0.005
 `;
 
-const CUSTOMER_ACCOUNT_BALANCE_SQL = `
-  SELECT COALESCE(SUM(cam.debit - cam.credit), 0)::text AS balance
-  FROM current_account_movements cam
-  LEFT JOIN sales linked_sale
-    ON linked_sale.id = cam.sale_id AND linked_sale.empresa_id = cam.empresa_id
-  WHERE cam.empresa_id = $1
-    AND cam.client_id = $2::uuid
-    AND ${activeAccountMovementWhereSql("cam", "linked_sale")}
-`;
-
-async function currentCustomerAccountBalance(client: PoolClient, companyId: number, clientId: string) {
-  const result = await client.query<{ balance: string }>(CUSTOMER_ACCOUNT_BALANCE_SQL, [companyId, clientId]);
-  return money(Number(result.rows[0]?.balance ?? 0));
-}
-
 export async function listOpenCustomerRemittances(companyId: number, clientId: string): Promise<OpenCustomerRemittance[]> {
-  const [rows, balance] = await Promise.all([
-    queryWithCompanyContext<OpenSaleForAllocation & {
+  const rows = await queryWithCompanyContext<OpenSaleForAllocation & {
       sale_number: string; sale_date: string; total: string;
     }>(
       companyId,
       `${OPEN_SALES_FOR_ALLOCATION_SQL} ORDER BY s.sale_date ASC, s.created_at ASC, s.id ASC`,
       [companyId, clientId],
       { cache: false },
-    ),
-    queryWithCompanyContext<{ balance: string }>(
-      companyId, CUSTOMER_ACCOUNT_BALANCE_SQL, [companyId, clientId], { cache: false },
-    ),
-  ]);
-  const effectiveRows = capOpenSalesToAccountBalance(rows.rows, Number(balance.rows[0]?.balance ?? 0));
-  return effectiveRows.map((row) => ({
+    );
+  return rows.rows.map((row) => ({
     saleId: row.id,
     number: row.sale_number,
     date: row.sale_date,
     total: Number(row.total),
-    outstanding: row.outstanding,
+    outstanding: Number(row.outstanding),
   }));
 }
 
@@ -657,10 +620,7 @@ async function postAllocatedCustomerPayment(
       FOR UPDATE OF s`,
     [companyId, input.clientId],
   );
-  const effectiveSales = capOpenSalesToAccountBalance(
-    sales.rows,
-    await currentCustomerAccountBalance(client, companyId, input.clientId),
-  );
+  const effectiveSales = sales.rows.map((sale) => ({ ...sale, outstanding: Number(sale.outstanding) }));
   const requestedIds = new Set(input.allocations?.map((item) => item.saleId) ?? []);
   const payableSales = input.allocations
     ? effectiveSales.filter((sale) => requestedIds.has(sale.id))

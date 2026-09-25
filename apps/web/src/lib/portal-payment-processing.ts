@@ -169,10 +169,10 @@ export async function processPortalPayment(
     let applied = 0;
     for (const saleId of locked.sale_ids) {
       const sale = await client.query<{ outstanding: string }>(
-        `SELECT GREATEST(COALESCE(s.total_amount,0)+COALESCE(m.debits,0)-COALESCE(m.credits,0),0)::text outstanding
+        `SELECT GREATEST(COALESCE(m.debits,0)-COALESCE(m.credits,0),0)::text outstanding
            FROM sales s
            LEFT JOIN LATERAL (
-             SELECT COALESCE(SUM(debit) FILTER (WHERE description ILIKE 'nota de debito%' OR description ILIKE 'anulacion de cobro%'),0) debits,
+             SELECT COALESCE(SUM(debit),0) debits,
                     COALESCE(SUM(credit),0) credits
                FROM current_account_movements WHERE empresa_id=s.empresa_id AND sale_id=s.id
            ) m ON true
