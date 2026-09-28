@@ -70,6 +70,7 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey }: Stock
             <Field htmlFor="stock-workspace-product" label="Producto" required>
               <SearchableSelect
                 compactOptions
+                filterLocally={false}
                 id="stock-workspace-product"
                 options={productOptions}
                 emptyMessage={searchTerm.trim().length < 2 ? "Escribí al menos 2 letras para buscar" : "No hay coincidencias"}

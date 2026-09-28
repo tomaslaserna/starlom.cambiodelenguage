@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
-import { rankSearchOptions } from "@/lib/search-options";
+import { resolveSearchOptions } from "@/lib/search-options";
 import { cn } from "./utils";
 
 export type SearchableSelectOption = {
@@ -26,6 +26,7 @@ type SearchableSelectProps = {
   className?: string;
   maxResults?: number;
   compactOptions?: boolean;
+  filterLocally?: boolean;
 };
 
 export function SearchableSelect({
@@ -43,6 +44,7 @@ export function SearchableSelect({
   className,
   maxResults = 40,
   compactOptions = false,
+  filterLocally = true,
 }: SearchableSelectProps) {
   const listboxId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -51,8 +53,8 @@ export function SearchableSelect({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const results = useMemo(
-    () => rankSearchOptions(options, open ? search : "", maxResults),
-    [maxResults, open, options, search],
+    () => resolveSearchOptions(options, open ? search : "", maxResults, filterLocally),
+    [filterLocally, maxResults, open, options, search],
   );
   const safeActiveIndex = Math.min(activeIndex, Math.max(0, results.length - 1));
   const displayedValue = open ? search : selected?.label ?? "";

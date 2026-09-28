@@ -69,6 +69,14 @@ const products = [
   { id: "7", name: "CABO METÁLICO 100 CM", sku: "MOPA-CABO", categoryCode: "TXT", category: "Textiles", supplier: "Magnum" },
 ];
 
+test("remote search results are not filtered again by the typed command", () => {
+  const options = products.slice(0, 2).map((product) => ({ label: product.name, value: product.id }));
+  assert.deepEqual(
+    searchOptions.resolveSearchOptions(options, "#sinstock", 40, false).map((option) => option.value),
+    ["1", "2"],
+  );
+});
+
 test("inventory search matches a word anywhere in the product name", () => {
   const matches = inventorySearch.rankInventoryProductMatches(products, "oferta", 40);
   assert.deepEqual(matches.map((product) => product.id), ["1"]);

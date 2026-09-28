@@ -82,3 +82,12 @@ export function rankSearchOptions<T extends SearchOptionLike>(options: T[], quer
     .slice(0, limit)
     .map((item) => item.option);
 }
+
+export function resolveSearchOptions<T extends SearchOptionLike>(
+  options: T[],
+  query: string,
+  limit = 40,
+  filterLocally = true,
+) {
+  return filterLocally ? rankSearchOptions(options, query, limit) : options.slice(0, limit);
+}
