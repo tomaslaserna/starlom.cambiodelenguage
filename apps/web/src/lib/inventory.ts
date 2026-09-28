@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
+import { rankInventoryProductMatches, type InventorySearchCandidate } from "@/lib/inventory-search";
 import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import type { StockImportMode, StockImportSourceRow } from "@/lib/stock-import";
 import type { PoolClient } from "pg";
@@ -67,11 +68,35 @@ function movementTypeForDelta(delta: number) {
 export async function listInventoryProducts(companyId: number, query = "", limit = 40) {
   const normalizedQuery = query.trim();
   const safeLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
-  const searchFilter = normalizedQuery
-    ? `AND (p.name ILIKE '%' || $2 || '%' OR COALESCE(p.sku, '') ILIKE '%' || $2 || '%' OR COALESCE(s.display_name, '') ILIKE '%' || $2 || '%')`
-    : "";
-  const params = normalizedQuery ? [companyId, normalizedQuery, safeLimit] : [companyId, safeLimit];
-  const limitParam = normalizedQuery ? "$3" : "$2";
+  let rankedProductIds: string[] | null = null;
+
+  if (normalizedQuery) {
+    const candidates = await queryWithCompanyContext<InventorySearchCandidate>(
+      companyId,
+      `
+        SELECT p.id::text AS id,
+               p.name,
+               p.sku,
+               p.category_code AS "categoryCode",
+               p.category,
+               s.display_name AS supplier
+        FROM products p
+        LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+        WHERE p.empresa_id = $1
+          AND p.active = true
+        ORDER BY p.name ASC, p.id ASC
+      `,
+      [companyId],
+    );
+    rankedProductIds = rankInventoryProductMatches(candidates.rows, normalizedQuery, safeLimit).map(
+      (product) => product.id,
+    );
+    if (!rankedProductIds.length) return [];
+  }
+
+  const productFilter = rankedProductIds ? "AND p.id = ANY($2::uuid[])" : "";
+  const params = rankedProductIds ? [companyId, rankedProductIds] : [companyId, safeLimit];
+  const limitClause = rankedProductIds ? "" : "LIMIT $2";
   const result = await queryWithCompanyContext<{
     id: string;
     sku: string | null;
@@ -106,14 +131,14 @@ export async function listInventoryProducts(companyId: number, query = "", limit
       ) stock ON true
       WHERE p.empresa_id = $1
         AND p.active = true
-        ${searchFilter}
+        ${productFilter}
       ORDER BY p.name ASC, p.id ASC
-      LIMIT ${limitParam}
+      ${limitClause}
     `,
     params,
   );
 
-  return result.rows.map((row): InventoryProduct => ({
+  const products = result.rows.map((row): InventoryProduct => ({
     id: row.id,
     code: row.sku ?? "",
     categoryCode: row.category_code ?? "",
@@ -123,6 +148,12 @@ export async function listInventoryProducts(companyId: number, query = "", limit
     cost: stockNumber(row.cost),
     stock: stockNumber(row.stock),
   }));
+  if (!rankedProductIds) return products;
+
+  const rankById = new Map(rankedProductIds.map((id, index) => [id, index]));
+  return products.sort(
+    (left, right) => (rankById.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (rankById.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+  );
 }
 
 export async function getInventorySummary(companyId: number) {
