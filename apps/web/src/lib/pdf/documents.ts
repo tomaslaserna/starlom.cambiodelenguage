@@ -1,6 +1,6 @@
 import { ApiError } from "@/lib/api-response";
 import QRCode from "qrcode";
-import { accountBalanceExpressionSql, activeAccountMovementWhereSql } from "@/lib/accounts";
+import { accountBalanceExpressionSql, activeAccountMovementWhereSql, visibleAccountMovementWhereSql } from "@/lib/accounts";
 import { queryWithCompanyContext } from "@/lib/db";
 import { collapsePaymentAllocations } from "@/lib/customer-accounts";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
@@ -475,7 +475,13 @@ export async function buildAccountStatementPdf(companyId: number, input: {
   const name = input.name.trim();
   if (!name) throw new ApiError(400, "Nombre requerido");
   const params: unknown[] = [companyId, name, type];
-  const filters = ["m.empresa_id = $1", "m.entity_name = $2", "m.entity_type = $3", activeAccountMovementWhereSql("m", "s")];
+  const filters = [
+    "m.empresa_id = $1",
+    "m.entity_name = $2",
+    "m.entity_type = $3",
+    activeAccountMovementWhereSql("m", "s"),
+    visibleAccountMovementWhereSql("m"),
+  ];
   if (input.from) {
     params.push(input.from);
     filters.push(`m.movement_date >= $${params.length}`);
@@ -499,6 +505,7 @@ export async function buildAccountStatementPdf(companyId: number, input: {
             AND m.entity_name = $2
             AND m.entity_type = $3
             AND ${activeAccountMovementWhereSql("m", "s")}
+            AND ${visibleAccountMovementWhereSql("m")}
             AND m.movement_date < $4
         `,
         [companyId, name, type, input.from],

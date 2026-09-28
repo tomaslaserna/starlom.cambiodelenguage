@@ -48,6 +48,13 @@ export function activeAccountMovementWhereSql(movementAlias: string, salesAlias:
   )`;
 }
 
+export function visibleAccountMovementWhereSql(movementAlias: string) {
+  return `(
+    COALESCE(${movementAlias}.description, '') NOT ILIKE 'Imputación histórica de saldo general%'
+    AND COALESCE(${movementAlias}.description, '') NOT ILIKE 'Contrapartida de imputación histórica de saldo general%'
+  )`;
+}
+
 function accountMovementsFromSql() {
   return `
     FROM current_account_movements m
@@ -91,7 +98,11 @@ export function paymentRecordFromBody(body: RequestBody) {
 export async function listAccountMovements(input: ListInput) {
   const pagination = parsePagination(input);
   const params: unknown[] = [input.companyId];
-  const filters = ["m.empresa_id = $1", activeAccountMovementWhereSql("m", "s")];
+  const filters = [
+    "m.empresa_id = $1",
+    activeAccountMovementWhereSql("m", "s"),
+    visibleAccountMovementWhereSql("m"),
+  ];
 
   const type = input.type?.trim() ?? "";
   const name = input.name?.trim() ?? "";
@@ -206,6 +217,7 @@ export async function listAccountEntities(companyId: number, type = "cliente") {
         AND m.entity_type = $2
         AND COALESCE(m.entity_name, '') <> ''
         AND ${activeAccountMovementWhereSql("m", "s")}
+        AND ${visibleAccountMovementWhereSql("m")}
       ORDER BY m.entity_name ASC
       LIMIT 500
     `,

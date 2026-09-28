@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/api-response";
-import { activeAccountMovementWhereSql } from "@/lib/accounts";
+import { activeAccountMovementWhereSql, visibleAccountMovementWhereSql } from "@/lib/accounts";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { COLLECTION_METHODS, collectionMethodRequiresOperation } from "@/lib/collection-methods";
 import { numberField, textField, type RequestBody } from "@/lib/request-body";
@@ -407,6 +407,7 @@ export async function getCustomerStatement(
       ) fiscal_note ON true
       WHERE m.empresa_id = $1 AND m.client_id = $2::uuid
         AND ${activeAccountMovementWhereSql("m", "s")}
+        AND ${visibleAccountMovementWhereSql("m")}
       ORDER BY m.movement_date ASC, m.created_at ASC
     `,
     [companyId, clientId],

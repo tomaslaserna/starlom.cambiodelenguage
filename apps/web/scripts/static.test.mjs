@@ -530,6 +530,19 @@ test("current accounts use only active account movements and a business-correct 
   assert.match(accountPdf, /type === "proveedor" \? credit - debit : debit - credit/);
 });
 
+test("historical allocation bookkeeping stays internal and is hidden from statements", () => {
+  const accounts = read("apps/web/src/lib/accounts.ts");
+  assert.match(accounts, /visibleAccountMovementWhereSql/);
+  assert.match(accounts, /Imputación histórica de saldo general/);
+  assert.match(accounts, /Contrapartida de imputación histórica de saldo general/);
+
+  const customerAccounts = read("apps/web/src/lib/customer-accounts.ts");
+  assert.match(customerAccounts, /visibleAccountMovementWhereSql\("m"\)/);
+
+  const accountPdf = read("apps/web/src/lib/pdf/documents.ts");
+  assert.match(accountPdf, /visibleAccountMovementWhereSql\("m"\)/);
+});
+
 test("future orders use the registered receipt as a suggestion and allow an explicit invoice or remito", () => {
   const receiptTypes = read("apps/web/src/lib/receipt-types.ts");
   for (const value of [
