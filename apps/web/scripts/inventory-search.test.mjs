@@ -40,7 +40,7 @@ const inventory = loadTypeScriptModule("../src/lib/inventory.ts", {
       }
       return {
         rows: products
-          .filter((product) => params[1].includes(product.id))
+          .filter((product) => !Array.isArray(params[1]) || params[1].includes(product.id))
           .map((product) => ({
             id: product.id,
             sku: product.sku,
@@ -110,4 +110,29 @@ test("inventory query ranks the full active catalog before loading stock details
   assert.match(inventoryQueries[0].sql, /WHERE p\.empresa_id = \$1/);
   assert.doesNotMatch(inventoryQueries[0].sql, /ILIKE/);
   assert.deepEqual(inventoryQueries[1].params, [1, ["1"]]);
+});
+
+test("inventory search parses stock keywords and keeps the remaining text", () => {
+  assert.deepEqual(inventory.parseInventorySearchQuery("mopa #sinstock 100"), {
+    searchQuery: "mopa 100",
+    stockFilter: "zero",
+  });
+  assert.deepEqual(inventory.parseInventorySearchQuery("#stock-"), {
+    searchQuery: "",
+    stockFilter: "negative",
+  });
+});
+
+test("stock-only keywords filter the full catalog without a result limit", async () => {
+  inventoryQueries = [];
+  await inventory.listInventoryProducts(1, "#sinstock", 40);
+  assert.equal(inventoryQueries.length, 1);
+  assert.match(inventoryQueries[0].sql, /COALESCE\(stock\.current_stock, 0\) = 0/);
+  assert.doesNotMatch(inventoryQueries[0].sql, /LIMIT \$2/);
+
+  inventoryQueries = [];
+  await inventory.listInventoryProducts(1, "#stock-", 40);
+  assert.equal(inventoryQueries.length, 1);
+  assert.match(inventoryQueries[0].sql, /COALESCE\(stock\.current_stock, 0\) < 0/);
+  assert.doesNotMatch(inventoryQueries[0].sql, /LIMIT \$2/);
 });

@@ -62,7 +62,7 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey }: Stock
         <CardHeader>
           <CardTitle>Buscar producto</CardTitle>
           <CardDescription>
-            Elegí un producto y la modificación de stock se abrirá automáticamente.
+            Elegí un producto o usá #sinstock y #stock- para filtrar por existencias.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
@@ -73,7 +73,7 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey }: Stock
                 id="stock-workspace-product"
                 options={productOptions}
                 emptyMessage={searchTerm.trim().length < 2 ? "Escribí al menos 2 letras para buscar" : "No hay coincidencias"}
-                placeholder="Buscar por nombre, codigo o proveedor"
+                placeholder="Nombre, código, proveedor, #sinstock o #stock-"
                 value={productId}
                 onChange={selectProduct}
                 onSearchChange={updateSearchTerm}

@@ -50,6 +50,23 @@ export type StockImportPreview = {
   errors: number;
 };
 
+type InventoryStockFilter = "zero" | "negative" | null;
+
+export function parseInventorySearchQuery(query: string) {
+  const tokens = query.trim().split(/\s+/).filter(Boolean);
+  let stockFilter: InventoryStockFilter = null;
+  const searchTokens: string[] = [];
+
+  for (const token of tokens) {
+    const normalizedToken = token.toLocaleLowerCase("es");
+    if (normalizedToken === "#sinstock") stockFilter ??= "zero";
+    else if (normalizedToken === "#stock-") stockFilter = "negative";
+    else searchTokens.push(token);
+  }
+
+  return { searchQuery: searchTokens.join(" "), stockFilter };
+}
+
 function stockNumber(value: string | number | null | undefined) {
   const numberValue = Number(value ?? 0);
   return Number.isFinite(numberValue) ? Math.round(numberValue * 1_000) / 1_000 : 0;
@@ -66,11 +83,28 @@ function movementTypeForDelta(delta: number) {
 }
 
 export async function listInventoryProducts(companyId: number, query = "", limit = 40) {
-  const normalizedQuery = query.trim();
+  const { searchQuery, stockFilter } = parseInventorySearchQuery(query);
   const safeLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
   let rankedProductIds: string[] | null = null;
+  const stockFilterClause = stockFilter === "negative"
+    ? "AND COALESCE(stock.current_stock, 0) < 0"
+    : stockFilter === "zero"
+      ? "AND COALESCE(stock.current_stock, 0) = 0"
+      : "";
+  const candidateStockJoin = stockFilter
+    ? `LEFT JOIN LATERAL (
+         SELECT SUM(
+           CASE
+             WHEN sm.movement_type IN ('entrada_compra', 'ajuste_positivo') THEN sm.quantity
+             ELSE -sm.quantity
+           END
+         ) AS current_stock
+         FROM stock_movements sm
+         WHERE sm.product_id = p.id AND sm.empresa_id = p.empresa_id
+       ) stock ON true`
+    : "";
 
-  if (normalizedQuery) {
+  if (searchQuery) {
     const candidates = await queryWithCompanyContext<InventorySearchCandidate>(
       companyId,
       `
@@ -82,21 +116,27 @@ export async function listInventoryProducts(companyId: number, query = "", limit
                s.display_name AS supplier
         FROM products p
         LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
+        ${candidateStockJoin}
         WHERE p.empresa_id = $1
           AND p.active = true
+          ${stockFilterClause}
         ORDER BY p.name ASC, p.id ASC
       `,
       [companyId],
     );
-    rankedProductIds = rankInventoryProductMatches(candidates.rows, normalizedQuery, safeLimit).map(
+    rankedProductIds = rankInventoryProductMatches(candidates.rows, searchQuery, safeLimit).map(
       (product) => product.id,
     );
     if (!rankedProductIds.length) return [];
   }
 
   const productFilter = rankedProductIds ? "AND p.id = ANY($2::uuid[])" : "";
-  const params = rankedProductIds ? [companyId, rankedProductIds] : [companyId, safeLimit];
-  const limitClause = rankedProductIds ? "" : "LIMIT $2";
+  const params = rankedProductIds
+    ? [companyId, rankedProductIds]
+    : stockFilter
+      ? [companyId]
+      : [companyId, safeLimit];
+  const limitClause = rankedProductIds || stockFilter ? "" : "LIMIT $2";
   const result = await queryWithCompanyContext<{
     id: string;
     sku: string | null;
@@ -132,6 +172,7 @@ export async function listInventoryProducts(companyId: number, query = "", limit
       WHERE p.empresa_id = $1
         AND p.active = true
         ${productFilter}
+        ${stockFilterClause}
       ORDER BY p.name ASC, p.id ASC
       ${limitClause}
     `,
