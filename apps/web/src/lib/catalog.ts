@@ -103,6 +103,14 @@ export type ProductStockTotals = {
   withoutSupplier: number;
   withoutImage: number;
   incompleteData: number;
+  largestInventoryItem: {
+    id: string;
+    name: string;
+    cost: number;
+    stock: number;
+    value: number;
+    sharePercent: number;
+  } | null;
 };
 
 export type ProductsResult = ListResult<Product> & {
@@ -468,6 +476,31 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
     params,
   );
 
+  const largestInventoryResult = await queryWithCompanyContext<{
+    id: string;
+    name: string;
+    cost: string;
+    stock: string;
+    inventory_value: string;
+  }>(
+    companyId,
+    `
+      SELECT p.id::text AS id,
+             p.name,
+             COALESCE(p.cost, 0)::text AS cost,
+             GREATEST(COALESCE(stock.stock_real, 0), 0)::text AS stock,
+             (GREATEST(COALESCE(stock.stock_real, 0), 0) * COALESCE(p.cost, 0))::text AS inventory_value
+      FROM products p
+      LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id${STOCK_MOVEMENTS_LATERAL}
+      WHERE ${where}
+      ORDER BY GREATEST(COALESCE(stock.stock_real, 0), 0) * COALESCE(p.cost, 0) DESC,
+               p.name ASC,
+               p.id ASC
+      LIMIT 1
+    `,
+    params,
+  );
+
   params.push(pagination.pageSize, pagination.offset);
   const rows = await queryWithCompanyContext<{
     id: string;
@@ -537,15 +570,29 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
   );
 
   const totalsRow = countResult.rows[0];
+  const largestInventoryRow = largestInventoryResult.rows[0];
+  const inventoryValue = Number(totalsRow?.inventory_value ?? "0");
   const total = Number.parseInt(totalsRow?.total ?? "0", 10);
   const stockTotals: ProductStockTotals = {
     units: Number(totalsRow?.units ?? 0),
     outOfStock: Number.parseInt(totalsRow?.out_of_stock ?? "0", 10),
     negativeStock: Number.parseInt(totalsRow?.negative_stock ?? "0", 10),
-    inventoryValue: Number(totalsRow?.inventory_value ?? "0"),
+    inventoryValue,
     withoutSupplier: Number.parseInt(totalsRow?.without_supplier ?? "0", 10),
     withoutImage: Number.parseInt(totalsRow?.without_image ?? "0", 10),
     incompleteData: Number.parseInt(totalsRow?.incomplete_data ?? "0", 10),
+    largestInventoryItem: largestInventoryRow
+      ? {
+          id: largestInventoryRow.id,
+          name: largestInventoryRow.name,
+          cost: Number(largestInventoryRow.cost),
+          stock: Number(largestInventoryRow.stock),
+          value: Number(largestInventoryRow.inventory_value),
+          sharePercent: inventoryValue > 0
+            ? Number((100 * Number(largestInventoryRow.inventory_value) / inventoryValue).toFixed(2))
+            : 0,
+        }
+      : null,
   };
 
   return {

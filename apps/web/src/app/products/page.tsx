@@ -144,6 +144,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     pageSize: "25",
   });
   const scopeDetail = result.meta.query ? "Todo el resultado del filtro" : "Todo el inventario";
+  const largestInventoryItem = result.stockTotals.largestInventoryItem;
 
   return (
     <ModulePage
@@ -257,6 +258,30 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             value={formatNumber(result.stockTotals.incompleteData)}
           />
         </div>
+
+        {largestInventoryItem ? (
+          <section className={`grid gap-3 rounded-[10px] border px-4 py-4 shadow-[0_8px_24px_rgba(15,23,42,0.045)] md:grid-cols-[1fr_auto] md:items-center ${largestInventoryItem.sharePercent >= 25 ? "border-[#fecaca] bg-[#fff7f7]" : "border-[#d9e2ef] bg-white"}`}>
+            <div className="min-w-0">
+              <div className={`erp-text-caption font-bold uppercase tracking-wide ${largestInventoryItem.sharePercent >= 25 ? "text-[#dc2626]" : "text-[#64748b]"}`}>
+                Producto con mayor valor de inventario
+              </div>
+              <div className="mt-1 break-words text-base font-extrabold text-[#172033]">
+                {largestInventoryItem.name}
+              </div>
+              <div className="mt-1 text-sm font-medium text-[#64748b]">
+                {formatNumber(largestInventoryItem.stock)} unidades × {formatCurrency(largestInventoryItem.cost)} de costo
+              </div>
+            </div>
+            <div className="md:text-right">
+              <div className={`text-2xl font-extrabold ${largestInventoryItem.sharePercent >= 25 ? "text-[#dc2626]" : "text-[#0f172a]"}`}>
+                {formatCurrency(largestInventoryItem.value)}
+              </div>
+              <div className="mt-1 text-sm font-semibold text-[#64748b]">
+                {formatNumber(largestInventoryItem.sharePercent)}% del valor total
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         <Card className="overflow-hidden border-[#d9e2ef] shadow-[0_10px_30px_rgba(15,23,42,0.055)]">
           <DataTable
