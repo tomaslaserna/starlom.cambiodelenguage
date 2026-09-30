@@ -166,10 +166,11 @@ test("el formulario limita cada imputacion al saldo y permite cobros totalmente 
   assert.doesNotMatch(source, /Selecciona al menos un remito para aplicar el pago/);
 });
 
-test("el formulario distribuye cualquier cobro sin imponer un maximo HTML por remito", () => {
+test("el formulario aplica el cobro solo a remitos seleccionados y sin un maximo HTML", () => {
   const dialog = readFileSync(new URL('../src/app/payments/register-payment-dialog.tsx', import.meta.url), 'utf8');
-  assert.match(dialog, /distributeCustomerPayment/);
+  assert.doesNotMatch(dialog, /distributeCustomerPayment/);
   assert.doesNotMatch(dialog, /max=\{sale\.outstanding\}/);
+  assert.match(dialog, /únicamente a los remitos que selecciones/i);
   assert.match(dialog, /cualquier excedente queda como saldo a favor/i);
 });
 

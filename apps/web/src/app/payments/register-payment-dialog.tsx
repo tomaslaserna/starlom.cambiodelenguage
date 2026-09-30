@@ -8,7 +8,6 @@ import {
   collectionMethodRequiresOperation,
   suggestedCollectionDestination,
 } from "@/lib/collection-methods";
-import { distributeCustomerPayment } from "@/lib/customer-payment-allocation";
 
 const METHOD_LABELS: Record<string, string> = {
   efectivo: "Efectivo",
@@ -118,15 +117,6 @@ export function RegisterPaymentDialog({
     });
   }
 
-  function handlePaymentAmountChange(rawValue: string) {
-    setPaymentAmountInput(rawValue);
-    if (rawValue === "") {
-      setAllocationAmounts({});
-      return;
-    }
-    setAllocationAmounts(distributeCustomerPayment(remittances, Number(rawValue)));
-  }
-
   const customerSelectId = `${dialogId}-customer`;
   const amountInputId = `${dialogId}-amount`;
   const dateInputId = `${dialogId}-date`;
@@ -204,7 +194,7 @@ export function RegisterPaymentDialog({
                   id={amountInputId}
                   min="0.01"
                   name="amount"
-                  onChange={(event) => handlePaymentAmountChange(event.target.value)}
+                  onChange={(event) => setPaymentAmountInput(event.target.value)}
                   step="0.01"
                   type="number"
                   value={paymentAmountInput === "" ? (allocatedTotal || "") : paymentAmountInput}
@@ -214,7 +204,7 @@ export function RegisterPaymentDialog({
                 <div className="mb-2 flex items-end justify-between gap-3">
                   <div>
                     <p className="text-sm font-black text-[#0f172a]">Aplicar a remitos pendientes</p>
-                    <p className="mt-0.5 text-xs font-medium text-[#64748b]">Ingresá arriba el total recibido: se distribuye hasta cancelar los remitos y cualquier excedente queda como saldo a favor. También podés ajustar un importe parcial a mano.</p>
+                    <p className="mt-0.5 text-xs font-medium text-[#64748b]">El pago se aplica únicamente a los remitos que selecciones. Podés ajustar un importe parcial; cualquier excedente queda como saldo a favor.</p>
                   </div>
                   <div className="text-right">
                     <span className="block text-[11px] font-bold uppercase tracking-wide text-[#64748b]">Aplicado a remitos</span>
