@@ -166,6 +166,13 @@ test("el formulario limita cada imputacion al saldo y permite cobros totalmente 
   assert.doesNotMatch(source, /Selecciona al menos un remito para aplicar el pago/);
 });
 
+test("el formulario distribuye cualquier cobro sin imponer un maximo HTML por remito", () => {
+  const dialog = readFileSync(new URL('../src/app/payments/register-payment-dialog.tsx', import.meta.url), 'utf8');
+  assert.match(dialog, /distributeCustomerPayment/);
+  assert.doesNotMatch(dialog, /max=\{sale\.outstanding\}/);
+  assert.match(dialog, /cualquier excedente queda como saldo a favor/i);
+});
+
 test("el excedente del cobro se registra como saldo a favor", () => {
   assert.match(source, /allocation\.unallocated > 0\.005/);
   assert.match(source, /Saldo a favor \|/);
