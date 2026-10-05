@@ -29,6 +29,7 @@ function boundedMessages(messages: StarlimSupervisorMessage[]) {
   return compactSupervisorMessages(
     messages.filter(isStoredMessage),
     SUPERVISOR_MEMORY_MAX_MESSAGES,
+    16_000,
   );
 }
 
@@ -54,6 +55,7 @@ export async function getSupervisorChatMemory(session: AuthSession) {
     return compactSupervisorMessages(
       result.rows.map((row) => row.message).filter(isStoredMessage),
       SUPERVISOR_MEMORY_MAX_MESSAGES,
+      16_000,
     );
   });
 }
@@ -96,7 +98,7 @@ export async function saveSupervisorChatMemory(
           message.role,
           JSON.stringify(message),
           index,
-          process.env.SUPERVISOR_AI_MODEL || "google/gemini-3.5-flash",
+          "chatgpt/dot",
         ],
       );
     }

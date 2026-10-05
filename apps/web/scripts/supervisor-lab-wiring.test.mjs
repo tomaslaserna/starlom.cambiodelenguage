@@ -73,23 +73,13 @@ test("el agente usa herramientas tipadas, de servidor y solo lectura", () => {
   assert.doesNotMatch(`${tools}\n${agent}`, /INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM/i);
 });
 
-test("la ruta experimental exige sesion, configuracion y limites", () => {
-  const route = fs.readFileSync(path.join(root, "src/app/api/supervisor-lab/chat/route.ts"), "utf8");
-  const availability = fs.readFileSync(path.join(root, "src/lib/supervisor-lab/availability.ts"), "utf8");
-  const guard = fs.readFileSync(path.join(root, "src/lib/supervisor-lab/request-guard.ts"), "utf8");
+test("la ruta del chat usa sesión y cola del Dot sin inferencia paga", () => {
+  const route = read("src/app/api/supervisor-lab/chat/route.ts");
+  const guard = read("src/lib/supervisor-lab/request-guard.ts");
   assert.match(route, /requireApiSession\(\)/);
-  assert.match(route, /assertSupervisorAiConfigured\(\)/);
-  assert.match(route, /createAgentUIStreamResponse/);
-  assert.match(route, /timeout: \{ totalMs: 65_000 \}/);
-  assert.match(route, /export const maxDuration = 90/);
-  assert.match(route, /Supervisor request started/);
-  assert.match(route, /Supervisor request completed/);
-  assert.match(route, /Supervisor step completed/);
-  assert.match(route, /textCharacters/);
-  assert.match(availability, /SUPERVISOR_AI_ENABLED/);
-  assert.match(availability, /AI_GATEWAY_API_KEY/);
-  assert.match(availability, /process\.env\.VERCEL === "1"/);
-  assert.match(availability, /supervisorAiHasCredentials/);
+  assert.match(route, /queueDotQuestion/);
+  assert.match(route, /dispatchDotQuestions/);
+  assert.doesNotMatch(route, /createAgentUIStreamResponse|createStarlimSupervisorAgent/);
   assert.match(guard, /MAX_MESSAGES = 30/);
   assert.match(guard, /MAX_BODY_CHARACTERS = 60_000/);
 });
@@ -102,8 +92,8 @@ test("la conversación se conserva 48 horas por empresa y operador", () => {
 
   assert.match(route, /export async function GET/);
   assert.match(route, /export async function DELETE/);
-  assert.match(route, /originalMessages: uiMessages/);
-  assert.match(route, /onEnd: async \(\{ messages \}\)/);
+  assert.match(route, /pendingDotRequest/);
+  assert.match(read("src/lib/supervisor-lab/dot-store.ts"), /supervisor_chat_messages/);
   assert.match(memory, /SUPERVISOR_MEMORY_HOURS = 48/);
   assert.match(memory, /SUPERVISOR_MEMORY_MAX_MESSAGES = 200/);
   assert.match(memory, /empresa_id = \$1/);
@@ -111,14 +101,14 @@ test("la conversación se conserva 48 horas por empresa y operador", () => {
   assert.match(memory, /expires_at <= NOW\(\)/);
   assert.match(memory, /pg_advisory_xact_lock/);
   assert.match(chat, /method: "DELETE"/);
-  assert.match(chat, /messages\.slice\(-30\)/);
+  assert.match(read("src/app/supervisor-lab/use-dot-chat.ts"), /messages:\s*\[message\]/);
   assert.match(chat, /Recuperando tu conversación de las últimas 48 horas/);
   assert.match(migration, /INTERVAL '48 hours'/);
   assert.match(migration, /UNIQUE \(empresa_id, user_id, message_id\)/);
   assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
 });
 
-test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
+test("la pantalla conserva su diseño y usa el transporte asíncrono del Dot", () => {
   const page = fs.readFileSync(path.join(root, "src/app/supervisor-lab/page.tsx"), "utf8");
   const chat = fs.readFileSync(path.join(root, "src/app/supervisor-lab/supervisor-chat.tsx"), "utf8");
   const agent = fs.readFileSync(path.join(root, "src/lib/supervisor-lab/agent.ts"), "utf8");
@@ -130,11 +120,11 @@ test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   assert.match(page, /<PersonalizedOverview summary=\{summary\}/);
   assert.doesNotMatch(page, /SupervisorTaskInbox/);
   assert.doesNotMatch(page, /supervisorTasksEnabled/);
-  assert.match(chat, /DefaultChatTransport<StarlimSupervisorMessage>/);
+  assert.match(chat, /useDotChat/);
   assert.match(chat, /sendMessage\(\{ text: value \}\)/);
   assert.match(chat, /quickPrompts\.map/);
-  assert.match(chat, /75_000/);
-  assert.match(chat, /La consulta superó los 75 segundos/);
+  assert.match(chat, /pending\?\.delivered/);
+  assert.match(chat, /Tu consulta está pendiente de atención/);
   assert.match(chat, /La consulta terminó, pero no se redactó la respuesta/);
   assert.match(chat, /Reintentar respuesta/);
   assert.match(chat, /<MessageResponse[^>]*>\{part\.text\}<\/MessageResponse>/);
@@ -213,7 +203,7 @@ test("el perfil personalizado llega al tablero y a las instrucciones del agente"
   assert.match(landing, /Vendedor principal/);
   assert.match(landing, /Administrativo auxiliar/);
   assert.match(overview, /Perfil: \{summary\.profileLabel\}/);
-  assert.match(route, /createStarlimSupervisorAgent\(session, summary\)/);
+  assert.match(read("src/lib/supervisor-lab/dot-mcp.ts"), /question\.principal\.role/);
   assert.match(agent, /Perfil actual: \$\{summary\.profileLabel\}/);
   assert.match(agent, /Prioriza seguimiento de clientes/);
   assert.match(agent, /Prioriza facturas solicitadas/);

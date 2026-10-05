@@ -7,14 +7,11 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
-test("LA TIRRA exige permiso CRM tanto en la pantalla como en la API", () => {
-  const page = read("src/app/supervisor-lab/page.tsx");
-  const route = read("src/app/api/supervisor-lab/chat/route.ts");
-
-  assert.match(page, /requirePagePermission\(session, \[CRM_READ_PERMISSION\]\)/);
-  assert.match(route, /requireSupervisorReadPermission/);
-  assert.match(route, /sessionAllows\(session, \[CRM_READ_PERMISSION\]\)/);
-  assert.match(route, /No tenés permiso para consultar LA TIRRA ia\.1\.1/);
+test("LA TIRRA acepta usuarios internos y aplica su perfil en las lecturas del Dot", () => {
+  assert.match(read("src/app/supervisor-lab/page.tsx"), /requireStaffSession\(\)/);
+  assert.match(read("src/app/api/supervisor-lab/chat/route.ts"), /requireApiSession\(\)/);
+  assert.match(read("src/lib/supervisor-lab/dot-mcp.ts"), /createSupervisorTools\(session\)/);
+  assert.match(read("src/lib/supervisor-lab/dot-data.ts"), /sessionAllows\(session/);
 });
 
 test("las respuestas de consulta enseñan cómo verificar el dato y no inventan fuentes", () => {
@@ -53,7 +50,7 @@ test("el historial de LA TIRRA se compacta antes de viajar o guardarse", () => {
   const memory = read("src/lib/supervisor-lab/chat-memory.ts");
   const compact = read("src/lib/supervisor-lab/message-compact.ts");
 
-  assert.match(chat, /compactSupervisorMessages\(messages\.slice\(-30\)\)/);
+  assert.match(read("src/app/supervisor-lab/use-dot-chat.ts"), /messages:\s*\[message\]/);
   assert.match(route, /compactSupervisorMessages\(\s*parseSupervisorRequestBody/s);
   assert.match(memory, /return compactSupervisorMessages\(/);
   assert.match(memory, /return compactSupervisorMessages\(\s*result\.rows/s);

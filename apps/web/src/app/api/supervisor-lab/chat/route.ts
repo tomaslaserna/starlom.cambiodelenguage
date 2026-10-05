@@ -1,124 +1,44 @@
-import { randomUUID } from "node:crypto";
-import { normalizeRole } from "@/lib/auth";
-import { createAgentUIStreamResponse } from "ai";
-import { ApiError, handleApiError, ok } from "@/lib/api-response";
-import { CRM_READ_PERMISSION, requireApiSession, sessionAllows } from "@/lib/route-auth";
-import { createStarlimSupervisorAgent } from "@/lib/supervisor-lab/agent";
-import { assertSupervisorAiConfigured } from "@/lib/supervisor-lab/availability";
+import { after } from "next/server";
+import { ApiError,handleApiError,ok } from "@/lib/api-response";
+import { requireApiSession } from "@/lib/route-auth";
+import { supervisorAiEnabled } from "@/lib/supervisor-lab/availability";
 import { parseSupervisorRequestBody } from "@/lib/supervisor-lab/request-guard";
 import { compactSupervisorMessages } from "@/lib/supervisor-lab/message-compact";
-import {
-  clearSupervisorChatMemory,
-  getSupervisorChatMemory,
-  saveSupervisorChatMemory,
-  SUPERVISOR_MEMORY_HOURS,
-} from "@/lib/supervisor-lab/chat-memory";
+import { clearSupervisorChatMemory,getSupervisorChatMemory,SUPERVISOR_MEMORY_HOURS } from "@/lib/supervisor-lab/chat-memory";
+import { cancelDotQuestion,dispatchDotQuestions,dotConnected,pendingDotRequest,queueDotQuestion } from "@/lib/supervisor-lab/dot-store";
 import type { StarlimSupervisorMessage } from "@/lib/supervisor-lab/agent";
 
-export const runtime = "nodejs";
-export const maxDuration = 90;
-
+export const runtime="nodejs";
+export const maxDuration=60;
 async function requireSupervisorReadPermission() {
-  const session = await requireApiSession();
-  if (!(await sessionAllows(session, [CRM_READ_PERMISSION]))) {
-    throw new ApiError(403, "No tenés permiso para consultar LA TIRRA ia.1.1");
-  }
+  const session=await requireApiSession();
+  if(!supervisorAiEnabled()) throw new ApiError(404,"LA TIRRA no está habilitada");
   return session;
 }
-
 export async function GET() {
   try {
-    const session = await requireSupervisorReadPermission();
-    const messages = await getSupervisorChatMemory(session);
-    return ok({ messages, memoryHours: SUPERVISOR_MEMORY_HOURS });
-  } catch (error) {
-    return handleApiError(error);
-  }
+    const session=await requireSupervisorReadPermission();
+    const [messages,pending,connected]=await Promise.all([getSupervisorChatMemory(session),pendingDotRequest(session),dotConnected(session)]);
+    if(pending) after(()=>dispatchDotQuestions(session));
+    return ok({messages,pending:pending?{id:pending.id,delivered:Boolean(pending.delivered_at)}:null,connected,memoryHours:SUPERVISOR_MEMORY_HOURS});
+  } catch(error) {return handleApiError(error);}
 }
-
+export async function POST(request:Request) {
+  try {
+    const session=await requireSupervisorReadPermission();
+    if(Number(request.headers.get("content-length")??0)>65000) throw new ApiError(413,"Solicitud demasiado grande");
+    const body=await request.json().catch(()=>null);
+    const messages=compactSupervisorMessages(parseSupervisorRequestBody(body) as StarlimSupervisorMessage[]);
+    const queued=await queueDotQuestion(session,messages);
+    after(()=>dispatchDotQuestions(session));
+    return ok({requestId:queued.id,state:queued.state},202);
+  } catch(error) {return handleApiError(error);}
+}
+export async function PATCH() {
+  try {const session=await requireSupervisorReadPermission();await cancelDotQuestion(session);return ok({cancelled:true});}
+  catch(error) {return handleApiError(error);}
+}
 export async function DELETE() {
-  try {
-    const session = await requireSupervisorReadPermission();
-    await clearSupervisorChatMemory(session);
-    return ok({ cleared: true });
-  } catch (error) {
-    return handleApiError(error);
-  }
-}
-
-function logSupervisorStreamError(error: unknown) {
-  const details =
-    error instanceof Error
-      ? { name: error.name, message: error.message }
-      : { name: "UnknownError", message: String(error) };
-
-  console.error(
-    JSON.stringify({
-      level: "error",
-      event: "Supervisor stream failed",
-      route: "/api/supervisor-lab/chat",
-      ...details,
-    }),
-  );
-
-  return "No se pudo completar la consulta. Reintentá o avisá al administrador.";
-}
-
-export async function POST(request: Request) {
-  const requestId = randomUUID();
-  const startedAt = Date.now();
-  try {
-    const session = await requireSupervisorReadPermission();
-    try {
-      assertSupervisorAiConfigured();
-    } catch (error) {
-      if (error instanceof Error && error.message === "SUPERVISOR_AI_DISABLED") {
-        throw new ApiError(404, "LA TIRRA ia.1.1 no está habilitada");
-      }
-      throw new ApiError(503, "LA TIRRA ia.1.1 no está configurada");
-    }
-
-    const body = await request.json().catch(() => null);
-    const uiMessages = compactSupervisorMessages(
-      parseSupervisorRequestBody(body) as StarlimSupervisorMessage[],
-    );
-    console.info(JSON.stringify({ level: "info", event: "Supervisor request started", requestId, messageCount: uiMessages.length }));
-    await saveSupervisorChatMemory(session, uiMessages);
-    const role = normalizeRole(session.role);
-    const summary = {
-      mode: role === "vendedor" ? "sales" as const : "administrative" as const,
-      profileLabel: role === "vendedor" ? "Vendedor" : role === "operador" ? "Administrativo auxiliar" : "Administrador general",
-    };
-    console.info(JSON.stringify({
-      level: "info", event: "Supervisor response starting", requestId,
-      preflightMs: Date.now() - startedAt,
-    }));
-    return createAgentUIStreamResponse({
-      agent: createStarlimSupervisorAgent(session, summary),
-      uiMessages,
-      originalMessages: uiMessages,
-      generateMessageId: randomUUID,
-      abortSignal: request.signal,
-      timeout: { totalMs: 65_000 },
-      sendSources: true,
-      onStepEnd: ({ stepNumber, finishReason, text, toolCalls }) => {
-        console.info(JSON.stringify({
-          level: "info",
-          event: "Supervisor step completed",
-          requestId,
-          stepNumber,
-          finishReason,
-          textCharacters: text.length,
-          tools: toolCalls.map((call) => call.toolName),
-        }));
-      },
-      onEnd: async ({ messages }) => {
-        await saveSupervisorChatMemory(session, messages);
-        console.info(JSON.stringify({ level: "info", event: "Supervisor request completed", requestId, durationMs: Date.now() - startedAt }));
-      },
-      onError: logSupervisorStreamError,
-    });
-  } catch (error) {
-    return handleApiError(error);
-  }
+  try {const session=await requireSupervisorReadPermission();await cancelDotQuestion(session);await clearSupervisorChatMemory(session);return ok({cleared:true});}
+  catch(error) {return handleApiError(error);}
 }

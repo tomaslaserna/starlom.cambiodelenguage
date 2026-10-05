@@ -19,11 +19,12 @@ function messageText(message: UIMessage) {
 export function compactSupervisorMessages<T extends UIMessage>(
   messages: readonly T[],
   maxMessages = SUPERVISOR_CHAT_CONTEXT_MAX_MESSAGES,
+  maxCharacters = SUPERVISOR_CHAT_MESSAGE_MAX_CHARACTERS,
 ): T[] {
   return messages
     .slice(-maxMessages)
     .map((message) => {
-      const text = messageText(message).slice(0, SUPERVISOR_CHAT_MESSAGE_MAX_CHARACTERS);
+      const text = messageText(message).slice(0, maxCharacters);
       if (!text) return null;
       return {
         id: message.id,

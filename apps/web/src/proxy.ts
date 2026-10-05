@@ -12,6 +12,13 @@ const API_RATE_WINDOW_MS = 60_000;
 const API_RATE_LIMIT = 120;
 const MUTATION_RATE_LIMIT = 40;
 const MAX_ALLOWED_ORIGINS = 20;
+// These endpoints authenticate with OAuth tokens/PKCE, never with a browser cookie.
+const DOT_PROTOCOL_ENDPOINTS = new Set([
+  "/api/supervisor-lab/mcp",
+  "/api/supervisor-lab/oauth/register",
+  "/api/supervisor-lab/oauth/token",
+  "/api/supervisor-lab/oauth/revoke",
+]);
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function clientIp(request: NextRequest) {
@@ -88,7 +95,7 @@ export function proxy(request: NextRequest) {
   const limited = rateLimit(request);
   if (limited) return limited;
 
-  if (MUTATING_METHODS.has(request.method) && !isSameOrigin(request)) {
+  if (MUTATING_METHODS.has(request.method) && !DOT_PROTOCOL_ENDPOINTS.has(request.nextUrl.pathname) && !isSameOrigin(request)) {
     return csrfResponse();
   }
 

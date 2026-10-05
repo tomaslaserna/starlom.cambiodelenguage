@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, getToolName, isToolUIPart } from "ai";
+import { useEffect, useState, type FormEvent } from "react";
+import { useDotChat } from "./use-dot-chat";
+import { getToolName, isToolUIPart } from "ai";
 import { Button, Card, Textarea } from "@/components/ui";
 import { MessageResponse } from "@/components/ai-elements/message";
-import type { StarlimSupervisorMessage } from "@/lib/supervisor-lab/agent";
-import { compactSupervisorMessages } from "@/lib/supervisor-lab/message-compact";
+
 
 const CAPABILITIES = [
   {
@@ -58,23 +57,12 @@ function toolLabel(toolName: string) {
 
 export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
   const [input, setInput] = useState("");
-  const [timedOut, setTimedOut] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(true);
+
+
   const [clearingHistory, setClearingHistory] = useState(false);
   const [memoryError, setMemoryError] = useState("");
   const [expandedChat, setExpandedChat] = useState(false);
-  const transport = useMemo(
-    () => new DefaultChatTransport<StarlimSupervisorMessage>({
-      api: "/api/supervisor-lab/chat",
-      prepareSendMessagesRequest: ({ messages }) => ({
-        body: { messages: compactSupervisorMessages(messages.slice(-30)) },
-      }),
-    }),
-    [],
-  );
-  const { messages, sendMessage, status, error, stop, setMessages } = useChat<StarlimSupervisorMessage>({
-    transport,
-  });
+  const { messages, sendMessage, status, error, stop, setMessages, loadingHistory, connected, pending } = useDotChat();
   const busy = status === "submitted" || status === "streaming";
   const lastMessage = messages.at(-1);
   const completedWithoutText = !busy
@@ -85,47 +73,6 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
     .reverse()
     .find((message) => message.role === "user")
     ?.parts.find((part) => part.type === "text")?.text ?? "";
-
-  useEffect(() => {
-    const controller = new AbortController();
-    async function restoreHistory() {
-      try {
-        const response = await fetch("/api/supervisor-lab/chat", {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        const body = (await response.json()) as {
-          ok?: boolean;
-          messages?: StarlimSupervisorMessage[];
-        };
-        if (!response.ok || !body.ok || !Array.isArray(body.messages)) {
-          throw new Error("No se pudo recuperar la conversación");
-        }
-        setMessages(body.messages);
-      } catch (historyError) {
-        if (!controller.signal.aborted) {
-          setMemoryError(
-            historyError instanceof Error
-              ? historyError.message
-              : "No se pudo recuperar la conversación",
-          );
-        }
-      } finally {
-        if (!controller.signal.aborted) setLoadingHistory(false);
-      }
-    }
-    void restoreHistory();
-    return () => controller.abort();
-  }, [setMessages]);
-
-  useEffect(() => {
-    if (!busy) return;
-    const timeoutId = window.setTimeout(() => {
-      setTimedOut(true);
-      void stop();
-    }, 75_000);
-    return () => window.clearTimeout(timeoutId);
-  }, [busy, stop]);
 
   useEffect(() => {
     if (!expandedChat) return;
@@ -139,7 +86,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
   function submitText(text: string) {
     const value = text.trim();
     if (!value || busy || loadingHistory) return;
-    setTimedOut(false);
+
     void sendMessage({ text: value });
     setInput("");
     window.requestAnimationFrame(() => {
@@ -160,7 +107,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
       const response = await fetch("/api/supervisor-lab/chat", { method: "DELETE" });
       if (!response.ok) throw new Error("No se pudo borrar la conversación anterior");
       setMessages([]);
-      setTimedOut(false);
+
     } catch (clearError) {
       setMemoryError(
         clearError instanceof Error
@@ -249,7 +196,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
           </div>
           <div className="flex items-center gap-2">
             <span className="hidden items-center gap-2 rounded-full bg-[#ecfdf5] px-3 py-1.5 text-xs font-extrabold text-[#047857] sm:inline-flex">
-              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#10b981]" /> Lista para ayudarte
+              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[#10b981]" /> {connected ? "Lista para ayudarte" : "Pendiente de conexión"}
             </span>
             <Button onClick={() => setExpandedChat((current) => !current)} size="sm" type="button" variant="secondary">
               {expandedChat ? "Volver al tamaño normal" : "Ampliar lectura"}
@@ -308,14 +255,14 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
             </div>
           ))}
 
-          {error ? (
-            <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-sm font-semibold text-[#b91c1c]">
-              No se pudo completar la consulta. Reintentá o avisá al administrador.
+          {busy ? (
+            <div role="status" className="rounded-lg border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3 text-sm font-semibold text-[#1e40af]">
+              {pending?.delivered ? "LA TIRRA está consultando tu información. La respuesta aparecerá acá." : "Tu consulta está pendiente de atención. Podés salir y volver: quedará guardada."}
             </div>
           ) : null}
-          {timedOut ? (
-            <div className="rounded-lg border border-[#fde68a] bg-[#fffbeb] px-4 py-3 text-sm font-semibold text-[#92400e]">
-              La consulta superó los 75 segundos y fue detenida. Probá nuevamente; LA TIRRA ia.1.1 no debe quedar pensando indefinidamente.
+          {error ? (
+            <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-3 text-sm font-semibold text-[#b91c1c]">
+              {error.message}
             </div>
           ) : null}
           {completedWithoutText ? (
