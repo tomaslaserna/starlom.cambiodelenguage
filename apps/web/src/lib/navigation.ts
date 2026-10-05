@@ -204,13 +204,6 @@ export const navigationGroups: NavigationGroup[] = [
   },
   { href: "/metrics", label: "Metricas", active: "metrics", permission: ADMIN_METRICS_READ_PERMISSION },
   { href: "/rentabilidad", label: "Rentabilidad", active: "admin", permission: ADMIN_METRICS_READ_PERMISSION },
-  {
-    href: "/admin/approvals",
-    label: "Solicitudes y aprobaciones",
-    active: "admin",
-    badge: "approvals",
-    permission: COLLECTIONS_APPROVE_PERMISSION,
-  },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   { href: "/bank", label: "Banco", active: "bank" },
   { href: "/supervisor-lab", label: "LA TIRRA ia.1.1", active: "supervisor-lab", permission: CRM_READ_PERMISSION },
@@ -279,7 +272,6 @@ export const navigationSections: NavigationSection[] = [
       groupByLabel("Balance"),
       groupByLabel("Metricas"),
       groupByLabel("Rentabilidad"),
-      groupByLabel("Solicitudes y aprobaciones"),
     ],
   },
   {

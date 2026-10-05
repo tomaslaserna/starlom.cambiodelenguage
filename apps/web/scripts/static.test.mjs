@@ -1931,13 +1931,15 @@ test("order comprobante flow separates the commercial remito from stock", () => 
 
 test("orders register exposes the comprobante sequence with fiscal gating", () => {
   const ordersPage = read("apps/web/src/app/orders/page.tsx");
-  assert.match(ordersPage, /hasCompleteFiscalData/);
+  assert.match(ordersPage, /saleOrderDocument\(order\.desiredDocument\)/);
   assert.match(ordersPage, /\/api\/pdfs\/orders\/\$\{order\.id\}\/remito/);
   assert.match(ordersPage, /Remito sin precios/);
   assert.doesNotMatch(ordersPage, /Copia \(chofer\)/, "the chofer copy is redundant with the remito sin precios");
   assert.match(ordersPage, /Remito con precios/);
   assert.match(ordersPage, /precios=si/);
-  assert.match(ordersPage, /canRequestInvoice/, "the fiscal invoice action must be gated by the entregado + fiscal-data state");
+  assert.match(ordersPage, /!requiresInvoice/);
+  assert.match(ordersPage, /requiresInvoice && fiscalApproved/);
+  assert.doesNotMatch(ordersPage, /Solicitar Factura|requestFiscalInvoiceAction/);
 });
 
 test("approving a quote leaves the order loaded with its commercial remito, not a priced delivery", () => {
@@ -1948,35 +1950,29 @@ test("approving a quote leaves the order loaded with its commercial remito, not 
   assert.match(quoteActions, /redirect\("\/orders\?status=cargado"\)/);
 });
 
-test("Solicitar Factura requests a fiscal invoice that ARCA emits on approval", () => {
+test("delivery emits the selected fiscal invoice automatically and removes the approval tab", () => {
   const fiscal = read("apps/web/src/lib/fiscal.ts");
-  assert.match(fiscal, /export async function requestSaleFiscalInvoice/);
-  assert.match(fiscal, /order_status !== "entregado"/, "only delivered orders can request a fiscal invoice");
-  assert.match(fiscal, /hasCompleteFiscalData/);
-  assert.match(fiscal, /metadata->>'action' = 'fiscal_invoice'/);
-  assert.match(fiscal, /WHERE NOT EXISTS/, "requesting an invoice must be idempotent");
+  assert.doesNotMatch(fiscal, /export async function requestSaleFiscalInvoice/);
 
   const approvals = read("apps/web/src/lib/approvals.ts");
-  assert.match(approvals, /metadata\.action === "fiscal_invoice"/);
-  assert.match(approvals, /authorizeSaleFiscalDocument\(session, String\(metadata\.saleId/);
-  // El flujo fiscal viejo (source dedicada) sigue removido.
-  assert.doesNotMatch(approvals, /source: "fiscal"|listPendingFiscalApprovals/);
+  assert.doesNotMatch(approvals, /metadata\.action === "fiscal_invoice"/);
 
   const orders = read("apps/web/src/lib/orders.ts");
-  assert.match(orders, /has_pending_fiscal_request/);
-  assert.match(orders, /COALESCE\(s\.fiscal_status, 'no_enviado'\) AS fiscal_status/);
-  assert.match(orders, /hasPendingFiscalRequest: boolean/);
+  assert.match(orders, /await authorizeSaleFiscalDocument\(session, id\)/);
+  assert.match(orders, /hasCompleteFiscalData/);
+  assert.match(orders, /El cliente no tiene CUIT\/DNI y condicion fiscal completos/);
 
   const actions = read("apps/web/src/app/orders/actions.ts");
-  assert.match(actions, /export async function requestFiscalInvoiceAction/);
-  assert.match(actions, /requestSaleFiscalInvoice/);
-  assert.match(actions, /revalidatePath\("\/admin\/approvals"\)/);
+  assert.doesNotMatch(actions, /requestFiscalInvoiceAction|requestSaleFiscalInvoice/);
+  assert.match(actions, /El pedido quedo entregado, pero la factura no pudo emitirse/);
 
   const ordersPage = read("apps/web/src/app/orders/page.tsx");
-  assert.match(ordersPage, /Solicitar Factura/);
-  assert.match(ordersPage, /Factura Solicitada/);
-  assert.match(ordersPage, /name="clock"/);
+  assert.doesNotMatch(ordersPage, /Solicitar Factura|Factura Solicitada/);
+  assert.match(ordersPage, /Factura pendiente en Fiscal/);
   assert.match(ordersPage, /name="download"/);
+
+  const navigation = read("apps/web/src/lib/navigation.ts");
+  assert.doesNotMatch(navigation, /label: "Solicitudes y aprobaciones"/);
 });
 
 test("editing blocks historical zero-rate orders and derives VAT from the selected document", () => {

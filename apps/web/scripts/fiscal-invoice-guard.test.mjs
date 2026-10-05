@@ -5,6 +5,7 @@ import test from "node:test";
 const fiscalSource = readFileSync(new URL("../src/lib/fiscal.ts", import.meta.url), "utf8");
 const salesPageSource = readFileSync(new URL("../src/app/sales/page.tsx", import.meta.url), "utf8");
 const salesActionsSource = readFileSync(new URL("../src/app/sales/actions.ts", import.meta.url), "utf8");
+const ordersSource = readFileSync(new URL("../src/lib/orders.ts", import.meta.url), "utf8");
 
 test("authorizeSaleFiscalDocument no usa la comparación rota desiredDocument !== 'factura'", () => {
   // El guard comparaba contra el literal "factura", pero los documentos reales
@@ -14,15 +15,16 @@ test("authorizeSaleFiscalDocument no usa la comparación rota desiredDocument !=
   assert.doesNotMatch(fiscalSource, /La factura fiscal debe solicitarse al aprobar el presupuesto/);
 });
 
-test("Registro de ventas permite solicitar una factura elegible", () => {
-  assert.match(salesPageSource, /form action=\{requestFiscalInvoiceAction\}/);
-  assert.match(salesPageSource, /sale\.hasPendingFiscalRequest/);
-  assert.match(salesActionsSource, /requestSaleFiscalInvoice\(session, id\)/);
-  assert.match(salesActionsSource, /requireApiSession\(\[SALES_OPERATE_PERMISSION\]\)/);
+test("entregar un pedido factura A o B emite automaticamente sin solicitud", () => {
+  assert.match(ordersSource, /await authorizeSaleFiscalDocument\(session, id\)/);
+  assert.match(ordersSource, /result\.desiredDocument === "factura_a"/);
+  assert.match(ordersSource, /result\.desiredDocument === "factura_b"/);
+  assert.doesNotMatch(salesPageSource, /requestFiscalInvoiceAction|Solicitar factura/);
+  assert.doesNotMatch(salesActionsSource, /requestSaleFiscalInvoice/);
+  assert.doesNotMatch(fiscalSource, /export async function requestSaleFiscalInvoice/);
 });
 
 test("la facturacion usa el CUIT vigente del cliente si la venta guardo un documento vacio", () => {
   assert.doesNotMatch(fiscalSource, /COALESCE\(s\.client_document, c\.tax_id, ''\)/);
-  assert.match(fiscalSource, /COALESCE\(NULLIF\(BTRIM\(s\.client_document\), ''\), c\.tax_id, ''\) AS tax_id/);
   assert.match(fiscalSource, /COALESCE\(NULLIF\(BTRIM\(s\.client_document\), ''\), c\.tax_id, ''\) AS client_document/);
 });

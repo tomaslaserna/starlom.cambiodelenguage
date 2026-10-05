@@ -216,7 +216,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                   <DataTableCell colSpan={7}>
                     <EmptyState
                       title="No hay comprobantes para estos filtros"
-                      description="Ajusta los filtros o revisa las facturas pendientes en Solicitudes y aprobaciones."
+                      description="Ajusta los filtros o revisa los pedidos con error de emisión fiscal."
                     />
                   </DataTableCell>
                 </DataTableRow>

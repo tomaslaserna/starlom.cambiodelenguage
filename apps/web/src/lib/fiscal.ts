@@ -7,7 +7,6 @@ import {
   receiptTypeForArcaVatCondition,
   type ArcaAuthorizedReceipt,
 } from "@/lib/arca/wsfe";
-import { hasCompleteFiscalData } from "@/lib/client-fiscal";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { invoiceSaleOrderDocument, normalizeDesiredDocument, receiptTypeCode } from "@/lib/receipt-types";
@@ -190,7 +189,7 @@ class ArcaFiscalProvider implements FiscalProvider {
     const missingEnv = arcaMissingEnv();
     let pointOfSale: number | undefined;
     let ready = false;
-    let message = "ARCA configurado. Las facturas se autorizan por WSAA/WSFEv1 desde Solicitudes y aprobaciones.";
+    let message = "ARCA configurado. Las facturas se autorizan automaticamente al entregar el pedido.";
 
     if (missingEnv.length === 0) {
       try {
@@ -261,97 +260,6 @@ export function fiscalStatusLabel(value: string) {
 
 export function isFiscalApproved(status: string, cae: string) {
   return status === "aprobado" && cae.trim() !== "";
-}
-
-// Crea una solicitud de factura para un pedido entregado. La emisión real contra ARCA
-// ocurre recién al aprobarla en Solicitudes y aprobaciones (ver resolveGenericApproval).
-// Idempotente: no inserta si ya hay una solicitud fiscal pendiente para ese pedido.
-export async function requestSaleFiscalInvoice(session: AuthSession, saleId: string) {
-  const result = await withCompanyContext(session.companyId, async (client) => {
-    const saleResult = await client.query<{
-      order_status: string;
-      fiscal_status: string;
-      cae: string;
-      total_amount: string;
-      client_name: string;
-      tax_id: string;
-      fiscal_condition: string;
-    }>(
-      `
-        SELECT ${normalizedOrderStatusSql("s")} AS order_status,
-               COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
-               COALESCE(s.cae, '') AS cae,
-               COALESCE(s.total_amount, 0)::text AS total_amount,
-               COALESCE(s.client_name, c.display_name, '') AS client_name,
-               COALESCE(NULLIF(BTRIM(s.client_document), ''), c.tax_id, '') AS tax_id,
-               COALESCE(c.fiscal_condition, '') AS fiscal_condition
-        FROM sales s
-        LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
-        WHERE s.id = $1::uuid AND s.empresa_id = $2
-        LIMIT 1
-      `,
-      [saleId, session.companyId],
-    );
-    const sale = saleResult.rows[0];
-    if (!sale) throw new ApiError(404, "Pedido no encontrado");
-    if (sale.order_status !== "entregado") {
-      throw new ApiError(409, "Solo se puede solicitar factura de un pedido entregado");
-    }
-    if (!hasCompleteFiscalData({ taxId: sale.tax_id, fiscalCondition: sale.fiscal_condition })) {
-      throw new ApiError(400, "El cliente no tiene datos fiscales completos para facturar");
-    }
-    if (isFiscalApproved(sale.fiscal_status, sale.cae)) {
-      throw new ApiError(409, "La venta ya tiene factura fiscal aprobada");
-    }
-
-    const metadata = { action: "fiscal_invoice", saleId };
-    const request = await client.query<{ id: string }>(
-      `
-        INSERT INTO app_solicitudes (
-          tipo, titulo, detalle, monto, solicitante, estado, metadata, empresa_id
-        )
-        SELECT 'factura', $3, $4, $5, $6, 'pendiente', $7::jsonb, $2
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM app_solicitudes
-          WHERE empresa_id = $2
-            AND estado = 'pendiente'
-            AND metadata->>'action' = 'fiscal_invoice'
-            AND metadata->>'saleId' = $1
-        )
-        RETURNING id::text AS id
-      `,
-      [
-        saleId,
-        session.companyId,
-        `Factura ${sale.client_name || "sin cliente"}`,
-        `Pedido ${saleId} - Cliente ${sale.client_name || "sin cliente"}`,
-        Number(sale.total_amount),
-        session.username,
-        JSON.stringify(metadata),
-      ],
-    );
-    if (!request.rows[0]) {
-      throw new ApiError(409, "Ya existe una solicitud de factura pendiente para este pedido");
-    }
-
-    await client.query(
-      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1, $2, $3, $4, $5, $6)",
-      [
-        session.userId,
-        "fiscal.invoice_requested",
-        "sales",
-        saleId,
-        JSON.stringify({ requestId: request.rows[0].id }),
-        session.companyId,
-      ],
-    );
-
-    return { id: request.rows[0].id, saleId };
-  });
-
-  clearReadQueryCache();
-  return result;
 }
 
 export async function requestSaleFiscalNote(session: AuthSession, saleId: string, operationalDocumentId: string) {
@@ -797,7 +705,7 @@ export async function rejectSaleFiscalDocument(session: AuthSession, saleId: str
     throw new ApiError(400, "La factura ya fue aprobada fiscalmente y no puede rechazarse desde la bandeja.");
   }
 
-  const message = reason.trim() || "Rechazada desde Solicitudes y aprobaciones";
+  const message = reason.trim() || "Rechazada desde Fiscal";
   await markSaleFiscalFailure(session, sale.id, "rechazado", message);
   return { id: sale.id, state: "rechazado" as const };
 }

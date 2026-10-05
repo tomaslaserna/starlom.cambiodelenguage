@@ -924,7 +924,7 @@ export async function listSalesLedger(companyId: number, searchParams: URLSearch
       paymentCondition: row.condicion_pago,
       collectionStatus: row.estado_cobro || "pendiente",
       trackingStatus: row.seguimiento || "no_facturada",
-      fiscalRequested: row.documento_deseado === "factura",
+      fiscalRequested: ["factura", "factura_a", "factura_b"].includes(row.documento_deseado),
       orderStatus: row.estado_pedido,
       customerName: row.nombre_cliente,
       customerDocument: row.dni_cliente,

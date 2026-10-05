@@ -29,12 +29,11 @@ export async function getInvoiceCoverageSummary(companyId: number): Promise<Invo
   }>(
     companyId,
     `
-      WITH invoice_customers AS (
+      WITH invoice_orders AS (
         SELECT s.*
         FROM sales s
-        JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
         WHERE s.empresa_id = $1
-          AND regexp_replace(lower(BTRIM(COALESCE(c.receipt_type, ''))), '[^a-z0-9]+', '', 'g')
+          AND regexp_replace(lower(BTRIM(COALESCE(s.desired_document, ''))), '[^a-z0-9]+', '', 'g')
             IN ('facturaa', 'facturab', 'facturac')
       ), coverage AS (
         SELECT
@@ -43,7 +42,7 @@ export async function getInvoiceCoverageSummary(companyId: number): Promise<Invo
             COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
             AND COALESCE(s.cae, '') <> ''
           ) AS invoiced
-        FROM invoice_customers s
+        FROM invoice_orders s
       )
       SELECT
         COUNT(*) FILTER (WHERE order_status <> 'cancelado')::text AS loaded,

@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api-response";
+import { hasCompleteFiscalData } from "@/lib/client-fiscal";
 import { reactivateClientIfInactive } from "@/lib/client-reactivation";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { summarizeDurations } from "@/lib/delivery-times";
@@ -32,6 +33,7 @@ import { textField, uuidParam, type RequestBody } from "@/lib/request-body";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { assertSaleStockAvailableForConfirmation, discountSaleStockOnDelivery } from "@/lib/stock";
 import { createDeliveryDocumentForSale } from "@/lib/deliveries";
+import { authorizeSaleFiscalDocument } from "@/lib/fiscal";
 import { localDateIso } from "@/lib/timezone";
 import { monthRange } from "@/lib/month-range";
 import {
@@ -1364,13 +1366,18 @@ export async function updateOrderStatus(
       desired_document: string;
       receipt_type: number;
       vat_rate: string;
+      client_document: string;
+      fiscal_condition: string;
     }>(
       `
         SELECT ${normalizedOrderStatusSql("s")} AS estado_pedido,
                COALESCE(s.desired_document, '') AS desired_document,
                COALESCE(s.receipt_type, 0) AS receipt_type,
-               COALESCE(s.vat_rate, 0)::text AS vat_rate
+               COALESCE(s.vat_rate, 0)::text AS vat_rate,
+               COALESCE(NULLIF(BTRIM(s.client_document), ''), c.tax_id, '') AS client_document,
+               COALESCE(c.fiscal_condition, '') AS fiscal_condition
         FROM sales s
+        LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
         WHERE s.id = $1::uuid AND s.empresa_id = $2
         LIMIT 1
         FOR UPDATE OF s
@@ -1381,6 +1388,7 @@ export async function updateOrderStatus(
     if (!order) throw new ApiError(404, "Pedido no encontrado");
 
     const currentStatus = normalizeOrderStatus(order.estado_pedido);
+    const desiredDocument = saleOrderDocument(order.desired_document);
     const transitionError = orderStatusTransitionError(currentStatus, nextStatus);
     if (transitionError) throw new ApiError(400, transitionError);
 
@@ -1395,6 +1403,20 @@ export async function updateOrderStatus(
       throw new ApiError(
         409,
         "El pedido no tiene un comprobante e IVA consistentes. Corregilo antes de confirmarlo o entregarlo.",
+      );
+    }
+
+    if (
+      nextStatus === "entregado"
+      && (desiredDocument === "factura_a" || desiredDocument === "factura_b")
+      && !hasCompleteFiscalData({
+        taxId: order.client_document,
+        fiscalCondition: order.fiscal_condition,
+      })
+    ) {
+      throw new ApiError(
+        409,
+        "El cliente no tiene CUIT/DNI y condicion fiscal completos para emitir la factura al entregar.",
       );
     }
 
@@ -1460,11 +1482,23 @@ export async function updateOrderStatus(
       ],
     );
 
-    return { status: nextStatus, stockDiscounted, delivery };
+    return { status: nextStatus, stockDiscounted, delivery, desiredDocument };
   });
 
+  let fiscalError = "";
+  if (
+    nextStatus === "entregado"
+    && (result.desiredDocument === "factura_a" || result.desiredDocument === "factura_b")
+  ) {
+    try {
+      await authorizeSaleFiscalDocument(session, id);
+    } catch (error) {
+      fiscalError = error instanceof Error ? error.message : "No se pudo emitir la factura en ARCA.";
+    }
+  }
+
   clearReadQueryCache();
-  return result;
+  return { ...result, fiscalError };
 }
 
 export async function updateOrderCollectionStatus(
