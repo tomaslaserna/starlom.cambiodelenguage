@@ -120,8 +120,12 @@ export async function postWebhook(urlValue, body, headers, resolve = lookup) {
         method: "POST",
         headers,
         timeout: 10000,
-        lookup: (_hostname, _options, callback) =>
-          callback(null, destination.address, destination.family),
+        // Node's automatic family selection requests all addresses. Return the
+        // pinned, validated address in the shape requested by its resolver.
+        lookup: (_hostname, options, callback) =>
+          options.all
+            ? callback(null, [destination])
+            : callback(null, destination.address, destination.family),
       },
       (response) => {
         let responseBody = "";

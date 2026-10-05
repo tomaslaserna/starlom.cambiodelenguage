@@ -3,11 +3,42 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createHmac } from "node:crypto";
+import https from "node:https";
+import { EventEmitter } from "node:events";
 import ts from "typescript";
 import * as protocol from "../src/lib/supervisor-lab/dot-protocol.mjs";
 import { compileDotQuery } from "../src/lib/supervisor-lab/dot-query.mjs";
 
 const require = createRequire(import.meta.url);
+test("webhook transport pins validated DNS in both Node resolver modes", async (t) => {
+  const destination = { address: "93.184.216.34", family: 4 };
+  t.mock.method(https, "request", (url, options, receive) => {
+    assert.equal(url.hostname, "receiver.example.com");
+    options.lookup(url.hostname, { all: true }, (error, addresses) => {
+      assert.equal(error, null);
+      assert.deepEqual(addresses, [destination]);
+    });
+    options.lookup(url.hostname, { all: false }, (error, address, family) => {
+      assert.equal(error, null);
+      assert.equal(address, destination.address);
+      assert.equal(family, destination.family);
+    });
+    const request = new EventEmitter();
+    request.end = (body) => {
+      assert.equal(body, "{}");
+      const response = new EventEmitter();
+      response.statusCode = 200;
+      receive(response);
+      queueMicrotask(() => response.emit("end"));
+    };
+    return request;
+  });
+  const result = await protocol.postWebhook(
+    "https://receiver.example.com/callback", "{}", {},
+    async () => [destination, { address: "8.8.8.8", family: 4 }],
+  );
+  assert.equal(result.status, 200);
+});
 class ApiError extends Error {
   constructor(status, message) {
     super(message);
