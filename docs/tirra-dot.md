@@ -33,3 +33,9 @@ Desde `apps/web`: `npm run test:supervisor-evaluation`, `npx --no-install tsc --
 `node --env-file=<ruta-del-env> scripts/tirra-dot-db-check.mjs` prueba el esquema, la cola, deduplicación, respuesta, cancelación y aislamiento con PostgreSQL real. Abre una transacción y revierte todo, incluidas migraciones de prueba. La entrega HTTP y la identidad se simulan en esa prueba; la conexión real requiere el paso 6.
 
 Referencia de protocolo: https://developers.openai.com/plugins/build/mcp-events
+
+## Prueba real del 5 de octubre de 2026
+
+El complemento privado «StarLim · LA TIRRA» quedó conectado por OAuth a la cuenta de ChatGPT. El Dot guardó una única tarea «Responder consultas de StarLim» y StarLim registró una suscripción activa. Una consulta enviada desde `/supervisor-lab` sobre lavandina fue entregada en el primer intento y terminó en estado `answered`, con una respuesta de 3002 caracteres publicada por el Dot en esa misma pantalla. Se contrastaron sus seis productos y 21 precios de siete listas con PostgreSQL. Esta prueba se hizo con un administrador; no constituye una prueba real de todas las consultas ni de todos los perfiles.
+
+El consentimiento usa un POST JSON desde el mismo origen, con nonce para el script, validación de origen y consentimiento cifrado ligado al usuario y a la empresa. El transporte de eventos conserva el hostname para TLS y fija la dirección DNS previamente validada; devuelve un arreglo cuando Node solicita `lookup({ all: true })` y una dirección cuando solicita el modo individual. El formato anterior producía `ERR_INVALID_IP_ADDRESS` con Node 24 y bloqueaba la verificación del callback. Una prueba de regresión cubre ambos modos sin permitir direcciones adicionales a las validadas.
