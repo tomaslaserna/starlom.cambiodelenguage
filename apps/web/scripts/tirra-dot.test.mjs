@@ -341,4 +341,30 @@ test("OAuth consent posts to an explicit same-origin action and allows only appr
   const response = await route.GET(new Request("https://starlim.vercel.app/api/supervisor-lab/oauth/authorize?state=test"));
   assert.match(await response.text(), /<form method="post" action="\/api\/supervisor-lab\/oauth\/authorize">/);
   assert.match(response.headers.get("content-security-policy"), /https:\/\/chatgpt\.com\/connector_platform_oauth_redirect/);
+  assert.match(response.headers.get("content-security-policy"), /script-src 'nonce-[A-Za-z0-9+/=]+'; connect-src 'self'/);
+});
+
+test("OAuth JSON submission validates origin, consent identity and expiry before returning the callback", async () => {
+  const session = { userId: "owner", companyId: 1 };
+  let grantCalls = 0;
+  const route = load("../src/app/api/supervisor-lab/oauth/authorize/route.ts", {
+    "@/lib/auth": {},
+    "@/lib/api-response": { ApiError, handleApiError: (error) => Response.json({ error: error.message }, { status: error.status }) },
+    "@/lib/route-auth": { requireApiSession: async () => session },
+    "@/lib/supervisor-lab/dot-auth": { decryptDotSecret: (value) => value, authorizeDot: async () => { grantCalls++; return new URL("https://chatgpt.com/connector_platform_oauth_redirect?code=test"); } },
+  });
+  const submit = (consent, origin = "https://starlim.vercel.app") => route.POST(new Request("https://starlim.vercel.app/api/supervisor-lab/oauth/authorize", {
+    method: "POST", headers: { Origin: origin, Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ consent: JSON.stringify(consent) }),
+  }));
+  const valid = { ...session, expires: Date.now() + 300000, query: "state=test" };
+  assert.equal((await submit(valid, "https://untrusted.example")).status, 403);
+  assert.equal((await submit({ ...valid, userId: "other" })).status, 403);
+  assert.equal((await submit({ ...valid, expires: Date.now() - 1 })).status, 403);
+  assert.equal(grantCalls, 0);
+  const response = await submit(valid);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).redirect, "https://chatgpt.com/connector_platform_oauth_redirect?code=test");
+  assert.equal(grantCalls, 1);
+  assert.equal(response.headers.get("cache-control"), "no-store");
 });
