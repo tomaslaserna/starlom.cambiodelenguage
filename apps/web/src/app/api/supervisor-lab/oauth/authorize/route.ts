@@ -33,13 +33,13 @@ export async function GET(request: Request) {
       }),
     );
     return new Response(
-      `<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Conectar LA TIRRA a tu Dot</title><body><main><h1>Conectar LA TIRRA a tu Dot</h1><p>Cuenta: ${escapeHtml(session.displayName)} · ${escapeHtml(session.companyName)}</p><p>El Dot podrá atender consultas enviadas por los usuarios de StarLim, leer los datos permitidos para cada usuario y publicar respuestas en su conversación.</p><p>No podrá modificar precios, clientes, stock, ventas, compras, facturas ni pagos. Esta conexión no llama a la API paga de OpenAI ni compra créditos.</p><form method="post"><input type="hidden" name="consent" value="${escapeHtml(consent)}"><button type="submit">Conectar Dot con StarLim</button></form><p><a href="/supervisor-lab">Volver a LA TIRRA</a></p></main></body></html>`,
+      `<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Conectar LA TIRRA a tu Dot</title><body><main><h1>Conectar LA TIRRA a tu Dot</h1><p>Cuenta: ${escapeHtml(session.displayName)} · ${escapeHtml(session.companyName)}</p><p>El Dot podrá atender consultas enviadas por los usuarios de StarLim, leer los datos permitidos para cada usuario y publicar respuestas en su conversación.</p><p>No podrá modificar precios, clientes, stock, ventas, compras, facturas ni pagos. Esta conexión no llama a la API paga de OpenAI ni compra créditos.</p><form method="post" action="/api/supervisor-lab/oauth/authorize"><input type="hidden" name="consent" value="${escapeHtml(consent)}"><button type="submit">Conectar Dot con StarLim</button></form><p><a href="/supervisor-lab">Volver a LA TIRRA</a></p></main></body></html>`,
       {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store",
           "Content-Security-Policy":
-            "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+            "default-src 'none'; form-action 'self' https://chatgpt.com/connector_platform_oauth_redirect https://chatgpt.com/connector/oauth/; frame-ancestors 'none'; base-uri 'none'",
           "X-Frame-Options": "DENY",
           "Referrer-Policy": "no-referrer",
         },

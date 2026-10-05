@@ -322,3 +322,23 @@ test("full assistant replies survive storage compaction", () => {
     answer,
   );
 });
+
+test("OAuth consent posts to an explicit same-origin action and allows only approved ChatGPT callback redirects", async () => {
+  const config = load("../next.config.ts", {}).default;
+  const rules = await config.headers();
+  const normal = rules.find((rule) => rule.source === "/:path*");
+  const oauth = rules.find((rule) => rule.source === "/api/supervisor-lab/oauth/authorize");
+  const csp = (rule) => rule.headers.find((header) => header.key === "Content-Security-Policy").value;
+  assert.match(csp(normal), /form-action 'self';/);
+  assert.match(csp(oauth), /form-action 'self' https:\/\/chatgpt\.com\/connector_platform_oauth_redirect https:\/\/chatgpt\.com\/connector\/oauth\//);
+  assert.doesNotMatch(csp(oauth), /form-action[^;]*\*/);
+  const route = load("../src/app/api/supervisor-lab/oauth/authorize/route.ts", {
+    "@/lib/auth": { isAdminRole: () => true },
+    "@/lib/api-response": { ApiError, handleApiError: (error) => { throw error; } },
+    "@/lib/route-auth": { requireApiSession: async () => ({ userId: "owner", companyId: 1, displayName: "Test", companyName: "StarLim" }) },
+    "@/lib/supervisor-lab/dot-auth": { validateAuthorization: async () => {}, encryptDotSecret: () => "test-consent" },
+  });
+  const response = await route.GET(new Request("https://starlim.vercel.app/api/supervisor-lab/oauth/authorize?state=test"));
+  assert.match(await response.text(), /<form method="post" action="\/api\/supervisor-lab\/oauth\/authorize">/);
+  assert.match(response.headers.get("content-security-policy"), /https:\/\/chatgpt\.com\/connector_platform_oauth_redirect/);
+});
