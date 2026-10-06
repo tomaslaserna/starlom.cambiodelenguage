@@ -328,7 +328,7 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
     /label: "Operaciones"[\s\S]*groupByLabel\("Pedidos"\)[\s\S]*groupByLabel\("Registro de ventas"\)[\s\S]*groupByLabel\("Presupuestos"\)[\s\S]*groupByLabel\("Fiscal"\)/,
   );
   assert.match(navigation, /href: "\/billing",\s*label: "Fiscal"/);
-  assert.match(navigation, /href: "\/metrics", label: "Metricas"/);
+  assert.doesNotMatch(navigation, /href: "\/metrics", label: "Metricas"/);
   assert.match(navigation, /href: "\/rentabilidad", label: "Rentabilidad"/);
   assert.match(navigation, /href: "\/balance",\s*label: "Balance",\s*active: "balance"/);
   assert.match(

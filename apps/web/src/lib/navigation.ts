@@ -202,7 +202,6 @@ export const navigationGroups: NavigationGroup[] = [
     active: "employees",
     permission: EMPLOYEES_READ_PERMISSION,
   },
-  { href: "/metrics", label: "Metricas", active: "metrics", permission: ADMIN_METRICS_READ_PERMISSION },
   { href: "/rentabilidad", label: "Rentabilidad", active: "admin", permission: ADMIN_METRICS_READ_PERMISSION },
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   { href: "/bank", label: "Banco", active: "bank" },
@@ -270,7 +269,6 @@ export const navigationSections: NavigationSection[] = [
     icon: "trend",
     groups: [
       groupByLabel("Balance"),
-      groupByLabel("Metricas"),
       groupByLabel("Rentabilidad"),
     ],
   },
