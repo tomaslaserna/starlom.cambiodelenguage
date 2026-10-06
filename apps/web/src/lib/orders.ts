@@ -83,6 +83,7 @@ export type OrderSummary = {
   outstandingAmount: number;
   netAmount: number;
   vatAmount: number;
+  itemCount: number;
   receiptNumber: number;
   paymentCondition: string;
   date: string | null;
@@ -92,6 +93,7 @@ export type OrderSummary = {
   desiredDocument: string;
   stockDiscounted: boolean;
   observation: string;
+  priority: OrderPriority;
   vatRate: StoredVatRate;
   fiscalStatus: string;
   hasPendingFiscalRequest: boolean;
@@ -148,6 +150,7 @@ type BasicOrderLineInput = {
 };
 
 export type OrderVatRate = SaleVatRate;
+export type OrderPriority = "baja" | "media" | "alta";
 
 const DEFAULT_COMPANY_ID = 1;
 const COLLECTION_STATES = ["pendiente", "cancelado"] as const;
@@ -180,6 +183,7 @@ function mapOrder(row: {
   desired_document: string;
   stock_discounted: boolean;
   notes: string;
+  order_priority: string;
   vat_rate: string;
   fiscal_status: string;
   has_pending_fiscal_request: boolean;
@@ -213,6 +217,7 @@ function mapOrder(row: {
     outstandingAmount: Number(row.saldo_pendiente),
     netAmount,
     vatAmount,
+    itemCount: Number(row.item_count),
     receiptNumber: Number(row.receipt_number ?? 0),
     paymentCondition: row.payment_condition,
     date: row.fecha,
@@ -222,6 +227,7 @@ function mapOrder(row: {
     desiredDocument: row.desired_document,
     stockDiscounted: row.stock_discounted,
     observation: row.notes,
+    priority: isOrderPriority(row.order_priority) ? row.order_priority : "media",
     vatRate,
     fiscalStatus: row.fiscal_status,
     hasPendingFiscalRequest: row.has_pending_fiscal_request,
@@ -346,6 +352,7 @@ export async function listOrders(input: ListInput = {}) {
              COALESCE(s.desired_document, '') AS desired_document,
              s.stock_discounted,
              COALESCE(s.notes, '') AS notes,
+             COALESCE(s.order_priority, 'media') AS order_priority,
              COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
              COALESCE(adjustments.credit_note_amount, 0)::text AS credit_note_amount,
              COALESCE(adjustments.debit_note_amount, 0)::text AS debit_note_amount,
@@ -452,6 +459,7 @@ export async function getOrder(companyId: number, id: string): Promise<OrderDeta
              COALESCE(s.desired_document, '') AS desired_document,
              s.stock_discounted,
              COALESCE(s.notes, '') AS notes,
+             COALESCE(s.order_priority, 'media') AS order_priority,
              COALESCE(s.fiscal_status, 'no_enviado') AS fiscal_status,
              COALESCE(adjustments.credit_note_amount, 0)::text AS credit_note_amount,
              COALESCE(adjustments.debit_note_amount, 0)::text AS debit_note_amount,
@@ -1068,6 +1076,11 @@ export function basicOrderInputFromBody(body: RequestBody) {
     date: textField(body, "date") || textField(body, "fecha") || localDateIso(),
     priceListOverride: textField(body, "priceListOverride") || textField(body, "lista_precios"),
     observation: textField(body, "observation") || textField(body, "observacion"),
+    priority: (() => {
+      const value = textField(body, "priority") || textField(body, "urgencia");
+      if (!isOrderPriority(value)) throw new ApiError(400, "Selecciona la urgencia del pedido");
+      return value;
+    })(),
     requestedDocument: (() => {
       const value = textField(body, "requestedDocument") || textField(body, "comprobante_pedido");
       if (!value) return "" as const;
@@ -1110,10 +1123,10 @@ export async function createBasicOrder(
           sale_number, commercial_number, client_id, seller_id, client_name, client_document, price_list_name,
           total_amount, receipt_number, receipt_type, payment_condition, source_payment_term_days, sale_date, seller_name,
           collection_status, order_status, desired_document, notes, vat_rate,
-          stock_discounted, status, empresa_id
+          stock_discounted, status, order_priority, empresa_id
         )
         VALUES ($1, $2, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                'no_aplica', 'cargado', $15, $16, $17, false, 'cargado', $18)
+                'no_aplica', 'cargado', $15, $16, $17, false, 'cargado', $18, $19)
         RETURNING id::text AS id
       `,
       [
@@ -1134,6 +1147,7 @@ export async function createBasicOrder(
         desiredDocument,
         input.observation,
         vatRate,
+        input.priority,
         session.companyId,
       ],
     );
@@ -1149,6 +1163,7 @@ export async function createBasicOrder(
           id: orderId,
           usuario: session.username,
           cliente: customer.display_name,
+          urgencia: input.priority,
           lista_precios: priceListName,
           comprobante: desiredDocument,
           subtotal: amounts.netAmount,
@@ -1238,9 +1253,10 @@ export async function updateBasicOrder(
             desired_document = $11,
             notes = $12,
             vat_rate = $13,
+            order_priority = $14,
             stock_discounted = false,
             updated_at = now()
-        WHERE id = $14::uuid AND empresa_id = $15
+        WHERE id = $15::uuid AND empresa_id = $16
       `,
       [
         customer.id,
@@ -1256,6 +1272,7 @@ export async function updateBasicOrder(
         desiredDocument,
         input.observation,
         vatRate,
+        input.priority,
         id,
         session.companyId,
       ],
@@ -1269,6 +1286,7 @@ export async function updateBasicOrder(
         "pedido.modificado",
         JSON.stringify({
           id,
+          urgencia: input.priority,
           usuario: session.username,
           cliente: customer.display_name,
           lista_precios: priceListName,
@@ -1499,6 +1517,10 @@ export async function updateOrderStatus(
 
   clearReadQueryCache();
   return { ...result, fiscalError };
+}
+
+function isOrderPriority(value: string): value is OrderPriority {
+  return value === "baja" || value === "media" || value === "alta";
 }
 
 export async function updateOrderCollectionStatus(

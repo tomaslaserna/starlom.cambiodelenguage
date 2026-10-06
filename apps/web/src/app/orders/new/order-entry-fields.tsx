@@ -17,13 +17,13 @@ import {
   Select,
 } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import { DEFAULT_PRICE_LIST_NAME, priceForList, resolvePriceListName, samePriceListName } from "@/lib/order-pricing";
+import { DEFAULT_PRICE_LIST_NAME, priceForList, resolvePriceListName } from "@/lib/order-pricing";
 import { presentationPriceForLine, presentationSuggestion } from "@/lib/presentation-pricing";
 import { offerLineDiscount } from "@/lib/offer-status";
 import type { PriceOffer } from "@/lib/price-offers";
 import { localDateIso } from "@/lib/timezone";
 import { desiredDocumentLabel, invoiceSaleOrderDocument, saleOrderDocument, saleVatRateForDocument } from "@/lib/receipt-types";
-import type { OrderFormClient, OrderFormPriceList, OrderFormProduct } from "@/lib/orders";
+import type { OrderFormClient, OrderFormPriceList, OrderFormProduct, OrderPriority } from "@/lib/orders";
 import { OrderConfirmationPreview } from "@/app/orders/new/order-confirmation-preview";
 import type { IvaRate } from "@/lib/order-confirmation";
 import { vatAmountsFromNet } from "@/lib/vat-calculation";
@@ -54,6 +54,8 @@ export type OrderEntryInitialValue = {
   date: string;
   observation: string;
   priceListOverride: string;
+  desiredDocument?: string;
+  priority?: OrderPriority;
   vatRate?: number;
   lines: OrderLineDraft[];
   occasionalLines?: OccasionalLineDraft[];
@@ -113,7 +115,11 @@ export function OrderEntryFields({
   const [date, setDate] = useState(() => initialValue?.date || localDateIso());
   const [observation, setObservation] = useState(initialValue?.observation ?? "");
   const [priceListOverride, setPriceListOverride] = useState(initialValue?.priceListOverride ?? "");
-  const [requestedDocument, setRequestedDocument] = useState<"habitual" | "remito" | "factura">("habitual");
+  const [requestedDocument, setRequestedDocument] = useState<"habitual" | "remito" | "factura">(
+    initialValue?.desiredDocument === "remito" ? "remito" : initialValue?.desiredDocument ? "factura" : "habitual",
+  );
+  const [priority, setPriority] = useState<OrderPriority | "">(initialValue?.priority ?? "");
+  const [setupStep, setSetupStep] = useState(initialValue ? 5 : 0);
   const [draftError, setDraftError] = useState("");
   const lineIdRef = useRef(initialValue?.lines.length ?? 0);
   const occasionalIdRef = useRef(initialValue?.occasionalLines?.length ?? 0);
@@ -258,9 +264,11 @@ export function OrderEntryFields({
   const draftHasPrice = draftUnitPrice > 0;
   const missingDraftPrice = Boolean(draftProduct && !draftHasPrice);
   const canAddLine = Boolean(selectedClient && draftProduct && draftQuantity > 0 && draftHasPrice);
+  const setupComplete = setupStep >= 5 && Boolean(selectedClient && activePriceList && desiredDocument && date && priority);
   const canSubmit = Boolean(selectedClient)
     && (calculatedLines.some((line) => line.quantity > 0) || calculatedOccasionalLines.some((line) => line.quantity > 0))
     && hasConfiguredDocument
+    && setupComplete
     && (initialValue?.vatRate === undefined || initialValue.vatRate > 0);
 
   const payload: Array<Record<string, string | number>> = calculatedLines.map((line) => ({
@@ -376,81 +384,116 @@ export function OrderEntryFields({
   return (
     <div className="grid gap-4">
       <input name="productsJson" type="hidden" value={JSON.stringify(payload)} />
+      <input name="customerId" type="hidden" value={customerId} />
       <input name="date" type="hidden" value={date} />
       <input name="observation" type="hidden" value={observation} />
       <input name="priceListOverride" type="hidden" value={activePriceList} />
       <input name="requestedDocument" type="hidden" value={requestedDocument === "habitual" ? "" : requestedDocument} />
+      <input name="priority" type="hidden" value={priority} />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_180px]">
-        <Field htmlFor="order-customer" label="Cliente" required>
-          <SearchableSelect
-            id="order-customer"
-            name="customerId"
-            options={clientOptions}
-            placeholder="Seleccionar cliente"
-            required
-            value={customerId}
-            onChange={(nextCustomerId) => {
-              const nextClient = clients.find((client) => client.id === nextCustomerId) ?? null;
-              setCustomerId(nextCustomerId);
-              setPriceListOverride(resolvePriceListName(nextClient?.priceList, priceListOptions));
-              setRequestedDocument("habitual");
-            }}
-          />
-        </Field>
-        <Field htmlFor="order-date" label="Fecha de entrega">
-          <Input id="order-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-        </Field>
-      </div>
-
-      {selectedClient ? (
-        <div className="grid gap-3 rounded-lg border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4 md:grid-cols-2 xl:grid-cols-4">
+      <Card className="overflow-visible shadow-none">
+        <CardContent className="grid gap-5 p-5">
           <div>
-            <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Condicion fiscal</div>
-            <div className="erp-text-body-sm font-bold">{selectedClient.fiscalCondition || "-"}</div>
-          </div>
-          <Field htmlFor="order-document" label="Comprobante de este pedido">
-            <Select
-              id="order-document"
-              value={requestedDocument}
-              onChange={(event) => setRequestedDocument(event.target.value as "habitual" | "remito" | "factura")}
-            >
-              <option value="habitual">Habitual: {habitualDocument ? desiredDocumentLabel(habitualDocument) : "sin configurar"}</option>
-              <option value="remito">Remito</option>
-              <option value="factura">Factura</option>
-            </Select>
-            <div className="mt-1 text-xs text-[color:var(--muted)]">
-              Se aplicará {desiredDocument ? `${desiredDocumentLabel(desiredDocument)} · IVA ${String(vatRate).replace(".", ",")}%` : "el comprobante seleccionado"}. El habitual es solo una sugerencia.
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-black">Datos obligatorios del pedido</h2>
+              <span className="rounded-full bg-[#e8f0ff] px-3 py-1 text-xs font-black text-[#1d4ed8]">
+                {Math.min(setupStep + 1, 5)} de 5
+              </span>
             </div>
-          </Field>
-          <Field htmlFor="order-price-list" label="Lista">
-            <Select
-              id="order-price-list"
-              value={activePriceList}
-              onChange={(event) => setPriceListOverride(event.target.value)}
-            >
-              {priceListOptions.map((option) => (
-                <option key={option.name} value={option.name}>
-                  {option.name}
-                </option>
-              ))}
-            </Select>
-            {customerPriceList && !samePriceListName(customerPriceList, activePriceList) ? (
-              <div className="mt-1 text-xs font-semibold text-[color:var(--warning)]">
-                Excepción manual. Acuerdo del cliente: {customerPriceList}.
-              </div>
-            ) : customerPriceList ? (
-              <div className="mt-1 text-xs text-[color:var(--muted)]">
-                Acuerdo comercial del cliente.
-              </div>
-            ) : null}
-          </Field>
-          <div>
-            <div className="erp-text-caption font-semibold text-[color:var(--muted)]">Vendedor</div>
-            <div className="erp-text-body-sm font-bold">{selectedClient.seller || "-"}</div>
+            <p className="mt-1 text-sm text-[color:var(--muted)]">Respondé cada pregunta para habilitar la carga de productos.</p>
           </div>
-        </div>
-      ) : null}
+
+          {setupStep === 0 ? (
+            <Field htmlFor="order-customer" label="1. ¿Para qué cliente es el pedido?" required>
+              <SearchableSelect
+                id="order-customer"
+                options={clientOptions}
+                placeholder="Seleccionar cliente"
+                required
+                value={customerId}
+                onChange={(nextCustomerId) => {
+                  const nextClient = clients.find((client) => client.id === nextCustomerId) ?? null;
+                  setCustomerId(nextCustomerId);
+                  setPriceListOverride(resolvePriceListName(nextClient?.priceList, priceListOptions));
+                  setRequestedDocument("habitual");
+                }}
+              />
+            </Field>
+          ) : null}
+
+          {setupStep === 1 ? (
+            <Field htmlFor="order-price-list" label="2. ¿Qué precio corresponde?" required>
+              <Select id="order-price-list" value={activePriceList} onChange={(event) => setPriceListOverride(event.target.value)}>
+                {priceListOptions.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
+              </Select>
+              {customerPriceList ? <div className="mt-1 text-xs text-[color:var(--muted)]">Acuerdo del cliente: {customerPriceList}.</div> : null}
+            </Field>
+          ) : null}
+
+          {setupStep === 2 ? (
+            <Field htmlFor="order-document" label="3. ¿Qué comprobante lleva?" required>
+              <Select id="order-document" value={requestedDocument} onChange={(event) => setRequestedDocument(event.target.value as "habitual" | "remito" | "factura")}>
+                <option value="habitual">Habitual: {habitualDocument ? desiredDocumentLabel(habitualDocument) : "sin configurar"}</option>
+                <option value="remito">Remito</option>
+                <option value="factura">Factura</option>
+              </Select>
+              <div className="mt-1 text-xs text-[color:var(--muted)]">
+                {desiredDocument ? `${desiredDocumentLabel(desiredDocument)} · IVA ${String(vatRate).replace(".", ",")}%` : "El cliente no tiene comprobante configurado."}
+              </div>
+            </Field>
+          ) : null}
+
+          {setupStep === 3 ? (
+            <Field htmlFor="order-date" label="4. ¿Cuál es la fecha estimada de entrega?" required>
+              <Input id="order-date" required type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+            </Field>
+          ) : null}
+
+          {setupStep === 4 ? (
+            <Field htmlFor="order-priority" label="5. ¿Cuál es la urgencia del pedido?" required>
+              <Select id="order-priority" required value={priority} onChange={(event) => setPriority(event.target.value as OrderPriority)}>
+                <option value="">Seleccionar urgencia</option>
+                <option value="baja">Baja</option>
+                <option value="media">Media</option>
+                <option value="alta">Alta</option>
+              </Select>
+            </Field>
+          ) : null}
+
+          {setupComplete ? (
+            <div className="grid gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm md:grid-cols-2 xl:grid-cols-5">
+              <div><span className="block text-xs font-semibold text-emerald-800">Cliente</span><b>{selectedClient?.name}</b></div>
+              <div><span className="block text-xs font-semibold text-emerald-800">Precio</span><b>{activePriceList}</b></div>
+              <div><span className="block text-xs font-semibold text-emerald-800">Comprobante</span><b>{desiredDocument ? desiredDocumentLabel(desiredDocument) : "-"}</b></div>
+              <div><span className="block text-xs font-semibold text-emerald-800">Entrega estimada</span><b>{date}</b></div>
+              <div><span className="block text-xs font-semibold text-emerald-800">Urgencia</span><b className="capitalize">{priority}</b></div>
+            </div>
+          ) : null}
+
+          <div className="flex justify-between gap-3">
+            <Button disabled={setupStep === 0} type="button" variant="secondary" onClick={() => setSetupStep((current) => Math.max(0, current - 1))}>Anterior</Button>
+            {!setupComplete ? (
+              <Button
+                disabled={
+                  (setupStep === 0 && !customerId)
+                  || (setupStep === 1 && !activePriceList)
+                  || (setupStep === 2 && !desiredDocument)
+                  || (setupStep === 3 && !date)
+                  || (setupStep === 4 && !priority)
+                }
+                type="button"
+                onClick={() => setSetupStep((current) => Math.min(5, current + 1))}
+              >
+                {setupStep === 4 ? "Habilitar productos" : "Continuar"}
+              </Button>
+            ) : (
+              <Button type="button" variant="secondary" onClick={() => setSetupStep(0)}>Editar respuestas</Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {setupComplete ? <>
 
       <Card className="overflow-visible shadow-none">
         <CardContent className="grid gap-4 p-4">
@@ -820,6 +863,11 @@ export function OrderEntryFields({
       <Button disabled={!canSubmit} type="submit">
         {submitLabel}
       </Button>
+      </> : (
+        <div className="rounded-lg border border-dashed border-[color:var(--border)] p-6 text-center text-sm text-[color:var(--muted)]">
+          La carga de productos se habilita al completar las cinco preguntas.
+        </div>
+      )}
     </div>
   );
 }

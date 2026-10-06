@@ -35,6 +35,8 @@ export default async function EditOrderPage({ params }: EditOrderPageProps) {
     date: order.date ?? localDateIso(),
     observation: order.observation,
     priceListOverride: order.priceList,
+    desiredDocument: order.desiredDocument,
+    priority: order.priority,
     vatRate: order.vatRate,
     lines: order.lines
       .filter((line) => Boolean(line.productId))

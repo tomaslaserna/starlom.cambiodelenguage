@@ -26,11 +26,12 @@ import { formatDate } from "@/lib/format";
 import { ORDER_STATUS_OPTIONS, orderStatusLabel } from "@/lib/order-status";
 import { listOrders } from "@/lib/orders";
 import { formatSaleCommercialCode } from "@/lib/sale-commercial-code";
-import { saleOrderDocument } from "@/lib/receipt-types";
+import { desiredDocumentLabel, saleOrderDocument } from "@/lib/receipt-types";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { ORDERS_CREATE_PERMISSION, ORDERS_READ_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { updateOrderStatusAction } from "@/app/orders/actions";
+import { DeliveryConfirmation } from "@/app/orders/delivery-confirmation";
 
 type OrdersPageProps = {
   searchParams: Promise<{
@@ -95,9 +96,6 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           </ButtonLink>
           <ButtonLink href="/orders?status=cargado" size="sm" variant={result.meta.status === "cargado" ? "primary" : "secondary"}>
             Pendientes
-          </ButtonLink>
-          <ButtonLink href="/orders?status=confirmado" size="sm" variant={result.meta.status === "confirmado" ? "primary" : "secondary"}>
-            Confirmados
           </ButtonLink>
           <ButtonLink href="/orders?status=entregado" size="sm" variant={result.meta.status === "entregado" ? "primary" : "secondary"}>
             Entregados
@@ -227,18 +225,18 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                         <TableHoverActionMenu label={`Opciones del pedido ${orderNumberLabel}`}>
                           {isOpenOrder && canEditOrders ? (
                             <>
-                              <form action={updateOrderStatusAction}>
-                                <input name="id" type="hidden" value={order.id} />
-                                <input name="status" type="hidden" value="entregado" />
-                                <button
-                                  aria-label={`Marcar entregado el pedido ${orderNumberLabel}`}
-                                  className={tableActionItemClass}
-                                  suppressHydrationWarning
-                                  type="submit"
-                                >
-                                  Entregado
-                                </button>
-                              </form>
+                              <DeliveryConfirmation
+                                amount={order.amount}
+                                customer={order.customerName || "Sin cliente"}
+                                documentLabel={desiredDocument ? desiredDocumentLabel(desiredDocument) : "Sin configurar"}
+                                estimatedDate={order.date}
+                                id={order.id}
+                                issuesInvoice={requiresInvoice}
+                                itemCount={order.itemCount}
+                                operator={session.username}
+                                orderLabel={orderNumberLabel}
+                                priority={order.priority}
+                              />
                               <form action={updateOrderStatusAction}>
                                 <input name="id" type="hidden" value={order.id} />
                                 <input name="status" type="hidden" value="cancelado" />

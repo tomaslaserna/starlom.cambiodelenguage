@@ -99,6 +99,7 @@ test("posted VAT and document overrides are ignored for future orders and quotes
   const orderInput = orders.basicOrderInputFromBody({
     customerId: productId,
     productsJson: JSON.stringify([{ productId, quantity: 1, discount: 0 }]),
+    priority: "media",
     vatRate: "0",
     desiredDocumentOverride: "factura_a",
   });
@@ -122,6 +123,7 @@ test("occasional order lines keep name, cost and price without a catalog product
       { productId, quantity: 2, discount: 0 },
       { type: "occasional", description: "Pegamento especial", quantity: 3, discount: 0, unitCost: 1200, unitPrice: 2000 },
     ]),
+    priority: "alta",
   });
   assert.equal(input.lines.length, 2);
   assert.deepEqual(input.lines[1], {
@@ -135,6 +137,7 @@ test("occasional order lines keep name, cost and price without a catalog product
   assert.throws(() => orders.basicOrderInputFromBody({
     customerId: productId,
     productsJson: JSON.stringify([{ type: "occasional", description: "Pila", quantity: 1, unitCost: 100, unitPrice: 0 }]),
+    priority: "baja",
   }), (error) => error instanceof ApiError && error.status === 400);
 });
 
