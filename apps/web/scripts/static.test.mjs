@@ -777,10 +777,13 @@ test("Escritorio is listed first in the Inicio menu and links to the home page",
   );
 });
 
-test("Caja has its own route and does not open Tesoreria", () => {
+test("Caja is unified into the Treasury view without deleting the rollback screen", () => {
   const navigation = read("apps/web/src/lib/navigation.ts");
-  assert.match(navigation, /href: "\/cash",\s*label: "Caja",\s*active: "cash"/);
-  assert.doesNotMatch(navigation, /href: "\/treasury",\s*label: "Caja"/);
+  assert.match(navigation, /href: "\/administration\?view=treasury",\s*label: "Tesorería",\s*active: "administration"/);
+  assert.doesNotMatch(navigation, /href: "\/cash",\s*label: "Caja"/);
+
+  const nextConfig = read("apps/web/next.config.ts");
+  assert.match(nextConfig, /source: "\/cash", destination: "\/administration\?view=treasury", permanent: false/);
 
   const cashPage = read("apps/web/src/app/cash/page.tsx");
   assert.match(cashPage, /title="Caja"/);

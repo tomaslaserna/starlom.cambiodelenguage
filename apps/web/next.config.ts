@@ -51,6 +51,15 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      { source: "/balance", destination: "/administration?view=results", permanent: false },
+      { source: "/cash", destination: "/administration?view=treasury", permanent: false },
+      { source: "/rentabilidad", destination: "/administration?view=results", permanent: false },
+      { source: "/treasury/cash-flow", destination: "/administration?view=treasury", permanent: false },
+      { source: "/treasury/accounts-payable", destination: "/administration?view=obligations", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;

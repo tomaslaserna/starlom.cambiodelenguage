@@ -43,6 +43,15 @@ function rateLimitedResponse(request: NextRequest, retryAfterSeconds: number) {
   return response;
 }
 
+export async function GET(request: NextRequest) {
+  const missingLocalDatabase =
+    process.env.NODE_ENV === "development" &&
+    (!process.env.SUPABASE_DB_HOST || !process.env.SUPABASE_DB_USER || !process.env.SUPABASE_DB_PASS);
+  return NextResponse.redirect(new URL(missingLocalDatabase ? "/administration" : "/login", request.url), {
+    status: 307,
+  });
+}
+
 export async function POST(request: NextRequest) {
   assertRequestSize(request, LOGIN_BODY_LIMIT_BYTES, "El login");
   const contentType = request.headers.get("content-type") ?? "";

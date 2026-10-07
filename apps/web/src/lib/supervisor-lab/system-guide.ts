@@ -6,7 +6,7 @@ export const ERP_GUIDE = {
   },
   profitability: {
     label: "Rentabilidad",
-    href: "/rentabilidad",
+    href: "/administration?view=results",
     guidance: "Abrí Administración > Rentabilidad para comparar ventas netas, costo y margen.",
   },
   collections: {

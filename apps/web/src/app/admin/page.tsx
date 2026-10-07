@@ -59,7 +59,7 @@ export default async function AdminPage() {
             </Link>
           ) : null}
           {canReadBalance ? (
-          <Link className="rounded-lg border border-(--border) bg-(--panel) p-4 hover:bg-(--panel-subtle)" href="/balance">
+          <Link className="rounded-lg border border-(--border) bg-(--panel) p-4 hover:bg-(--panel-subtle)" href="/administration?view=control">
             <h2 className="font-semibold">Balance</h2>
             <p className="mt-2 text-sm text-(--muted)">Resultado, sueldos, dividendos y obligaciones.</p>
           </Link>

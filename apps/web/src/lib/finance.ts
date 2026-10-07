@@ -12,7 +12,7 @@ import {
   type SalaryPlanInput,
 } from "@/lib/finance-inputs";
 import { parsePagination } from "@/lib/pagination";
-import type { Period } from "@/lib/period-range";
+import { periodBounds, type Period } from "@/lib/period-range";
 
 export type { CashMovementInput, PartnerInput, SalaryPlanInput };
 
@@ -239,14 +239,6 @@ export async function getTreasuryBalances(companyId: number) {
         FROM payments
         WHERE empresa_id = $1 AND entity_type = 'pago'
       ),
-      bank_lines AS (
-        SELECT COALESCE(a.nombre, 'Banco') AS account,
-               'bancaria' AS account_type,
-               l.amount
-        FROM admin_bank_statement_lines l
-        JOIN admin_bank_accounts a ON a.id = l.bank_account_id AND a.empresa_id = l.empresa_id
-        WHERE l.empresa_id = $1 AND l.status <> 'ignored'
-      ),
       manual_cash_movements AS (
         SELECT 'Movimientos manuales de caja' AS account,
                'efectivo' AS account_type,
@@ -262,8 +254,6 @@ export async function getTreasuryBalances(companyId: number) {
         SELECT * FROM collection_accounts
         UNION ALL
         SELECT * FROM provider_payments
-        UNION ALL
-        SELECT * FROM bank_lines
         UNION ALL
         SELECT * FROM manual_cash_movements
       ) data
@@ -289,6 +279,343 @@ export async function getTreasuryBalances(companyId: number) {
       other: accounts.filter((item) => item.accountType === "otra").reduce((sum, item) => sum + item.balance, 0),
     },
   };
+}
+
+export type BankReconciliationSummary = {
+  activeAccounts: number;
+  importedLines: number;
+  matchedLines: number;
+  partialLines: number;
+  pendingLines: number;
+  ignoredLines: number;
+  statementAmount: number;
+  matchedAmount: number;
+  unmatchedAmount: number;
+  coveragePercent: number;
+  ready: boolean;
+  lastImportedAt: string | null;
+};
+
+export async function getBankReconciliationSummary(
+  companyId: number,
+  period: Period,
+): Promise<BankReconciliationSummary> {
+  const bounds = periodBounds(period);
+  const result = await queryWithCompanyContext<{
+    active_accounts: string;
+    imported_lines: string;
+    matched_lines: string;
+    partial_lines: string;
+    pending_lines: string;
+    ignored_lines: string;
+    statement_amount: string;
+    matched_amount: string;
+    unmatched_amount: string;
+    last_imported_at: string | null;
+  }>(
+    companyId,
+    `
+      WITH accounts AS (
+        SELECT COUNT(*) AS active_accounts
+        FROM admin_bank_accounts
+        WHERE empresa_id = $1 AND activo = TRUE
+      ),
+      matched AS (
+        SELECT statement_line_id,
+               COALESCE(SUM(matched_amount) FILTER (WHERE status = 'confirmed'), 0) AS matched_amount
+        FROM admin_bank_reconciliation_matches
+        WHERE empresa_id = $1
+        GROUP BY statement_line_id
+      ),
+      lines AS (
+        SELECT l.id,
+               l.status,
+               ABS(l.amount) AS statement_amount,
+               LEAST(ABS(l.amount), COALESCE(matched.matched_amount, 0)) AS matched_amount,
+               GREATEST(ABS(l.amount) - COALESCE(matched.matched_amount, 0), 0) AS unmatched_amount,
+               l.created_at
+        FROM admin_bank_statement_lines l
+        LEFT JOIN matched ON matched.statement_line_id = l.id
+        WHERE l.empresa_id = $1
+          AND l.fecha >= $2::date
+          AND l.fecha < $3::date
+      )
+      SELECT accounts.active_accounts::text,
+             COUNT(lines.id)::text AS imported_lines,
+             COUNT(lines.id) FILTER (WHERE lines.status = 'matched')::text AS matched_lines,
+             COUNT(lines.id) FILTER (WHERE lines.status = 'partial')::text AS partial_lines,
+             COUNT(lines.id) FILTER (WHERE lines.status = 'pending')::text AS pending_lines,
+             COUNT(lines.id) FILTER (WHERE lines.status = 'ignored')::text AS ignored_lines,
+             COALESCE(SUM(lines.statement_amount) FILTER (WHERE lines.status <> 'ignored'), 0)::text AS statement_amount,
+             COALESCE(SUM(lines.matched_amount) FILTER (WHERE lines.status <> 'ignored'), 0)::text AS matched_amount,
+             COALESCE(SUM(lines.unmatched_amount) FILTER (WHERE lines.status <> 'ignored'), 0)::text AS unmatched_amount,
+             MAX(lines.created_at)::text AS last_imported_at
+      FROM accounts
+      LEFT JOIN lines ON TRUE
+      GROUP BY accounts.active_accounts
+    `,
+    [companyId, bounds.currentStart, bounds.nextStart],
+  );
+
+  const row = result.rows[0];
+  const activeAccounts = Number(row?.active_accounts ?? 0);
+  const importedLines = Number(row?.imported_lines ?? 0);
+  const matchedLines = Number(row?.matched_lines ?? 0);
+  const partialLines = Number(row?.partial_lines ?? 0);
+  const pendingLines = Number(row?.pending_lines ?? 0);
+  const ignoredLines = Number(row?.ignored_lines ?? 0);
+  const statementAmount = Number(row?.statement_amount ?? 0);
+  const matchedAmount = Number(row?.matched_amount ?? 0);
+  const unmatchedAmount = Number(row?.unmatched_amount ?? 0);
+  const coveragePercent = statementAmount > 0 ? Math.min(100, (matchedAmount / statementAmount) * 100) : 0;
+
+  return {
+    activeAccounts,
+    importedLines,
+    matchedLines,
+    partialLines,
+    pendingLines,
+    ignoredLines,
+    statementAmount,
+    matchedAmount,
+    unmatchedAmount,
+    coveragePercent,
+    ready: activeAccounts > 0 && importedLines > 0 && partialLines === 0 && pendingLines === 0 && unmatchedAmount < 0.01,
+    lastImportedAt: row?.last_imported_at ?? null,
+  };
+}
+
+export type BankReconciliationWorkspace = {
+  accounts: Array<{ id: string; name: string; bank: string; currency: string }>;
+  lines: Array<{
+    id: string;
+    accountName: string;
+    date: string;
+    description: string;
+    reference: string;
+    amount: number;
+    status: string;
+    matchedAmount: number;
+    remainingAmount: number;
+  }>;
+  candidates: Array<{
+    id: string;
+    date: string | null;
+    entityName: string;
+    concept: string;
+    amount: number;
+    remainingAmount: number;
+  }>;
+};
+
+export async function getBankReconciliationWorkspace(
+  companyId: number,
+  period: Period,
+): Promise<BankReconciliationWorkspace> {
+  const bounds = periodBounds(period);
+  const [accounts, lines, candidates] = await Promise.all([
+    queryWithCompanyContext<{ id: string; nombre: string; banco: string; moneda: string }>(
+      companyId,
+      `SELECT id::text, nombre, banco, moneda
+         FROM admin_bank_accounts
+        WHERE empresa_id = $1 AND activo = TRUE
+        ORDER BY nombre`,
+      [companyId],
+    ),
+    queryWithCompanyContext<{
+      id: string;
+      account_name: string;
+      fecha: string;
+      descripcion: string;
+      referencia: string;
+      amount: string;
+      status: string;
+      matched_amount: string;
+    }>(
+      companyId,
+      `SELECT l.id::text, a.nombre AS account_name, l.fecha::text, l.descripcion,
+              l.referencia, l.amount::text, l.status,
+              COALESCE(SUM(m.matched_amount) FILTER (WHERE m.status = 'confirmed'), 0)::text AS matched_amount
+         FROM admin_bank_statement_lines l
+         JOIN admin_bank_accounts a ON a.id = l.bank_account_id AND a.empresa_id = l.empresa_id
+         LEFT JOIN admin_bank_reconciliation_matches m
+           ON m.statement_line_id = l.id AND m.empresa_id = l.empresa_id
+        WHERE l.empresa_id = $1 AND l.fecha >= $2::date AND l.fecha < $3::date
+        GROUP BY l.id, a.nombre
+        ORDER BY l.fecha DESC, l.id DESC`,
+      [companyId, bounds.currentStart, bounds.nextStart],
+    ),
+    queryWithCompanyContext<{
+      id: string;
+      payment_date: string | null;
+      entity_name: string;
+      concept: string;
+      amount: string;
+      matched_amount: string;
+    }>(
+      companyId,
+      `SELECT p.id::text, p.payment_date::text,
+              COALESCE(NULLIF(p.entity_name, ''), 'Movimiento sin entidad') AS entity_name,
+              COALESCE(NULLIF(p.concept, ''), NULLIF(p.reference, ''), p.entity_type, 'Movimiento') AS concept,
+              ABS(p.amount)::text AS amount,
+              COALESCE(SUM(m.matched_amount) FILTER (WHERE m.status = 'confirmed'), 0)::text AS matched_amount
+         FROM payments p
+         LEFT JOIN admin_bank_reconciliation_matches m
+           ON m.payment_id = p.id AND m.empresa_id = p.empresa_id
+        WHERE p.empresa_id = $1
+          AND p.payment_date >= ($2::date - INTERVAL '45 days')
+          AND p.payment_date < ($3::date + INTERVAL '45 days')
+          AND COALESCE(p.status::text, '') NOT IN ('anulado', 'rechazado')
+          AND ABS(p.amount) > 0
+        GROUP BY p.id
+       HAVING ABS(p.amount) - COALESCE(SUM(m.matched_amount) FILTER (WHERE m.status = 'confirmed'), 0) > 0.009
+        ORDER BY p.payment_date DESC, p.created_at DESC
+        LIMIT 120`,
+      [companyId, bounds.currentStart, bounds.nextStart],
+    ),
+  ]);
+
+  return {
+    accounts: accounts.rows.map((row) => ({ id: row.id, name: row.nombre, bank: row.banco, currency: row.moneda })),
+    lines: lines.rows.map((row) => {
+      const amount = Number(row.amount);
+      const matchedAmount = Number(row.matched_amount);
+      return {
+        id: row.id,
+        accountName: row.account_name,
+        date: row.fecha,
+        description: row.descripcion,
+        reference: row.referencia,
+        amount,
+        status: row.status,
+        matchedAmount,
+        remainingAmount: Math.max(0, Math.abs(amount) - matchedAmount),
+      };
+    }),
+    candidates: candidates.rows.map((row) => ({
+      id: row.id,
+      date: row.payment_date,
+      entityName: row.entity_name,
+      concept: row.concept,
+      amount: Number(row.amount),
+      remainingAmount: Math.max(0, Number(row.amount) - Number(row.matched_amount)),
+    })),
+  };
+}
+
+export async function createBankAccount(session: AuthSession, input: { name: string; bank: string; currency: string }) {
+  const name = input.name.trim();
+  if (!name) throw new ApiError(400, "Ingresá un nombre para la cuenta");
+  const currency = input.currency.trim().toUpperCase() || "ARS";
+  await queryWithCompanyContext(
+    session.companyId,
+    `INSERT INTO admin_bank_accounts (empresa_id, nombre, banco, moneda)
+     VALUES ($1, $2, $3, $4)`,
+    [session.companyId, name, input.bank.trim(), currency],
+  );
+}
+
+export async function createBankStatementLine(session: AuthSession, input: {
+  accountId: string;
+  date: string;
+  description: string;
+  reference: string;
+  movementType: "credit" | "debit";
+  amount: number;
+}) {
+  if (!/^\d+$/.test(input.accountId)) throw new ApiError(400, "Cuenta bancaria inválida");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) throw new ApiError(400, "Fecha inválida");
+  if (!Number.isFinite(input.amount) || input.amount <= 0) throw new ApiError(400, "El importe debe ser mayor a cero");
+  const result = await queryWithCompanyContext<{ id: string }>(
+    session.companyId,
+    `INSERT INTO admin_bank_statement_lines
+       (empresa_id, bank_account_id, fecha, descripcion, referencia, debit, credit, amount, imported_by)
+     SELECT $1, id, $3::date, $4, $5,
+            CASE WHEN $6 = 'debit' THEN $7 ELSE 0 END,
+            CASE WHEN $6 = 'credit' THEN $7 ELSE 0 END,
+            CASE WHEN $6 = 'debit' THEN -$7 ELSE $7 END,
+            $8
+       FROM admin_bank_accounts
+      WHERE id = $2::bigint AND empresa_id = $1 AND activo = TRUE`,
+    [session.companyId, input.accountId, input.date, input.description.trim(), input.reference.trim(), input.movementType, input.amount, session.username],
+  );
+  if (result.rowCount !== 1) throw new ApiError(404, "No se encontró la cuenta bancaria activa");
+}
+
+export async function matchBankStatementLine(session: AuthSession, input: {
+  lineId: string;
+  paymentId: string;
+  amount: number;
+  notes: string;
+}) {
+  if (!/^\d+$/.test(input.lineId)) throw new ApiError(400, "Movimiento bancario inválido");
+  if (!Number.isFinite(input.amount) || input.amount <= 0) throw new ApiError(400, "El importe conciliado debe ser mayor a cero");
+
+  await withCompanyContext(session.companyId, async (client) => {
+    const lineResult = await client.query<{ amount: string }>(
+      `SELECT amount::text FROM admin_bank_statement_lines
+        WHERE id = $1::bigint AND empresa_id = $2 FOR UPDATE`,
+      [input.lineId, session.companyId],
+    );
+    const paymentResult = await client.query<{ amount: string }>(
+      `SELECT ABS(amount)::text AS amount FROM payments
+        WHERE id = $1::uuid AND empresa_id = $2 FOR UPDATE`,
+      [input.paymentId, session.companyId],
+    );
+    if (!lineResult.rows[0] || !paymentResult.rows[0]) throw new ApiError(404, "No se encontró el movimiento a conciliar");
+
+    const lineMatched = await client.query<{ total: string }>(
+      `SELECT COALESCE(SUM(matched_amount) FILTER (WHERE status = 'confirmed'), 0)::text AS total
+         FROM admin_bank_reconciliation_matches WHERE empresa_id = $1 AND statement_line_id = $2::bigint`,
+      [session.companyId, input.lineId],
+    );
+    const paymentMatched = await client.query<{ total: string }>(
+      `SELECT COALESCE(SUM(matched_amount) FILTER (WHERE status = 'confirmed'), 0)::text AS total
+         FROM admin_bank_reconciliation_matches WHERE empresa_id = $1 AND payment_id = $2::uuid`,
+      [session.companyId, input.paymentId],
+    );
+    const lineRemaining = Math.abs(Number(lineResult.rows[0].amount)) - Number(lineMatched.rows[0]?.total ?? 0);
+    const paymentRemaining = Number(paymentResult.rows[0].amount) - Number(paymentMatched.rows[0]?.total ?? 0);
+    if (input.amount - lineRemaining > 0.009 || input.amount - paymentRemaining > 0.009) {
+      throw new ApiError(409, "El importe supera el saldo disponible del extracto o del movimiento interno");
+    }
+
+    await client.query(
+      `INSERT INTO admin_bank_reconciliation_matches
+         (empresa_id, statement_line_id, payment_id, matched_amount, notas, created_by)
+       VALUES ($1, $2::bigint, $3::uuid, $4, $5, $6)
+       ON CONFLICT (statement_line_id, payment_id) DO UPDATE
+         SET matched_amount = admin_bank_reconciliation_matches.matched_amount + EXCLUDED.matched_amount,
+             status = 'confirmed',
+             notas = EXCLUDED.notas,
+             created_by = EXCLUDED.created_by`,
+      [session.companyId, input.lineId, input.paymentId, input.amount, input.notes.trim(), session.username],
+    );
+    const remaining = lineRemaining - input.amount;
+    await client.query(
+      `UPDATE admin_bank_statement_lines SET status = $1, updated_at = now()
+        WHERE id = $2::bigint AND empresa_id = $3`,
+      [remaining < 0.01 ? "matched" : "partial", input.lineId, session.companyId],
+    );
+  });
+}
+
+export async function ignoreBankStatementLine(session: AuthSession, lineId: string, reason: string) {
+  if (!/^\d+$/.test(lineId)) throw new ApiError(400, "Movimiento bancario inválido");
+  if (!reason.trim()) throw new ApiError(400, "Indicá por qué no corresponde conciliarlo");
+  const result = await queryWithCompanyContext<{ id: string }>(
+    session.companyId,
+    `UPDATE admin_bank_statement_lines l
+        SET status = 'ignored', notas = $3, updated_at = now()
+      WHERE l.id = $1::bigint AND l.empresa_id = $2
+        AND NOT EXISTS (
+          SELECT 1 FROM admin_bank_reconciliation_matches m
+           WHERE m.empresa_id = l.empresa_id AND m.statement_line_id = l.id AND m.status = 'confirmed'
+        )
+      RETURNING l.id::text`,
+    [lineId, session.companyId, reason.trim()],
+  );
+  if (!result.rows[0]) throw new ApiError(409, "Un movimiento parcialmente conciliado no puede ignorarse");
 }
 
 export function cashMovementInputFromBody(body: RequestBody): CashMovementInput {

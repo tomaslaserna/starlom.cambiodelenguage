@@ -22,3 +22,4 @@ apps/web/tsconfig.tsbuildinfo
 .superpowers/
 .vercel
 .env*
+supabase/.temp/

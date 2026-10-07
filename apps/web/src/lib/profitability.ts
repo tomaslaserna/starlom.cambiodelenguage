@@ -2,6 +2,13 @@ import { ApiError } from "@/lib/api-response";
 import { queryWithCompanyContext } from "@/lib/db";
 import { monthRange } from "@/lib/month-range";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
+import {
+  normalizeMonthKey,
+  operatingCostAppliesToMonth,
+  parseDurationMonths,
+  parseOperatingCostKind,
+  type OperatingCostKind,
+} from "@/lib/operating-cost-schedule";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { netSalesAmountSql } from "@/lib/sales-vat";
 
@@ -11,6 +18,23 @@ export type OperatingCost = {
   amount: number;
   category: string;
   date: string;
+};
+
+export type ScheduledOperatingCost = OperatingCost & {
+  costType: OperatingCostKind;
+  startMonth: string;
+  durationMonths: number | null;
+  included: boolean;
+  overrideIncluded: boolean | null;
+};
+
+export type ScheduledOperatingCostInput = {
+  concept: string;
+  amount: number;
+  costType: OperatingCostKind;
+  startMonth: string;
+  durationMonths: number | null;
+  notes: string;
 };
 
 export type OperatingCostInput = {
@@ -37,35 +61,18 @@ export type BreakEvenStatus = {
 };
 
 export async function listOperatingCosts(companyId: number, month: string): Promise<OperatingCost[]> {
-  const { start, endExclusive } = monthRange(month);
-  const result = await queryWithCompanyContext<{
-    id: string;
-    concepto: string;
-    monto: string;
-    categoria: string | null;
-    fecha: string;
-  }>(
-    companyId,
-    `SELECT id::text AS id, concepto, monto::text AS monto, categoria, fecha::text AS fecha
-     FROM costos_operativos
-     WHERE empresa_id = $1 AND fecha >= $2::date AND fecha < $3::date
-     ORDER BY fecha DESC, id DESC`,
-    [companyId, start, endExclusive],
-  );
-  return result.rows.map((row) => ({
-    id: row.id,
-    concept: row.concepto,
-    amount: Number(row.monto),
-    category: row.categoria ?? "",
-    date: row.fecha,
-  }));
+  const costs = await listScheduledOperatingCosts(companyId, month);
+  return costs.filter((cost) => cost.included).map(({ id, concept, amount, category, date }) => ({ id, concept, amount, category, date }));
 }
 
 export async function createOperatingCost(companyId: number, input: OperatingCostInput): Promise<string> {
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,
-    `INSERT INTO costos_operativos (concepto, monto, categoria, fecha, empresa_id)
-     VALUES ($1, $2, $3, $4::date, $5)
+    `INSERT INTO costos_operativos (
+       concepto, monto, categoria, fecha, empresa_id,
+       cost_type, start_month, duration_months, active
+     )
+     VALUES ($1, $2, $3, $4::date, $5, 'unico', date_trunc('month', $4::date)::date, 1, true)
      RETURNING id::text AS id`,
     [input.concept, input.amount, input.category, input.date, companyId],
   );
@@ -75,7 +82,9 @@ export async function createOperatingCost(companyId: number, input: OperatingCos
 export async function deleteOperatingCost(companyId: number, id: string): Promise<void> {
   const result = await queryWithCompanyContext(
     companyId,
-    `DELETE FROM costos_operativos WHERE id = $1::bigint AND empresa_id = $2`,
+    `UPDATE costos_operativos
+     SET active = false, updated_at = now()
+     WHERE id = $1::bigint AND empresa_id = $2 AND active = true`,
     [id, companyId],
   );
   if (result.rowCount === 0) throw new ApiError(404, "Costo no encontrado");
@@ -92,15 +101,148 @@ export function operatingCostInputFromBody(body: Record<string, string>): Operat
   return { concept, amount, category, date };
 }
 
+export function scheduledOperatingCostInputFromBody(body: Record<string, string>): ScheduledOperatingCostInput {
+  const concept = (body.concept ?? "").trim();
+  const amount = Number(body.amount);
+  if (!concept) throw new ApiError(400, "El concepto es obligatorio");
+  if (!Number.isFinite(amount) || amount <= 0) throw new ApiError(400, "El monto debe ser mayor a 0");
+
+  try {
+    const costType = parseOperatingCostKind(body.costType ?? body.category ?? "");
+    const startMonth = normalizeMonthKey(body.startMonth ?? body.month ?? "");
+    const durationMonths = parseDurationMonths(body.durationMonths ?? body.duration ?? "1", costType);
+    return { concept, amount, costType, startMonth, durationMonths, notes: (body.notes ?? "").trim() };
+  } catch (error) {
+    throw new ApiError(400, error instanceof Error ? error.message : "Costo programado inválido");
+  }
+}
+
+export async function listScheduledOperatingCosts(companyId: number, month: string): Promise<ScheduledOperatingCost[]> {
+  const normalizedMonth = normalizeMonthKey(month);
+  const result = await queryWithCompanyContext<{
+    id: string;
+    concepto: string;
+    monto: string;
+    categoria: string;
+    fecha: string;
+    cost_type: OperatingCostKind;
+    start_month: string;
+    duration_months: number | null;
+    override_included: boolean | null;
+  }>(
+    companyId,
+    `SELECT c.id::text AS id,
+            c.concepto,
+            c.monto::text AS monto,
+            c.categoria,
+            c.fecha::text AS fecha,
+            c.cost_type,
+            c.start_month::text AS start_month,
+            c.duration_months,
+            monthly.included AS override_included
+       FROM costos_operativos c
+       LEFT JOIN admin_operating_cost_month_status monthly
+         ON monthly.empresa_id = c.empresa_id
+        AND monthly.cost_id = c.id
+        AND monthly.month = $2::date
+      WHERE c.empresa_id = $1
+        AND c.active = true
+        AND c.start_month <= $2::date
+        AND (c.duration_months IS NULL OR c.start_month + make_interval(months => c.duration_months) > $2::date)
+      ORDER BY c.start_month DESC, c.id DESC`,
+    [companyId, `${normalizedMonth}-01`],
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    concept: row.concepto,
+    amount: Number(row.monto),
+    category: row.categoria,
+    date: row.fecha,
+    costType: row.cost_type,
+    startMonth: row.start_month.slice(0, 7),
+    durationMonths: row.duration_months,
+    overrideIncluded: row.override_included,
+    included: operatingCostAppliesToMonth({
+      startMonth: row.start_month.slice(0, 7),
+      durationMonths: row.duration_months,
+      overrideIncluded: row.override_included,
+    }, normalizedMonth),
+  }));
+}
+
+export async function createScheduledOperatingCost(companyId: number, input: ScheduledOperatingCostInput) {
+  const result = await queryWithCompanyContext<{ id: string }>(
+    companyId,
+    `INSERT INTO costos_operativos (
+       empresa_id, concepto, monto, categoria, fecha,
+       cost_type, start_month, duration_months, active, notes
+     ) VALUES ($1, $2, $3, $4, $5::date, $4, $5::date, $6, true, $7)
+     RETURNING id::text AS id`,
+    [companyId, input.concept, input.amount, input.costType, `${input.startMonth}-01`, input.durationMonths, input.notes],
+  );
+  return { id: result.rows[0].id };
+}
+
+export async function updateScheduledOperatingCost(companyId: number, id: string, input: ScheduledOperatingCostInput) {
+  const result = await queryWithCompanyContext(
+    companyId,
+    `UPDATE costos_operativos
+        SET concepto = $3,
+            monto = $4,
+            categoria = $5,
+            fecha = $6::date,
+            cost_type = $5,
+            start_month = $6::date,
+            duration_months = $7,
+            notes = $8,
+            updated_at = now()
+      WHERE empresa_id = $1 AND id = $2::bigint AND active = true`,
+    [companyId, id, input.concept, input.amount, input.costType, `${input.startMonth}-01`, input.durationMonths, input.notes],
+  );
+  if (result.rowCount === 0) throw new ApiError(404, "Costo no encontrado");
+}
+
+export async function setOperatingCostMonthStatus(input: {
+  companyId: number;
+  userId: string;
+  costId: string;
+  month: string;
+  included: boolean;
+}) {
+  const month = `${normalizeMonthKey(input.month)}-01`;
+  const result = await queryWithCompanyContext(
+    input.companyId,
+    `INSERT INTO admin_operating_cost_month_status (
+       empresa_id, cost_id, month, included, created_by
+     )
+     SELECT $1, c.id, $3::date, $4, $5::uuid
+       FROM costos_operativos c
+      WHERE c.empresa_id = $1 AND c.id = $2::bigint AND c.active = true
+     ON CONFLICT (empresa_id, cost_id, month)
+     DO UPDATE SET included = EXCLUDED.included, updated_at = now()`,
+    [input.companyId, input.costId, month, input.included, input.userId],
+  );
+  if (result.rowCount === 0) throw new ApiError(404, "Costo no encontrado");
+}
+
 export async function getBreakEvenStatus(companyId: number, month: string): Promise<BreakEvenStatus> {
   const { month: normalizedMonth, start, endExclusive } = monthRange(month);
 
   const costsResult = await queryWithCompanyContext<{ total: string }>(
     companyId,
-    `SELECT COALESCE(SUM(monto), 0)::text AS total
-     FROM costos_operativos
-     WHERE empresa_id = $1 AND fecha >= $2::date AND fecha < $3::date`,
-    [companyId, start, endExclusive],
+    `SELECT COALESCE(SUM(c.monto), 0)::text AS total
+       FROM costos_operativos c
+       LEFT JOIN admin_operating_cost_month_status monthly
+         ON monthly.empresa_id = c.empresa_id
+        AND monthly.cost_id = c.id
+        AND monthly.month = $2::date
+      WHERE c.empresa_id = $1
+        AND c.active = true
+        AND c.start_month <= $2::date
+        AND (c.duration_months IS NULL OR c.start_month + make_interval(months => c.duration_months) > $2::date)
+        AND COALESCE(monthly.included, CASE WHEN c.duration_months IS NULL THEN c.start_month = $2::date ELSE true END)`,
+    [companyId, start],
   );
   const fixedCosts = Number(costsResult.rows[0].total);
 

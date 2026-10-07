@@ -52,30 +52,15 @@ type AdminMetrics = {
   receivables: { openTotal: number };
 };
 
-const ADMIN_METRICS_CACHE_TTL_MS = 120_000;
-const adminMetricsCache = new Map<string, { expiresAt: number; value: AdminMetrics }>();
-
+// Kept as a compatibility hook for existing mutation paths. Administration
+// deliberately reads fresh financial data on every request.
 export function invalidateAdminMetricsCache(companyId: number) {
-  for (const key of adminMetricsCache.keys()) {
-    if (key.startsWith(`${companyId}:`)) adminMetricsCache.delete(key);
-  }
+  void companyId;
 }
 
 export async function getAdminMetrics(companyId: number, period?: Period): Promise<AdminMetrics> {
   const bounds = period ? periodBounds(period) : monthBounds();
-  const cacheKey = `${companyId}:${period ? period.key : "__current__"}`;
-  const cached = adminMetricsCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
-
-  const value = await loadAdminMetrics(companyId, bounds).catch((error) => {
-    if (cached) return cached.value;
-    throw error;
-  });
-  adminMetricsCache.set(cacheKey, {
-    expiresAt: Date.now() + ADMIN_METRICS_CACHE_TTL_MS,
-    value,
-  });
-  return value;
+  return loadAdminMetrics(companyId, bounds);
 }
 
 async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Promise<AdminMetrics> {
@@ -194,9 +179,17 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
         ) product_stock
       ),
       operating AS (
-        SELECT COALESCE(SUM(monto), 0) AS operating_costs_current
-        FROM costos_operativos
-        WHERE empresa_id = $4 AND fecha >= $2 AND fecha < $3
+        SELECT COALESCE(SUM(c.monto), 0) AS operating_costs_current
+        FROM costos_operativos c
+        LEFT JOIN admin_operating_cost_month_status monthly
+          ON monthly.empresa_id = c.empresa_id
+         AND monthly.cost_id = c.id
+         AND monthly.month = $2::date
+        WHERE c.empresa_id = $4
+          AND c.active = true
+          AND c.start_month <= $2::date
+          AND (c.duration_months IS NULL OR c.start_month + make_interval(months => c.duration_months) > $2::date)
+          AND COALESCE(monthly.included, CASE WHEN c.duration_months IS NULL THEN c.start_month = $2::date ELSE true END)
       ),
       salaries AS (
         SELECT COALESCE(
@@ -363,6 +356,152 @@ export async function getMonthlySeries(companyId: number, year: string): Promise
     ]),
   );
   return fillYearMonths(year, byKey);
+}
+
+export type AccumulatedOperatingResult = {
+  startMonth: string;
+  endMonth: string;
+  months: number;
+  netSales: number;
+  grossCost: number;
+  grossProfit: number;
+  operatingCosts: number;
+  operatingResult: number;
+};
+
+export async function getAccumulatedOperatingResult(
+  companyId: number,
+  throughMonth: string,
+): Promise<AccumulatedOperatingResult> {
+  const range = monthRange(throughMonth);
+  const result = await queryWithCompanyContext<{
+    start_month: string;
+    months: string;
+    net_sales: string;
+    gross_cost: string;
+    operating_costs: string;
+  }>(
+    companyId,
+    `
+      WITH sales_events AS (
+        SELECT s.sale_date AS event_date,
+               COALESCE(s.source_net_amount, ${netSalesAmountSql("s.total_amount", "s")}) AS net_amount,
+               COALESCE(s.source_cost_amount, line_totals.item_cost, 0) AS cost_amount
+        FROM sales s
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(si.quantity * COALESCE(si.unit_cost_snapshot, p.cost, 0)), 0) AS item_cost
+          FROM sale_items si
+          LEFT JOIN products p ON p.id = si.product_id AND p.empresa_id = si.empresa_id
+          WHERE si.sale_id = s.id AND si.empresa_id = s.empresa_id
+        ) line_totals ON true
+        WHERE s.empresa_id = $1
+          AND ${canonicalSalesSourceSql("s")}
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
+          AND s.sale_date < $3::date
+
+        UNION ALL
+
+        SELECT sid.issue_date AS event_date,
+               ${netSalesAmountSql("CASE WHEN sid.class_name = 'ND' THEN sid.amount ELSE -sid.amount END", "s")} AS net_amount,
+               CASE WHEN sid.class_name = 'ND' THEN note_cost.item_cost ELSE -note_cost.item_cost END AS cost_amount
+        FROM sales_internal_documents sid
+        JOIN sales s ON s.id = sid.sale_id AND s.empresa_id = sid.empresa_id
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM((entry->>'quantity')::numeric * COALESCE(
+            NULLIF(entry->>'unitCost', '')::numeric,
+            (SELECT MAX(original.unit_cost_snapshot)
+               FROM sale_items original
+              WHERE original.sale_id = s.id
+                AND original.empresa_id = s.empresa_id
+                AND original.product_id = NULLIF(entry->>'id', '')::uuid),
+            p.cost,
+            0
+          )), 0) AS item_cost
+          FROM jsonb_array_elements(sid.detail_json) entry
+          LEFT JOIN products p
+            ON p.id = NULLIF(entry->>'id', '')::uuid
+           AND p.empresa_id = sid.empresa_id
+        ) note_cost ON true
+        WHERE sid.empresa_id = $1
+          AND (sid.fiscal = false OR sid.operational_document_id IS NULL)
+          AND ${canonicalSalesSourceSql("s")}
+          AND ${normalizedOrderStatusSql("s")} = 'entregado'
+          AND sid.issue_date < $3::date
+      ),
+      first_period AS (
+        SELECT COALESCE(date_trunc('month', MIN(event_date))::date, $2::date) AS start_month
+        FROM sales_events
+      ),
+      months AS (
+        SELECT generate_series(first_period.start_month, $2::date, INTERVAL '1 month')::date AS month_start
+        FROM first_period
+      ),
+      sales_by_month AS (
+        SELECT date_trunc('month', event_date)::date AS month_start,
+               COALESCE(SUM(net_amount), 0) AS net_sales,
+               COALESCE(SUM(cost_amount), 0) AS gross_cost
+        FROM sales_events
+        CROSS JOIN first_period
+        WHERE event_date >= first_period.start_month
+        GROUP BY date_trunc('month', event_date)::date
+      ),
+      salaries AS (
+        SELECT COALESCE(
+          SUM(
+            sueldo_mensual
+            + CASE WHEN COALESCE(aguinaldo_aplica, TRUE) THEN sueldo_mensual / 12 ELSE 0 END
+            + sueldo_mensual * (COALESCE(cargas_pct, 0) / 100)
+          ),
+          0
+        ) AS monthly_total
+        FROM admin_sueldos_config
+        WHERE empresa_id = $1 AND activo = TRUE
+      ),
+      costs_by_month AS (
+        SELECT m.month_start,
+               COALESCE((
+                 SELECT SUM(c.monto)
+                 FROM costos_operativos c
+                 LEFT JOIN admin_operating_cost_month_status monthly
+                   ON monthly.empresa_id = c.empresa_id
+                  AND monthly.cost_id = c.id
+                  AND monthly.month = m.month_start
+                 WHERE c.empresa_id = $1
+                   AND c.active = TRUE
+                   AND c.start_month <= m.month_start
+                   AND (c.duration_months IS NULL OR c.start_month + make_interval(months => c.duration_months) > m.month_start)
+                   AND COALESCE(monthly.included, CASE WHEN c.duration_months IS NULL THEN c.start_month = m.month_start ELSE TRUE END)
+               ), 0) + salaries.monthly_total AS operating_costs
+        FROM months m
+        CROSS JOIN salaries
+      )
+      SELECT to_char(MIN(months.month_start), 'YYYY-MM') AS start_month,
+             COUNT(*)::text AS months,
+             COALESCE(SUM(sales_by_month.net_sales), 0)::text AS net_sales,
+             COALESCE(SUM(sales_by_month.gross_cost), 0)::text AS gross_cost,
+             COALESCE(SUM(costs_by_month.operating_costs), 0)::text AS operating_costs
+      FROM months
+      LEFT JOIN sales_by_month USING (month_start)
+      LEFT JOIN costs_by_month USING (month_start)
+    `,
+    [companyId, range.start, range.endExclusive],
+  );
+
+  const row = result.rows[0];
+  const netSales = Number(row?.net_sales ?? 0);
+  const grossCost = Number(row?.gross_cost ?? 0);
+  const operatingCosts = Number(row?.operating_costs ?? 0);
+
+  return {
+    startMonth: row?.start_month ?? throughMonth,
+    endMonth: throughMonth,
+    months: Number(row?.months ?? 1),
+    netSales,
+    grossCost,
+    grossProfit: netSales - grossCost,
+    operatingCosts,
+    operatingResult: netSales - grossCost - operatingCosts,
+  };
 }
 
 export async function getAccountsPayable(companyId: number) {
