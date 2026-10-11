@@ -2,7 +2,6 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ModulePage } from "@/components/module-page";
 import { getAdministrationMonthClosure } from "@/lib/administration-closure";
-import { getAdministrationDataCoupling } from "@/lib/administration-data";
 import {
   AppIcon,
   Button,
@@ -174,7 +173,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
   const period: Period = { kind: "month", key: month };
   const today = localDateIso();
 
-  const [dashboard, treasury, payables, cashflow, profitability, operatingCosts, accumulated, reconciliation, closure, dataCoupling, reconciliationWorkspace] = await Promise.all([
+  const [dashboard, treasury, payables, cashflow, profitability, operatingCosts, accumulated, reconciliation, closure, reconciliationWorkspace] = await Promise.all([
     getBalanceDashboard(session.companyId, period),
     getTreasuryBalances(session.companyId),
     getAccountsPayable(session.companyId),
@@ -184,7 +183,6 @@ export default async function AdministrationPage({ searchParams }: Administratio
     getAccumulatedOperatingResult(session.companyId, month),
     getBankReconciliationSummary(session.companyId, period),
     getAdministrationMonthClosure(session.companyId, month),
-    getAdministrationDataCoupling(session.companyId),
     getBankReconciliationWorkspace(session.companyId, period),
   ]);
 
@@ -305,33 +303,6 @@ export default async function AdministrationPage({ searchParams }: Administratio
               </Card>
             </div>
 
-            <Card>
-              <CardHeader>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <CardTitle>Acoplamiento histórico</CardTitle>
-                    <p className="mt-1 text-sm text-[#64748b]">Estas fuentes ya alimentan Administración sin duplicar ni migrar movimientos.</p>
-                  </div>
-                  <StatusBadge tone={dataCoupling.missingRequiredSources === 0 ? "success" : "warning"}>
-                    {dataCoupling.missingRequiredSources === 0 ? "Fuentes esenciales conectadas" : `${dataCoupling.missingRequiredSources} fuentes sin historia`}
-                  </StatusBadge>
-                </div>
-              </CardHeader>
-              <DataTable caption="Fuentes históricas utilizadas por Administración" className="rounded-none border-0 shadow-none" minWidth="860px" tableLabel="Acoplamiento histórico">
-                <DataTableHeader><DataTableRow><DataTableHead>Fuente</DataTableHead><DataTableHead>Uso administrativo</DataTableHead><DataTableHead>Integración</DataTableHead><DataTableHead>Período disponible</DataTableHead><DataTableHead align="right">Registros</DataTableHead></DataTableRow></DataTableHeader>
-                <DataTableBody>
-                  {dataCoupling.sources.map((source) => (
-                    <DataTableRow key={source.key}>
-                      <DataTableCell className="font-medium">{source.label}</DataTableCell>
-                      <DataTableCell>{source.purpose}</DataTableCell>
-                      <DataTableCell><StatusBadge tone={source.count > 0 || !source.required ? "success" : "warning"}>{source.mode === "automatic" ? "Automática" : "Carga administrativa"}</StatusBadge></DataTableCell>
-                      <DataTableCell className="whitespace-nowrap">{source.firstDate ? `${formatDate(source.firstDate)} — ${formatDate(source.lastDate)}` : "Sin movimientos"}</DataTableCell>
-                      <DataTableCell align="right" className="font-mono">{formatNumber(source.count)}</DataTableCell>
-                    </DataTableRow>
-                  ))}
-                </DataTableBody>
-              </DataTable>
-            </Card>
           </div>
         ) : null}
 
@@ -644,9 +615,6 @@ export default async function AdministrationPage({ searchParams }: Administratio
           </div>
         ) : null}
 
-        <div className="rounded-xl border border-dashed border-[#b8c5d6] bg-white/60 px-4 py-3 text-xs text-[#64748b]">
-          Migración controlada: las pantallas anteriores continúan disponibles por URL como respaldo temporal. Las nuevas operaciones reutilizan las fuentes actuales y conservan la historia.
-        </div>
       </div>
     </ModulePage>
   );

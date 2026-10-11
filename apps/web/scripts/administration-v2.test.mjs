@@ -64,16 +64,13 @@ test("navigation exposes one administration module and keeps operations and coll
   assert.match(navigation, /label: "Operaciones"/);
 });
 
-test("administration couples existing history and reads financial metrics without a stale module cache", () => {
+test("administration stays operational and reads financial metrics without migration copy or stale cache", () => {
   const page = read("src/app/administration/page.tsx");
-  const coupling = read("src/lib/administration-data.ts");
+  const demo = read("src/app/administration/administration-demo.tsx");
   const metrics = read("src/lib/admin-metrics.ts");
 
-  assert.match(page, /getAdministrationDataCoupling/);
-  assert.match(coupling, /FROM sales WHERE empresa_id = \$1/);
-  assert.match(coupling, /FROM payments WHERE empresa_id = \$1/);
-  assert.match(coupling, /FROM current_account_movements WHERE empresa_id = \$1/);
-  assert.match(coupling, /FROM purchases WHERE empresa_id = \$1/);
+  assert.doesNotMatch(page, /getAdministrationDataCoupling|Acoplamiento histórico|Migración controlada|Fuentes históricas/);
+  assert.doesNotMatch(demo, /Acoplamiento al sistema actual|Nueva carga administrativa|historia de cobros/);
   assert.doesNotMatch(metrics, /ADMIN_METRICS_CACHE_TTL_MS/);
   assert.doesNotMatch(metrics, /adminMetricsCache = new Map/);
 });

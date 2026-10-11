@@ -552,7 +552,7 @@ export function AdministrationDemo({ month, view }: { month: string; view: DemoV
                 </CardContent>
               </Card>
             </div>
-            <div className="grid gap-5 xl:grid-cols-2">
+            <div className="grid gap-5">
               <Card>
                 <CardHeader><CardTitle>Preparación del cierre mensual</CardTitle></CardHeader>
                 <CardContent className="grid gap-3">
@@ -562,17 +562,6 @@ export function AdministrationDemo({ month, view }: { month: string; view: DemoV
                     [demoCosts.every((cost) => cost.durationMonths !== null || typeof cost.monthOverrides[month] === "boolean"), "Costos revisados", "Confirmar o suspender los costos indefinidos"],
                     [true, "Ventas y stock integrados", "En producción vendrán de pedidos, facturación y depósitos"],
                   ].map(([complete, title, detail]) => <div className="flex items-center gap-3 rounded-xl border border-[#e2e8f0] p-3" key={String(title)}><span className={cn("grid h-8 w-8 place-items-center rounded-full text-sm font-black", complete ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800")}>{complete ? "✓" : "!"}</span><span><strong className="block text-sm">{title}</strong><small className="text-[#64748b]">{detail}</small></span></div>)}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader><CardTitle>Acoplamiento al sistema actual</CardTitle></CardHeader>
-                <CardContent className="grid gap-3 sm:grid-cols-2">
-                  {[
-                    ["Ventas y facturación", "Pedidos entregados + comprobantes fiscales vigentes", "Automático"],
-                    ["Cuentas por cobrar", "Cuentas corrientes actuales e historia de cobros", "Automático"],
-                    ["Stock valorizado", "Inventario existente × costo vigente", "Automático"],
-                    ["Costos y obligaciones", "Nueva carga administrativa + recurrencias", "Mixto"],
-                  ].map(([title, detail, mode]) => <div className="rounded-xl border border-[#e2e8f0] p-3" key={title}><div className="flex justify-between gap-2"><strong className="text-sm">{title}</strong><StatusBadge tone={mode === "Automático" ? "success" : "warning"}>{mode}</StatusBadge></div><small className="mt-2 block text-[#64748b]">{detail}</small></div>)}
                 </CardContent>
               </Card>
             </div>
