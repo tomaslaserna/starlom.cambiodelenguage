@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
-import { Button, ButtonLink, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui";
+import { Button, ButtonLink, Card, CardContent, CardHeader, CardTitle, Field, Input, MoneyInput, Select } from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
 import { sessionAllows } from "@/lib/route-auth";
 import { getProduct, listSupplierOptions } from "@/lib/catalog-management";
@@ -32,7 +32,7 @@ export default async function EditProductPage({ params }: EditProductPageProps) 
               <Input defaultValue={product.name} id="edit-product-name" maxLength={255} name="name" required />
             </Field>
             <Field htmlFor="edit-product-cost" label="Costo" required>
-              <Input defaultValue={product.cost} id="edit-product-cost" min="0" name="cost" required step="0.01" type="number" />
+              <MoneyInput defaultValue={product.cost} id="edit-product-cost" min="0" name="cost" required />
             </Field>
             <Field htmlFor="edit-product-rule" label="Categoría y margen" description="Si cambiás la categoría se asignará un SKU nuevo y se conservará el anterior." required>
               <Select defaultValue={product.code} id="edit-product-rule" name="code" required>

@@ -6,6 +6,7 @@ export { DataTable, DataTableBody, DataTableCell, DataTableHead, DataTableHeader
 export { EmptyState } from "./empty-state";
 export { Field } from "./field";
 export { Input } from "./input";
+export { MoneyInput } from "./money-input";
 export { PageHeader } from "./page-header";
 export { Select } from "./select";
 export { SearchableSelect, type SearchableSelectOption } from "./searchable-select";

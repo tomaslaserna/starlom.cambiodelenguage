@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Field, Input, TableActionMenu, tableActionItemClass } from "@/components/ui";
+import { Button, Field, Input, MoneyInput, TableActionMenu, tableActionItemClass } from "@/components/ui";
 
 type SaleRowActionsProps = {
   editAction: (formData: FormData) => Promise<void>;
@@ -74,7 +74,7 @@ export function SaleRowActions({ editAction, cancelAction, canEdit, sale }: Sale
                 <Input defaultValue={sale.date} id={`${idBase}-fecha`} name="fecha" type="date" />
               </Field>
               <Field htmlFor={`${idBase}-monto`} label="Monto">
-                <Input defaultValue={sale.amount.toFixed(2)} id={`${idBase}-monto`} min="0" name="monto" step="0.01" type="number" />
+                <MoneyInput defaultValue={sale.amount} id={`${idBase}-monto`} min="0" name="monto" />
               </Field>
               <Field htmlFor={`${idBase}-comp`} label="Nro. comprobante">
                 <Input defaultValue={String(sale.receiptNumber)} id={`${idBase}-comp`} name="nro_comprobante" type="number" />

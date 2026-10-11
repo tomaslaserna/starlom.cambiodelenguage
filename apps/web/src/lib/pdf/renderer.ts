@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import PDFDocument from "pdfkit/js/pdfkit.standalone.js";
+import { formatCurrency } from "../format";
 
 type Align = "left" | "center" | "right";
 
@@ -110,12 +111,7 @@ function fiscalReceiptOnly(number: string) {
 }
 
 export function pdfMoney(value: number) {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(value) ? value : 0);
+  return formatCurrency(value);
 }
 
 export function pdfNumber(value: number, digits = 2) {

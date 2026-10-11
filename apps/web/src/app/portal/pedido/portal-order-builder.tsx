@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useVisibilityAwarePolling } from "@/components/use-visibility-aware-polling";
+import { formatCurrency } from "@/lib/format";
 import { money as roundMoney, priceForList } from "@/lib/order-pricing";
 
 const PAYMENT_FAST_POLL_MS = 3_000;
@@ -52,10 +53,6 @@ type CheckoutState = {
   status: "created" | "pending" | "approved" | "rejected" | "cancelled";
   orderNumber?: string | null;
 };
-const money = new Intl.NumberFormat("es-AR", {
-  style: "currency",
-  currency: "ARS",
-});
 const MINIMUM_ORDER = 50_000;
 const VOLUME_THRESHOLD = 100_000;
 
@@ -439,7 +436,7 @@ export function PortalOrderBuilder({
                     {product.code || "Sin código"}
                   </span>
                   <span className="mt-1 block font-black text-[#075ac7]">
-                    {money.format(price(product))}
+                    {formatCurrency(price(product))}
                   </span>
                 </div>
                 <button
@@ -486,10 +483,10 @@ export function PortalOrderBuilder({
             {amountToMinimum > 0 ? (
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
                 <strong className="text-sm text-amber-900">
-                  Pedido mínimo: faltan {money.format(amountToMinimum)}
+                  Pedido mínimo: faltan {formatCurrency(amountToMinimum)}
                 </strong>
                 <p className="mt-1 text-xs text-amber-800">
-                  El mínimo es de {money.format(MINIMUM_ORDER)} netos en
+                  El mínimo es de {formatCurrency(MINIMUM_ORDER)} netos en
                   mercadería.
                 </p>
               </div>
@@ -506,7 +503,7 @@ export function PortalOrderBuilder({
                         {product.name}
                       </strong>
                       <span className="text-xs text-[#64748b]">
-                        {money.format(pricing(product, qty).subtotal)}
+                        {formatCurrency(pricing(product, qty).subtotal)}
                       </span>
                     </div>
                     <input
@@ -604,26 +601,26 @@ export function PortalOrderBuilder({
                   Ahorro acumulado
                 </span>
                 <strong className="mt-1 block text-2xl font-black text-emerald-700">
-                  {money.format(totalSavings)}
+                  {formatCurrency(totalSavings)}
                 </strong>
                 <span className="text-xs text-emerald-800">
                   Precio sin beneficios:{" "}
-                  {money.format(roundMoney(baseTotal * (1 + vatRate / 100)))}
+                  {formatCurrency(roundMoney(baseTotal * (1 + vatRate / 100)))}
                 </span>
               </div>
             ) : null}
             <div className="mt-5 grid gap-1 border-t border-[#dbe5f1] pt-4 text-sm">
               <div className="flex justify-between">
                 <span>Mercadería neta</span>
-                <strong>{money.format(netSubtotal)}</strong>
+                <strong>{formatCurrency(netSubtotal)}</strong>
               </div>
               <div className="flex justify-between">
                 <span>IVA {String(vatRate).replace(".", ",")}%</span>
-                <strong>{money.format(vatAmount)}</strong>
+                <strong>{formatCurrency(vatAmount)}</strong>
               </div>
               <div className="mt-2 flex items-end justify-between">
                 <span className="font-bold">Total estimado</span>
-                <strong className="text-2xl">{money.format(total)}</strong>
+                <strong className="text-2xl">{formatCurrency(total)}</strong>
               </div>
             </div>
             <p className="mt-1 text-xs text-[#64748b]">
@@ -680,7 +677,7 @@ export function PortalOrderBuilder({
                       width={208}
                     />
                     <h3 className="mt-3 text-center text-lg font-black">
-                      Pagá {money.format(checkout.amount)}
+                      Pagá {formatCurrency(checkout.amount)}
                     </h3>
                     <div className="mt-4 grid gap-2 text-sm font-bold">
                       <PaymentStep active label="QR generado" />
@@ -739,7 +736,7 @@ export function PortalOrderBuilder({
                     Mejorá el precio de todo el pedido
                   </strong>
                   <p className="mt-1 text-xs text-[#64748b]">
-                    Sumá {money.format(amountToVolume)} para alcanzar el
+                    Sumá {formatCurrency(amountToVolume)} para alcanzar el
                     beneficio por volumen.
                   </p>
                 </div>
@@ -751,7 +748,7 @@ export function PortalOrderBuilder({
                   type="button"
                 >
                   <strong className="text-sm">
-                    Ahorrá {money.format(rapidSaving)} pagando ahora
+                    Ahorrá {formatCurrency(rapidSaving)} pagando ahora
                   </strong>
                   <span className="mt-1 block text-xs text-[#64748b]">
                     Elegí efectivo o QR de Mercado Pago para acceder al precio

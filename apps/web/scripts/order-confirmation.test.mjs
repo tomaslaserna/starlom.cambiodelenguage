@@ -47,10 +47,10 @@ test("con precios discrimina unitarios netos, IVA y total final", () => {
     ],
   });
 
-  assert.match(text, /unitario neto \$500,00 \(subtotal neto \$1\.000,00\)/);
-  assert.match(text, /\*Subtotal neto:\* \$1\.000,00/);
-  assert.match(text, /\*IVA \(10\.5%\):\* \$105,00/);
-  assert.match(text, /\*Total:\* \$1\.105,00/);
+  assert.match(text, /unitario neto \$ 500,00 \(subtotal neto \$ 1\.000,00\)/);
+  assert.match(text, /\*Subtotal neto:\* \$ 1\.000,00/);
+  assert.match(text, /\*IVA \(10\.5%\):\* \$ 105,00/);
+  assert.match(text, /\*Total:\* \$ 1\.105,00/);
 });
 
 test("las oportunidades son opcionales e incluyen ahorro y comparacion final", () => {
@@ -71,14 +71,14 @@ test("las oportunidades son opcionales e incluyen ahorro y comparacion final", (
 
   const text = buildWhatsappConfirmation({ ...baseInput, opportunity, showOpportunities: true });
   assert.match(text, /OPORTUNIDADES PARA APROVECHAR/);
-  assert.match(text, /\$398\.562,36/);
-  assert.match(text, /\$362\.095,53/);
-  assert.ok(text.includes("Sumando 2 unidades de Jabón, ahorrás *$7.168,38*"));
-  assert.ok(text.includes("Precio actual ~$11.947,23~ → precio ahorro *$10.751,50*"));
-  assert.ok(text.includes("*Total del pedido sin ahorro:* $398.562,36"));
-  assert.ok(text.includes("*Total con ahorro:* $362.095,53"));
-  assert.ok(text.includes("*Ahorro potencial:* $36.466,83"));
-  assert.ok(text.includes("*Ahorro actual:* $29.298,46"));
+  assert.match(text, /\$ 398\.562,36/);
+  assert.match(text, /\$ 362\.095,53/);
+  assert.ok(text.includes("Sumando 2 unidades de Jabón, ahorrás *$ 7.168,38*"));
+  assert.ok(text.includes("Precio actual ~$ 11.947,23~ → precio ahorro *$ 10.751,50*"));
+  assert.ok(text.includes("*Total del pedido sin ahorro:* $ 398.562,36"));
+  assert.ok(text.includes("*Total con ahorro:* $ 362.095,53"));
+  assert.ok(text.includes("*Ahorro potencial:* $ 36.466,83"));
+  assert.ok(text.includes("*Ahorro actual:* $ 29.298,46"));
 });
 
 test("formatDeliveryDate: DD.MM.YY con dia en espanol", () => {

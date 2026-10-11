@@ -17,6 +17,7 @@ import {
   DataTableRow,
   Field,
   Input,
+  MoneyInput,
   StatCard,
   StatusBadge,
   TableHoverActionMenu,
@@ -61,7 +62,7 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
               <Input id="payable-concept" name="concept" required />
             </Field>
             <Field htmlFor="payable-amount" label="Monto" required>
-              <Input id="payable-amount" min="0" name="amount" required step="0.01" type="number" />
+              <MoneyInput id="payable-amount" min="0" name="amount" required />
             </Field>
             <Field htmlFor="payable-date" label="Vencimiento" required>
               <Input id="payable-date" name="date" required type="date" />
@@ -135,15 +136,13 @@ export default async function AccountsPayablePage({ searchParams }: AccountsPaya
                               <input name="id" type="hidden" value={item.id} />
                               <input name="notes" type="hidden" value="Programado desde cuentas por pagar" />
                               <Field className="gap-1" htmlFor={`payable-${item.id}-amount`} label="Monto">
-                                <Input
+                                <MoneyInput
                                   className="min-w-0 px-2 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                   defaultValue={Math.round(item.balance - item.scheduledAmount)}
                                   id={`payable-${item.id}-amount`}
                                   min="0"
                                   name="amount"
                                   required
-                                  step="1"
-                                  type="number"
                                 />
                               </Field>
                               <Field className="gap-1" htmlFor={`payable-${item.id}-date`} label="Fecha">

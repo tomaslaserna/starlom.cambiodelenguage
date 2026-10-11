@@ -11,6 +11,7 @@ import {
   EmptyState,
   Field,
   Input,
+  MoneyInput,
   Select,
   StatCard,
 } from "@/components/ui";
@@ -107,7 +108,7 @@ export default async function CashPage() {
                 <Input id="cash-concept" name="concept" placeholder="Ej. Nafta, gastos varios" required />
               </Field>
               <Field htmlFor="cash-amount" label="Monto">
-                <Input id="cash-amount" min="0.01" name="amount" required step="0.01" type="number" />
+                <MoneyInput id="cash-amount" min="0.01" name="amount" required />
               </Field>
               <Field htmlFor="cash-date" label="Fecha">
                 <Input defaultValue={localDateIso()} id="cash-date" name="date" required type="date" />

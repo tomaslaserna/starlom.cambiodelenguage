@@ -13,6 +13,7 @@ import {
   DataTableRow,
   Field,
   Input,
+  MoneyInput,
   SearchableSelect,
   Select,
 } from "@/components/ui";
@@ -519,7 +520,7 @@ export function OrderEntryFields({
                     }} />
                   </Field>
                   <Field htmlFor="occasional-cost" label="Costo neto/u.">
-                    <Input id="occasional-cost" type="number" min="0" step="0.01" value={occasionalDraft.unitCost} onChange={(event) => setOccasionalDraft((current) => ({ ...current, unitCost: event.target.value }))} />
+                    <MoneyInput id="occasional-cost" min="0" value={occasionalDraft.unitCost} onValueChange={(unitCost) => setOccasionalDraft((current) => ({ ...current, unitCost }))} />
                   </Field>
                   <Field htmlFor="occasional-margin" label="Margen bruto %">
                     <Input id="occasional-margin" type="number" min="0" max="89.99" step="0.01" value={occasionalDraft.unitPrice ? roundMoney(occasionalMargin) : ""} onChange={(event) => {
@@ -529,7 +530,7 @@ export function OrderEntryFields({
                     }} />
                   </Field>
                   <Field htmlFor="occasional-price" label="Precio neto/u.">
-                    <Input id="occasional-price" type="number" min="0.01" step="0.01" value={occasionalDraft.unitPrice} onChange={(event) => setOccasionalDraft((current) => ({ ...current, unitPrice: event.target.value }))} />
+                    <MoneyInput id="occasional-price" min="0.01" value={occasionalDraft.unitPrice} onValueChange={(unitPrice) => setOccasionalDraft((current) => ({ ...current, unitPrice }))} />
                   </Field>
                   <Button type="button" disabled={!selectedClient || !occasionalDraft.description.trim() || occasionalDraft.unitCost === "" || occasionalPrice <= 0} onClick={addOccasionalLine}>
                     Agregar

@@ -1,3 +1,5 @@
+import { formatCurrency } from "@/lib/format";
+
 export type SystemView = "home" | "commercial" | "operations" | "supply" | "people" | "administration" | "control";
 
 export type Supplier = {
@@ -215,7 +217,7 @@ export const initialPrototypeState: PrototypeState = {
 };
 
 export function formatMoney(value: number) {
-  return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 }).format(value);
+  return formatCurrency(value);
 }
 
 export function dateLabel(value: string) {

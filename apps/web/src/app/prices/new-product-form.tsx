@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Button, ButtonLink, Field, Input, Select } from "@/components/ui";
+import { Button, ButtonLink, Field, Input, MoneyInput, Select } from "@/components/ui";
 import { uploadProductImage } from "@/app/prices/upload-product-image";
 
 type MarginOption = { code: string; name: string };
@@ -63,7 +63,7 @@ export function NewProductForm({
         </Select>
       </Field>
       <Field htmlFor="product-cost" label="Costo" required>
-        <Input id="product-cost" inputMode="decimal" name="cost" required step="0.01" type="number" />
+        <MoneyInput id="product-cost" name="cost" required />
       </Field>
       <Field htmlFor="product-stock" label="Stock inicial" description="Primera carga de stock del producto. Puede ser 0.">
         <Input defaultValue="0" id="product-stock" inputMode="numeric" min="0" name="stock" step="1" type="number" />

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { QuoteBucket, TopQuoteClient, VendorQuote } from "@/lib/crm-quotes";
+import { formatCurrency } from "@/lib/format";
 
 type Props = {
   buckets: Record<QuoteBucket, VendorQuote[]>;
@@ -15,12 +16,6 @@ const BUCKETS = [
   { key: "vencidos", label: "Vencidos", sub: "sin respuesta", color: "var(--danger)", bg: "var(--danger-subtle)" },
   { key: "aceptados", label: "Aceptados", sub: "este mes", color: "var(--info)", bg: "var(--info-subtle)" },
 ] as const;
-
-const ars = new Intl.NumberFormat("es-AR", {
-  style: "currency",
-  currency: "ARS",
-  maximumFractionDigits: 0,
-});
 
 function vencimientoLegend(bucket: QuoteBucket, days: number | null) {
   if (bucket === "aceptados") return "aceptado";
@@ -96,7 +91,7 @@ export function PresupuestosDashboard({ buckets, counts, topClients }: Props) {
                 </div>
                 <div className="erp-text-body-sm tabular-nums text-[color:var(--foreground)]">
                   <span className="block erp-text-caption text-[color:var(--muted)]">Total</span>
-                  {ars.format(quote.total)}
+                  {formatCurrency(quote.total)}
                 </div>
                 <div className="erp-text-body-sm tabular-nums text-[color:var(--muted)]">
                   <span className="block erp-text-caption">Vencimiento</span>

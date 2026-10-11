@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Field, Input, Select } from "@/components/ui";
+import { Button, Field, Input, MoneyInput, Select } from "@/components/ui";
 import {
   SUGGESTED_DESTINATIONS,
   collectionMethodRequiresOperation,
@@ -88,7 +88,7 @@ export function RegisterCollectionDialog({
             <form action={action} className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={() => setOpen(false)}>
               <input name="id" type="hidden" value={saleId} />
               <Field htmlFor={amountInputId} label="Monto">
-                <Input
+                <MoneyInput
                   className="min-h-10 px-2 text-sm"
                   defaultValue={outstandingAmount.toFixed(2)}
                   id={amountInputId}
@@ -96,8 +96,6 @@ export function RegisterCollectionDialog({
                   min="0.01"
                   name="amount"
                   required
-                  step="0.01"
-                  type="number"
                 />
               </Field>
               <Field htmlFor={dateInputId} label="Fecha">

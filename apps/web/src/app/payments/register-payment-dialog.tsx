@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useId, useMemo, useState } from "react";
-import { Button, Field, Input, SearchableSelect, Select } from "@/components/ui";
+import { Button, Field, Input, MoneyInput, SearchableSelect, Select } from "@/components/ui";
 import {
   COLLECTION_METHODS,
   collectionMethodRequiresOperation,
 } from "@/lib/collection-methods";
+import { formatCurrency } from "@/lib/format";
 
 const METHOD_LABELS: Record<string, string> = {
   efectivo: "Efectivo",
@@ -20,8 +21,6 @@ export type PaymentTreasuryAccountOption = {
   accountType: "cash" | "bank" | "wallet" | "other";
 };
 type OpenRemittance = { saleId: string; number: string; date: string; total: number; outstanding: number };
-
-const currency = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" });
 
 type RegisterPaymentDialogProps = {
   action: (formData: FormData) => Promise<void>;
@@ -211,14 +210,12 @@ export function RegisterPaymentDialog({
               )}
               <input name="allocations" type="hidden" value={JSON.stringify(allocations)} />
               <Field className="sm:col-span-2" htmlFor={amountInputId} label="Importe recibido" required>
-                <Input
+                <MoneyInput
                   disabled={loadingRemittances}
                   id={amountInputId}
                   min="0.01"
                   name="amount"
-                  onChange={(event) => setPaymentAmountInput(event.target.value)}
-                  step="0.01"
-                  type="number"
+                  onValueChange={setPaymentAmountInput}
                   value={paymentAmountInput === "" ? (allocatedTotal || "") : paymentAmountInput}
                 />
               </Field>
@@ -230,7 +227,7 @@ export function RegisterPaymentDialog({
                   </div>
                   <div className="text-right">
                     <span className="block text-[11px] font-bold uppercase tracking-wide text-[#64748b]">Aplicado a remitos</span>
-                    <strong className="text-lg font-black text-[#075ac7]">{currency.format(allocatedTotal)}</strong>
+                    <strong className="text-lg font-black text-[#075ac7]">{formatCurrency(allocatedTotal)}</strong>
                   </div>
                 </div>
                 <div className="max-h-64 overflow-y-auto rounded-xl border border-[color:var(--border)]">
@@ -253,22 +250,19 @@ export function RegisterPaymentDialog({
                         />
                         <button className="text-left" onClick={() => toggleRemittance(sale)} type="button">
                           <span className="block text-sm font-black text-[#0f172a]">{sale.number || "Remito"}</span>
-                          <span className="text-xs text-[#64748b]">{sale.date} · Total {currency.format(sale.total)} · Pendiente <b className="text-red-600">{currency.format(sale.outstanding)}</b></span>
+                          <span className="text-xs text-[#64748b]">{sale.date} · Total {formatCurrency(sale.total)} · Pendiente <b className="text-red-600">{formatCurrency(sale.outstanding)}</b></span>
                         </button>
-                        <Input
+                        <MoneyInput
                           aria-label={`Importe aplicado a ${sale.number}`}
                           className="min-h-10 px-2 text-right text-sm font-bold"
                           disabled={!selected}
                           min="0.01"
-                          onChange={(event) => {
-                            const rawValue = event.target.value;
+                          onValueChange={(rawValue) => {
                             const clampedValue = rawValue === ""
                               ? ""
                               : String(Math.min(Math.max(Number(rawValue) || 0, 0), sale.outstanding));
                             setAllocationAmounts((current) => ({ ...current, [sale.saleId]: clampedValue }));
                           }}
-                          step="0.01"
-                          type="number"
                           value={selected ? allocationAmounts[sale.saleId] : ""}
                         />
                       </div>
@@ -278,7 +272,7 @@ export function RegisterPaymentDialog({
               </div>
               {creditBalance > 0 ? (
                 <div className="sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
-                  <strong>Saldo a favor: {currency.format(creditBalance)}</strong>
+                  <strong>Saldo a favor: {formatCurrency(creditBalance)}</strong>
                   <p className="mt-1 text-xs font-medium">El excedente quedará disponible en la cuenta corriente del cliente.</p>
                 </div>
               ) : null}

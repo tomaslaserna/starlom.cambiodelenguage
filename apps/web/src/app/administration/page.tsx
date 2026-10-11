@@ -17,6 +17,7 @@ import {
   DataTableRow,
   Field,
   Input,
+  MoneyInput,
   Select,
   StatCard,
   StatusBadge,
@@ -328,7 +329,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                 <form action={createAdministrationCostAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_160px_150px_150px_180px_auto] xl:items-end">
                   <input name="month" type="hidden" value={month} />
                   <Field htmlFor="admin-cost-concept" label="Concepto" required><Input id="admin-cost-concept" name="concept" required /></Field>
-                  <Field htmlFor="admin-cost-amount" label="Monto" required><Input id="admin-cost-amount" min="0.01" name="amount" required step="0.01" type="number" /></Field>
+                  <Field htmlFor="admin-cost-amount" label="Monto" required><MoneyInput id="admin-cost-amount" min="0.01" name="amount" required /></Field>
                   <Field htmlFor="admin-cost-type" label="Etiqueta" required><Select defaultValue="fijo" id="admin-cost-type" name="costType" required><option value="fijo">Fijo</option><option value="variable">Variable</option><option value="unico">Único</option></Select></Field>
                   <Field htmlFor="admin-cost-start" label="Desde" required><Input defaultValue={month} id="admin-cost-start" name="startMonth" required type="month" /></Field>
                   <Field htmlFor="admin-cost-duration" label="Duración" required><Select defaultValue="indefinite" id="admin-cost-duration" name="durationMonths" required><option value="1">1 mes</option><option value="2">2 meses</option><option value="3">3 meses</option><option value="6">6 meses</option><option value="12">12 meses</option><option value="indefinite">Indefinido, confirmar cada mes</option></Select></Field>
@@ -357,7 +358,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                               <form action={updateAdministrationCostAction} className="grid gap-2">
                                 <input name="id" type="hidden" value={cost.id} /><input name="month" type="hidden" value={month} />
                                 <Field htmlFor={`cost-${cost.id}-concept`} label="Concepto"><Input defaultValue={cost.concept} id={`cost-${cost.id}-concept`} name="concept" required /></Field>
-                                <Field htmlFor={`cost-${cost.id}-amount`} label="Monto"><Input defaultValue={cost.amount} id={`cost-${cost.id}-amount`} min="0.01" name="amount" required step="0.01" type="number" /></Field>
+                                <Field htmlFor={`cost-${cost.id}-amount`} label="Monto"><MoneyInput defaultValue={cost.amount} id={`cost-${cost.id}-amount`} min="0.01" name="amount" required /></Field>
                                 <div className="grid grid-cols-2 gap-2"><Field htmlFor={`cost-${cost.id}-type`} label="Etiqueta"><Select defaultValue={cost.costType} id={`cost-${cost.id}-type`} name="costType"><option value="fijo">Fijo</option><option value="variable">Variable</option><option value="unico">Único</option></Select></Field><Field htmlFor={`cost-${cost.id}-start`} label="Desde"><Input defaultValue={cost.startMonth} id={`cost-${cost.id}-start`} name="startMonth" type="month" /></Field></div>
                                 <Field htmlFor={`cost-${cost.id}-duration`} label="Duración"><Select defaultValue={cost.durationMonths === null ? "indefinite" : String(cost.durationMonths)} id={`cost-${cost.id}-duration`} name="durationMonths"><option value="1">1 mes</option><option value="2">2 meses</option><option value="3">3 meses</option><option value="6">6 meses</option><option value="12">12 meses</option><option value="indefinite">Indefinido</option></Select></Field>
                                 <Button className="w-full" size="sm" type="submit">Guardar cambios</Button>
@@ -428,7 +429,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                   <Field htmlFor="admin-movement-account" label="Cuenta"><Select id="admin-movement-account" name="accountId" required>{treasury.accounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.account}</option>)}</Select></Field>
                   <Field htmlFor="admin-movement-direction" label="Tipo"><Select defaultValue="salida" id="admin-movement-direction" name="direction"><option value="entrada">Entrada</option><option value="salida">Salida</option></Select></Field>
                   <Field htmlFor="admin-movement-concept" label="Concepto" required><Input id="admin-movement-concept" name="concept" required /></Field>
-                  <Field htmlFor="admin-movement-amount" label="Monto" required><Input id="admin-movement-amount" min="0.01" name="amount" required step="0.01" type="number" /></Field>
+                  <Field htmlFor="admin-movement-amount" label="Monto" required><MoneyInput id="admin-movement-amount" min="0.01" name="amount" required /></Field>
                   <Field htmlFor="admin-movement-date" label="Fecha" required><Input defaultValue={today} id="admin-movement-date" name="date" required type="date" /></Field>
                   <Field htmlFor="admin-movement-notes" label="Notas"><Input id="admin-movement-notes" name="notes" /></Field>
                   <Button disabled={treasury.accounts.length === 0} type="submit">Registrar</Button>
@@ -508,7 +509,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                       <Field htmlFor="admin-statement-account" label="Cuenta" required><Select id="admin-statement-account" name="accountId" required>{reconciliationWorkspace.accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</Select></Field>
                       <Field htmlFor="admin-statement-date" label="Fecha" required><Input defaultValue={today} id="admin-statement-date" name="date" required type="date" /></Field>
                       <Field htmlFor="admin-statement-type" label="Movimiento" required><Select defaultValue="credit" id="admin-statement-type" name="movementType" required><option value="credit">Ingreso / crédito</option><option value="debit">Egreso / débito</option></Select></Field>
-                      <Field htmlFor="admin-statement-amount" label="Importe" required><Input id="admin-statement-amount" min="0.01" name="amount" required step="0.01" type="number" /></Field>
+                      <Field htmlFor="admin-statement-amount" label="Importe" required><MoneyInput id="admin-statement-amount" min="0.01" name="amount" required /></Field>
                       <Field htmlFor="admin-statement-description" label="Descripción" required><Input id="admin-statement-description" name="description" required /></Field>
                       <Field htmlFor="admin-statement-reference" label="Referencia"><Input id="admin-statement-reference" name="reference" /></Field>
                       <div className="sm:col-span-2"><Button className="w-full" type="submit">Agregar al extracto</Button></div>
@@ -546,7 +547,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                                 <form action={matchAdministrationStatementLineAction} className="grid gap-2">
                                   <input name="lineId" type="hidden" value={line.id} /><input name="month" type="hidden" value={month} />
                                   <Field htmlFor={`admin-match-${line.id}-payment`} label="Cobro o pago registrado"><Select id={`admin-match-${line.id}-payment`} name="paymentId" required><option value="">Seleccionar movimiento</option>{reconciliationWorkspace.candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{formatDate(candidate.date)} · {candidate.entityName} · {formatCurrency(candidate.remainingAmount)}</option>)}</Select></Field>
-                                  <Field htmlFor={`admin-match-${line.id}-amount`} label="Importe a conciliar"><Input defaultValue={line.remainingAmount} id={`admin-match-${line.id}-amount`} max={line.remainingAmount} min="0.01" name="amount" required step="0.01" type="number" /></Field>
+                                  <Field htmlFor={`admin-match-${line.id}-amount`} label="Importe a conciliar"><MoneyInput defaultValue={line.remainingAmount} id={`admin-match-${line.id}-amount`} max={line.remainingAmount} min="0.01" name="amount" required /></Field>
                                   <Field htmlFor={`admin-match-${line.id}-notes`} label="Nota"><Input id={`admin-match-${line.id}-notes`} name="notes" /></Field>
                                   <Button className="w-full" disabled={reconciliationWorkspace.candidates.length === 0} size="sm" type="submit">Confirmar cruce</Button>
                                 </form>
@@ -593,7 +594,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                 <form action={createAdministrationPayableAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_180px_auto] xl:items-end">
                   <input name="month" type="hidden" value={month} />
                   <Field htmlFor="admin-payable-concept" label="Concepto o beneficiario" required><Input id="admin-payable-concept" name="concept" required /></Field>
-                  <Field htmlFor="admin-payable-amount" label="Monto" required><Input id="admin-payable-amount" min="0.01" name="amount" required step="0.01" type="number" /></Field>
+                  <Field htmlFor="admin-payable-amount" label="Monto" required><MoneyInput id="admin-payable-amount" min="0.01" name="amount" required /></Field>
                   <Field htmlFor="admin-payable-date" label="Vencimiento" required><Input defaultValue={today} id="admin-payable-date" name="date" required type="date" /></Field>
                   <Button type="submit">Agregar obligación</Button>
                 </form>
@@ -612,7 +613,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                   {payables.data.map((item) => {
                     const days = daysFromToday(item.date, today);
                     const tone = days < 0 ? "danger" : days <= 7 ? "warning" : "neutral";
-                    return <DataTableRow key={`${item.source}-${item.id}`}><DataTableCell className="whitespace-nowrap">{formatDate(item.date)}</DataTableCell><DataTableCell>{sourceLabel(item.source)}</DataTableCell><DataTableCell className="font-medium">{item.provider}</DataTableCell><DataTableCell>{item.concept}</DataTableCell><DataTableCell><StatusBadge tone={tone}>{days < 0 ? "Vencido" : days <= 7 ? "Próximo" : item.status}</StatusBadge></DataTableCell><DataTableCell align="right" className="whitespace-nowrap font-mono">{formatCurrency(item.balance)}</DataTableCell><DataTableCell align="center">{item.source === "compra" && item.balance > item.scheduledAmount ? <TableHoverActionMenu label={`Programar pago de ${item.provider}`} width={330}><form action={scheduleAdministrationSupplierPaymentAction} className="grid gap-2"><input name="id" type="hidden" value={item.id} /><input name="month" type="hidden" value={month} /><input name="notes" type="hidden" value="Programado desde Administración V2" /><Field htmlFor={`admin-payable-${item.id}-amount`} label="Monto"><Input defaultValue={Math.round(item.balance - item.scheduledAmount)} id={`admin-payable-${item.id}-amount`} min="0.01" name="amount" required step="0.01" type="number" /></Field><Field htmlFor={`admin-payable-${item.id}-date`} label="Fecha"><Input defaultValue={item.scheduledDate ?? today} id={`admin-payable-${item.id}-date`} name="date" required type="date" /></Field><Button className="w-full" size="sm" type="submit">Programar pago</Button></form></TableHoverActionMenu> : <span className="text-xs text-[#94a3b8]">—</span>}</DataTableCell></DataTableRow>;
+                    return <DataTableRow key={`${item.source}-${item.id}`}><DataTableCell className="whitespace-nowrap">{formatDate(item.date)}</DataTableCell><DataTableCell>{sourceLabel(item.source)}</DataTableCell><DataTableCell className="font-medium">{item.provider}</DataTableCell><DataTableCell>{item.concept}</DataTableCell><DataTableCell><StatusBadge tone={tone}>{days < 0 ? "Vencido" : days <= 7 ? "Próximo" : item.status}</StatusBadge></DataTableCell><DataTableCell align="right" className="whitespace-nowrap font-mono">{formatCurrency(item.balance)}</DataTableCell><DataTableCell align="center">{item.source === "compra" && item.balance > item.scheduledAmount ? <TableHoverActionMenu label={`Programar pago de ${item.provider}`} width={330}><form action={scheduleAdministrationSupplierPaymentAction} className="grid gap-2"><input name="id" type="hidden" value={item.id} /><input name="month" type="hidden" value={month} /><input name="notes" type="hidden" value="Programado desde Administración V2" /><Field htmlFor={`admin-payable-${item.id}-amount`} label="Monto"><MoneyInput defaultValue={Math.round(item.balance - item.scheduledAmount)} id={`admin-payable-${item.id}-amount`} min="0.01" name="amount" required /></Field><Field htmlFor={`admin-payable-${item.id}-date`} label="Fecha"><Input defaultValue={item.scheduledDate ?? today} id={`admin-payable-${item.id}-date`} name="date" required type="date" /></Field><Button className="w-full" size="sm" type="submit">Programar pago</Button></form></TableHoverActionMenu> : <span className="text-xs text-[#94a3b8]">—</span>}</DataTableCell></DataTableRow>;
                   })}
                 </DataTableBody>
               </DataTable>

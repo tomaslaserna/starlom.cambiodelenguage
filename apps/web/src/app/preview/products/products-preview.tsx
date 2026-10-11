@@ -14,6 +14,7 @@ import {
   PageHeader,
   Toolbar,
 } from "@/components/ui";
+import { formatCurrency } from "@/lib/format";
 
 type StockFilter = "all" | "available" | "empty" | "negative";
 
@@ -48,16 +49,6 @@ const PRICE_LISTS = [
   { name: "Lista 4 · Especial", margin: 45 },
   { name: "Lista 5 · Distribuidor", margin: 50 },
 ];
-
-const currencyFormatter = new Intl.NumberFormat("es-AR", {
-  currency: "ARS",
-  maximumFractionDigits: 0,
-  style: "currency",
-});
-
-function formatCurrency(value: number) {
-  return currencyFormatter.format(value);
-}
 
 function ProductIcon({ className = "h-5 w-5" }: { className?: string }) {
   return (

@@ -62,7 +62,11 @@ export function ivaAmount(net: number, rate: IvaRate): number {
 
 export function formatConfirmationMoney(value: number): string {
   const safe = Number.isFinite(value) ? value : 0;
-  return `$${safe.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const sign = safe < 0 ? "-" : "";
+  return `${sign}$ ${new Intl.NumberFormat("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(safe))}`;
 }
 
 export function formatDeliveryDate(iso: string): string {

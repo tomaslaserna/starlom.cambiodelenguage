@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { Button, ButtonLink, Field, Input, SearchableSelect, Select } from "@/components/ui";
+import { Button, ButtonLink, Field, Input, MoneyInput, SearchableSelect, Select } from "@/components/ui";
 import { formatCurrency, formatNumber } from "@/lib/format";
 
 type PurchaseFormSupplier = {
@@ -305,7 +305,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
           <Field className="xl:col-span-5" htmlFor="purchase-new-product-name" label="Nombre del nuevo producto"><Input id="purchase-new-product-name" placeholder="Ej.: Detergente concentrado 5 L" value={newProductName} onChange={(event) => setNewProductName(event.target.value)} /></Field>
           <Field className="xl:col-span-2" htmlFor="purchase-new-product-code" label="Código (opcional)"><Input id="purchase-new-product-code" value={newProductCode} onChange={(event) => setNewProductCode(event.target.value)} /></Field>
           <Field className="xl:col-span-2" htmlFor="purchase-new-product-quantity" label="Cantidad"><Input id="purchase-new-product-quantity" min="1" step="1" type="number" value={newProductQuantity} onChange={(event) => setNewProductQuantity(event.target.value)} /></Field>
-          <Field className="xl:col-span-2" htmlFor="purchase-new-product-cost" label="Costo unitario s/IVA"><Input id="purchase-new-product-cost" min="0" step="0.01" type="number" value={newProductCost} onChange={(event) => setNewProductCost(event.target.value)} /></Field>
+          <Field className="xl:col-span-2" htmlFor="purchase-new-product-cost" label="Costo unitario s/IVA"><MoneyInput id="purchase-new-product-cost" min="0" value={newProductCost} onValueChange={setNewProductCost} /></Field>
           <Button className="w-full xl:col-span-1" disabled={newProductName.trim().length < 2 || numericInput(newProductQuantity) < 1} type="button" onClick={addNewProductLine}>Agregar</Button>
           <p className="md:col-span-2 xl:col-span-12 text-xs font-semibold text-blue-800">Se creará vinculado a {selectedSupplier?.name ?? "este proveedor"}, con este costo y con la cantidad ingresada como stock inicial.</p>
         </div>
@@ -337,7 +337,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
           />
         </Field>
         <Field className="min-w-0 xl:col-span-2" htmlFor="purchase-cost-draft" label="Costo unitario s/IVA">
-          <Input id="purchase-cost-draft" min="0" step="0.01" type="number" value={draftLine.unitCost} onChange={(event) => updateDraftLine({ unitCost: event.target.value })} />
+          <MoneyInput id="purchase-cost-draft" min="0" value={draftLine.unitCost} onValueChange={(unitCost) => updateDraftLine({ unitCost })} />
         </Field>
         <Button className="w-full xl:col-span-2" disabled={!canAddLine} type="button" onClick={addDraftLine}>
           Agregar producto
@@ -397,7 +397,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
                     value={line.quantity}
                     onChange={(event) => updateLine(index, { quantity: event.target.value })}
                   />
-                  <Input aria-label={`Costo de ${lineName}`} className="min-h-9 px-2 text-right text-xs" min="0" step="0.01" type="number" value={line.unitCost} onChange={(event) => updateLine(index, { unitCost: event.target.value })} />
+                  <MoneyInput aria-label={`Costo de ${lineName}`} className="min-h-9 px-2 text-right text-xs" min="0" value={line.unitCost} onValueChange={(unitCost) => updateLine(index, { unitCost })} />
                   <span className="text-right font-mono text-xs font-bold">{formatCurrency(numericInput(line.quantity) * numericInput(line.unitCost))}</span>
                   <Button
                     aria-label={`Quitar ${lineName}`}

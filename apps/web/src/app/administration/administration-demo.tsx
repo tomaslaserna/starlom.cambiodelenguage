@@ -17,6 +17,7 @@ import {
   DataTableRow,
   Field,
   Input,
+  MoneyInput,
   Select,
   StatCard,
   StatusBadge,
@@ -583,7 +584,7 @@ export function AdministrationDemo({ month, view }: { month: string; view: DemoV
                   <form className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" key={editingCost?.id || "new-cost"} onSubmit={handleSaveCost}>
                     <Field htmlFor="cost-name" label="Concepto"><Input defaultValue={editingCost?.name} id="cost-name" name="costName" placeholder="Ej. Alquiler" required /></Field>
                     <Field htmlFor="cost-category" label="Etiqueta"><Select defaultValue={editingCost?.category || "Fijo"} id="cost-category" name="costCategory"><option>Fijo</option><option>Variable</option><option>Único</option></Select></Field>
-                    <Field htmlFor="cost-amount" label="Importe mensual"><Input defaultValue={editingCost?.amount} id="cost-amount" min="0.01" name="costAmount" required step="0.01" type="number" /></Field>
+                    <Field htmlFor="cost-amount" label="Importe mensual"><MoneyInput defaultValue={editingCost?.amount} id="cost-amount" min="0.01" name="costAmount" required /></Field>
                     <Field htmlFor="cost-start" label="Desde el mes"><Input defaultValue={editingCost?.startMonth || month} id="cost-start" name="costStartMonth" required type="month" /></Field>
                     <Field htmlFor="cost-duration" label="Duración"><Select defaultValue={editingCost?.durationMonths === null ? "indefinite" : String(editingCost?.durationMonths || 1)} id="cost-duration" name="costDuration"><option value="1">Solo 1 mes</option><option value="2">2 meses</option><option value="3">3 meses</option><option value="6">6 meses</option><option value="12">12 meses</option><option value="indefinite">Indefinido, confirmar cada mes</option></Select></Field>
                     {!editingCost ? <Field htmlFor="cost-payable" label="Crear también obligación"><Select defaultValue="no" id="cost-payable" name="createPayable"><option value="no">No, sólo registrar el costo</option><option value="yes">Sí, agregar a pagos pendientes</option></Select></Field> : null}
@@ -643,7 +644,7 @@ export function AdministrationDemo({ month, view }: { month: string; view: DemoV
                     <Field htmlFor="movement-account" label="Cuenta"><Select defaultValue="Santander" id="movement-account" name="movementAccount">{treasuryAccounts.map((account) => <option key={account.name}>{account.name}</option>)}</Select></Field>
                     <Field htmlFor="movement-date" label="Fecha"><Input defaultValue={today} id="movement-date" name="movementDate" required type="date" /></Field>
                     <Field htmlFor="movement-concept" label="Concepto"><Input id="movement-concept" name="movementConcept" placeholder="Origen o destino del movimiento" required /></Field>
-                    <Field htmlFor="movement-amount" label="Importe"><Input id="movement-amount" min="0.01" name="movementAmount" required step="0.01" type="number" /></Field>
+                    <Field htmlFor="movement-amount" label="Importe"><MoneyInput id="movement-amount" min="0.01" name="movementAmount" required /></Field>
                     <div className="flex items-end gap-2"><Button type="submit">Registrar</Button><Button onClick={() => setShowTreasuryMovement(false)} type="button" variant="secondary">Cancelar</Button></div>
                   </form>
                 </CardContent>
@@ -655,7 +656,7 @@ export function AdministrationDemo({ month, view }: { month: string; view: DemoV
                 <CardHeader><CardTitle>Conciliar · {reconcileAccountName}</CardTitle></CardHeader>
                 <CardContent>
                   <form className="grid gap-4 md:grid-cols-[minmax(0,320px)_auto]" onSubmit={handleReconciliation}>
-                    <Field htmlFor="statement-balance" label="Saldo informado por banco / caja"><Input defaultValue={treasuryAccounts.find((account) => account.name === reconcileAccountName)?.statementBalance} id="statement-balance" name="statementBalance" required step="0.01" type="number" /></Field>
+                    <Field htmlFor="statement-balance" label="Saldo informado por banco / caja"><MoneyInput defaultValue={treasuryAccounts.find((account) => account.name === reconcileAccountName)?.statementBalance} id="statement-balance" name="statementBalance" required /></Field>
                     <div className="flex items-end gap-2"><Button type="submit">Actualizar conciliación</Button><Button onClick={() => setReconcileAccountName(null)} type="button" variant="secondary">Cancelar</Button></div>
                   </form>
                   <p className="mt-3 text-xs text-[#64748b]">La diferencia se muestra para revisión. La simulación nunca crea un ajuste contable automático.</p>
@@ -724,7 +725,7 @@ export function AdministrationDemo({ month, view }: { month: string; view: DemoV
                       <Input id="new-obligation-due" name="due" required type="date" />
                     </Field>
                     <Field htmlFor="new-obligation-amount" label="Importe total">
-                      <Input id="new-obligation-amount" min="0.01" name="amount" placeholder="0,00" required step="0.01" type="number" />
+                      <MoneyInput id="new-obligation-amount" min="0.01" name="amount" required />
                     </Field>
                     <div className="flex items-end gap-2">
                       <Button type="submit">Agregar a agenda</Button>
@@ -744,7 +745,7 @@ export function AdministrationDemo({ month, view }: { month: string; view: DemoV
                       <Select defaultValue="pay" id="payment-mode" name="paymentMode"><option value="pay">Registrar pago</option><option value="schedule">Programar pago</option></Select>
                     </Field>
                     <Field htmlFor="payment-amount" label={`Importe · saldo ${formatCurrency(remainingAmount(selectedObligation))}`}>
-                      <Input defaultValue={remainingAmount(selectedObligation)} id="payment-amount" max={remainingAmount(selectedObligation)} min="0.01" name="paymentAmount" required step="0.01" type="number" />
+                      <MoneyInput defaultValue={remainingAmount(selectedObligation)} id="payment-amount" max={remainingAmount(selectedObligation)} min="0.01" name="paymentAmount" required />
                     </Field>
                     <Field htmlFor="payment-date" label="Fecha">
                       <Input defaultValue={today} id="payment-date" name="actionDate" required type="date" />

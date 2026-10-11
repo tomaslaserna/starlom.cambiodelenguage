@@ -1,5 +1,5 @@
 import { ModulePage } from "@/components/module-page";
-import { Button, Card, DataTable, DataTableBody, DataTableCell, DataTableHead, DataTableHeader, DataTableRow, EmptyState, Field, Input, PageHeader, Select, StatCard } from "@/components/ui";
+import { Button, Card, DataTable, DataTableBody, DataTableCell, DataTableHead, DataTableHeader, DataTableRow, EmptyState, Field, Input, MoneyInput, PageHeader, Select, StatCard } from "@/components/ui";
 import { formatCurrency } from "@/lib/format";
 import { getDividendSheet, getSalaryPlan } from "@/lib/finance";
 import { listEmployees } from "@/lib/employees";
@@ -67,7 +67,7 @@ export default async function RemunerationsPage() {
                   </Select>
                 </Field>
                 <Field htmlFor="salary-monthly" label="Sueldo mensual">
-                  <Input id="salary-monthly" min="0.01" name="monthly" required step="0.01" type="number" />
+                  <MoneyInput id="salary-monthly" min="0.01" name="monthly" required />
                 </Field>
                 <Field htmlFor="salary-modality" label="Modalidad">
                   <Input defaultValue="mensual" id="salary-modality" name="modality" />

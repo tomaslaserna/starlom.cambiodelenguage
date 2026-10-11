@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Button, Field, Input, SearchableSelect, Select } from "@/components/ui";
+import { Button, Field, Input, MoneyInput, SearchableSelect, Select } from "@/components/ui";
 import { formatNumber } from "@/lib/format";
 import type { OrderFormProduct } from "@/lib/orders";
 import type { PriceOffer } from "@/lib/price-offers";
@@ -147,7 +147,7 @@ export function OfferForm({
         </Field>
         {priceMode === "fijo" ? (
           <Field htmlFor={`offer-fixed-${idSuffix}`} label="Precio fijo" required>
-            <Input defaultValue={offer?.fixedPrice != null ? String(offer.fixedPrice) : ""} id={`offer-fixed-${idSuffix}`} inputMode="decimal" name="fixedPrice" step="0.01" type="number" />
+            <MoneyInput defaultValue={offer?.fixedPrice ?? ""} id={`offer-fixed-${idSuffix}`} name="fixedPrice" />
           </Field>
         ) : (
           <>
@@ -155,7 +155,7 @@ export function OfferForm({
               <Input defaultValue={offer?.discountPercent != null ? String(offer.discountPercent) : ""} id={`offer-disc-${idSuffix}`} inputMode="decimal" max="100" min="0" name="discountPercent" step="0.01" type="number" />
             </Field>
             <Field htmlFor={`offer-min-${idSuffix}`} label="Precio mínimo (opcional)">
-              <Input defaultValue={offer?.minPrice != null ? String(offer.minPrice) : ""} id={`offer-min-${idSuffix}`} inputMode="decimal" name="minPrice" step="0.01" type="number" />
+              <MoneyInput defaultValue={offer?.minPrice ?? ""} id={`offer-min-${idSuffix}`} name="minPrice" />
             </Field>
           </>
         )}

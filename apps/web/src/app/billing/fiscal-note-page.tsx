@@ -9,6 +9,7 @@ import {
   CardTitle,
   Field,
   Input,
+  MoneyInput,
   PageHeader,
   StatCard,
   StatusBadge,
@@ -170,13 +171,11 @@ export async function FiscalNotePage({ kind, params, searchParams }: FiscalNoteP
                 <input name="saleId" type="hidden" value={preview.saleId} />
                 <input name="operationalDocumentId" type="hidden" value={preview.operationalDocumentId} />
                 <Field htmlFor={`${copy.route}-amount`} label="Monto">
-                  <Input
+                  <MoneyInput
                     id={`${copy.route}-amount`}
                     min="0.01"
                     name="amount"
-                    step="0.01"
-                    type="number"
-                    defaultValue={noteAmount.toFixed(2)}
+                    defaultValue={noteAmount}
                     readOnly={Boolean(preview.operationalDocumentId)}
                   />
                 </Field>

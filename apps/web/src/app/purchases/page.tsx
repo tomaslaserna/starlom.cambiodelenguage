@@ -29,6 +29,7 @@ import {
   EmptyState,
   Field,
   Input,
+  MoneyInput,
   PageHeader,
   Select,
   StatCard,
@@ -440,14 +441,12 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                               <form action={requestSupplierPaymentAction} className="mt-2 grid gap-2">
                                 <input name="id" type="hidden" value={purchase.id} />
                                 <Field className="gap-1" htmlFor={paymentAmountInputId} label="Monto">
-                                  <Input
-                                    defaultValue={purchase.balance.toFixed(2)}
+                                  <MoneyInput
+                                    defaultValue={purchase.balance}
                                     id={paymentAmountInputId}
                                     min="0"
                                     name="amount"
                                     required
-                                    step="0.01"
-                                    type="number"
                                   />
                                 </Field>
                                 <Field className="gap-1" htmlFor={paymentDateInputId} label="Fecha de pago">

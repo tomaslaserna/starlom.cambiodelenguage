@@ -14,6 +14,7 @@ import {
   EmptyState,
   Field,
   Input,
+  MoneyInput,
   StatCard,
   StatusBadge,
   Toolbar,
@@ -291,23 +292,7 @@ export default async function RentabilidadPage({ searchParams }: RentabilidadPag
                 </div>
               </Field>
               <Field htmlFor="cost-amount" label="Monto">
-                <div className="relative">
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-0 left-0 flex w-10 items-center justify-center border-r border-[color:var(--border)] font-semibold text-[#60708a]"
-                  >
-                    $
-                  </span>
-                  <Input
-                    className="w-full pl-12"
-                    id="cost-amount"
-                    min="0.01"
-                    name="amount"
-                    step="0.01"
-                    type="number"
-                    required
-                  />
-                </div>
+                <MoneyInput id="cost-amount" min="0.01" name="amount" required />
               </Field>
               <Field htmlFor="cost-category" label="Categoria (opcional)">
                 <div className="relative">
