@@ -210,6 +210,8 @@ test("cada cobro genera su contrapartida en Tesoreria dentro de la misma transac
   assert.match(migration, /treasury_account_id/);
   assert.match(migration, /treasury_reference/);
   assert.match(migration, /cheque_due_date/);
+  assert.match(migration, /payment_status ADD VALUE IF NOT EXISTS 'pendiente_aprobacion'/);
+  assert.match(migration, /payment_status ADD VALUE IF NOT EXISTS 'rechazado'/);
 });
 
 test("el formulario limita cada imputacion al saldo y permite cobros totalmente a favor", () => {

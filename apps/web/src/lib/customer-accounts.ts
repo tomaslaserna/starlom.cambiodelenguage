@@ -708,22 +708,15 @@ async function resolvePaymentTreasuryTarget(
     }
     return null;
   }
+  if (!/^\d+$/.test(input.treasuryAccountId)) {
+    throw new ApiError(400, "Selecciona una cuenta de Tesoreria");
+  }
   const account = await client.query<{ id: string; name: string; account_type: string }>(
     `SELECT id::text, name, account_type
        FROM admin_treasury_accounts
-      WHERE empresa_id = $2 AND active = TRUE
-        AND (
-          (NULLIF($1, '') IS NOT NULL AND id = NULLIF($1, '')::bigint)
-          OR (
-            NULLIF($1, '') IS NULL
-            AND (($3 = 'efectivo' AND account_type = 'cash')
-              OR ($3 = 'transferencia' AND account_type IN ('bank', 'wallet')))
-          )
-        )
-      ORDER BY CASE WHEN id::text = NULLIF($1, '') THEN 0 ELSE 1 END, id
-      LIMIT 1
+      WHERE id = $1::bigint AND empresa_id = $2 AND active = TRUE
       FOR SHARE`,
-    [input.treasuryAccountId, companyId, input.method],
+    [input.treasuryAccountId, companyId],
   );
   const target = account.rows[0];
   if (!target) throw new ApiError(400, "La cuenta de Tesoreria no existe o esta inactiva");

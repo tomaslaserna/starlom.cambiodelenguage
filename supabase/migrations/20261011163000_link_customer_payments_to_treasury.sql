@@ -1,6 +1,9 @@
 -- Vincula cada cobro de cuenta corriente con su destino real en Tesoreria.
 -- Las columnas son opcionales para conservar la compatibilidad con cobros historicos.
 
+ALTER TYPE public.payment_status ADD VALUE IF NOT EXISTS 'pendiente_aprobacion';
+ALTER TYPE public.payment_status ADD VALUE IF NOT EXISTS 'rechazado';
+
 ALTER TABLE public.payments
   ADD COLUMN treasury_account_id bigint NULL
     REFERENCES public.admin_treasury_accounts(id) ON DELETE RESTRICT,
