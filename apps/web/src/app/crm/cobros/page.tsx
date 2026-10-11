@@ -21,6 +21,7 @@ import { RegisterPaymentDialog } from "@/app/payments/register-payment-dialog";
 import { requireStaffSession } from "@/lib/auth";
 import { getVendorOpenAccounts } from "@/lib/crm";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { getTreasuryAccountOptions } from "@/lib/finance";
 import { sessionCanUseCrm } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
 
@@ -34,7 +35,10 @@ export default async function CrmCobrosPage({ searchParams }: CrmCobrosPageProps
 
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
-  const { accounts: allAccounts } = await getVendorOpenAccounts(session);
+  const [{ accounts: allAccounts }, treasuryAccounts] = await Promise.all([
+    getVendorOpenAccounts(session),
+    getTreasuryAccountOptions(session.companyId),
+  ]);
   const lowerQuery = query.toLowerCase();
   const accounts = lowerQuery
     ? allAccounts.filter((account) =>
@@ -146,6 +150,7 @@ export default async function CrmCobrosPage({ searchParams }: CrmCobrosPageProps
                         action={registerCrmCustomerPaymentAction}
                         customers={[]}
                         defaultCustomerId={account.clientId}
+                        treasuryAccounts={treasuryAccounts}
                         today={today}
                         triggerLabel="Registrar cobro"
                       />

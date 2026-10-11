@@ -186,7 +186,9 @@ export async function listApprovalCenter(companyId: number, access: ApprovalCent
     id: item.id,
     type: "Solicitud de aprobacion de pago",
     title: `Pago ${item.customerName}`,
-    detail: `${item.method || "Metodo"} - ${item.reference || "sin referencia"}`,
+    detail: `${item.method || "Metodo"} - ${item.destination} - ${item.reference || "sin referencia"}${
+      item.chequeDueDate ? ` - Cobro ${item.chequeDueDate}` : ""
+    }`,
     amount: item.amount,
     requester: item.registeredBy,
     createdAt: item.createdAt,

@@ -478,7 +478,7 @@ const PAYMENT_METHODS = new Set<string>(COLLECTION_METHODS);
 
 export type CustomerPaymentInput = {
   clientId: string; amount: number; date: string; method: string;
-  destination: string; operation: string; notes: string;
+  treasuryAccountId: string; operation: string; chequeDueDate: string; notes: string;
   allocations: CustomerPaymentAllocation[];
 };
 
@@ -692,12 +692,116 @@ async function postAllocatedCustomerPayment(
   return { allocated: allocation.allocated, unallocated: allocation.unallocated };
 }
 
+type PaymentTreasuryTarget = {
+  accountId: string;
+  accountName: string;
+};
+
+async function resolvePaymentTreasuryTarget(
+  client: PoolClient,
+  companyId: number,
+  input: Pick<CustomerPaymentInput, "method" | "treasuryAccountId" | "chequeDueDate">,
+): Promise<PaymentTreasuryTarget | null> {
+  if (input.method === "echeck") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.chequeDueDate)) {
+      throw new ApiError(400, "La fecha de cobro del E-cheq es obligatoria");
+    }
+    return null;
+  }
+  const account = await client.query<{ id: string; name: string; account_type: string }>(
+    `SELECT id::text, name, account_type
+       FROM admin_treasury_accounts
+      WHERE empresa_id = $2 AND active = TRUE
+        AND (
+          (NULLIF($1, '') IS NOT NULL AND id = NULLIF($1, '')::bigint)
+          OR (
+            NULLIF($1, '') IS NULL
+            AND (($3 = 'efectivo' AND account_type = 'cash')
+              OR ($3 = 'transferencia' AND account_type IN ('bank', 'wallet')))
+          )
+        )
+      ORDER BY CASE WHEN id::text = NULLIF($1, '') THEN 0 ELSE 1 END, id
+      LIMIT 1
+      FOR SHARE`,
+    [input.treasuryAccountId, companyId, input.method],
+  );
+  const target = account.rows[0];
+  if (!target) throw new ApiError(400, "La cuenta de Tesoreria no existe o esta inactiva");
+  if (input.method === "efectivo" && target.account_type !== "cash") {
+    throw new ApiError(400, "El efectivo debe ingresar a una cuenta de Caja");
+  }
+  if (input.method === "transferencia" && !["bank", "wallet"].includes(target.account_type)) {
+    throw new ApiError(400, "La transferencia debe ingresar a un banco o billetera");
+  }
+  return { accountId: target.id, accountName: target.name };
+}
+
+async function postCustomerPaymentToTreasury(
+  client: PoolClient,
+  companyId: number,
+  input: {
+    paymentId: string;
+    clientName: string;
+    clientTaxId: string;
+    amount: number;
+    date: string;
+    method: string;
+    operation: string;
+    chequeDueDate: string;
+    notes: string;
+    target: PaymentTreasuryTarget | null;
+    actorId: string;
+  },
+) {
+  if (input.method === "echeck") {
+    await client.query(
+      `INSERT INTO admin_echeqs (
+         empresa_id, cheque_number, received_from, received_from_cuit,
+         issuer, issuer_cuit, due_date, amount, status, payment_id, notes, created_by
+       ) VALUES ($1, $2, $3, $4, $3, $4, $5::date, $6, 'accepted', $7::uuid, $8, $9::uuid)`,
+      [
+        companyId,
+        input.operation,
+        input.clientName,
+        input.clientTaxId,
+        input.chequeDueDate,
+        input.amount,
+        input.paymentId,
+        input.notes,
+        input.actorId,
+      ],
+    );
+    return;
+  }
+
+  if (!input.target) throw new ApiError(400, "Falta la cuenta de destino del cobro");
+  await client.query(
+    `INSERT INTO admin_treasury_movements (
+       empresa_id, account_id, movement_date, direction, amount, concept,
+       source_type, source_id, reference, notes, created_by
+     ) VALUES ($1, $2::bigint, $3::date, 'inflow', $4, $5,
+               'customer_payment', $6, $7, $8, $9::uuid)`,
+    [
+      companyId,
+      input.target.accountId,
+      input.date,
+      input.amount,
+      `Cobro de ${input.clientName}`,
+      input.paymentId,
+      input.operation,
+      input.notes,
+      input.actorId,
+    ],
+  );
+}
+
 export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput {
   const clientId = textField(body, "clientId") || textField(body, "cliente_id");
   const amount = numberField(body, "amount", numberField(body, "monto", 0));
   const method = (textField(body, "method") || textField(body, "metodo")).toLowerCase();
-  const destination = (textField(body, "destination") || textField(body, "destino")).trim();
+  const treasuryAccountId = textField(body, "treasuryAccountId").trim();
   const operation = textField(body, "operation") || textField(body, "operacion");
+  const chequeDueDate = textField(body, "chequeDueDate").trim();
   const notes = textField(body, "notes") || textField(body, "notas");
   const date = textField(body, "date") || textField(body, "fecha") || localDateIso();
 
@@ -722,14 +826,22 @@ export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput
 
   if (amount <= 0) throw new ApiError(400, "El monto debe ser mayor a cero");
   if (!PAYMENT_METHODS.has(method)) throw new ApiError(400, "Metodo de cobro invalido");
-  if (!destination) throw new ApiError(400, "El destino es obligatorio");
   if (collectionMethodRequiresOperation(method) && !operation) throw new ApiError(400, "La operacion es obligatoria");
+  if (method === "echeck" && !/^\d{1,20}$/.test(operation)) {
+    throw new ApiError(400, "El numero de E-cheq debe contener solo digitos");
+  }
+  if (method !== "echeck" && !/^\d+$/.test(treasuryAccountId)) {
+    throw new ApiError(400, "Selecciona una cuenta de Tesoreria");
+  }
+  if (method === "echeck" && !/^\d{4}-\d{2}-\d{2}$/.test(chequeDueDate)) {
+    throw new ApiError(400, "La fecha de cobro del E-cheq es obligatoria");
+  }
   const allocatedTotal = money(allocations.reduce((sum, item) => sum + item.amount, 0));
   if (allocatedTotal - amount > 0.005) {
     throw new ApiError(400, "El total imputado a los remitos no puede superar el monto recibido");
   }
 
-  return { clientId, amount, date, method, destination, operation, notes, allocations };
+  return { clientId, amount, date, method, treasuryAccountId, operation, chequeDueDate, notes, allocations };
 }
 
 export async function registerCustomerPayment(session: AuthSession, input: CustomerPaymentInput) {
@@ -739,26 +851,32 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
 
   const result = await withCompanyContext(session.companyId, async (client) => {
     const clientInfo = await client.query(
-      `SELECT COALESCE(display_name,'') AS name FROM clients WHERE id = $1::uuid AND empresa_id = $2 LIMIT 1`,
+      `SELECT COALESCE(display_name,'') AS name, COALESCE(tax_id,'') AS tax_id
+         FROM clients WHERE id = $1::uuid AND empresa_id = $2 LIMIT 1`,
       [input.clientId, session.companyId],
     );
     if (clientInfo.rows.length === 0) throw new ApiError(404, "Cliente no encontrado");
     const clientName = clientInfo.rows[0]?.name ?? "";
+    const clientTaxId = clientInfo.rows[0]?.tax_id ?? "";
     const reference = [input.operation, input.notes].filter(Boolean).join(" | ");
     const explicitAllocations = input.allocations ?? [];
+    const treasuryTarget = await resolvePaymentTreasuryTarget(client, session.companyId, input);
 
     const payment = await client.query(
       `
         INSERT INTO payments (
           client_id, payment_date, amount, method, reference, status,
-          registered_by, entity_type, entity_name, concept, notes, empresa_id
+          registered_by, entity_type, entity_name, concept, notes, empresa_id,
+          treasury_account_id, treasury_reference, cheque_due_date
         )
-        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, 'cliente', $8, $9, $10, $11)
+        VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, 'cliente', $8, $9, $10, $11,
+                $12::bigint, $13, $14::date)
         RETURNING id::text AS id
       `,
       [
         input.clientId, input.date, input.amount, input.method, reference, status,
         session.userId, clientName, `Cobro ${input.method}`, input.notes, session.companyId,
+        treasuryTarget?.accountId ?? null, input.operation, input.chequeDueDate || null,
       ],
     );
     const paymentId = payment.rows[0].id as string;
@@ -779,9 +897,22 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
         paymentId,
         amount: input.amount,
         date: input.date,
-        description: `Cobro - ${input.method} | Destino ${input.destination} | ${reference}`.trim(),
+        description: `Cobro - ${input.method} | Destino ${treasuryTarget?.accountName ?? "E-cheq en cartera"} | ${reference}`.trim(),
         clientName,
         allocations: explicitAllocations.length ? explicitAllocations : undefined,
+      });
+      await postCustomerPaymentToTreasury(client, session.companyId, {
+        paymentId,
+        clientName,
+        clientTaxId,
+        amount: input.amount,
+        date: input.date,
+        method: input.method,
+        operation: input.operation,
+        chequeDueDate: input.chequeDueDate,
+        notes: input.notes,
+        target: treasuryTarget,
+        actorId: session.userId,
       });
     }
 
@@ -799,23 +930,30 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
 
 export type PendingCustomerPayment = {
   id: string; clientId: string; customerName: string; amount: number;
-  method: string; reference: string; registeredBy: string; createdAt: string | null;
+  method: string; reference: string; destination: string; chequeDueDate: string | null;
+  registeredBy: string; createdAt: string | null;
 };
 
 export async function listPendingCustomerPayments(companyId: number): Promise<PendingCustomerPayment[]> {
   const rows = await queryWithCompanyContext<{
     id: string; client_id: string; name: string; amount: string; method: string;
-    reference: string; registered_by: string; created_at: string | null;
+    reference: string; destination: string; cheque_due_date: string | null;
+    registered_by: string; created_at: string | null;
   }>(
     companyId,
     `
       SELECT p.id::text AS id, p.client_id::text AS client_id,
              COALESCE(c.display_name, p.entity_name, '') AS name,
              p.amount::text, COALESCE(p.method,'') AS method, COALESCE(p.reference,'') AS reference,
+             CASE WHEN p.method = 'echeck' THEN 'E-cheq en cartera'
+                  ELSE COALESCE(account.name, 'Cuenta no identificada') END AS destination,
+             p.cheque_due_date::text,
              COALESCE(u.full_name, u.username, '') AS registered_by, p.created_at::text
       FROM payments p
       LEFT JOIN clients c ON c.id = p.client_id AND c.empresa_id = p.empresa_id
       LEFT JOIN profiles u ON u.id::text = p.registered_by::text
+      LEFT JOIN admin_treasury_accounts account
+        ON account.id = p.treasury_account_id AND account.empresa_id = p.empresa_id
       WHERE p.empresa_id = $1 AND p.status::text = 'pendiente_aprobacion' AND p.entity_type = 'cliente'
       ORDER BY p.created_at DESC
     `,
@@ -823,20 +961,34 @@ export async function listPendingCustomerPayments(companyId: number): Promise<Pe
   );
   return rows.rows.map((row) => ({
     id: row.id, clientId: row.client_id, customerName: row.name, amount: Number(row.amount),
-    method: row.method, reference: row.reference, registeredBy: row.registered_by, createdAt: row.created_at,
+    method: row.method, reference: row.reference, destination: row.destination,
+    chequeDueDate: row.cheque_due_date, registeredBy: row.registered_by, createdAt: row.created_at,
   }));
 }
 
 export async function approveCustomerPayment(session: AuthSession, paymentId: string) {
   const result = await withCompanyContext(session.companyId, async (client) => {
     const found = await client.query(
-      `SELECT id::text AS id, client_id::text AS client_id, amount::text AS amount,
-              COALESCE(method,'') AS method, COALESCE(reference,'') AS reference, COALESCE(entity_name,'') AS entity_name
-       FROM payments WHERE id = $1::uuid AND empresa_id = $2 AND status::text = 'pendiente_aprobacion' FOR UPDATE`,
+      `SELECT p.id::text AS id, p.client_id::text AS client_id, p.amount::text AS amount,
+              p.payment_date::text AS payment_date, COALESCE(p.method,'') AS method,
+              COALESCE(p.reference,'') AS reference, COALESCE(p.entity_name,'') AS entity_name,
+              COALESCE(c.tax_id,'') AS tax_id,
+              COALESCE(p.treasury_account_id::text,'') AS treasury_account_id,
+              COALESCE(p.treasury_reference,'') AS treasury_reference,
+              COALESCE(p.cheque_due_date::text,'') AS cheque_due_date,
+              COALESCE(p.notes,'') AS notes
+       FROM payments p
+       LEFT JOIN clients c ON c.id = p.client_id AND c.empresa_id = p.empresa_id
+       WHERE p.id = $1::uuid AND p.empresa_id = $2 AND p.status::text = 'pendiente_aprobacion' FOR UPDATE OF p`,
       [paymentId, session.companyId],
     );
     const payment = found.rows[0];
     if (!payment) throw new ApiError(409, "El pago ya no esta pendiente de aprobacion");
+    const treasuryTarget = await resolvePaymentTreasuryTarget(client, session.companyId, {
+      method: payment.method,
+      treasuryAccountId: payment.treasury_account_id,
+      chequeDueDate: payment.cheque_due_date || payment.payment_date,
+    });
 
     const requested = await client.query<{ sale_id: string; amount: string }>(
       `SELECT sale_id::text AS sale_id, requested_amount::text AS amount
@@ -850,12 +1002,25 @@ export async function approveCustomerPayment(session: AuthSession, paymentId: st
       clientId: payment.client_id,
       paymentId,
       amount: Number(payment.amount),
-      date: localDateIso(),
-      description: `Cobro aprobado - ${payment.method} | ${payment.reference}`.trim(),
+      date: payment.payment_date,
+      description: `Cobro aprobado - ${payment.method} | Destino ${treasuryTarget?.accountName ?? "E-cheq en cartera"} | ${payment.reference}`.trim(),
       clientName: payment.entity_name,
       allocations: requested.rows.length
         ? requested.rows.map((item) => ({ saleId: item.sale_id, amount: Number(item.amount) }))
         : undefined,
+    });
+    await postCustomerPaymentToTreasury(client, session.companyId, {
+      paymentId,
+      clientName: payment.entity_name,
+      clientTaxId: payment.tax_id,
+      amount: Number(payment.amount),
+      date: payment.payment_date,
+      method: payment.method,
+      operation: payment.treasury_reference || String(payment.reference).split("|")[0].trim(),
+      chequeDueDate: payment.cheque_due_date || payment.payment_date,
+      notes: payment.notes,
+      target: treasuryTarget,
+      actorId: session.userId,
     });
     await client.query(
       `UPDATE payments SET status = 'registrado', updated_at = now() WHERE id = $1::uuid AND empresa_id = $2`,
@@ -966,7 +1131,10 @@ export async function voidCustomerPayment(session: AuthSession, paymentId: strin
   const result = await withCompanyContext(session.companyId, async (client) => {
     const found = await client.query(
       `SELECT id::text AS id, client_id::text AS client_id, amount::text AS amount,
-              COALESCE(status::text,'') AS status, COALESCE(entity_name,'') AS entity_name
+              COALESCE(status::text,'') AS status, COALESCE(entity_name,'') AS entity_name,
+              COALESCE(method,'') AS method,
+              treasury_account_id::text AS treasury_account_id,
+              COALESCE(treasury_reference,'') AS treasury_reference
        FROM payments WHERE id = $1::uuid AND empresa_id = $2 FOR UPDATE`,
       [paymentId, session.companyId],
     );
@@ -1035,6 +1203,71 @@ export async function voidCustomerPayment(session: AuthSession, paymentId: strin
         `,
         [paymentId, session.companyId],
       );
+
+      if (["efectivo", "transferencia"].includes(payment.method) && payment.treasury_account_id) {
+        await client.query(
+          `INSERT INTO admin_treasury_movements (
+             empresa_id, account_id, movement_date, direction, amount, concept,
+             source_type, source_id, reference, notes, created_by
+           ) VALUES ($1, $2::bigint, CURRENT_DATE, 'outflow', $3, $4,
+                     'customer_payment_void', $5, $6, $7, $8::uuid)`,
+          [
+            session.companyId,
+            payment.treasury_account_id,
+            payment.amount,
+            `Anulacion de cobro de ${payment.entity_name}`,
+            paymentId,
+            payment.treasury_reference,
+            `Reversion del pago ${paymentId}`,
+            session.userId,
+          ],
+        );
+      }
+
+      if (payment.method === "echeck") {
+        const echecks = await client.query<{
+          id: string;
+          cheque_number: string;
+          amount: string;
+          status: string;
+          deposited_to_account_id: string | null;
+        }>(
+          `SELECT id::text, cheque_number, amount::text, status,
+                  deposited_to_account_id::text
+             FROM admin_echeqs
+            WHERE empresa_id = $1 AND payment_id = $2::uuid
+              AND status IN ('accepted', 'deposited', 'cleared')
+            FOR UPDATE`,
+          [session.companyId, paymentId],
+        );
+        for (const echeq of echecks.rows) {
+          if (echeq.status === "cleared" && echeq.deposited_to_account_id) {
+            await client.query(
+              `INSERT INTO admin_treasury_movements (
+                 empresa_id, account_id, movement_date, direction, amount, concept,
+                 source_type, source_id, reference, notes, created_by
+               ) VALUES ($1, $2::bigint, CURRENT_DATE, 'outflow', $3, $4,
+                         'echeq_payment_void', $5, $6, $7, $8::uuid)`,
+              [
+                session.companyId,
+                echeq.deposited_to_account_id,
+                echeq.amount,
+                `Anulacion de E-cheq ${echeq.cheque_number}`,
+                echeq.id,
+                echeq.cheque_number,
+                `Reversion del pago ${paymentId}`,
+                session.userId,
+              ],
+            );
+          }
+          await client.query(
+            `UPDATE admin_echeqs
+                SET status = 'cancelled', settled_on = CURRENT_DATE, updated_at = now()
+              WHERE id = $1::bigint AND empresa_id = $2`,
+            [echeq.id, session.companyId],
+          );
+        }
+      }
     }
 
     await client.query(

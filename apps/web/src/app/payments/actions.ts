@@ -14,6 +14,9 @@ function revalidatePaymentsFlow() {
   revalidatePath("/balance");
   revalidatePath("/metrics");
   revalidatePath("/treasury/current-accounts");
+  revalidatePath("/administration");
+  revalidatePath("/cash");
+  revalidatePath("/treasury");
 }
 
 export async function registerCustomerPaymentAction(formData: FormData) {

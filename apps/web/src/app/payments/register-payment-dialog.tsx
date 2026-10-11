@@ -4,9 +4,7 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { Button, Field, Input, SearchableSelect, Select } from "@/components/ui";
 import {
   COLLECTION_METHODS,
-  SUGGESTED_DESTINATIONS,
   collectionMethodRequiresOperation,
-  suggestedCollectionDestination,
 } from "@/lib/collection-methods";
 
 const METHOD_LABELS: Record<string, string> = {
@@ -16,6 +14,11 @@ const METHOD_LABELS: Record<string, string> = {
 };
 
 export type PaymentCustomerOption = { id: string; name: string };
+export type PaymentTreasuryAccountOption = {
+  id: string;
+  name: string;
+  accountType: "cash" | "bank" | "wallet" | "other";
+};
 type OpenRemittance = { saleId: string; number: string; date: string; total: number; outstanding: number };
 
 const currency = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" });
@@ -23,6 +26,7 @@ const currency = new Intl.NumberFormat("es-AR", { style: "currency", currency: "
 type RegisterPaymentDialogProps = {
   action: (formData: FormData) => Promise<void>;
   customers: PaymentCustomerOption[];
+  treasuryAccounts: PaymentTreasuryAccountOption[];
   defaultCustomerId?: string;
   today: string;
   triggerLabel?: string;
@@ -32,6 +36,7 @@ type RegisterPaymentDialogProps = {
 export function RegisterPaymentDialog({
   action,
   customers,
+  treasuryAccounts,
   defaultCustomerId,
   today,
   triggerLabel = "+ Nuevo pago",
@@ -41,7 +46,11 @@ export function RegisterPaymentDialog({
   const [open, setOpen] = useState(false);
   const [clientId, setClientId] = useState(defaultCustomerId ?? "");
   const [method, setMethod] = useState<string>(COLLECTION_METHODS[0]);
-  const [destination, setDestination] = useState(() => suggestedCollectionDestination(COLLECTION_METHODS[0]));
+  const [paymentDate, setPaymentDate] = useState(today);
+  const [chequeDueDate, setChequeDueDate] = useState(today);
+  const [treasuryAccountId, setTreasuryAccountId] = useState(
+    () => treasuryAccounts.find((account) => account.accountType === "cash")?.id ?? "",
+  );
   const [remittances, setRemittances] = useState<OpenRemittance[]>([]);
   const [allocationAmounts, setAllocationAmounts] = useState<Record<string, string>>({});
   const [paymentAmountInput, setPaymentAmountInput] = useState("");
@@ -49,6 +58,11 @@ export function RegisterPaymentDialog({
   const [remittanceError, setRemittanceError] = useState("");
   const operationRequired = collectionMethodRequiresOperation(method);
   const hideCustomerSelector = Boolean(defaultCustomerId);
+  const eligibleTreasuryAccounts = treasuryAccounts.filter((account) =>
+    method === "efectivo"
+      ? account.accountType === "cash"
+      : ["bank", "wallet"].includes(account.accountType),
+  );
 
   const customerOptions = customers.map((customer) => ({ value: customer.id, label: customer.name }));
   const allocations = useMemo(
@@ -91,16 +105,23 @@ export function RegisterPaymentDialog({
 
   function handleMethodChange(nextMethod: string) {
     setMethod(nextMethod);
-    // Solo cambiamos el destino sugerido si el usuario no lo editó a mano.
-    setDestination((current) =>
-      SUGGESTED_DESTINATIONS.includes(current) ? suggestedCollectionDestination(nextMethod) : current,
+    setTreasuryAccountId(
+      nextMethod === "echeck"
+        ? ""
+        : treasuryAccounts.find((account) =>
+            nextMethod === "efectivo"
+              ? account.accountType === "cash"
+              : ["bank", "wallet"].includes(account.accountType),
+          )?.id ?? "",
     );
   }
 
   function resetForm() {
     setClientId(defaultCustomerId ?? "");
     setMethod(COLLECTION_METHODS[0]);
-    setDestination(suggestedCollectionDestination(COLLECTION_METHODS[0]));
+    setPaymentDate(today);
+    setChequeDueDate(today);
+    setTreasuryAccountId(treasuryAccounts.find((account) => account.accountType === "cash")?.id ?? "");
     setRemittances([]);
     setAllocationAmounts({});
     setPaymentAmountInput("");
@@ -121,7 +142,8 @@ export function RegisterPaymentDialog({
   const amountInputId = `${dialogId}-amount`;
   const dateInputId = `${dialogId}-date`;
   const methodSelectId = `${dialogId}-method`;
-  const destinationInputId = `${dialogId}-destination`;
+  const treasuryAccountInputId = `${dialogId}-treasury-account`;
+  const chequeDueDateInputId = `${dialogId}-cheque-due-date`;
   const operationInputId = `${dialogId}-operation`;
   const notesInputId = `${dialogId}-notes`;
 
@@ -264,7 +286,15 @@ export function RegisterPaymentDialog({
                 <p className="sm:col-span-2 text-sm font-bold text-red-600" role="alert">El importe recibido no alcanza para cubrir lo aplicado a los remitos.</p>
               ) : null}
               <Field htmlFor={dateInputId} label="Fecha">
-                <Input className="min-h-10 px-2 text-sm" defaultValue={today} id={dateInputId} name="date" required type="date" />
+                <Input
+                  className="min-h-10 px-2 text-sm"
+                  id={dateInputId}
+                  name="date"
+                  onChange={(event) => setPaymentDate(event.target.value)}
+                  required
+                  type="date"
+                  value={paymentDate}
+                />
               </Field>
               <Field htmlFor={methodSelectId} label="Metodo">
                 <Select
@@ -281,23 +311,49 @@ export function RegisterPaymentDialog({
                   ))}
                 </Select>
               </Field>
-              <Field htmlFor={destinationInputId} label="Destino">
-                <Input
-                  className="min-h-10 px-2 text-sm"
-                  id={destinationInputId}
-                  name="destination"
-                  onChange={(event) => setDestination(event.target.value)}
-                  placeholder="Cuenta o caja"
-                  required
-                  value={destination}
-                />
-              </Field>
-              <Field htmlFor={operationInputId} label="Operacion" required={operationRequired}>
+              {method === "echeck" ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+                  <strong>E-cheq en cartera</strong>
+                  <p className="mt-1 text-xs font-medium">Se mostrará como activo en Tesorería y recién ingresará al banco al acreditarlo.</p>
+                </div>
+              ) : (
+                <Field htmlFor={treasuryAccountInputId} label="Cuenta de destino" required>
+                  <Select
+                    className="min-h-10 px-2 text-sm"
+                    id={treasuryAccountInputId}
+                    name="treasuryAccountId"
+                    onChange={(event) => setTreasuryAccountId(event.target.value)}
+                    required
+                    value={treasuryAccountId}
+                  >
+                    <option value="">Seleccionar cuenta</option>
+                    {eligibleTreasuryAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>{account.name}</option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
+              {method === "echeck" ? (
+                <Field htmlFor={chequeDueDateInputId} label="Fecha de cobro" required>
+                  <Input
+                    className="min-h-10 px-2 text-sm"
+                    id={chequeDueDateInputId}
+                    name="chequeDueDate"
+                    onChange={(event) => setChequeDueDate(event.target.value)}
+                    required
+                    type="date"
+                    value={chequeDueDate}
+                  />
+                </Field>
+              ) : null}
+              <Field htmlFor={operationInputId} label={method === "echeck" ? "Nro. de E-cheq" : "Operacion"} required={operationRequired}>
                 <Input
                   className="min-h-10 px-2 text-sm"
                   id={operationInputId}
                   name="operation"
-                  placeholder={operationRequired ? "Nro. o referencia (obligatorio)" : "Nro. o referencia"}
+                  inputMode={method === "echeck" ? "numeric" : undefined}
+                  pattern={method === "echeck" ? "[0-9]{1,20}" : undefined}
+                  placeholder={method === "echeck" ? "Solo números" : operationRequired ? "Nro. o referencia (obligatorio)" : "Nro. o referencia"}
                   required={operationRequired}
                 />
               </Field>
@@ -308,7 +364,17 @@ export function RegisterPaymentDialog({
                 <Button onClick={() => setOpen(false)} size="sm" type="button" variant="secondary">
                   Cancelar
                 </Button>
-                <Button disabled={paymentAmount <= 0 || allocatedTotal - paymentAmount > 0.005 || loadingRemittances} size="sm" type="submit">
+                <Button
+                  disabled={
+                    paymentAmount <= 0
+                    || allocatedTotal - paymentAmount > 0.005
+                    || loadingRemittances
+                    || (method !== "echeck" && !treasuryAccountId)
+                    || (method === "echeck" && !chequeDueDate)
+                  }
+                  size="sm"
+                  type="submit"
+                >
                   Registrar
                 </Button>
               </div>

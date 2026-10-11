@@ -342,6 +342,31 @@ export async function getTreasuryBalances(companyId: number) {
   };
 }
 
+export type TreasuryAccountOption = {
+  id: string;
+  name: string;
+  accountType: "cash" | "bank" | "wallet" | "other";
+};
+
+/** Opciones activas que pueden recibir un cobro desde Cuentas corrientes. */
+export async function getTreasuryAccountOptions(companyId: number): Promise<TreasuryAccountOption[]> {
+  const result = await queryWithCompanyContext<{
+    id: string;
+    name: string;
+    account_type: TreasuryAccountOption["accountType"];
+  }>(
+    companyId,
+    `SELECT id::text, name, account_type
+       FROM admin_treasury_accounts
+      WHERE empresa_id = $1 AND active = TRUE
+      ORDER BY CASE account_type WHEN 'cash' THEN 1 WHEN 'bank' THEN 2 WHEN 'wallet' THEN 3 ELSE 4 END,
+               name, id`,
+    [companyId],
+  );
+
+  return result.rows.map((row) => ({ id: row.id, name: row.name, accountType: row.account_type }));
+}
+
 export type BankReconciliationSummary = {
   activeAccounts: number;
   importedLines: number;

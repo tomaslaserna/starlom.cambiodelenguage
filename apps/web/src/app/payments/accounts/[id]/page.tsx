@@ -22,6 +22,7 @@ import { ApiError } from "@/lib/api-response";
 import { requireStaffSession } from "@/lib/auth";
 import { getCustomerStatement, listCustomerOptions } from "@/lib/customer-accounts";
 import { formatCurrency, formatDate } from "@/lib/format";
+import { getTreasuryAccountOptions } from "@/lib/finance";
 import { requirePagePermission } from "@/lib/page-auth";
 import { COLLECTIONS_READ_PERMISSION } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
@@ -43,7 +44,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
   const from = query.from ?? "";
   const to = query.to ?? "";
 
-  const [periodResult, fullResult, customers] = await Promise.all([
+  const [periodResult, fullResult, customers, treasuryAccounts] = await Promise.all([
     getCustomerStatement(session.companyId, id, { from, to }).catch((error: unknown) => {
       if (error instanceof ApiError && error.status === 404) return null;
       throw error;
@@ -52,6 +53,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
     // saldo actual real, asi que necesitamos el saldo total sin filtro.
     getCustomerStatement(session.companyId, id, {}).catch(() => null),
     listCustomerOptions(session.companyId),
+    getTreasuryAccountOptions(session.companyId),
   ]);
   if (!periodResult) notFound();
 
@@ -89,6 +91,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
               action={registerCustomerPaymentAction}
               customers={customers}
               defaultCustomerId={id}
+              treasuryAccounts={treasuryAccounts}
               today={today}
               triggerLabel="+ Registrar pago"
             />

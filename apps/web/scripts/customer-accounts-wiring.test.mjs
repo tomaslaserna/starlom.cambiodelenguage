@@ -76,19 +76,21 @@ test("getCustomerStatement trae todos los movimientos ordenados y delega el cort
 test("customerPaymentFromBody valida monto, metodo y operacion", () => {
   const mod = loadCustomerAccounts();
   const allocation = JSON.stringify([{ saleId: "11111111-1111-4111-8111-111111111111", amount: 10 }]);
-  assert.throws(() => mod.customerPaymentFromBody({ amount: "0", method: "efectivo", destination: "caja", allocations: allocation }), /mayor a cero/);
-  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "bitcoin", destination: "caja", allocations: allocation }), /Metodo/);
-  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "transferencia", destination: "banco", allocations: allocation }), /operacion/i);
-  const fullyUnallocated = mod.customerPaymentFromBody({ amount: "10", method: "efectivo", destination: "caja", clientId: "c1", allocations: "[]" });
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "0", method: "efectivo", treasuryAccountId: "1", allocations: allocation }), /mayor a cero/);
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "bitcoin", treasuryAccountId: "1", allocations: allocation }), /Metodo/);
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "transferencia", treasuryAccountId: "2", allocations: allocation }), /operacion/i);
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "efectivo", allocations: allocation }), /Tesoreria/i);
+  assert.throws(() => mod.customerPaymentFromBody({ amount: "10", method: "echeck", operation: "123", allocations: allocation }), /fecha de cobro/i);
+  const fullyUnallocated = mod.customerPaymentFromBody({ amount: "10", method: "efectivo", treasuryAccountId: "1", clientId: "c1", allocations: "[]" });
   assert.deepEqual(fullyUnallocated.allocations, []);
-  const ok = mod.customerPaymentFromBody({ amount: "10", method: "efectivo", destination: "caja", clientId: "c1", allocations: allocation });
+  const ok = mod.customerPaymentFromBody({ amount: "10", method: "efectivo", treasuryAccountId: "1", clientId: "c1", allocations: allocation });
   assert.equal(ok.amount, 10);
   assert.equal(ok.method, "efectivo");
   assert.deepEqual(ok.allocations, [{ saleId: "11111111-1111-4111-8111-111111111111", amount: 10 }]);
-  const withCredit = mod.customerPaymentFromBody({ amount: "15", method: "efectivo", destination: "caja", clientId: "c1", allocations: allocation });
+  const withCredit = mod.customerPaymentFromBody({ amount: "15", method: "efectivo", treasuryAccountId: "1", clientId: "c1", allocations: allocation });
   assert.equal(withCredit.amount, 15);
   assert.throws(
-    () => mod.customerPaymentFromBody({ amount: "5", method: "efectivo", destination: "caja", clientId: "c1", allocations: allocation }),
+    () => mod.customerPaymentFromBody({ amount: "5", method: "efectivo", treasuryAccountId: "1", clientId: "c1", allocations: allocation }),
     /no puede superar el monto recibido/i,
   );
 });
@@ -103,7 +105,8 @@ test("registerCustomerPayment: admin registra directo, vendedor deja pendiente",
           return { rows: [{ id: "s1", outstanding: "100", receipt_number: 1 }] };
         }
         if (/SUM\(cam\.debit - cam\.credit\)/i.test(sql)) return { rows: [{ balance: "100" }] };
-        if (/SELECT COALESCE\(display_name/i.test(sql)) return { rows: [{ name: "Cliente" }] };
+        if (/SELECT COALESCE\(display_name/i.test(sql)) return { rows: [{ name: "Cliente", tax_id: "30-12345678-9" }] };
+        if (/FROM admin_treasury_accounts/i.test(sql)) return { rows: [{ id: "1", name: "Efectivo", account_type: "cash" }] };
         return { rows: [{ id: "p1" }] };
       },
     }),
@@ -111,29 +114,62 @@ test("registerCustomerPayment: admin registra directo, vendedor deja pendiente",
   });
   const res = await mod.registerCustomerPayment(
     { companyId: 1, userId: "u1", username: "admin", role: "administrador" },
-    { clientId: "c1", amount: 100, date: "2026-08-18", method: "efectivo", destination: "caja", operation: "", notes: "" },
+    { clientId: "c1", amount: 100, date: "2026-08-18", method: "efectivo", treasuryAccountId: "1", operation: "", chequeDueDate: "", notes: "", allocations: [] },
   );
   assert.equal(res.status, "registrado");
   // admin: inserta el pago Y el movimiento de crédito
   assert.ok(queries.some((q) => /INSERT INTO payments/i.test(q.sql)));
   assert.ok(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql)));
   assert.ok(queries.some((q) => /UPDATE sales/i.test(q.sql) && /collection_status/i.test(q.sql)));
+  assert.ok(queries.some((q) => /INSERT INTO admin_treasury_movements/i.test(q.sql) && /customer_payment/i.test(q.sql)));
 });
 
 test("registerCustomerPayment: vendedor deja pendiente, sin movimiento de crédito", async () => {
   const queries = [];
   const mod = loadCustomerAccounts({
-    withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => { queries.push({ sql, params }); return { rows: [{ id: "p1" }] }; } }),
+    withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => {
+      queries.push({ sql, params });
+      if (/SELECT COALESCE\(display_name/i.test(sql)) return { rows: [{ name: "Cliente", tax_id: "" }] };
+      if (/FROM admin_treasury_accounts/i.test(sql)) return { rows: [{ id: "1", name: "Efectivo", account_type: "cash" }] };
+      return { rows: [{ id: "p1" }] };
+    } }),
     sessionAllows: async () => false, // vendor
   });
   const res = await mod.registerCustomerPayment(
     { companyId: 1, userId: "u1", username: "vendor", role: "vendedor" },
-    { clientId: "c1", amount: 100, date: "2026-08-18", method: "efectivo", destination: "caja", operation: "", notes: "" },
+    { clientId: "c1", amount: 100, date: "2026-08-18", method: "efectivo", treasuryAccountId: "1", operation: "", chequeDueDate: "", notes: "", allocations: [] },
   );
   assert.equal(res.status, "pendiente_aprobacion");
   // vendor: inserta el pago pero NO el movimiento de crédito
   assert.ok(queries.some((q) => /INSERT INTO payments/i.test(q.sql)));
   assert.equal(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql)), false);
+  assert.equal(queries.some((q) => /INSERT INTO admin_treasury_movements/i.test(q.sql)), false);
+});
+
+test("registerCustomerPayment: un E-cheq queda en cartera y no suma saldo bancario", async () => {
+  const queries = [];
+  const mod = loadCustomerAccounts({
+    withCompanyContext: async (_companyId, fn) => fn({
+      query: async (sql, params) => {
+        queries.push({ sql, params });
+        if (/SELECT COALESCE\(display_name/i.test(sql)) return { rows: [{ name: "Cliente", tax_id: "30-12345678-9" }] };
+        if (/FROM sales s/i.test(sql)) return { rows: [] };
+        if (/INSERT INTO payments/i.test(sql)) return { rows: [{ id: "p1" }] };
+        return { rows: [] };
+      },
+    }),
+    sessionAllows: async () => true,
+  });
+  const res = await mod.registerCustomerPayment(
+    { companyId: 1, userId: "u1", username: "admin", role: "administrador" },
+    {
+      clientId: "c1", amount: 100, date: "2026-10-11", method: "echeck",
+      treasuryAccountId: "", operation: "123456", chequeDueDate: "2026-10-30", notes: "", allocations: [],
+    },
+  );
+  assert.equal(res.status, "registrado");
+  assert.ok(queries.some((q) => /INSERT INTO admin_echeqs/i.test(q.sql) && q.params.includes("2026-10-30")));
+  assert.equal(queries.some((q) => /INSERT INTO admin_treasury_movements/i.test(q.sql)), false);
 });
 
 test("approveCustomerPayment inserta el credito y pasa a registrado", () => {
@@ -156,6 +192,24 @@ test("el formulario permite elegir remitos e importes parciales", () => {
   assert.match(dialog, /name="allocations"/);
   assert.match(dialog, /Importe recibido/);
   assert.match(dialog, /Saldo a favor/);
+  assert.match(dialog, /Cuenta de destino/);
+  assert.match(dialog, /Fecha de cobro/);
+  assert.match(dialog, /E-cheq en cartera/);
+});
+
+test("cada cobro genera su contrapartida en Tesoreria dentro de la misma transaccion", () => {
+  assert.match(source, /resolvePaymentTreasuryTarget/);
+  assert.match(source, /postCustomerPaymentToTreasury/);
+  assert.match(source, /INSERT INTO admin_treasury_movements/);
+  assert.match(source, /INSERT INTO admin_echeqs/);
+  assert.match(source, /source_type, source_id/);
+  const migration = readFileSync(
+    new URL("../../../supabase/migrations/20261011163000_link_customer_payments_to_treasury.sql", import.meta.url),
+    "utf8",
+  );
+  assert.match(migration, /treasury_account_id/);
+  assert.match(migration, /treasury_reference/);
+  assert.match(migration, /cheque_due_date/);
 });
 
 test("el formulario limita cada imputacion al saldo y permite cobros totalmente a favor", () => {

@@ -38,6 +38,9 @@ function revalidatePaymentApprovalFlow() {
   revalidatePath("/metrics");
   revalidatePath("/payments");
   revalidatePath("/payments/accounts");
+  revalidatePath("/administration");
+  revalidatePath("/cash");
+  revalidatePath("/treasury");
 }
 
 function actionErrorMessage(error: unknown) {

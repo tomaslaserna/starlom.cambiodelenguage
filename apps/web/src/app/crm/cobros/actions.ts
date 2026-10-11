@@ -14,4 +14,7 @@ export async function registerCrmCustomerPaymentAction(formData: FormData) {
   await registerCustomerPayment(session, { ...input, clientId });
   revalidatePath("/crm/cobros");
   revalidatePath("/admin/approvals");
+  revalidatePath("/administration");
+  revalidatePath("/cash");
+  revalidatePath("/treasury");
 }
