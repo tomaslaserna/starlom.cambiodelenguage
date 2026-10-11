@@ -11,6 +11,7 @@ import {
   createCashMovement,
   ignoreBankStatementLine,
   matchBankStatementLine,
+  settleEcheq,
 } from "@/lib/finance";
 import {
   createOperatingCost,
@@ -106,6 +107,18 @@ export async function createAdministrationMovementAction(formData: FormData) {
   await createCashMovement(session, cashMovementInputFromBody(stringFieldsFromFormData(formData)));
   refreshAdministration();
   redirect(administrationUrl("treasury", month, "Movimiento de tesorería registrado"));
+}
+
+export async function settleAdministrationEcheqAction(formData: FormData) {
+  const session = await requireApiSession([ADMIN_TREASURY_WRITE_PERMISSION]);
+  const month = selectedMonth(formData);
+  await settleEcheq(session, {
+    echeqId: numericId(formData, "E-cheq"),
+    accountId: String(formData.get("accountId") ?? ""),
+    settlementDate: String(formData.get("settlementDate") ?? ""),
+  });
+  refreshAdministration();
+  redirect(administrationUrl("treasury", month, "E-cheq acreditado; el importe pasó de cartera a saldo disponible"));
 }
 
 export async function createAdministrationBankAccountAction(formData: FormData) {

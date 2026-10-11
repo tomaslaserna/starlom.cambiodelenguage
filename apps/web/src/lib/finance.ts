@@ -208,6 +208,7 @@ export async function getDividendSheet(companyId: number) {
 
 export async function getTreasuryBalances(companyId: number) {
   const result = await queryWithCompanyContext<{
+    account_id: string;
     account: string;
     account_type: string;
     balance: string;
@@ -215,68 +216,128 @@ export async function getTreasuryBalances(companyId: number) {
   }>(
     companyId,
     `
-      WITH collection_accounts AS (
-        SELECT
-          COALESCE(NULLIF(collection_destination, ''), CASE
-            WHEN collection_method = 'efectivo' THEN 'Efectivo'
-            WHEN collection_method = 'transferencia' THEN 'Cuenta bancaria'
-            ELSE 'Otra'
-          END) AS account,
-          CASE
-            WHEN collection_method = 'efectivo' THEN 'efectivo'
-            WHEN collection_method = 'transferencia' THEN 'bancaria'
-            ELSE 'otra'
-          END AS account_type,
-          COALESCE(collection_registered_amount, total_amount) AS amount
-        FROM sales
-        WHERE empresa_id = $1
-          AND COALESCE(collection_status, 'pendiente') = 'recibido'
-      ),
-      provider_payments AS (
-        SELECT 'Pagos proveedores aprobados' AS account,
-               'otra' AS account_type,
-               -amount AS amount
-        FROM payments
-        WHERE empresa_id = $1 AND entity_type = 'pago'
-      ),
-      manual_cash_movements AS (
-        SELECT 'Movimientos manuales de caja' AS account,
-               'efectivo' AS account_type,
-               CASE WHEN entity_type = 'caja_entrada' THEN amount ELSE -amount END AS amount
-        FROM payments
-        WHERE empresa_id = $1 AND entity_type IN ('caja_entrada', 'caja_salida')
-      )
-      SELECT account,
-             account_type,
-             COALESCE(SUM(amount), 0)::text AS balance,
-             COUNT(*)::text AS movements
-      FROM (
-        SELECT * FROM collection_accounts
-        UNION ALL
-        SELECT * FROM provider_payments
-        UNION ALL
-        SELECT * FROM manual_cash_movements
-      ) data
-      GROUP BY account, account_type
-      ORDER BY account_type ASC, account ASC
+      SELECT account.id::text AS account_id,
+             account.name AS account,
+             account.account_type,
+             (
+               COALESCE(reconciliation.statement_balance, 0)
+               + COALESCE(movements.signed_amount, 0)
+             )::text AS balance,
+             COALESCE(movements.movement_count, 0)::text AS movements
+      FROM admin_treasury_accounts account
+      LEFT JOIN LATERAL (
+        SELECT item.statement_balance, item.reconciled_at
+        FROM admin_treasury_reconciliations item
+        WHERE item.empresa_id = account.empresa_id
+          AND item.account_id = account.id
+        ORDER BY item.reconciled_at DESC, item.id DESC
+        LIMIT 1
+      ) reconciliation ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(CASE WHEN movement.direction = 'inflow' THEN movement.amount ELSE -movement.amount END), 0) AS signed_amount,
+               COUNT(*) AS movement_count
+        FROM admin_treasury_movements movement
+        WHERE movement.empresa_id = account.empresa_id
+          AND movement.account_id = account.id
+          AND movement.created_at > COALESCE(reconciliation.reconciled_at, '-infinity'::timestamptz)
+      ) movements ON TRUE
+      WHERE account.empresa_id = $1 AND account.active = TRUE
+      ORDER BY account.account_type, account.name
     `,
     [companyId],
   );
 
+  const [echeqResult, issueResult] = await Promise.all([
+    queryWithCompanyContext<{
+      id: string;
+      cheque_number: string;
+      received_from: string;
+      received_from_cuit: string;
+      issuer: string;
+      issuer_cuit: string;
+      due_date: string;
+      amount: string;
+      status: string;
+      payment_id: string | null;
+      notes: string;
+    }>(
+      companyId,
+      `SELECT id::text, cheque_number, received_from, received_from_cuit,
+              issuer, issuer_cuit, due_date::text, amount::text, status,
+              payment_id::text, notes
+         FROM admin_echeqs
+        WHERE empresa_id = $1
+          AND status IN ('accepted', 'deposited')
+        ORDER BY due_date, id`,
+      [companyId],
+    ),
+    queryWithCompanyContext<{
+      payment_id: string;
+      reference: string;
+      payment_amount: string;
+      cheque_amount: string;
+      difference: string;
+    }>(
+      companyId,
+      `SELECT payment.id::text AS payment_id,
+              COALESCE(payment.reference, '') AS reference,
+              payment.amount::text AS payment_amount,
+              SUM(cheque.amount)::text AS cheque_amount,
+              (SUM(cheque.amount) - payment.amount)::text AS difference
+         FROM admin_echeqs cheque
+         JOIN payments payment
+           ON payment.empresa_id = cheque.empresa_id AND payment.id = cheque.payment_id
+        WHERE cheque.empresa_id = $1
+        GROUP BY payment.id, payment.reference, payment.amount
+       HAVING ABS(SUM(cheque.amount) - payment.amount) >= 0.01
+        ORDER BY payment.payment_date, payment.id`,
+      [companyId],
+    ),
+  ]);
+
   const accounts = result.rows.map((row) => ({
+    accountId: row.account_id,
     account: row.account,
     accountType: row.account_type,
     balance: Number(row.balance),
     movements: Number(row.movements),
   }));
 
+  const echecks = echeqResult.rows.map((row) => ({
+    id: row.id,
+    number: row.cheque_number,
+    receivedFrom: row.received_from,
+    receivedFromCuit: row.received_from_cuit,
+    issuer: row.issuer,
+    issuerCuit: row.issuer_cuit,
+    dueDate: row.due_date,
+    amount: Number(row.amount),
+    status: row.status,
+    paymentId: row.payment_id,
+    notes: row.notes,
+  }));
+
+  const available = accounts.reduce((sum, item) => sum + item.balance, 0);
+  const echeckBalance = echecks.reduce((sum, item) => sum + item.amount, 0);
+
   return {
     accounts,
+    echecks,
+    reconciliationIssues: issueResult.rows.map((row) => ({
+      paymentId: row.payment_id,
+      reference: row.reference,
+      paymentAmount: Number(row.payment_amount),
+      echeckAmount: Number(row.cheque_amount),
+      difference: Number(row.difference),
+    })),
     meta: {
-      total: accounts.reduce((sum, item) => sum + item.balance, 0),
-      cash: accounts.filter((item) => item.accountType === "efectivo").reduce((sum, item) => sum + item.balance, 0),
-      bank: accounts.filter((item) => item.accountType === "bancaria").reduce((sum, item) => sum + item.balance, 0),
-      other: accounts.filter((item) => item.accountType === "otra").reduce((sum, item) => sum + item.balance, 0),
+      total: available + echeckBalance,
+      available,
+      echecks: echeckBalance,
+      cash: accounts.filter((item) => item.accountType === "cash").reduce((sum, item) => sum + item.balance, 0),
+      bank: accounts.filter((item) => item.accountType === "bank").reduce((sum, item) => sum + item.balance, 0),
+      wallet: accounts.filter((item) => item.accountType === "wallet").reduce((sum, item) => sum + item.balance, 0),
+      other: accounts.filter((item) => item.accountType === "other").reduce((sum, item) => sum + item.balance, 0),
     },
   };
 }
@@ -627,22 +688,94 @@ export function cashMovementInputFromBody(body: RequestBody): CashMovementInput 
 }
 
 export async function createCashMovement(session: AuthSession, input: CashMovementInput) {
-  const entityType = input.direction === "entrada" ? "caja_entrada" : "caja_salida";
-
   const result = await queryWithCompanyContext<{ id: string }>(
     session.companyId,
     `
-      INSERT INTO payments (
-        payment_date, amount, method, status, registered_by,
-        entity_type, concept, notes, empresa_id
+      INSERT INTO admin_treasury_movements (
+        empresa_id, account_id, movement_date, direction, amount,
+        concept, notes, created_by
       )
-      VALUES ($1, $2, 'ajuste_caja', 'registrado', $3::uuid, $4, $5, $6, $7)
-      RETURNING id::text AS id
+      SELECT $1, account.id, $3::date, $4, $5, $6, $7, $8::uuid
+        FROM admin_treasury_accounts account
+       WHERE account.id = $2::bigint AND account.empresa_id = $1 AND account.active = TRUE
+      RETURNING id::text
     `,
-    [input.date, input.amount, session.userId, entityType, input.concept, input.notes, session.companyId],
+    [
+      session.companyId,
+      input.accountId,
+      input.date,
+      input.direction === "entrada" ? "inflow" : "outflow",
+      input.amount,
+      input.concept,
+      input.notes,
+      session.userId,
+    ],
   );
 
+  if (!result.rows[0]) throw new ApiError(404, "La cuenta de tesoreria no existe o esta inactiva");
+
   return { id: result.rows[0].id };
+}
+
+export async function settleEcheq(session: AuthSession, input: {
+  echeqId: string;
+  accountId: string;
+  settlementDate: string;
+}) {
+  if (!/^\d+$/.test(input.echeqId) || !/^\d+$/.test(input.accountId)) {
+    throw new ApiError(400, "E-cheq o cuenta invalida");
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.settlementDate)) {
+    throw new ApiError(400, "La fecha de acreditacion es invalida");
+  }
+
+  return withCompanyContext(session.companyId, async (client) => {
+    const cheque = await client.query<{ id: string; amount: string; cheque_number: string }>(
+      `SELECT id::text, amount::text, cheque_number
+         FROM admin_echeqs
+        WHERE id = $1::bigint AND empresa_id = $2 AND status IN ('accepted', 'deposited')
+        FOR UPDATE`,
+      [input.echeqId, session.companyId],
+    );
+    if (!cheque.rows[0]) throw new ApiError(409, "El E-cheq ya fue procesado o no existe");
+
+    const account = await client.query<{ id: string }>(
+      `SELECT id::text FROM admin_treasury_accounts
+        WHERE id = $1::bigint AND empresa_id = $2 AND active = TRUE
+          AND account_type IN ('bank', 'wallet')`,
+      [input.accountId, session.companyId],
+    );
+    if (!account.rows[0]) throw new ApiError(400, "Elegí una cuenta bancaria o billetera activa");
+
+    await client.query(
+      `INSERT INTO admin_treasury_movements (
+         empresa_id, account_id, movement_date, direction, amount, concept,
+         source_type, source_id, reference, notes, created_by
+       ) VALUES ($1, $2::bigint, $3::date, 'inflow', $4, $5,
+                 'echeq_settlement', $6, $7, $8, $9::uuid)`,
+      [
+        session.companyId,
+        input.accountId,
+        input.settlementDate,
+        cheque.rows[0].amount,
+        `Acreditación E-cheq ${cheque.rows[0].cheque_number}`,
+        cheque.rows[0].id,
+        cheque.rows[0].cheque_number,
+        "Traspaso de E-cheq en cartera a saldo disponible",
+        session.userId,
+      ],
+    );
+
+    await client.query(
+      `UPDATE admin_echeqs
+          SET status = 'cleared', deposited_to_account_id = $1::bigint,
+              settled_on = $2::date, updated_at = now()
+        WHERE id = $3::bigint AND empresa_id = $4`,
+      [input.accountId, input.settlementDate, input.echeqId, session.companyId],
+    );
+
+    return { id: cheque.rows[0].id };
+  });
 }
 
 const CASH_MOVEMENT_ENTITY_TYPES = ["caja_entrada", "caja_salida", "pago", "compra_aprobada"];
@@ -663,7 +796,10 @@ export async function getCashMovements(input: {
 
   const count = await queryWithCompanyContext<{ total: string }>(
     input.companyId,
-    `SELECT COUNT(*)::text AS total FROM payments WHERE empresa_id = $1 AND entity_type = ANY($2)`,
+    `SELECT (
+       (SELECT COUNT(*) FROM payments WHERE empresa_id = $1 AND entity_type = ANY($2))
+       + (SELECT COUNT(*) FROM admin_treasury_movements WHERE empresa_id = $1)
+     )::text AS total`,
     [input.companyId, CASH_MOVEMENT_ENTITY_TYPES],
   );
 
@@ -678,12 +814,32 @@ export async function getCashMovements(input: {
   }>(
     input.companyId,
     `
-      SELECT id::text AS id, entity_type, entity_name AS entidad_nombre,
-             COALESCE(concept, reference, '') AS concepto,
-             amount::text AS monto, payment_date::text AS fecha, notes AS notas
-      FROM payments
-      WHERE empresa_id = $1 AND entity_type = ANY($2)
-      ORDER BY payment_date DESC NULLS LAST, created_at DESC
+      SELECT id, entity_type, entidad_nombre, concepto, monto, fecha, notas
+      FROM (
+        SELECT payment.id::text AS id, payment.entity_type,
+               payment.entity_name AS entidad_nombre,
+               COALESCE(payment.concept, payment.reference, '') AS concepto,
+               payment.amount::text AS monto, payment.payment_date::text AS fecha,
+               payment.notes AS notas, payment.created_at AS sort_at
+        FROM payments payment
+        WHERE payment.empresa_id = $1 AND payment.entity_type = ANY($2)
+
+        UNION ALL
+
+        SELECT movement.id::text,
+               CASE WHEN movement.direction = 'inflow' THEN 'caja_entrada' ELSE 'caja_salida' END,
+               account.name,
+               movement.concept,
+               movement.amount::text,
+               movement.movement_date::text,
+               movement.notes,
+               movement.created_at
+        FROM admin_treasury_movements movement
+        JOIN admin_treasury_accounts account
+          ON account.empresa_id = movement.empresa_id AND account.id = movement.account_id
+        WHERE movement.empresa_id = $1
+      ) movement_rows
+      ORDER BY sort_at DESC
       LIMIT $3 OFFSET $4
     `,
     [input.companyId, CASH_MOVEMENT_ENTITY_TYPES, pagination.pageSize, pagination.offset],

@@ -86,3 +86,18 @@ test("bank reconciliation certifies cash without creating accounting movements",
   assert.doesNotMatch(finance.slice(finance.indexOf("export async function matchBankStatementLine")), /INSERT INTO current_account_movements/);
   assert.match(actions, /ADMIN_TREASURY_WRITE_PERMISSION/);
 });
+
+test("treasury separates liquid balances from accepted E-cheqs and settles them exactly once", () => {
+  const finance = read("src/lib/finance.ts");
+  const page = read("src/app/administration/page.tsx");
+  const migration = read("../../supabase/migrations/20261011141827_treasury_accounts_and_echeq_portfolio.sql");
+
+  assert.match(finance, /admin_treasury_reconciliations/);
+  assert.match(finance, /admin_echeqs/);
+  assert.match(finance, /export async function settleEcheq/);
+  assert.match(finance, /source_type, source_id/);
+  assert.match(page, /E-cheqs en cartera/);
+  assert.match(page, /Marcar acreditado/);
+  assert.match(migration, /idx_admin_treasury_movements_source_unique/);
+  assert.match(migration, /status IN \('accepted', 'deposited', 'cleared', 'rejected', 'cancelled'\)/);
+});

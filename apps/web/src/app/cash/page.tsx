@@ -39,11 +39,12 @@ export default async function CashPage() {
       title="Caja"
     >
       <div className="grid gap-5">
-        <div className="grid gap-3 md:grid-cols-4">
-          <StatCard label="Caja total" value={formatCurrency(cash.meta.total)} />
+        <div className="grid gap-3 md:grid-cols-5">
+          <StatCard label="Tesorería total" value={formatCurrency(cash.meta.total)} />
+          <StatCard label="Disponible" value={formatCurrency(cash.meta.available)} />
+          <StatCard label="E-cheqs en cartera" value={formatCurrency(cash.meta.echecks)} />
           <StatCard label="Efectivo" value={formatCurrency(cash.meta.cash)} />
-          <StatCard label="Bancos" value={formatCurrency(cash.meta.bank)} />
-          <StatCard label="Otras cuentas" value={formatCurrency(cash.meta.other)} />
+          <StatCard label="Bancos y billeteras" value={formatCurrency(cash.meta.bank + cash.meta.wallet)} />
         </div>
 
         <Card className="overflow-hidden">
@@ -91,6 +92,11 @@ export default async function CashPage() {
           <Card className="p-4">
             <h2 className="erp-text-title-sm font-black">Registrar movimiento manual</h2>
             <form action={createCashMovementAction} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Field htmlFor="cash-account" label="Cuenta">
+                <Select id="cash-account" name="accountId" required>
+                  {cash.accounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.account}</option>)}
+                </Select>
+              </Field>
               <Field htmlFor="cash-direction" label="Tipo">
                 <Select defaultValue="salida" id="cash-direction" name="direction">
                   <option value="entrada">Entrada</option>
@@ -106,11 +112,11 @@ export default async function CashPage() {
               <Field htmlFor="cash-date" label="Fecha">
                 <Input defaultValue={localDateIso()} id="cash-date" name="date" required type="date" />
               </Field>
-              <Field className="sm:col-span-2 lg:col-span-3" htmlFor="cash-notes" label="Notas">
+              <Field className="sm:col-span-2 lg:col-span-2" htmlFor="cash-notes" label="Notas">
                 <Input id="cash-notes" name="notes" placeholder="Opcional" />
               </Field>
               <div className="flex items-end">
-                <Button type="submit">Registrar</Button>
+                <Button disabled={cash.accounts.length === 0} type="submit">Registrar</Button>
               </div>
             </form>
           </Card>

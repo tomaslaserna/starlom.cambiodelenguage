@@ -1503,7 +1503,7 @@ test("Caja records manual movements and reflects payments and approved purchases
   const finance = read("apps/web/src/lib/finance.ts");
   assert.match(finance, /export async function createCashMovement/);
   assert.match(finance, /export async function getCashMovements/);
-  assert.match(finance, /manual_cash_movements/, "manual cash movements must feed the treasury balance");
+  assert.match(finance, /admin_treasury_movements/, "manual cash movements must feed the reconciled treasury ledger");
   assert.match(finance, /caja_entrada/);
 
   const cashActions = read("apps/web/src/app/cash/actions.ts");
@@ -1513,6 +1513,7 @@ test("Caja records manual movements and reflects payments and approved purchases
   const cashPage = read("apps/web/src/app/cash/page.tsx");
   assert.match(cashPage, /createCashMovementAction/);
   assert.match(cashPage, /getCashMovements/);
+  assert.match(cashPage, /name="accountId"/);
   assert.match(cashPage, /name="direction"/);
 
   const approvals = read("apps/web/src/lib/approvals.ts");

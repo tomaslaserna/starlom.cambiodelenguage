@@ -82,6 +82,7 @@ export function partnerInputFromBody(body: RequestBody): PartnerInput {
 export type CashMovementDirection = "entrada" | "salida";
 
 export type CashMovementInput = {
+  accountId: string;
   direction: CashMovementDirection;
   concept: string;
   amount: number;
@@ -92,6 +93,9 @@ export type CashMovementInput = {
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export function cashMovementInputFromBody(body: RequestBody): CashMovementInput {
+  const accountId = text(body, ["accountId", "account_id"]);
+  if (!/^\d+$/.test(accountId)) throw new Error("Debe seleccionar una cuenta de tesoreria");
+
   const direction = text(body, ["direction", "tipo"]).toLowerCase();
   if (direction !== "entrada" && direction !== "salida") {
     throw new Error("El tipo de movimiento debe ser entrada o salida");
@@ -108,5 +112,5 @@ export function cashMovementInputFromBody(body: RequestBody): CashMovementInput 
 
   const notes = text(body, ["notes", "notas"]);
 
-  return { direction, concept, amount, date, notes };
+  return { accountId, direction, concept, amount, date, notes };
 }

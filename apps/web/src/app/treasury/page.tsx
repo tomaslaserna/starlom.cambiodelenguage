@@ -1,5 +1,5 @@
 import { ModulePage } from "@/components/module-page";
-import { formatCurrency } from "@/lib/format";
+import { formatCurrency, formatDate } from "@/lib/format";
 import { getTreasuryBalances } from "@/lib/finance";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
@@ -13,6 +13,7 @@ import {
   DataTableHeader,
   DataTableRow,
   StatCard,
+  StatusBadge,
 } from "@/components/ui";
 
 export default async function TreasuryPage() {
@@ -29,11 +30,12 @@ export default async function TreasuryPage() {
     >
       <div className="grid gap-5">
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <StatCard label="Total actual" tone="accent" value={formatCurrency(treasury.meta.total)} />
+        <div className="grid gap-3 md:grid-cols-5">
+          <StatCard label="Total tesorería" tone="accent" value={formatCurrency(treasury.meta.total)} />
+          <StatCard label="Disponible" tone="success" value={formatCurrency(treasury.meta.available)} />
+          <StatCard label="E-cheqs en cartera" value={formatCurrency(treasury.meta.echecks)} />
           <StatCard label="Efectivo" tone="success" value={formatCurrency(treasury.meta.cash)} />
-          <StatCard label="Cuentas bancarias" value={formatCurrency(treasury.meta.bank)} />
-          <StatCard label="Otras cuentas" value={formatCurrency(treasury.meta.other)} />
+          <StatCard label="Bancos y billeteras" value={formatCurrency(treasury.meta.bank + treasury.meta.wallet)} />
         </div>
 
         <Card className="overflow-hidden">
@@ -59,7 +61,7 @@ export default async function TreasuryPage() {
                 </DataTableRow>
               ) : (
                 treasury.accounts.map((account) => (
-                  <DataTableRow key={`${account.accountType}-${account.account}`}>
+                  <DataTableRow key={account.accountId}>
                     <DataTableCell>{account.account}</DataTableCell>
                     <DataTableCell>{account.accountType}</DataTableCell>
                     <DataTableCell align="right">{account.movements}</DataTableCell>
@@ -70,6 +72,12 @@ export default async function TreasuryPage() {
                 ))
               )}
             </DataTableBody>
+          </DataTable>
+        </Card>
+        <Card className="overflow-hidden">
+          <DataTable caption="Valores aceptados pendientes de acreditación" className="rounded-none border-0 shadow-none" tableLabel="E-cheqs en cartera">
+            <DataTableHeader><DataTableRow><DataTableHead>Número</DataTableHead><DataTableHead>Recibido de</DataTableHead><DataTableHead>Vencimiento</DataTableHead><DataTableHead>Estado</DataTableHead><DataTableHead align="right">Importe</DataTableHead></DataTableRow></DataTableHeader>
+            <DataTableBody>{treasury.echecks.map((cheque) => <DataTableRow key={cheque.id}><DataTableCell className="font-mono">{cheque.number}</DataTableCell><DataTableCell>{cheque.receivedFrom}</DataTableCell><DataTableCell>{formatDate(cheque.dueDate)}</DataTableCell><DataTableCell><StatusBadge tone="success">Aceptado</StatusBadge></DataTableCell><DataTableCell align="right" className="font-mono">{formatCurrency(cheque.amount)}</DataTableCell></DataTableRow>)}</DataTableBody>
           </DataTable>
         </Card>
       </div>
