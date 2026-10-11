@@ -156,6 +156,11 @@ export const ADMIN_METRICS_READ_PERMISSION = {
   action: "ver",
 } satisfies Permission;
 
+export const ADMIN_METRICS_WRITE_PERMISSION = {
+  resource: "admin.metricas",
+  action: "editar",
+} satisfies Permission;
+
 export const ADMIN_TREASURY_READ_PERMISSION = {
   resource: "admin.tesoreria",
   action: "ver",
@@ -171,9 +176,19 @@ export const ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION = {
   action: "ver",
 } satisfies Permission;
 
+export const ADMIN_ACCOUNTS_PAYABLE_WRITE_PERMISSION = {
+  resource: "admin.cuentas_por_pagar",
+  action: "editar",
+} satisfies Permission;
+
 export const ADMIN_BALANCE_READ_PERMISSION = {
   resource: "admin.balance",
   action: "ver",
+} satisfies Permission;
+
+export const ADMIN_BALANCE_WRITE_PERMISSION = {
+  resource: "admin.balance",
+  action: "editar",
 } satisfies Permission;
 
 export const ADMIN_SALARIES_READ_PERMISSION = {

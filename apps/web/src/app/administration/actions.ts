@@ -24,8 +24,10 @@ import {
 } from "@/lib/profitability";
 import { purchaseIdFromParam, requestSupplierPaymentApproval, supplierPaymentFromBody } from "@/lib/purchases";
 import {
+  ADMIN_ACCOUNTS_PAYABLE_WRITE_PERMISSION,
+  ADMIN_BALANCE_WRITE_PERMISSION,
+  ADMIN_METRICS_WRITE_PERMISSION,
   ADMIN_TREASURY_WRITE_PERMISSION,
-  requireAdminApiSession,
   requireApiSession,
 } from "@/lib/route-auth";
 import { stringFieldsFromFormData } from "@/lib/storage";
@@ -57,7 +59,7 @@ function numericId(formData: FormData, label: string) {
 }
 
 export async function createAdministrationCostAction(formData: FormData) {
-  const session = await requireAdminApiSession();
+  const session = await requireApiSession([ADMIN_METRICS_WRITE_PERMISSION]);
   const month = selectedMonth(formData);
   await createScheduledOperatingCost(
     session.companyId,
@@ -68,7 +70,7 @@ export async function createAdministrationCostAction(formData: FormData) {
 }
 
 export async function updateAdministrationCostAction(formData: FormData) {
-  const session = await requireAdminApiSession();
+  const session = await requireApiSession([ADMIN_METRICS_WRITE_PERMISSION]);
   const month = selectedMonth(formData);
   await updateScheduledOperatingCost(
     session.companyId,
@@ -80,7 +82,7 @@ export async function updateAdministrationCostAction(formData: FormData) {
 }
 
 export async function setAdministrationCostMonthAction(formData: FormData) {
-  const session = await requireAdminApiSession();
+  const session = await requireApiSession([ADMIN_METRICS_WRITE_PERMISSION]);
   const month = selectedMonth(formData);
   await setOperatingCostMonthStatus({
     companyId: session.companyId,
@@ -94,7 +96,7 @@ export async function setAdministrationCostMonthAction(formData: FormData) {
 }
 
 export async function archiveAdministrationCostAction(formData: FormData) {
-  const session = await requireAdminApiSession();
+  const session = await requireApiSession([ADMIN_METRICS_WRITE_PERMISSION]);
   const month = selectedMonth(formData);
   await deleteOperatingCost(session.companyId, numericId(formData, "Costo"));
   refreshAdministration();
@@ -171,7 +173,7 @@ export async function ignoreAdministrationStatementLineAction(formData: FormData
 }
 
 export async function createAdministrationPayableAction(formData: FormData) {
-  const session = await requireAdminApiSession();
+  const session = await requireApiSession([ADMIN_ACCOUNTS_PAYABLE_WRITE_PERMISSION]);
   const month = selectedMonth(formData);
   const body = stringFieldsFromFormData(formData);
   await createOperatingCost(
@@ -188,7 +190,7 @@ export async function createAdministrationPayableAction(formData: FormData) {
 }
 
 export async function scheduleAdministrationSupplierPaymentAction(formData: FormData) {
-  const session = await requireApiSession([{ resource: "compras", action: "editar" }]);
+  const session = await requireApiSession([ADMIN_ACCOUNTS_PAYABLE_WRITE_PERMISSION]);
   const month = selectedMonth(formData);
   const id = purchaseIdFromParam(String(formData.get("id") ?? ""), "Compra");
   await requestSupplierPaymentApproval(
@@ -206,7 +208,7 @@ export async function scheduleAdministrationSupplierPaymentAction(formData: Form
 }
 
 export async function closeAdministrationMonthAction(formData: FormData) {
-  const session = await requireAdminApiSession();
+  const session = await requireApiSession([ADMIN_BALANCE_WRITE_PERMISSION]);
   const month = selectedMonth(formData);
   await closeAdministrationMonth(session, month, String(formData.get("notes") ?? ""));
   refreshAdministration();
@@ -214,7 +216,7 @@ export async function closeAdministrationMonthAction(formData: FormData) {
 }
 
 export async function reopenAdministrationMonthAction(formData: FormData) {
-  const session = await requireAdminApiSession();
+  const session = await requireApiSession([ADMIN_BALANCE_WRITE_PERMISSION]);
   const month = selectedMonth(formData);
   await reopenAdministrationMonth(session, month, String(formData.get("reason") ?? ""));
   refreshAdministration();

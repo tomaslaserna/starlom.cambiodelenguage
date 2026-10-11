@@ -49,7 +49,7 @@ const BLOCKS: PermissionBlock[] = [
   {
     key: "administration",
     title: "Administración y finanzas",
-    description: "Caja, tesorería, balance, métricas y reportes.",
+    description: "Control, resultados, tesorería, obligaciones, patrimonio, sueldos y dividendos.",
     matches: ({ key }) => /^(admin\.|caja\.|tesoreria\.|balance\.|reportes\.)/.test(key),
   },
   {

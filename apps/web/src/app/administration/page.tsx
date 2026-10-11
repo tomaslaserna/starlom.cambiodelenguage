@@ -34,9 +34,14 @@ import { periodLabel, type Period } from "@/lib/period-range";
 import { getBreakEvenStatus, listScheduledOperatingCosts } from "@/lib/profitability";
 import {
   ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION,
+  ADMIN_ACCOUNTS_PAYABLE_WRITE_PERMISSION,
   ADMIN_BALANCE_READ_PERMISSION,
+  ADMIN_BALANCE_WRITE_PERMISSION,
   ADMIN_METRICS_READ_PERMISSION,
+  ADMIN_METRICS_WRITE_PERMISSION,
   ADMIN_TREASURY_READ_PERMISSION,
+  ADMIN_TREASURY_WRITE_PERMISSION,
+  sessionAllows,
 } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
 import {
@@ -175,7 +180,22 @@ export default async function AdministrationPage({ searchParams }: Administratio
   const period: Period = { kind: "month", key: month };
   const today = localDateIso();
 
-  const [dashboard, treasury, payables, cashflow, profitability, operatingCosts, accumulated, reconciliation, closure, reconciliationWorkspace] = await Promise.all([
+  const [
+    dashboard,
+    treasury,
+    payables,
+    cashflow,
+    profitability,
+    operatingCosts,
+    accumulated,
+    reconciliation,
+    closure,
+    reconciliationWorkspace,
+    canWriteMetrics,
+    canWriteTreasury,
+    canWritePayables,
+    canClosePeriods,
+  ] = await Promise.all([
     getBalanceDashboard(session.companyId, period),
     getTreasuryBalances(session.companyId),
     getAccountsPayable(session.companyId),
@@ -186,6 +206,10 @@ export default async function AdministrationPage({ searchParams }: Administratio
     getBankReconciliationSummary(session.companyId, period),
     getAdministrationMonthClosure(session.companyId, month),
     getBankReconciliationWorkspace(session.companyId, period),
+    sessionAllows(session, [ADMIN_METRICS_WRITE_PERMISSION]),
+    sessionAllows(session, [ADMIN_TREASURY_WRITE_PERMISSION]),
+    sessionAllows(session, [ADMIN_ACCOUNTS_PAYABLE_WRITE_PERMISSION]),
+    sessionAllows(session, [ADMIN_BALANCE_WRITE_PERMISSION]),
   ]);
 
   const { metrics } = dashboard;
@@ -323,7 +347,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
             ) : (
               <ConfidenceNote tone="success"><strong>Costos completos.</strong> El resultado del período puede utilizarse para el cierre gerencial.</ConfidenceNote>
             )}
-            <Card>
+            {canWriteMetrics ? <Card>
               <CardHeader><CardTitle>Agregar costo programado</CardTitle></CardHeader>
               <CardContent>
                 <form action={createAdministrationCostAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_160px_150px_150px_180px_auto] xl:items-end">
@@ -336,7 +360,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                   <Button type="submit">Guardar costo</Button>
                 </form>
               </CardContent>
-            </Card>
+            </Card> : null}
             <Card>
               <CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><CardTitle>Costos del período</CardTitle><span className="text-xs text-[#64748b]">Los indefinidos quedan suspendidos al cambiar de mes hasta confirmarlos.</span></div></CardHeader>
               <DataTable caption="Costos operativos programados" className="rounded-none border-0 shadow-none" minWidth="1050px" tableLabel="Costos programados">
@@ -352,7 +376,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                         <DataTableCell><StatusBadge tone={cost.included ? "success" : "neutral"}>{cost.included ? "Incluido" : "Suspendido"}</StatusBadge></DataTableCell>
                         <DataTableCell align="right" className="font-mono font-bold">{formatCurrency(cost.amount)}</DataTableCell>
                         <DataTableCell align="center">
-                          <div className="flex justify-center gap-2">
+                          {canWriteMetrics ? <div className="flex justify-center gap-2">
                             <form action={setAdministrationCostMonthAction}><input name="id" type="hidden" value={cost.id} /><input name="month" type="hidden" value={month} /><input name="included" type="hidden" value={String(!cost.included)} /><Button size="sm" type="submit" variant="secondary">{cost.included ? "Suspender" : "Incluir"}</Button></form>
                             <TableHoverActionMenu label={`Editar ${cost.concept}`} width={360}>
                               <form action={updateAdministrationCostAction} className="grid gap-2">
@@ -365,7 +389,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                               </form>
                               <form action={archiveAdministrationCostAction} className="mt-2"><input name="id" type="hidden" value={cost.id} /><input name="month" type="hidden" value={month} /><Button className="w-full text-red-700" size="sm" type="submit" variant="secondary">Archivar</Button></form>
                             </TableHoverActionMenu>
-                          </div>
+                          </div> : <span className="text-xs text-[#94a3b8]">Solo lectura</span>}
                         </DataTableCell>
                       </DataTableRow>
                     );
@@ -402,9 +426,9 @@ export default async function AdministrationPage({ searchParams }: Administratio
                 {closure ? (
                   <div className="md:col-span-3 flex flex-wrap items-end justify-between gap-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                     <div><strong className="text-emerald-950">Período cerrado · versión {closure.version}</strong><p className="mt-1 text-xs text-emerald-800">Cerrado por {closure.closedByUsername || "administración"} el {formatDate(closure.closedAt)}. La fotografía queda preservada aunque luego se reabra.</p></div>
-                    <form action={reopenAdministrationMonthAction} className="flex flex-wrap items-end gap-2"><input name="month" type="hidden" value={month} /><Field htmlFor="admin-reopen-reason" label="Motivo de reapertura" required><Input id="admin-reopen-reason" minLength={5} name="reason" required /></Field><Button type="submit" variant="secondary">Reabrir período</Button></form>
+                    {canClosePeriods ? <form action={reopenAdministrationMonthAction} className="flex flex-wrap items-end gap-2"><input name="month" type="hidden" value={month} /><Field htmlFor="admin-reopen-reason" label="Motivo de reapertura" required><Input id="admin-reopen-reason" minLength={5} name="reason" required /></Field><Button type="submit" variant="secondary">Reabrir período</Button></form> : null}
                   </div>
-                ) : closeReady ? (
+                ) : closeReady && canClosePeriods ? (
                   <form action={closeAdministrationMonthAction} className="md:col-span-3 flex flex-wrap items-end justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4">
                     <input name="month" type="hidden" value={month} />
                     <div><strong className="text-sky-950">Crear cierre gerencial</strong><p className="mt-1 text-xs text-sky-800">Guarda una fotografía versionada del resultado, caja, créditos, stock, obligaciones y evidencias del período.</p></div>
@@ -421,7 +445,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
         {view === "treasury" ? (
           <div className="grid gap-5">
             <ConfidenceNote tone={reconciliation.ready ? "success" : reconciliation.importedLines > 0 ? "info" : "warning"}><strong>{reconciliation.ready ? "Período bancario conciliado." : "Caja operativa, aún no certificada."}</strong> {reconciliation.ready ? "Los movimientos importados del período no tienen diferencias pendientes." : reconciliation.importedLines > 0 ? `Hay ${reconciliation.pendingLines + reconciliation.partialLines} movimientos pendientes o parciales por ${formatCurrency(reconciliation.unmatchedAmount)}.` : "No hay extractos importados para este período; el saldo surge de cobros, pagos y movimientos internos."}</ConfidenceNote>
-            <Card>
+            {canWriteTreasury ? <Card>
               <CardHeader><CardTitle>Registrar movimiento manual</CardTitle></CardHeader>
               <CardContent>
                 <form action={createAdministrationMovementAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-[170px_150px_minmax(220px,1fr)_160px_170px_minmax(180px,1fr)_auto] xl:items-end">
@@ -435,7 +459,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                   <Button disabled={treasury.accounts.length === 0} type="submit">Registrar</Button>
                 </form>
               </CardContent>
-            </Card>
+            </Card> : null}
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <StatCard detail="Disponible + valores en cartera" label="Total tesorería" tone="accent" value={formatCurrency(treasury.meta.total)} />
               <StatCard detail="Uso inmediato" label="Disponible" tone="success" value={formatCurrency(treasury.meta.available)} />
@@ -460,14 +484,14 @@ export default async function AdministrationPage({ searchParams }: Administratio
                       <DataTableCell><StatusBadge tone="success">Aceptado</StatusBadge></DataTableCell>
                       <DataTableCell align="right" className="whitespace-nowrap font-mono font-bold">{formatCurrency(cheque.amount)}</DataTableCell>
                       <DataTableCell align="center">
-                        <TableHoverActionMenu label={`Acreditar E-cheq ${cheque.number}`} width={360}>
+                        {canWriteTreasury ? <TableHoverActionMenu label={`Acreditar E-cheq ${cheque.number}`} width={360}>
                           <form action={settleAdministrationEcheqAction} className="grid gap-3">
                             <input name="id" type="hidden" value={cheque.id} /><input name="month" type="hidden" value={month} />
                             <Field htmlFor={`echeq-${cheque.id}-account`} label="Cuenta de destino"><Select id={`echeq-${cheque.id}-account`} name="accountId" required>{settlementAccounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.account}</option>)}</Select></Field>
                             <Field htmlFor={`echeq-${cheque.id}-date`} label="Fecha de acreditación"><Input defaultValue={cheque.dueDate} id={`echeq-${cheque.id}-date`} name="settlementDate" required type="date" /></Field>
                             <Button className="w-full" disabled={settlementAccounts.length === 0} size="sm" type="submit">Marcar acreditado</Button>
                           </form>
-                        </TableHoverActionMenu>
+                        </TableHoverActionMenu> : <span className="text-xs text-[#94a3b8]">Solo lectura</span>}
                       </DataTableCell>
                     </DataTableRow>
                   ))}
@@ -485,7 +509,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                 </div>
               </CardContent>
             </Card>
-            <div className="grid gap-5 xl:grid-cols-2">
+            {canWriteTreasury ? <div className="grid gap-5 xl:grid-cols-2">
               <Card>
                 <CardHeader><CardTitle>Agregar cuenta bancaria</CardTitle></CardHeader>
                 <CardContent>
@@ -517,7 +541,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                   )}
                 </CardContent>
               </Card>
-            </div>
+            </div> : null}
             <Card>
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -541,7 +565,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                         <DataTableCell align="right" className={cn("whitespace-nowrap font-mono", line.amount < 0 ? "text-red-700" : "text-emerald-700")}>{formatCurrency(line.amount)}</DataTableCell>
                         <DataTableCell align="right" className="whitespace-nowrap font-mono">{formatCurrency(line.remainingAmount)}</DataTableCell>
                         <DataTableCell align="center">
-                          {open ? (
+                          {open && canWriteTreasury ? (
                             <TableHoverActionMenu label={`Conciliar ${line.description}`} width={390}>
                               <div className="grid gap-4">
                                 <form action={matchAdministrationStatementLineAction} className="grid gap-2">
@@ -588,7 +612,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
 
         {view === "obligations" ? (
           <div className="grid gap-5">
-            <Card>
+            {canWritePayables ? <Card>
               <CardHeader><CardTitle>Registrar obligación manual</CardTitle></CardHeader>
               <CardContent>
                 <form action={createAdministrationPayableAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1fr)_180px_180px_auto] xl:items-end">
@@ -599,7 +623,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                   <Button type="submit">Agregar obligación</Button>
                 </form>
               </CardContent>
-            </Card>
+            </Card> : null}
             <div className="grid gap-3 md:grid-cols-3">
               <StatCard detail={`${payables.meta.count} registros`} label="Total pendiente" tone="warning" value={formatCurrency(payables.meta.total)} />
               <StatCard detail={`${overduePayables.length} obligaciones`} label="Vencido" tone={overduePayables.length > 0 ? "danger" : "success"} value={formatCurrency(overduePayables.reduce((sum, item) => sum + item.balance, 0))} />
@@ -613,7 +637,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                   {payables.data.map((item) => {
                     const days = daysFromToday(item.date, today);
                     const tone = days < 0 ? "danger" : days <= 7 ? "warning" : "neutral";
-                    return <DataTableRow key={`${item.source}-${item.id}`}><DataTableCell className="whitespace-nowrap">{formatDate(item.date)}</DataTableCell><DataTableCell>{sourceLabel(item.source)}</DataTableCell><DataTableCell className="font-medium">{item.provider}</DataTableCell><DataTableCell>{item.concept}</DataTableCell><DataTableCell><StatusBadge tone={tone}>{days < 0 ? "Vencido" : days <= 7 ? "Próximo" : item.status}</StatusBadge></DataTableCell><DataTableCell align="right" className="whitespace-nowrap font-mono">{formatCurrency(item.balance)}</DataTableCell><DataTableCell align="center">{item.source === "compra" && item.balance > item.scheduledAmount ? <TableHoverActionMenu label={`Programar pago de ${item.provider}`} width={330}><form action={scheduleAdministrationSupplierPaymentAction} className="grid gap-2"><input name="id" type="hidden" value={item.id} /><input name="month" type="hidden" value={month} /><input name="notes" type="hidden" value="Programado desde Administración V2" /><Field htmlFor={`admin-payable-${item.id}-amount`} label="Monto"><MoneyInput defaultValue={Math.round(item.balance - item.scheduledAmount)} id={`admin-payable-${item.id}-amount`} min="0.01" name="amount" required /></Field><Field htmlFor={`admin-payable-${item.id}-date`} label="Fecha"><Input defaultValue={item.scheduledDate ?? today} id={`admin-payable-${item.id}-date`} name="date" required type="date" /></Field><Button className="w-full" size="sm" type="submit">Programar pago</Button></form></TableHoverActionMenu> : <span className="text-xs text-[#94a3b8]">—</span>}</DataTableCell></DataTableRow>;
+                    return <DataTableRow key={`${item.source}-${item.id}`}><DataTableCell className="whitespace-nowrap">{formatDate(item.date)}</DataTableCell><DataTableCell>{sourceLabel(item.source)}</DataTableCell><DataTableCell className="font-medium">{item.provider}</DataTableCell><DataTableCell>{item.concept}</DataTableCell><DataTableCell><StatusBadge tone={tone}>{days < 0 ? "Vencido" : days <= 7 ? "Próximo" : item.status}</StatusBadge></DataTableCell><DataTableCell align="right" className="whitespace-nowrap font-mono">{formatCurrency(item.balance)}</DataTableCell><DataTableCell align="center">{canWritePayables && item.source === "compra" && item.balance > item.scheduledAmount ? <TableHoverActionMenu label={`Programar pago de ${item.provider}`} width={330}><form action={scheduleAdministrationSupplierPaymentAction} className="grid gap-2"><input name="id" type="hidden" value={item.id} /><input name="month" type="hidden" value={month} /><input name="notes" type="hidden" value="Programado desde Administración V2" /><Field htmlFor={`admin-payable-${item.id}-amount`} label="Monto"><MoneyInput defaultValue={Math.round(item.balance - item.scheduledAmount)} id={`admin-payable-${item.id}-amount`} min="0.01" name="amount" required /></Field><Field htmlFor={`admin-payable-${item.id}-date`} label="Fecha"><Input defaultValue={item.scheduledDate ?? today} id={`admin-payable-${item.id}-date`} name="date" required type="date" /></Field><Button className="w-full" size="sm" type="submit">Programar pago</Button></form></TableHoverActionMenu> : <span className="text-xs text-[#94a3b8]">—</span>}</DataTableCell></DataTableRow>;
                   })}
                 </DataTableBody>
               </DataTable>
