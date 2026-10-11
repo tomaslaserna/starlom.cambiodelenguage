@@ -2,7 +2,28 @@
 
 import { revalidatePath } from "next/cache";
 import { createEmployee, deleteEmployeeAccess, toggleEmployeeStatus, updateEmployee } from "@/lib/employees";
-import { requireApiSession } from "@/lib/route-auth";
+import {
+  createSalaryPlan,
+  salaryPlanInputFromBody,
+  setSalaryPlanActive,
+  updateSalaryPlan,
+} from "@/lib/finance";
+import { ADMIN_SALARIES_WRITE_PERMISSION, requireApiSession } from "@/lib/route-auth";
+import { stringFieldsFromFormData } from "@/lib/storage";
+
+function salaryId(formData: FormData) {
+  const id = Number(formData.get("salaryId"));
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Configuración salarial inválida");
+  return id;
+}
+
+function refreshEmployeeFinance() {
+  revalidatePath("/employees");
+  revalidatePath("/administration");
+  revalidatePath("/balance");
+  revalidatePath("/balance/remunerations");
+  revalidatePath("/rentabilidad");
+}
 
 export async function createEmployeeAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "empleados", action: "crear" }]);
@@ -58,4 +79,26 @@ export async function deleteEmployeeAction(formData: FormData) {
 
   await deleteEmployeeAccess(session, id);
   revalidatePath("/employees");
+}
+
+export async function createEmployeeSalaryAction(formData: FormData) {
+  const session = await requireApiSession([ADMIN_SALARIES_WRITE_PERMISSION]);
+  await createSalaryPlan(session.companyId, salaryPlanInputFromBody(stringFieldsFromFormData(formData)));
+  refreshEmployeeFinance();
+}
+
+export async function updateEmployeeSalaryAction(formData: FormData) {
+  const session = await requireApiSession([ADMIN_SALARIES_WRITE_PERMISSION]);
+  await updateSalaryPlan(
+    session.companyId,
+    salaryId(formData),
+    salaryPlanInputFromBody(stringFieldsFromFormData(formData)),
+  );
+  refreshEmployeeFinance();
+}
+
+export async function setEmployeeSalaryStatusAction(formData: FormData) {
+  const session = await requireApiSession([ADMIN_SALARIES_WRITE_PERMISSION]);
+  await setSalaryPlanActive(session.companyId, salaryId(formData), String(formData.get("active")) === "true");
+  refreshEmployeeFinance();
 }

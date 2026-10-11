@@ -17,6 +17,7 @@ import {
   EmptyState,
   Field,
   Input,
+  MoneyInput,
   PageHeader,
   Select,
   StatCard,
@@ -25,15 +26,25 @@ import {
 } from "@/components/ui";
 import {
   createEmployeeAction,
+  createEmployeeSalaryAction,
   deleteEmployeeAction,
+  setEmployeeSalaryStatusAction,
   toggleEmployeeStatusAction,
   updateEmployeeAction,
+  updateEmployeeSalaryAction,
 } from "@/app/employees/actions";
 import { PermissionBlocks } from "@/app/employees/permission-blocks";
 import { listEmployeePermissions, listEmployees } from "@/lib/employees";
-import { formatDate } from "@/lib/format";
+import { getSalaryPlan } from "@/lib/finance";
+import { formatCurrency, formatDate } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
-import { ADMIN_MOVEMENTS_READ_PERMISSION, sessionAllows, sessionCanReadEmployees } from "@/lib/route-auth";
+import {
+  ADMIN_MOVEMENTS_READ_PERMISSION,
+  ADMIN_SALARIES_READ_PERMISSION,
+  ADMIN_SALARIES_WRITE_PERMISSION,
+  sessionAllows,
+  sessionCanReadEmployees,
+} from "@/lib/route-auth";
 
 type EmployeesPageProps = {
   searchParams: Promise<{
@@ -95,6 +106,38 @@ function canEditEmployee(actorRole: string, targetRole: string) {
   return true;
 }
 
+type SalaryPlanItem = Awaited<ReturnType<typeof getSalaryPlan>>["employees"][number];
+
+function SalaryEditor({ employeeId, salary }: { employeeId: string; salary?: SalaryPlanItem }) {
+  return (
+    <form action={salary ? updateEmployeeSalaryAction : createEmployeeSalaryAction} className="grid gap-3">
+      <input name="employeeId" type="hidden" value={employeeId} />
+      {salary ? <input name="salaryId" type="hidden" value={salary.id} /> : null}
+      <Field htmlFor={`salary-${employeeId}-monthly`} label="Sueldo mensual" required>
+        <MoneyInput defaultValue={salary?.monthly ?? ""} id={`salary-${employeeId}-monthly`} min="0.01" name="monthly" required />
+      </Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field htmlFor={`salary-${employeeId}-modality`} label="Modalidad">
+          <Input defaultValue={salary?.modality ?? "mensual"} id={`salary-${employeeId}-modality`} name="modality" />
+        </Field>
+        <Field htmlFor={`salary-${employeeId}-bonus`} label="Aguinaldo">
+          <Select defaultValue={String(salary?.bonusEnabled ?? true)} id={`salary-${employeeId}-bonus`} name="bonusEnabled">
+            <option value="true">Aplica</option>
+            <option value="false">No aplica</option>
+          </Select>
+        </Field>
+        <Field htmlFor={`salary-${employeeId}-charges`} label="Cargas patronales (%)">
+          <Input defaultValue={salary?.chargesPercent ?? 0} id={`salary-${employeeId}-charges`} max="100" min="0" name="chargesPercent" step="0.01" type="number" />
+        </Field>
+        <Field htmlFor={`salary-${employeeId}-notes`} label="Notas">
+          <Input defaultValue={salary?.notes ?? ""} id={`salary-${employeeId}-notes`} name="notes" placeholder="Opcional" />
+        </Field>
+      </div>
+      <Button size="sm" type="submit">{salary ? "Guardar remuneración" : "Configurar remuneración"}</Button>
+    </form>
+  );
+}
+
 export default async function EmployeesPage({ searchParams }: EmployeesPageProps) {
   const session = await requireStaffSession();
   if (!(await sessionCanReadEmployees(session))) {
@@ -104,15 +147,24 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
   const params = await searchParams;
   const query = params.q?.trim().toLowerCase() ?? "";
 
-  const [allEmployees, permissions, canAudit] = await Promise.all([
+  const canReadSalariesPromise = sessionAllows(session, [ADMIN_SALARIES_READ_PERMISSION]);
+  const salariesPromise = canReadSalariesPromise.then((allowed) => allowed ? getSalaryPlan(session.companyId) : null);
+  const [allEmployees, permissions, canAudit, canWriteSalaries, salaries] = await Promise.all([
     listEmployees(session.companyId),
     listEmployeePermissions(session.companyId),
     sessionAllows(session, [ADMIN_MOVEMENTS_READ_PERMISSION]),
+    sessionAllows(session, [ADMIN_SALARIES_WRITE_PERMISSION]),
+    salariesPromise,
   ]);
+  const salaryByEmployee = new Map(
+    (salaries?.employees ?? []).filter((item) => item.employeeId).map((item) => [item.employeeId as string, item]),
+  );
 
   const employees = allEmployees.filter((item) => matchesQuery(item, query));
   const activeCount = employees.filter((employee) => employee.active).length;
   const inactiveCount = employees.length - activeCount;
+  const activeEmployeesWithoutSalary = allEmployees.filter((employee) => employee.active && !salaryByEmployee.has(employee.id)).length;
+  const baseSalaries = (salaries?.employees ?? []).filter((item) => item.active).reduce((sum, item) => sum + item.monthly, 0);
   const creatableRoles = roleOptionsFor(session.role);
   const canCreateEmployees = creatableRoles.length > 0;
   const currentRole = normalizedRole(session.role);
@@ -130,11 +182,79 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
       <div className="grid gap-5">
         <PageHeader
           title="Recursos Humanos"
-          description="Administra el equipo, los accesos, la gestión comercial y la trazabilidad interna desde un único módulo."
-          eyebrow="Módulo unificado"
+          description="Gestiona empleados, remuneraciones y accesos con responsabilidades claramente separadas."
+          eyebrow="Equipo y remuneraciones"
         />
 
         <HrNavigation active="employees" canAudit={canAudit} />
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard detail={`${inactiveCount} inactivos en el filtro`} label="Equipo activo" tone="accent" value={activeCount} />
+          {salaries ? <StatCard detail={`${salaries.meta.activeCount} salarios vigentes`} label="Sueldos base" tone="warning" value={formatCurrency(baseSalaries)} /> : null}
+          {salaries ? <StatCard detail="Sueldo, aguinaldo y cargas" label="Costo laboral mensual" tone="warning" value={formatCurrency(salaries.meta.monthlyCost)} /> : null}
+          {salaries ? <StatCard detail="Requieren configuración salarial" label="Sin sueldo definido" tone={activeEmployeesWithoutSalary > 0 ? "danger" : "success"} value={activeEmployeesWithoutSalary} /> : null}
+        </div>
+
+        {salaries ? (
+          <Card className="overflow-visible">
+            <CardHeader>
+              <CardTitle>Empleados y sueldos</CardTitle>
+              <CardDescription>RR. HH. es la fuente única del sueldo base, aguinaldo y cargas que utiliza Administración.</CardDescription>
+            </CardHeader>
+            <DataTable caption="Remuneraciones del equipo" className="rounded-none border-0 shadow-none" minWidth="1040px" tableLabel="Empleados y sueldos">
+              <DataTableHeader>
+                <DataTableRow>
+                  <DataTableHead>Empleado</DataTableHead>
+                  <DataTableHead>Estado salarial</DataTableHead>
+                  <DataTableHead align="right">Sueldo base</DataTableHead>
+                  <DataTableHead align="right">Aguinaldo mensual</DataTableHead>
+                  <DataTableHead align="right">Cargas</DataTableHead>
+                  <DataTableHead align="right">Costo laboral</DataTableHead>
+                  <DataTableHead align="right">Acciones</DataTableHead>
+                </DataTableRow>
+              </DataTableHeader>
+              <DataTableBody>
+                {employees.map((employee) => {
+                  const salary = salaryByEmployee.get(employee.id);
+                  return (
+                    <DataTableRow key={`salary-${employee.id}`}>
+                      <DataTableCell>
+                        <strong className="block text-[color:var(--foreground)]">{employee.displayName}</strong>
+                        <span className="mt-1 block text-xs text-[color:var(--muted)]">{employee.title || ROLE_LABELS[employee.role] || employee.role}</span>
+                      </DataTableCell>
+                      <DataTableCell>
+                        <StatusBadge tone={!salary ? "danger" : salary.active ? "success" : "neutral"}>{!salary ? "Sin configurar" : salary.active ? "Vigente" : "Suspendido"}</StatusBadge>
+                      </DataTableCell>
+                      <DataTableCell align="right" className="font-mono">{salary ? formatCurrency(salary.monthly) : "—"}</DataTableCell>
+                      <DataTableCell align="right" className="font-mono">{salary ? formatCurrency(salary.bonusProvision) : "—"}</DataTableCell>
+                      <DataTableCell align="right" className="font-mono">{salary ? formatCurrency(salary.charges) : "—"}</DataTableCell>
+                      <DataTableCell align="right" className="font-mono font-bold">{salary ? formatCurrency(salary.totalCost) : "—"}</DataTableCell>
+                      <DataTableCell align="right">
+                        {canWriteSalaries ? (
+                          <div className="flex justify-end gap-2">
+                            <details className="relative text-left">
+                              <summary className="flex min-h-[var(--control-height-sm)] cursor-pointer list-none items-center rounded-[var(--radius-md)] border border-[#a9c7f4] bg-white px-3.5 text-sm font-semibold text-[#0a55bd] [&::-webkit-details-marker]:hidden">{salary ? "Editar" : "Configurar"}</summary>
+                              <div className="absolute right-0 top-full z-50 mt-2 w-[min(440px,calc(100vw-2rem))] rounded-xl border border-[color:var(--border)] bg-white p-4 shadow-[0_20px_45px_rgba(15,23,42,0.18)]">
+                                <SalaryEditor employeeId={employee.id} salary={salary} />
+                              </div>
+                            </details>
+                            {salary ? (
+                              <form action={setEmployeeSalaryStatusAction}>
+                                <input name="salaryId" type="hidden" value={salary.id} />
+                                <input name="active" type="hidden" value={String(!salary.active)} />
+                                <Button size="sm" type="submit" variant="outline">{salary.active ? "Suspender" : "Activar"}</Button>
+                              </form>
+                            ) : null}
+                          </div>
+                        ) : <span className="text-xs text-[color:var(--muted)]">Sólo lectura</span>}
+                      </DataTableCell>
+                    </DataTableRow>
+                  );
+                })}
+              </DataTableBody>
+            </DataTable>
+          </Card>
+        ) : null}
 
         {canCreateEmployees ? (
           <Card>
@@ -223,14 +343,11 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
           </form>
         </Toolbar>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Empleados filtrados" value={employees.length} />
-          <StatCard label="Activos filtrados" value={activeCount} />
-          <StatCard label="Inactivos filtrados" value={inactiveCount} />
-          <StatCard label="Permisos disponibles" value={permissions.length} />
-        </div>
-
         <Card className="overflow-visible">
+          <CardHeader>
+            <CardTitle>Accesos y perfiles del sistema</CardTitle>
+            <CardDescription>Usuario, rango y permisos operativos. Estos datos no modifican la remuneración del empleado.</CardDescription>
+          </CardHeader>
           <DataTable
             caption="Listado administrativo de empleados"
             minWidth="720px"

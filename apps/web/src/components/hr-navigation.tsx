@@ -25,7 +25,7 @@ export function HrNavigation({
             size="sm"
             variant={active === "vendors" ? "primary" : "secondary"}
           >
-            Gestión de vendedores
+            Vendedores
           </ButtonLink>
         </>
       ) : null}

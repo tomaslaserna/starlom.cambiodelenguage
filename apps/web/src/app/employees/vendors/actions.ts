@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ApiError } from "@/lib/api-response";
 import { queryWithCompanyContext } from "@/lib/db";
 import { requireApiSession } from "@/lib/route-auth";
 
@@ -9,7 +10,9 @@ export async function saveVendorGoalAction(formData: FormData) {
   const vendor = String(formData.get("vendor") ?? "").trim();
   const goalSales = Number(formData.get("goalSales") ?? 0);
   const goalClients = Number(formData.get("goalClients") ?? 0);
-  if (!vendor) return;
+  if (!vendor) throw new ApiError(400, "Vendedor inválido");
+  if (!Number.isFinite(goalSales) || goalSales < 0) throw new ApiError(400, "La meta de ventas no puede ser negativa");
+  if (!Number.isInteger(goalClients) || goalClients < 0) throw new ApiError(400, "La meta de clientes debe ser un entero positivo");
 
   await queryWithCompanyContext(
     session.companyId,
@@ -24,17 +27,21 @@ export async function saveVendorGoalAction(formData: FormData) {
           updated_by = EXCLUDED.updated_by,
           updated_at = NOW()
     `,
-    [session.companyId, vendor, Number.isFinite(goalSales) ? goalSales : 0, Number.isFinite(goalClients) ? Math.trunc(goalClients) : 0, session.username],
+    [session.companyId, vendor, goalSales, goalClients, session.username],
   );
 
   revalidatePath("/employees/vendors");
+  revalidatePath("/employees");
 }
 
 export async function saveVendorCommissionAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "empleados", action: "editar" }]);
   const vendor = String(formData.get("vendor") ?? "").trim();
   const commissionRate = Number(formData.get("commissionRate") ?? 0);
-  if (!vendor) return;
+  if (!vendor) throw new ApiError(400, "Vendedor inválido");
+  if (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 100) {
+    throw new ApiError(400, "La comisión debe estar entre 0 y 100");
+  }
 
   await queryWithCompanyContext(
     session.companyId,
@@ -46,8 +53,9 @@ export async function saveVendorCommissionAction(formData: FormData) {
           updated_by = EXCLUDED.updated_by,
           updated_at = NOW()
     `,
-    [session.companyId, vendor, Number.isFinite(commissionRate) ? commissionRate : 0, session.username],
+    [session.companyId, vendor, commissionRate, session.username],
   );
 
   revalidatePath("/employees/vendors");
+  revalidatePath("/employees");
 }

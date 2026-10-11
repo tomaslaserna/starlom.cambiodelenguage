@@ -96,6 +96,7 @@ export async function getSalaryPlan(companyId: number) {
     bonus_enabled: boolean;
     charges_percent: string;
     paid_current: string;
+    notes: string;
   }>(
     companyId,
     `
@@ -107,6 +108,7 @@ export async function getSalaryPlan(companyId: number) {
              c.activo AS active,
              COALESCE(c.aguinaldo_aplica, TRUE) AS bonus_enabled,
              COALESCE(c.cargas_pct, 0)::text AS charges_percent,
+             COALESCE(c.notas, '') AS notes,
              COALESCE(SUM(m.monto) FILTER (
                WHERE m.periodo >= date_trunc('month', CURRENT_DATE)::date
                  AND m.periodo < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')::date
@@ -118,7 +120,7 @@ export async function getSalaryPlan(companyId: number) {
         ON m.empresa_id = c.empresa_id AND m.profile_id IS NOT DISTINCT FROM c.profile_id
       WHERE c.empresa_id = $1
       GROUP BY c.id, c.profile_id, p.full_name, p.username, c.employee_name, c.sueldo_mensual,
-               c.modalidad, c.activo, c.aguinaldo_aplica, c.cargas_pct
+               c.modalidad, c.activo, c.aguinaldo_aplica, c.cargas_pct, c.notas
       ORDER BY c.activo DESC, employee ASC
     `,
     [companyId],
@@ -142,6 +144,7 @@ export async function getSalaryPlan(companyId: number) {
       bonusProvision,
       chargesPercent: Number(row.charges_percent),
       charges,
+      notes: row.notes,
       totalCost,
       paid,
       payable: Math.max(0, totalCost - paid),
@@ -684,6 +687,33 @@ export async function matchBankStatementLine(session: AuthSession, input: {
       [remaining < 0.01 ? "matched" : "partial", input.lineId, session.companyId],
     );
   });
+}
+
+export async function updateSalaryPlan(companyId: number, id: number, input: SalaryPlanInput) {
+  const result = await queryWithCompanyContext(
+    companyId,
+    `
+      UPDATE admin_sueldos_config
+      SET sueldo_mensual = $3,
+          modalidad = $4,
+          aguinaldo_aplica = $5,
+          cargas_pct = $6,
+          notas = $7,
+          updated_at = NOW()
+      WHERE empresa_id = $1 AND id = $2
+    `,
+    [companyId, id, input.monthly, input.modality, input.bonusEnabled, input.chargesPercent, input.notes],
+  );
+  if (result.rowCount === 0) throw new ApiError(404, "Configuración salarial no encontrada");
+}
+
+export async function setSalaryPlanActive(companyId: number, id: number, active: boolean) {
+  const result = await queryWithCompanyContext(
+    companyId,
+    "UPDATE admin_sueldos_config SET activo = $3, updated_at = NOW() WHERE empresa_id = $1 AND id = $2",
+    [companyId, id, active],
+  );
+  if (result.rowCount === 0) throw new ApiError(404, "Configuración salarial no encontrada");
 }
 
 export async function ignoreBankStatementLine(session: AuthSession, lineId: string, reason: string) {
