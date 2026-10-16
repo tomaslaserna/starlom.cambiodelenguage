@@ -549,6 +549,26 @@ export async function getAccountsPayable(companyId: number) {
     [companyId],
   );
 
+  const issuedCheques = await queryWithCompanyContext<{
+    id: string;
+    provider: string;
+    concept: string;
+    balance: string;
+    date: string;
+    status: string;
+  }>(
+    companyId,
+    `SELECT cheque.id::text, account.name AS provider,
+            'Débito E-cheq ' || cheque.cheque_number || ' · ' || cheque.beneficiary AS concept,
+            cheque.amount::text AS balance, cheque.due_date::text AS date,
+            CASE cheque.status WHEN 'accepted' THEN 'Aceptado' ELSE 'Emitido' END AS status
+       FROM admin_outgoing_echeqs cheque
+       JOIN admin_treasury_accounts account
+         ON account.id = cheque.account_id AND account.empresa_id = cheque.empresa_id
+      WHERE cheque.empresa_id = $1 AND cheque.status IN ('issued', 'accepted')`,
+    [companyId],
+  );
+
   const monthNow = monthRange(currentMonth());
   const currentStart = monthNow.start;
   const nextStart = monthNow.endExclusive;
@@ -643,6 +663,19 @@ export async function getAccountsPayable(companyId: number) {
   );
 
   const data = [
+    ...issuedCheques.rows.map((row) => ({
+      id: row.id,
+      provider: row.provider,
+      concept: row.concept,
+      total: Number(row.balance),
+      paid: 0,
+      balance: Number(row.balance),
+      date: row.date,
+      status: row.status,
+      scheduledAmount: 0,
+      scheduledDate: null,
+      source: "echeq",
+    })),
     ...purchases.rows.map((row) => ({
       id: row.id,
       provider: row.provider,
@@ -796,6 +829,28 @@ export async function getCashflow(companyId: number) {
     [companyId],
   );
 
+  const outgoingEcheqs = await queryWithCompanyContext<{
+    id: string;
+    label: string;
+    amount: string;
+    date: string | null;
+    kind: string;
+  }>(
+    companyId,
+    `
+      SELECT cheque.id::text AS id,
+             'E-cheq ' || cheque.cheque_number || ' · ' || cheque.beneficiary AS label,
+             cheque.amount::text AS amount,
+             cheque.due_date::text AS date,
+             'outflow' AS kind
+      FROM admin_outgoing_echeqs cheque
+      WHERE cheque.empresa_id = $1
+        AND cheque.status IN ('issued', 'accepted')
+      ORDER BY cheque.due_date, cheque.id
+    `,
+    [companyId],
+  );
+
   const salaryOutflows = await queryWithCompanyContext<{
     id: number;
     label: string;
@@ -869,6 +924,7 @@ export async function getCashflow(companyId: number) {
     ...receivables.rows,
     ...payables.rows,
     ...scheduledSupplierPayments.rows,
+    ...outgoingEcheqs.rows,
     ...salaryOutflows.rows,
     ...taxOutflows.rows,
     ...projectedOutflows.rows,

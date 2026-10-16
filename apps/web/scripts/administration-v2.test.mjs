@@ -101,3 +101,20 @@ test("treasury separates liquid balances from accepted E-cheqs and settles them 
   assert.match(migration, /idx_admin_treasury_movements_source_unique/);
   assert.match(migration, /status IN \('accepted', 'deposited', 'cleared', 'rejected', 'cancelled'\)/);
 });
+
+test("outgoing E-cheqs stay as future cash outflows until the bank debits them", () => {
+  const finance = read("src/lib/finance.ts");
+  const metrics = read("src/lib/admin-metrics.ts");
+  const page = read("src/app/administration/page.tsx");
+  const migration = read("../../supabase/migrations/20261016130345_outgoing_echeqs.sql");
+  const reconciliation = read("../../supabase/reconciliations/maralimm-2026-10-16.sql");
+
+  assert.match(finance, /admin_outgoing_echeqs/);
+  assert.match(finance, /export async function settleOutgoingEcheq/);
+  assert.match(finance, /outgoing_echeq_clearing/);
+  assert.match(metrics, /cheque\.status IN \('issued', 'accepted'\)/);
+  assert.match(page, /E-cheqs emitidos/);
+  assert.match(page, /Confirmar débito/);
+  assert.match(migration, /admin_outgoing_echeqs_company_number_unique/);
+  assert.match(reconciliation, /se preservan compras, ítems y stock/i);
+});

@@ -57,6 +57,7 @@ import {
   reopenAdministrationMonthAction,
   scheduleAdministrationSupplierPaymentAction,
   settleAdministrationEcheqAction,
+  settleAdministrationOutgoingEcheqAction,
   setAdministrationCostMonthAction,
   updateAdministrationCostAction,
 } from "./actions";
@@ -108,6 +109,7 @@ function sourceLabel(source: string) {
     sueldo: "Sueldo",
     impuesto: "Impuesto",
     servicio: "Costo operativo",
+    echeq: "E-cheq emitido",
   }[source] ?? source;
 }
 
@@ -460,10 +462,11 @@ export default async function AdministrationPage({ searchParams }: Administratio
                 </form>
               </CardContent>
             </Card> : null}
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
               <StatCard detail="Disponible + valores en cartera" label="Total tesorería" tone="accent" value={formatCurrency(treasury.meta.total)} />
               <StatCard detail="Uso inmediato" label="Disponible" tone="success" value={formatCurrency(treasury.meta.available)} />
               <StatCard detail={`${treasury.echecks.length} valores aceptados`} label="E-cheqs en cartera" tone="info" value={formatCurrency(treasury.meta.echecks)} />
+              <StatCard detail={`${treasury.outgoingEchecks.length} débitos futuros`} label="E-cheqs emitidos" tone="warning" value={formatCurrency(treasury.meta.outgoingEchecks)} />
               <StatCard label="Efectivo" value={formatCurrency(treasury.meta.cash)} />
               <StatCard detail={`Billeteras ${formatCurrency(treasury.meta.wallet)}`} label="Bancos" value={formatCurrency(treasury.meta.bank)} />
             </div>
@@ -490,6 +493,33 @@ export default async function AdministrationPage({ searchParams }: Administratio
                             <Field htmlFor={`echeq-${cheque.id}-account`} label="Cuenta de destino"><Select id={`echeq-${cheque.id}-account`} name="accountId" required>{settlementAccounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.account}</option>)}</Select></Field>
                             <Field htmlFor={`echeq-${cheque.id}-date`} label="Fecha de acreditación"><Input defaultValue={cheque.dueDate} id={`echeq-${cheque.id}-date`} name="settlementDate" required type="date" /></Field>
                             <Button className="w-full" disabled={settlementAccounts.length === 0} size="sm" type="submit">Marcar acreditado</Button>
+                          </form>
+                        </TableHoverActionMenu> : <span className="text-xs text-[#94a3b8]">Solo lectura</span>}
+                      </DataTableCell>
+                    </DataTableRow>
+                  ))}
+                </DataTableBody>
+              </DataTable>
+            </Card>
+            <Card>
+              <CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><div><CardTitle>E-cheqs emitidos</CardTitle><p className="mt-1 text-sm text-[#64748b]">Cancelan la cuenta del proveedor y quedan como salida futura. El banco se descuenta recién cuando se debitan.</p></div><StatusBadge tone="warning">{treasury.outgoingEchecks.length} pendientes</StatusBadge></div></CardHeader>
+              <DataTable caption="E-cheqs emitidos pendientes de débito" className="rounded-none border-0 shadow-none" minWidth="980px" tableLabel="E-cheqs emitidos">
+                <DataTableHeader><DataTableRow><DataTableHead>Número</DataTableHead><DataTableHead>Beneficiario</DataTableHead><DataTableHead>Cuenta</DataTableHead><DataTableHead>Fecha de pago</DataTableHead><DataTableHead>Estado</DataTableHead><DataTableHead align="right">Importe</DataTableHead><DataTableHead align="center">Débito</DataTableHead></DataTableRow></DataTableHeader>
+                <DataTableBody>
+                  {treasury.outgoingEchecks.length === 0 ? <DataTableRow><DataTableCell className="py-8 text-center text-[#64748b]" colSpan={7}>No hay E-cheqs emitidos pendientes de débito.</DataTableCell></DataTableRow> : treasury.outgoingEchecks.map((cheque) => (
+                    <DataTableRow key={cheque.id}>
+                      <DataTableCell className="font-mono font-bold">{cheque.number}</DataTableCell>
+                      <DataTableCell><strong>{cheque.beneficiary}</strong><div className="text-xs text-[#64748b]">CUIT {cheque.beneficiaryCuit || "—"}</div></DataTableCell>
+                      <DataTableCell>{cheque.accountName}</DataTableCell>
+                      <DataTableCell className="whitespace-nowrap">{formatDate(cheque.dueDate)}</DataTableCell>
+                      <DataTableCell><StatusBadge tone={cheque.status === "accepted" ? "success" : "warning"}>{cheque.status === "accepted" ? "Aceptado" : "Emitido"}</StatusBadge></DataTableCell>
+                      <DataTableCell align="right" className="whitespace-nowrap font-mono font-bold">{formatCurrency(cheque.amount)}</DataTableCell>
+                      <DataTableCell align="center">
+                        {canWriteTreasury ? <TableHoverActionMenu label={`Marcar debitado E-cheq ${cheque.number}`} width={340}>
+                          <form action={settleAdministrationOutgoingEcheqAction} className="grid gap-3">
+                            <input name="id" type="hidden" value={cheque.id} /><input name="month" type="hidden" value={month} />
+                            <Field htmlFor={`outgoing-echeq-${cheque.id}-date`} label="Fecha de débito"><Input defaultValue={today} max={today} id={`outgoing-echeq-${cheque.id}-date`} name="settlementDate" required type="date" /></Field>
+                            <Button className="w-full" size="sm" type="submit">Confirmar débito</Button>
                           </form>
                         </TableHoverActionMenu> : <span className="text-xs text-[#94a3b8]">Solo lectura</span>}
                       </DataTableCell>

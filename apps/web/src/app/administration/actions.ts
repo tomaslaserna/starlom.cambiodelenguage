@@ -12,6 +12,7 @@ import {
   ignoreBankStatementLine,
   matchBankStatementLine,
   settleEcheq,
+  settleOutgoingEcheq,
 } from "@/lib/finance";
 import {
   createOperatingCost,
@@ -121,6 +122,17 @@ export async function settleAdministrationEcheqAction(formData: FormData) {
   });
   refreshAdministration();
   redirect(administrationUrl("treasury", month, "E-cheq acreditado; el importe pasó de cartera a saldo disponible"));
+}
+
+export async function settleAdministrationOutgoingEcheqAction(formData: FormData) {
+  const session = await requireApiSession([ADMIN_TREASURY_WRITE_PERMISSION]);
+  const month = selectedMonth(formData);
+  await settleOutgoingEcheq(session, {
+    echeqId: numericId(formData, "E-cheq emitido"),
+    settlementDate: String(formData.get("settlementDate") ?? ""),
+  });
+  refreshAdministration();
+  redirect(administrationUrl("treasury", month, "E-cheq emitido marcado como debitado"));
 }
 
 export async function createAdministrationBankAccountAction(formData: FormData) {

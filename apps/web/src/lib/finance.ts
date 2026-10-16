@@ -13,6 +13,7 @@ import {
 } from "@/lib/finance-inputs";
 import { parsePagination } from "@/lib/pagination";
 import { periodBounds, type Period } from "@/lib/period-range";
+import { localDateIso } from "@/lib/timezone";
 
 export type { CashMovementInput, PartnerInput, SalaryPlanInput };
 
@@ -250,7 +251,7 @@ export async function getTreasuryBalances(companyId: number) {
     [companyId],
   );
 
-  const [echeqResult, issueResult] = await Promise.all([
+  const [echeqResult, outgoingEcheqResult, issueResult] = await Promise.all([
     queryWithCompanyContext<{
       id: string;
       cheque_number: string;
@@ -272,6 +273,31 @@ export async function getTreasuryBalances(companyId: number) {
         WHERE empresa_id = $1
           AND status IN ('accepted', 'deposited')
         ORDER BY due_date, id`,
+      [companyId],
+    ),
+    queryWithCompanyContext<{
+      id: string;
+      cheque_number: string;
+      beneficiary: string;
+      beneficiary_cuit: string;
+      account_id: string;
+      account_name: string;
+      due_date: string;
+      amount: string;
+      status: string;
+      notes: string;
+    }>(
+      companyId,
+      `SELECT cheque.id::text, cheque.cheque_number, cheque.beneficiary,
+              cheque.beneficiary_cuit, cheque.account_id::text,
+              account.name AS account_name, cheque.due_date::text,
+              cheque.amount::text, cheque.status, cheque.notes
+         FROM admin_outgoing_echeqs cheque
+         JOIN admin_treasury_accounts account
+           ON account.empresa_id = cheque.empresa_id AND account.id = cheque.account_id
+        WHERE cheque.empresa_id = $1
+          AND cheque.status IN ('issued', 'accepted')
+        ORDER BY cheque.due_date, cheque.id`,
       [companyId],
     ),
     queryWithCompanyContext<{
@@ -322,10 +348,24 @@ export async function getTreasuryBalances(companyId: number) {
 
   const available = accounts.reduce((sum, item) => sum + item.balance, 0);
   const echeckBalance = echecks.reduce((sum, item) => sum + item.amount, 0);
+  const outgoingEchecks = outgoingEcheqResult.rows.map((row) => ({
+    id: row.id,
+    number: row.cheque_number,
+    beneficiary: row.beneficiary,
+    beneficiaryCuit: row.beneficiary_cuit,
+    accountId: row.account_id,
+    accountName: row.account_name,
+    dueDate: row.due_date,
+    amount: Number(row.amount),
+    status: row.status,
+    notes: row.notes,
+  }));
+  const outgoingEcheckBalance = outgoingEchecks.reduce((sum, item) => sum + item.amount, 0);
 
   return {
     accounts,
     echecks,
+    outgoingEchecks,
     reconciliationIssues: issueResult.rows.map((row) => ({
       paymentId: row.payment_id,
       reference: row.reference,
@@ -337,6 +377,7 @@ export async function getTreasuryBalances(companyId: number) {
       total: available + echeckBalance,
       available,
       echecks: echeckBalance,
+      outgoingEchecks: outgoingEcheckBalance,
       cash: accounts.filter((item) => item.accountType === "cash").reduce((sum, item) => sum + item.balance, 0),
       bank: accounts.filter((item) => item.accountType === "bank").reduce((sum, item) => sum + item.balance, 0),
       wallet: accounts.filter((item) => item.accountType === "wallet").reduce((sum, item) => sum + item.balance, 0),
@@ -827,6 +868,64 @@ export async function settleEcheq(session: AuthSession, input: {
               settled_on = $2::date, updated_at = now()
         WHERE id = $3::bigint AND empresa_id = $4`,
       [input.accountId, input.settlementDate, input.echeqId, session.companyId],
+    );
+
+    return { id: cheque.rows[0].id };
+  });
+}
+
+export async function settleOutgoingEcheq(session: AuthSession, input: {
+  echeqId: string;
+  settlementDate: string;
+}) {
+  if (!/^\d+$/.test(input.echeqId)) throw new ApiError(400, "E-cheq inválido");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.settlementDate)) {
+    throw new ApiError(400, "La fecha de débito es inválida");
+  }
+  if (input.settlementDate > localDateIso()) {
+    throw new ApiError(400, "Confirmá el débito cuando efectivamente ocurra; no puede tener fecha futura");
+  }
+
+  return withCompanyContext(session.companyId, async (client) => {
+    const cheque = await client.query<{
+      id: string;
+      account_id: string;
+      amount: string;
+      cheque_number: string;
+      beneficiary: string;
+    }>(
+      `SELECT id::text, account_id::text, amount::text, cheque_number, beneficiary
+         FROM admin_outgoing_echeqs
+        WHERE id = $1::bigint AND empresa_id = $2 AND status IN ('issued', 'accepted')
+        FOR UPDATE`,
+      [input.echeqId, session.companyId],
+    );
+    if (!cheque.rows[0]) throw new ApiError(409, "El E-cheq ya fue procesado o no existe");
+
+    await client.query(
+      `INSERT INTO admin_treasury_movements (
+         empresa_id, account_id, movement_date, direction, amount, concept,
+         source_type, source_id, reference, notes, created_by
+       ) VALUES ($1, $2::bigint, $3::date, 'outflow', $4, $5,
+                 'outgoing_echeq_clearing', $6, $7, $8, $9::uuid)`,
+      [
+        session.companyId,
+        cheque.rows[0].account_id,
+        input.settlementDate,
+        cheque.rows[0].amount,
+        `Débito E-cheq ${cheque.rows[0].cheque_number} · ${cheque.rows[0].beneficiary}`,
+        cheque.rows[0].id,
+        cheque.rows[0].cheque_number,
+        "E-cheq emitido debitado de su cuenta de origen",
+        session.userId,
+      ],
+    );
+
+    await client.query(
+      `UPDATE admin_outgoing_echeqs
+          SET status = 'cleared', cleared_on = $1::date, updated_at = now()
+        WHERE id = $2::bigint AND empresa_id = $3`,
+      [input.settlementDate, input.echeqId, session.companyId],
     );
 
     return { id: cheque.rows[0].id };
