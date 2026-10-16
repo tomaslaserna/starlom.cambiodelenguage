@@ -89,14 +89,14 @@ test("bank reconciliation certifies cash without creating accounting movements",
 
 test("treasury separates liquid balances from accepted E-cheqs and settles them exactly once", () => {
   const finance = read("src/lib/finance.ts");
-  const page = read("src/app/administration/page.tsx");
+  const page = read("src/app/administration/treasury-workspace.tsx");
   const migration = read("../../supabase/migrations/20261011141827_treasury_accounts_and_echeq_portfolio.sql");
 
   assert.match(finance, /admin_treasury_reconciliations/);
   assert.match(finance, /admin_echeqs/);
   assert.match(finance, /export async function settleEcheq/);
   assert.match(finance, /source_type, source_id/);
-  assert.match(page, /E-cheqs en cartera/);
+  assert.match(page, /Cheques por cobrar/);
   assert.match(page, /Marcar acreditado/);
   assert.match(migration, /idx_admin_treasury_movements_source_unique/);
   assert.match(migration, /status IN \('accepted', 'deposited', 'cleared', 'rejected', 'cancelled'\)/);
@@ -105,7 +105,7 @@ test("treasury separates liquid balances from accepted E-cheqs and settles them 
 test("outgoing E-cheqs stay as future cash outflows until the bank debits them", () => {
   const finance = read("src/lib/finance.ts");
   const metrics = read("src/lib/admin-metrics.ts");
-  const page = read("src/app/administration/page.tsx");
+  const page = read("src/app/administration/treasury-workspace.tsx");
   const migration = read("../../supabase/migrations/20261016130345_outgoing_echeqs.sql");
   const reconciliation = read("../../supabase/reconciliations/maralimm-2026-10-16.sql");
 

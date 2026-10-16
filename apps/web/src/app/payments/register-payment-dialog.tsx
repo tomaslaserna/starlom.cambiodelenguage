@@ -307,8 +307,8 @@ export function RegisterPaymentDialog({
               </Field>
               {method === "echeck" ? (
                 <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
-                  <strong>E-cheq en cartera</strong>
-                  <p className="mt-1 text-xs font-medium">Se mostrará como activo en Tesorería y recién ingresará al banco al acreditarlo.</p>
+                  <strong>Cheque pendiente de cobro</strong>
+                  <p className="mt-1 text-xs font-medium">Indicá la fecha de cobro. El cheque aparecerá automáticamente en Tesorería.</p>
                 </div>
               ) : (
                 <Field htmlFor={treasuryAccountInputId} label="Cuenta de destino" required>

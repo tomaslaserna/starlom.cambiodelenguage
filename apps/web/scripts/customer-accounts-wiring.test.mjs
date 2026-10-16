@@ -194,7 +194,7 @@ test("el formulario permite elegir remitos e importes parciales", () => {
   assert.match(dialog, /Saldo a favor/);
   assert.match(dialog, /Cuenta de destino/);
   assert.match(dialog, /Fecha de cobro/);
-  assert.match(dialog, /E-cheq en cartera/);
+  assert.match(dialog, /Cheque pendiente de cobro/);
 });
 
 test("cada cobro genera su contrapartida en Tesoreria dentro de la misma transaccion", () => {

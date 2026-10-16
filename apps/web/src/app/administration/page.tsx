@@ -47,21 +47,15 @@ import { localDateIso } from "@/lib/timezone";
 import {
   archiveAdministrationCostAction,
   closeAdministrationMonthAction,
-  createAdministrationBankAccountAction,
   createAdministrationCostAction,
-  createAdministrationMovementAction,
   createAdministrationPayableAction,
-  createAdministrationStatementLineAction,
-  ignoreAdministrationStatementLineAction,
-  matchAdministrationStatementLineAction,
   reopenAdministrationMonthAction,
   scheduleAdministrationSupplierPaymentAction,
-  settleAdministrationEcheqAction,
-  settleAdministrationOutgoingEcheqAction,
   setAdministrationCostMonthAction,
   updateAdministrationCostAction,
 } from "./actions";
 import { AdministrationDemo } from "./administration-demo";
+import { TreasuryWorkspace } from "./treasury-workspace";
 
 type AdministrationView = "control" | "results" | "treasury" | "obligations" | "equity";
 
@@ -233,7 +227,6 @@ export default async function AdministrationPage({ searchParams }: Administratio
     { label: "Costos fijos confirmados", ready: suspendedIndefiniteCosts.length === 0, detail: suspendedIndefiniteCosts.length === 0 ? "No quedan costos indefinidos suspendidos" : `${suspendedIndefiniteCosts.length} costos requieren decisión` },
   ];
   const closeReady = closeChecks.every((check) => check.ready);
-  const settlementAccounts = treasury.accounts.filter((account) => ["bank", "wallet"].includes(account.accountType));
 
   return (
     <ModulePage
@@ -445,199 +438,16 @@ export default async function AdministrationPage({ searchParams }: Administratio
         ) : null}
 
         {view === "treasury" ? (
-          <div className="grid gap-5">
-            <ConfidenceNote tone={reconciliation.ready ? "success" : reconciliation.importedLines > 0 ? "info" : "warning"}><strong>{reconciliation.ready ? "Período bancario conciliado." : "Caja operativa, aún no certificada."}</strong> {reconciliation.ready ? "Los movimientos importados del período no tienen diferencias pendientes." : reconciliation.importedLines > 0 ? `Hay ${reconciliation.pendingLines + reconciliation.partialLines} movimientos pendientes o parciales por ${formatCurrency(reconciliation.unmatchedAmount)}.` : "No hay extractos importados para este período; el saldo surge de cobros, pagos y movimientos internos."}</ConfidenceNote>
-            {canWriteTreasury ? <Card>
-              <CardHeader><CardTitle>Registrar movimiento manual</CardTitle></CardHeader>
-              <CardContent>
-                <form action={createAdministrationMovementAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-[170px_150px_minmax(220px,1fr)_160px_170px_minmax(180px,1fr)_auto] xl:items-end">
-                  <input name="month" type="hidden" value={month} />
-                  <Field htmlFor="admin-movement-account" label="Cuenta"><Select id="admin-movement-account" name="accountId" required>{treasury.accounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.account}</option>)}</Select></Field>
-                  <Field htmlFor="admin-movement-direction" label="Tipo"><Select defaultValue="salida" id="admin-movement-direction" name="direction"><option value="entrada">Entrada</option><option value="salida">Salida</option></Select></Field>
-                  <Field htmlFor="admin-movement-concept" label="Concepto" required><Input id="admin-movement-concept" name="concept" required /></Field>
-                  <Field htmlFor="admin-movement-amount" label="Monto" required><MoneyInput id="admin-movement-amount" min="0.01" name="amount" required /></Field>
-                  <Field htmlFor="admin-movement-date" label="Fecha" required><Input defaultValue={today} id="admin-movement-date" name="date" required type="date" /></Field>
-                  <Field htmlFor="admin-movement-notes" label="Notas"><Input id="admin-movement-notes" name="notes" /></Field>
-                  <Button disabled={treasury.accounts.length === 0} type="submit">Registrar</Button>
-                </form>
-              </CardContent>
-            </Card> : null}
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-              <StatCard detail="Disponible + valores en cartera" label="Total tesorería" tone="accent" value={formatCurrency(treasury.meta.total)} />
-              <StatCard detail="Uso inmediato" label="Disponible" tone="success" value={formatCurrency(treasury.meta.available)} />
-              <StatCard detail={`${treasury.echecks.length} valores aceptados`} label="E-cheqs en cartera" tone="info" value={formatCurrency(treasury.meta.echecks)} />
-              <StatCard detail={`${treasury.outgoingEchecks.length} débitos futuros`} label="E-cheqs emitidos" tone="warning" value={formatCurrency(treasury.meta.outgoingEchecks)} />
-              <StatCard label="Efectivo" value={formatCurrency(treasury.meta.cash)} />
-              <StatCard detail={`Billeteras ${formatCurrency(treasury.meta.wallet)}`} label="Bancos" value={formatCurrency(treasury.meta.bank)} />
-            </div>
-            {treasury.reconciliationIssues.map((issue) => (
-              <ConfidenceNote key={issue.paymentId} tone="warning"><strong>Diferencia documental a revisar.</strong> Los E-cheqs asociados al cobro {issue.reference || issue.paymentId} suman {formatCurrency(issue.echeckAmount)}, mientras el cobro registrado es {formatCurrency(issue.paymentAmount)}. Diferencia: {formatCurrency(issue.difference)}. La cartera conserva los importes bancarios sin alterar nuevamente la cuenta corriente.</ConfidenceNote>
-            ))}
-            <Card>
-              <CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><div><CardTitle>E-cheqs en cartera</CardTitle><p className="mt-1 text-sm text-[#64748b]">Son activos ya aplicados como cobro. Recién pasan a banco cuando se acreditan.</p></div><StatusBadge tone="info">{treasury.echecks.length} pendientes</StatusBadge></div></CardHeader>
-              <DataTable caption="E-cheqs aceptados pendientes de acreditación" className="rounded-none border-0 shadow-none" minWidth="1120px" tableLabel="E-cheqs en cartera">
-                <DataTableHeader><DataTableRow><DataTableHead>Número</DataTableHead><DataTableHead>Recibido de</DataTableHead><DataTableHead>Emisor</DataTableHead><DataTableHead>Vencimiento</DataTableHead><DataTableHead>Estado</DataTableHead><DataTableHead align="right">Importe</DataTableHead><DataTableHead align="center">Acreditación</DataTableHead></DataTableRow></DataTableHeader>
-                <DataTableBody>
-                  {treasury.echecks.length === 0 ? <DataTableRow><DataTableCell className="py-8 text-center text-[#64748b]" colSpan={7}>No hay E-cheqs pendientes de acreditación.</DataTableCell></DataTableRow> : treasury.echecks.map((cheque) => (
-                    <DataTableRow key={cheque.id}>
-                      <DataTableCell className="font-mono font-bold">{cheque.number}</DataTableCell>
-                      <DataTableCell><strong>{cheque.receivedFrom}</strong><div className="text-xs text-[#64748b]">CUIT {cheque.receivedFromCuit || "—"}</div></DataTableCell>
-                      <DataTableCell>{cheque.issuer}<div className="text-xs text-[#64748b]">CUIT {cheque.issuerCuit || "—"}</div></DataTableCell>
-                      <DataTableCell className="whitespace-nowrap">{formatDate(cheque.dueDate)}</DataTableCell>
-                      <DataTableCell><StatusBadge tone="success">Aceptado</StatusBadge></DataTableCell>
-                      <DataTableCell align="right" className="whitespace-nowrap font-mono font-bold">{formatCurrency(cheque.amount)}</DataTableCell>
-                      <DataTableCell align="center">
-                        {canWriteTreasury ? <TableHoverActionMenu label={`Acreditar E-cheq ${cheque.number}`} width={360}>
-                          <form action={settleAdministrationEcheqAction} className="grid gap-3">
-                            <input name="id" type="hidden" value={cheque.id} /><input name="month" type="hidden" value={month} />
-                            <Field htmlFor={`echeq-${cheque.id}-account`} label="Cuenta de destino"><Select id={`echeq-${cheque.id}-account`} name="accountId" required>{settlementAccounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.account}</option>)}</Select></Field>
-                            <Field htmlFor={`echeq-${cheque.id}-date`} label="Fecha de acreditación"><Input defaultValue={cheque.dueDate} id={`echeq-${cheque.id}-date`} name="settlementDate" required type="date" /></Field>
-                            <Button className="w-full" disabled={settlementAccounts.length === 0} size="sm" type="submit">Marcar acreditado</Button>
-                          </form>
-                        </TableHoverActionMenu> : <span className="text-xs text-[#94a3b8]">Solo lectura</span>}
-                      </DataTableCell>
-                    </DataTableRow>
-                  ))}
-                </DataTableBody>
-              </DataTable>
-            </Card>
-            <Card>
-              <CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><div><CardTitle>E-cheqs emitidos</CardTitle><p className="mt-1 text-sm text-[#64748b]">Cancelan la cuenta del proveedor y quedan como salida futura. El banco se descuenta recién cuando se debitan.</p></div><StatusBadge tone="warning">{treasury.outgoingEchecks.length} pendientes</StatusBadge></div></CardHeader>
-              <DataTable caption="E-cheqs emitidos pendientes de débito" className="rounded-none border-0 shadow-none" minWidth="980px" tableLabel="E-cheqs emitidos">
-                <DataTableHeader><DataTableRow><DataTableHead>Número</DataTableHead><DataTableHead>Beneficiario</DataTableHead><DataTableHead>Cuenta</DataTableHead><DataTableHead>Fecha de pago</DataTableHead><DataTableHead>Estado</DataTableHead><DataTableHead align="right">Importe</DataTableHead><DataTableHead align="center">Débito</DataTableHead></DataTableRow></DataTableHeader>
-                <DataTableBody>
-                  {treasury.outgoingEchecks.length === 0 ? <DataTableRow><DataTableCell className="py-8 text-center text-[#64748b]" colSpan={7}>No hay E-cheqs emitidos pendientes de débito.</DataTableCell></DataTableRow> : treasury.outgoingEchecks.map((cheque) => (
-                    <DataTableRow key={cheque.id}>
-                      <DataTableCell className="font-mono font-bold">{cheque.number}</DataTableCell>
-                      <DataTableCell><strong>{cheque.beneficiary}</strong><div className="text-xs text-[#64748b]">CUIT {cheque.beneficiaryCuit || "—"}</div></DataTableCell>
-                      <DataTableCell>{cheque.accountName}</DataTableCell>
-                      <DataTableCell className="whitespace-nowrap">{formatDate(cheque.dueDate)}</DataTableCell>
-                      <DataTableCell><StatusBadge tone={cheque.status === "accepted" ? "success" : "warning"}>{cheque.status === "accepted" ? "Aceptado" : "Emitido"}</StatusBadge></DataTableCell>
-                      <DataTableCell align="right" className="whitespace-nowrap font-mono font-bold">{formatCurrency(cheque.amount)}</DataTableCell>
-                      <DataTableCell align="center">
-                        {canWriteTreasury ? <TableHoverActionMenu label={`Marcar debitado E-cheq ${cheque.number}`} width={340}>
-                          <form action={settleAdministrationOutgoingEcheqAction} className="grid gap-3">
-                            <input name="id" type="hidden" value={cheque.id} /><input name="month" type="hidden" value={month} />
-                            <Field htmlFor={`outgoing-echeq-${cheque.id}-date`} label="Fecha de débito"><Input defaultValue={today} max={today} id={`outgoing-echeq-${cheque.id}-date`} name="settlementDate" required type="date" /></Field>
-                            <Button className="w-full" size="sm" type="submit">Confirmar débito</Button>
-                          </form>
-                        </TableHoverActionMenu> : <span className="text-xs text-[#94a3b8]">Solo lectura</span>}
-                      </DataTableCell>
-                    </DataTableRow>
-                  ))}
-                </DataTableBody>
-              </DataTable>
-            </Card>
-            <Card>
-              <CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><CardTitle>Estado de conciliación · {periodLabel(period)}</CardTitle><StatusBadge tone={reconciliation.ready ? "success" : "warning"}>{reconciliation.ready ? "Conciliado" : "Pendiente"}</StatusBadge></div></CardHeader>
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <StatCard detail={`${reconciliation.activeAccounts} cuentas activas`} label="Líneas importadas" value={formatNumber(reconciliation.importedLines)} />
-                  <StatCard detail={`${reconciliation.matchedLines} líneas completas`} label="Cobertura conciliada" tone={reconciliation.ready ? "success" : "info"} value={`${reconciliation.coveragePercent.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%`} />
-                  <StatCard detail={`${reconciliation.partialLines} parciales · ${reconciliation.pendingLines} pendientes`} label="Movimientos a revisar" tone={reconciliation.pendingLines + reconciliation.partialLines > 0 ? "warning" : "success"} value={formatNumber(reconciliation.pendingLines + reconciliation.partialLines)} />
-                  <StatCard detail={`Sobre ${formatCurrency(reconciliation.statementAmount)}`} label="Importe sin conciliar" tone={reconciliation.unmatchedAmount > 0 ? "danger" : "success"} value={formatCurrency(reconciliation.unmatchedAmount)} />
-                </div>
-              </CardContent>
-            </Card>
-            {canWriteTreasury ? <div className="grid gap-5 xl:grid-cols-2">
-              <Card>
-                <CardHeader><CardTitle>Agregar cuenta bancaria</CardTitle></CardHeader>
-                <CardContent>
-                  <form action={createAdministrationBankAccountAction} className="grid gap-3 sm:grid-cols-2">
-                    <input name="month" type="hidden" value={month} />
-                    <Field htmlFor="admin-bank-name" label="Nombre visible" required><Input id="admin-bank-name" name="name" placeholder="Santander principal" required /></Field>
-                    <Field htmlFor="admin-bank-bank" label="Banco"><Input id="admin-bank-bank" name="bank" placeholder="Santander" /></Field>
-                    <Field htmlFor="admin-bank-currency" label="Moneda"><Select defaultValue="ARS" id="admin-bank-currency" name="currency"><option value="ARS">ARS</option><option value="USD">USD</option></Select></Field>
-                    <div className="flex items-end"><Button className="w-full" type="submit">Guardar cuenta</Button></div>
-                  </form>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader><CardTitle>Cargar movimiento de extracto</CardTitle></CardHeader>
-                <CardContent>
-                  {reconciliationWorkspace.accounts.length === 0 ? (
-                    <p className="text-sm text-[#64748b]">Primero agregá una cuenta bancaria.</p>
-                  ) : (
-                    <form action={createAdministrationStatementLineAction} className="grid gap-3 sm:grid-cols-2">
-                      <input name="month" type="hidden" value={month} />
-                      <Field htmlFor="admin-statement-account" label="Cuenta" required><Select id="admin-statement-account" name="accountId" required>{reconciliationWorkspace.accounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}</Select></Field>
-                      <Field htmlFor="admin-statement-date" label="Fecha" required><Input defaultValue={today} id="admin-statement-date" name="date" required type="date" /></Field>
-                      <Field htmlFor="admin-statement-type" label="Movimiento" required><Select defaultValue="credit" id="admin-statement-type" name="movementType" required><option value="credit">Ingreso / crédito</option><option value="debit">Egreso / débito</option></Select></Field>
-                      <Field htmlFor="admin-statement-amount" label="Importe" required><MoneyInput id="admin-statement-amount" min="0.01" name="amount" required /></Field>
-                      <Field htmlFor="admin-statement-description" label="Descripción" required><Input id="admin-statement-description" name="description" required /></Field>
-                      <Field htmlFor="admin-statement-reference" label="Referencia"><Input id="admin-statement-reference" name="reference" /></Field>
-                      <div className="sm:col-span-2"><Button className="w-full" type="submit">Agregar al extracto</Button></div>
-                    </form>
-                  )}
-                </CardContent>
-              </Card>
-            </div> : null}
-            <Card>
-              <CardHeader>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div><CardTitle>Conciliación movimiento por movimiento</CardTitle><p className="mt-1 text-sm text-[#64748b]">El extracto certifica la caja; nunca genera ni modifica cobros o pagos.</p></div>
-                  <StatusBadge tone="info">{reconciliationWorkspace.candidates.length} movimientos internos disponibles</StatusBadge>
-                </div>
-              </CardHeader>
-              <DataTable caption="Movimientos bancarios y su conciliación" className="rounded-none border-0 shadow-none" minWidth="1120px" tableLabel="Conciliación bancaria">
-                <DataTableHeader><DataTableRow><DataTableHead>Fecha</DataTableHead><DataTableHead>Cuenta / detalle</DataTableHead><DataTableHead>Referencia</DataTableHead><DataTableHead>Estado</DataTableHead><DataTableHead align="right">Extracto</DataTableHead><DataTableHead align="right">Pendiente</DataTableHead><DataTableHead align="center">Acciones</DataTableHead></DataTableRow></DataTableHeader>
-                <DataTableBody>
-                  {reconciliationWorkspace.lines.length === 0 ? (
-                    <DataTableRow><DataTableCell className="py-8 text-center text-[#64748b]" colSpan={7}>Todavía no hay movimientos de extracto en este período.</DataTableCell></DataTableRow>
-                  ) : reconciliationWorkspace.lines.map((line) => {
-                    const open = line.status === "pending" || line.status === "partial";
-                    return (
-                      <DataTableRow key={line.id}>
-                        <DataTableCell className="whitespace-nowrap">{formatDate(line.date)}</DataTableCell>
-                        <DataTableCell><strong>{line.accountName}</strong><div className="mt-0.5 text-xs text-[#64748b]">{line.description}</div></DataTableCell>
-                        <DataTableCell>{line.reference || "—"}</DataTableCell>
-                        <DataTableCell><StatusBadge tone={line.status === "matched" ? "success" : line.status === "ignored" ? "neutral" : "warning"}>{line.status}</StatusBadge></DataTableCell>
-                        <DataTableCell align="right" className={cn("whitespace-nowrap font-mono", line.amount < 0 ? "text-red-700" : "text-emerald-700")}>{formatCurrency(line.amount)}</DataTableCell>
-                        <DataTableCell align="right" className="whitespace-nowrap font-mono">{formatCurrency(line.remainingAmount)}</DataTableCell>
-                        <DataTableCell align="center">
-                          {open && canWriteTreasury ? (
-                            <TableHoverActionMenu label={`Conciliar ${line.description}`} width={390}>
-                              <div className="grid gap-4">
-                                <form action={matchAdministrationStatementLineAction} className="grid gap-2">
-                                  <input name="lineId" type="hidden" value={line.id} /><input name="month" type="hidden" value={month} />
-                                  <Field htmlFor={`admin-match-${line.id}-payment`} label="Cobro o pago registrado"><Select id={`admin-match-${line.id}-payment`} name="paymentId" required><option value="">Seleccionar movimiento</option>{reconciliationWorkspace.candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{formatDate(candidate.date)} · {candidate.entityName} · {formatCurrency(candidate.remainingAmount)}</option>)}</Select></Field>
-                                  <Field htmlFor={`admin-match-${line.id}-amount`} label="Importe a conciliar"><MoneyInput defaultValue={line.remainingAmount} id={`admin-match-${line.id}-amount`} max={line.remainingAmount} min="0.01" name="amount" required /></Field>
-                                  <Field htmlFor={`admin-match-${line.id}-notes`} label="Nota"><Input id={`admin-match-${line.id}-notes`} name="notes" /></Field>
-                                  <Button className="w-full" disabled={reconciliationWorkspace.candidates.length === 0} size="sm" type="submit">Confirmar cruce</Button>
-                                </form>
-                                {line.status === "pending" ? <form action={ignoreAdministrationStatementLineAction} className="grid gap-2 border-t border-[#e2e8f0] pt-3"><input name="lineId" type="hidden" value={line.id} /><input name="month" type="hidden" value={month} /><Field htmlFor={`admin-ignore-${line.id}`} label="Excluir con motivo"><Input id={`admin-ignore-${line.id}`} name="reason" placeholder="Ej.: transferencia entre cuentas propias" required /></Field><Button className="w-full" size="sm" type="submit" variant="secondary">No corresponde conciliar</Button></form> : null}
-                              </div>
-                            </TableHoverActionMenu>
-                          ) : <span className="text-xs text-[#94a3b8]">—</span>}
-                        </DataTableCell>
-                      </DataTableRow>
-                    );
-                  })}
-                </DataTableBody>
-              </DataTable>
-            </Card>
-            <div className="grid gap-5 xl:grid-cols-2">
-              <Card>
-                <CardHeader><CardTitle>Saldos por cuenta</CardTitle></CardHeader>
-                <DataTable caption="Saldos operativos por cuenta" className="rounded-none border-0 shadow-none" tableLabel="Saldos por cuenta">
-                  <DataTableHeader><DataTableRow><DataTableHead>Cuenta</DataTableHead><DataTableHead>Tipo</DataTableHead><DataTableHead align="right">Saldo</DataTableHead></DataTableRow></DataTableHeader>
-                  <DataTableBody>
-                    {treasury.accounts.map((account) => (
-                      <DataTableRow key={account.accountId}><DataTableCell><strong>{account.account}</strong><div className="text-xs text-[#64748b]">{account.movements} movimientos desde la última conciliación</div></DataTableCell><DataTableCell>{{ cash: "Efectivo", bank: "Banco", wallet: "Billetera", other: "Otra" }[account.accountType] ?? account.accountType}</DataTableCell><DataTableCell align="right" className="font-mono">{formatCurrency(account.balance)}</DataTableCell></DataTableRow>
-                    ))}
-                  </DataTableBody>
-                </DataTable>
-              </Card>
-              <Card>
-                <CardHeader><CardTitle>Proyección a 30 días</CardTitle></CardHeader>
-                <CardContent className="grid gap-3">
-                  {cashflow.meta.horizons.map((horizon) => (
-                    <div className="grid grid-cols-[1fr_auto] gap-3 rounded-xl border border-[#e2e8f0] p-4" key={horizon.days}><div><strong>{horizon.days} días</strong><div className="mt-1 text-xs text-[#64748b]">Entra {formatCurrency(horizon.inflow)} · Sale {formatCurrency(horizon.outflow)}</div></div><strong className={horizon.net >= 0 ? "text-emerald-700" : "text-red-700"}>{formatCurrency(horizon.net)}</strong></div>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+          <TreasuryWorkspace
+            treasury={treasury}
+            cashflow={cashflow}
+            reconciliation={reconciliation}
+            reconciliationWorkspace={reconciliationWorkspace}
+            canWriteTreasury={canWriteTreasury}
+            month={month}
+            today={today}
+            period={period}
+          />
         ) : null}
 
         {view === "obligations" ? (
