@@ -32,8 +32,8 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
   await requirePagePermission(session, [COLLECTIONS_READ_PERMISSION]);
 
   const params = await searchParams;
-  const query = params.q ?? "";
-  const { accounts } = await listOpenCustomerAccounts(session.companyId, { query });
+  const query = params.q?.trim() ?? "";
+  const { accounts } = await listOpenCustomerAccounts(session.companyId, { query, includeSettled: Boolean(query) });
 
   const totalDebt = accounts.reduce((sum, account) => (account.balance > 0 ? sum + account.balance : sum), 0);
   const totalFavor = accounts.reduce((sum, account) => (account.balance < 0 ? sum + Math.abs(account.balance) : sum), 0);
@@ -47,11 +47,11 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
     >
       <div className="grid gap-5">
         <PageHeader
-          description="Clientes con saldo distinto de cero en su cuenta corriente."
-          title="Cuentas abiertas"
+          description={query ? "La búsqueda incluye cuentas abiertas y saldadas." : "Clientes con saldo distinto de cero. Buscá por cliente o CUIT para consultar también cuentas saldadas."}
+          title={query ? "Resultados de búsqueda" : "Cuentas abiertas"}
         />
 
-        <Toolbar ariaLabel="Busqueda de cuentas abiertas">
+        <Toolbar ariaLabel="Búsqueda de cuentas corrientes">
           <form
             action="/payments/accounts"
             className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto] lg:items-end"
@@ -65,7 +65,10 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
                 type="search"
               />
             </Field>
-            <Button type="submit">Buscar</Button>
+            <div className="flex items-center gap-2">
+              <Button type="submit">Buscar</Button>
+              {query ? <ButtonLink href="/payments/accounts" variant="secondary">Limpiar</ButtonLink> : null}
+            </div>
             <ButtonLink
               href={`/api/pdfs/accounts/current?type=cliente&download=1${query ? `&q=${encodeURIComponent(query)}` : ""}`}
               prefetch={false}
@@ -96,10 +99,10 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
 
         <Card className="overflow-hidden">
           <DataTable
-            caption="Cuentas corrientes abiertas de clientes"
+            caption={query ? "Cuentas corrientes encontradas, incluidas las saldadas" : "Cuentas corrientes abiertas de clientes"}
             className="rounded-none border-0 shadow-none"
             minWidth="1220px"
-            tableLabel="Cuentas abiertas"
+            tableLabel={query ? "Resultados de cuentas corrientes" : "Cuentas abiertas"}
             tableProps={{ className: "table-fixed" }}
           >
             <DataTableHeader>
@@ -120,8 +123,8 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
                 <DataTableRow className="hover:bg-transparent">
                   <DataTableCell colSpan={9}>
                     <EmptyState
-                      description="No hay clientes con saldo abierto para la busqueda actual."
-                      title="Sin cuentas abiertas"
+                      description={query ? "No encontramos cuentas corrientes para ese cliente o CUIT." : "No hay clientes con saldo abierto. Podés buscar un cliente para consultar su historial."}
+                      title={query ? "Sin resultados" : "Sin cuentas abiertas"}
                     />
                   </DataTableCell>
                 </DataTableRow>
@@ -163,6 +166,7 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
                       style={{ color: account.balance > 0 ? "var(--danger)" : account.balance < 0 ? "var(--success)" : undefined }}
                     >
                       {formatCurrency(account.balance)}
+                      {account.balance === 0 ? <span className="mt-1 block font-sans text-xs font-medium text-emerald-700">Saldada</span> : null}
                     </DataTableCell>
                   </DataTableRow>
                 ))

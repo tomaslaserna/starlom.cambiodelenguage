@@ -227,7 +227,7 @@ const OPEN_SALES_FOR_AGING_SQL = `
 
 export async function listOpenCustomerAccounts(
   companyId: number,
-  options: { query?: string | null; sellerNames?: string[] | null } = {},
+  options: { query?: string | null; sellerNames?: string[] | null; includeSettled?: boolean } = {},
 ): Promise<{ accounts: OpenCustomerAccount[]; totals: { debit: number; credit: number } }> {
   const params: unknown[] = [companyId];
   const filters = [
@@ -238,6 +238,7 @@ export async function listOpenCustomerAccounts(
   ];
 
   const query = options.query?.trim() ?? "";
+  const includeSettled = Boolean(query && options.includeSettled);
   if (query) {
     params.push(`%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
     filters.push(`(COALESCE(c.display_name, m.entity_name, '') ILIKE $${params.length} ESCAPE '\\'
@@ -282,8 +283,8 @@ export async function listOpenCustomerAccounts(
              total_credit::text,
              debits
       FROM client_balances
-      WHERE ABS(total_debit - total_credit) > 0.005
-      ORDER BY (total_debit - total_credit) DESC
+      ${includeSettled ? "" : "WHERE ABS(total_debit - total_credit) > 0.005"}
+      ORDER BY (total_debit - total_credit) DESC, name ASC, client_id ASC
     `,
     params,
   );

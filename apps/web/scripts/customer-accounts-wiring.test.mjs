@@ -65,6 +65,35 @@ test("listOpenCustomerAccounts arma el vencimiento y reusa el filtro de movimien
   assert.match(source, /ABS\([^)]*\)\s*>\s*0\.005/);
 });
 
+for (const scenario of [
+  { name: "sin búsqueda mantiene sólo cuentas abiertas", options: {}, includeSettled: false },
+  { name: "una búsqueda de consulta incluye las saldadas", options: { query: "Cliente", includeSettled: true }, includeSettled: true },
+  { name: "una búsqueda vacía no incluye cuentas saldadas", options: { query: "   ", includeSettled: true }, includeSettled: false },
+  { name: "otros consumidores conservan el filtro de deuda", options: { query: "Cliente" }, includeSettled: false },
+]) {
+  test(`listOpenCustomerAccounts: ${scenario.name}`, async () => {
+    const queries = [];
+    const mod = loadCustomerAccounts({
+      queryWithCompanyContext: async (companyId, sql, params) => {
+        queries.push({ companyId, sql, params });
+        if (!sql.includes("WITH client_balances")) return { rows: [] };
+        return { rows: /WHERE ABS\(total_debit - total_credit\)/.test(sql) ? [] : [{
+          client_id: "11111111-1111-4111-8111-111111111111", name: "Cliente",
+          seller_name: "Vendedor", tax_id: "30712345678", last_movement: "2026-10-19",
+          total_debit: "15000", total_credit: "15000", debits: [],
+        }] };
+      },
+    });
+    const result = await mod.listOpenCustomerAccounts(1, scenario.options);
+    assert.equal(queries[0].companyId, 1);
+    assert.equal(/WHERE ABS\(total_debit - total_credit\)/.test(queries[0].sql), !scenario.includeSettled);
+    assert.equal(result.accounts.length, scenario.includeSettled ? 1 : 0);
+    if (scenario.options.query?.trim()) assert.deepEqual(queries[0].params, [1, "%Cliente%"]);
+    else assert.deepEqual(queries[0].params, [1]);
+    if (scenario.includeSettled) assert.equal(result.accounts[0].balance, 0);
+  });
+}
+
 test("getCustomerStatement trae todos los movimientos ordenados y delega el corte por fecha", () => {
   assert.match(source, /export async function getCustomerStatement/);
   assert.match(source, /ORDER BY m\.movement_date ASC/);
