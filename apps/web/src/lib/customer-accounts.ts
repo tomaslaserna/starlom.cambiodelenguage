@@ -580,6 +580,10 @@ function validateExplicitAllocations(
   requestedAllocations: CustomerPaymentAllocation[],
   sales: OpenSaleForAllocation[],
 ) {
+  if (!Number.isFinite(amount) || amount < 0 || new Set(requestedAllocations.map((item) => item.saleId)).size !== requestedAllocations.length
+    || requestedAllocations.some((item) => !Number.isFinite(item.amount) || item.amount <= 0)) {
+    throw new ApiError(400, "La imputacion de remitos no es valida");
+  }
   const byId = new Map(sales.map((sale) => [sale.id, sale]));
   if (byId.size !== requestedAllocations.length) {
     throw new ApiError(409, "Uno de los remitos seleccionados ya no tiene saldo pendiente");
@@ -599,6 +603,96 @@ function validateExplicitAllocations(
   return { allocations, allocated, unallocated: money(amount - allocated) };
 }
 
+export type CustomerAvailableCredit = { sourceId: string; label: string; amount: number };
+
+// Sólo créditos netos que ya existen en el mayor, nunca el importe nominal de una NC.
+const AVAILABLE_CUSTOMER_CREDITS_SQL = `
+  SELECT COALESCE(m.sale_id::text, 'general') AS source_id,
+         CASE WHEN m.sale_id IS NULL THEN 'Saldo a favor sin remito'
+              ELSE 'Crédito en ' || COALESCE(NULLIF(s.sale_number, ''), 'remito #' || s.receipt_number::text) END AS label,
+         SUM(m.credit - m.debit)::text AS amount
+  FROM current_account_movements m
+  LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
+  WHERE m.empresa_id = $1 AND m.client_id = $2::uuid AND m.entity_type = 'cliente'
+    AND ${activeAccountMovementWhereSql("m", "s")}
+  GROUP BY m.sale_id, s.sale_number, s.receipt_number
+  HAVING SUM(m.credit - m.debit) > 0.005
+  ORDER BY m.sale_id NULLS FIRST
+`;
+
+export async function listCustomerAvailableCredits(companyId: number, clientId: string): Promise<CustomerAvailableCredit[]> {
+  const result = await queryWithCompanyContext<{ source_id: string; label: string; amount: string }>(
+    companyId, AVAILABLE_CUSTOMER_CREDITS_SQL, [companyId, clientId], { cache: false },
+  );
+  return result.rows.map((row) => ({ sourceId: row.source_id, label: row.label, amount: Number(row.amount) }));
+}
+
+export async function applyCustomerCredit(session: AuthSession, input: {
+  clientId: string; sourceId: string; allocations: CustomerPaymentAllocation[]; requestId: string;
+}) {
+  if (!(await sessionAllows(session, [COLLECTIONS_APPROVE_PERMISSION]))) throw new ApiError(403, "Sin permiso para aplicar créditos");
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuid.test(input.clientId) || !uuid.test(input.requestId) || (input.sourceId !== "general" && !uuid.test(input.sourceId))) {
+    throw new ApiError(400, "La solicitud de crédito no es válida");
+  }
+  if (!Array.isArray(input.allocations) || !input.allocations.length || input.allocations.length > 500 || input.allocations.some((item) => !item || !uuid.test(item.saleId))) {
+    throw new ApiError(400, "Seleccioná los remitos que reciben el crédito");
+  }
+  const result = await withCompanyContext(session.companyId, async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`${session.companyId}:${input.clientId}`]);
+    const prior = await client.query<{ new_data: { requestId: string; clientId: string; sourceId: string; allocations: CustomerPaymentAllocation[]; applied: number } }>(
+      `SELECT new_data FROM audit_log WHERE empresa_id = $1 AND action = 'customer_credit.applied'
+       AND new_data->>'requestId' = $2 LIMIT 1`, [session.companyId, input.requestId],
+    );
+    if (prior.rows[0]) {
+      const saved = prior.rows[0].new_data;
+      if (saved.clientId !== input.clientId || saved.sourceId !== input.sourceId || JSON.stringify(saved.allocations) !== JSON.stringify(input.allocations)) {
+        throw new ApiError(409, "Esta solicitud ya se usó con otros importes");
+      }
+      return { applied: saved.applied };
+    }
+    const customer = await client.query<{ name: string }>(
+      `SELECT COALESCE(display_name,'') AS name FROM clients WHERE empresa_id = $1 AND id = $2::uuid FOR UPDATE`,
+      [session.companyId, input.clientId],
+    );
+    if (!customer.rows[0]) throw new ApiError(404, "Cliente no encontrado");
+    // Serializar con pagos y bloquear los movimientos existentes antes de recalcular.
+    await client.query(`SELECT id FROM current_account_movements WHERE empresa_id = $1 AND client_id = $2::uuid ORDER BY id FOR UPDATE`, [session.companyId, input.clientId]);
+    const sources = await client.query<{ source_id: string; label: string; amount: string }>(AVAILABLE_CUSTOMER_CREDITS_SQL, [session.companyId, input.clientId]);
+    const source = sources.rows.find((row) => row.source_id === input.sourceId);
+    if (!source) throw new ApiError(409, "El crédito ya no está disponible. Actualizá la cuenta.");
+    const sales = await client.query<OpenSaleForAllocation>(`${OPEN_SALES_FOR_ALLOCATION_SQL} ORDER BY s.id FOR UPDATE OF s`, [session.companyId, input.clientId]);
+    const selected = new Set(input.allocations.map((item) => item.saleId));
+    const allocation = validateExplicitAllocations(Number(source.amount), input.allocations, sales.rows.filter((sale) => selected.has(sale.id)));
+    const description = `Ajuste de imputación de crédito | ${source.label} | Ref. ${input.requestId}`;
+    const date = localDateIso();
+    const name = customer.rows[0].name;
+    await client.query(
+      `INSERT INTO current_account_movements (client_id, sale_id, movement_date, debit, credit, description, entity_type, entity_name, empresa_id)
+       VALUES ($1::uuid, $2::uuid, $3, $4, 0, $5, 'cliente', $6, $7)`,
+      [input.clientId, input.sourceId === "general" ? null : input.sourceId, date, allocation.allocated, description, name, session.companyId],
+    );
+    for (const item of allocation.allocations) {
+      await client.query(
+        `INSERT INTO current_account_movements (client_id, sale_id, movement_date, debit, credit, description, entity_type, entity_name, empresa_id)
+         VALUES ($1::uuid, $2::uuid, $3, 0, $4, $5, 'cliente', $6, $7)`,
+        [input.clientId, item.saleId, date, item.amount, `${description} | Aplicado a #${String(item.receiptNumber).padStart(4, "0")}`, name, session.companyId],
+      );
+      const before = Number(sales.rows.find((sale) => sale.id === item.saleId)!.outstanding);
+      await client.query(`UPDATE sales SET collection_status = $1, updated_at = now() WHERE id = $2::uuid AND empresa_id = $3`,
+        [before - item.amount <= 0.005 ? "recibido" : "pendiente", item.saleId, session.companyId]);
+    }
+    await client.query(
+      "INSERT INTO audit_log (actor_id, action, entity_table, entity_id, new_data, empresa_id) VALUES ($1,$2,$3,$4,$5,$6)",
+      [session.userId, "customer_credit.applied", "clients", input.clientId,
+        JSON.stringify({ ...input, applied: allocation.allocated, cashReceived: 0, treasuryEffect: 0 }), session.companyId],
+    );
+    return { applied: allocation.allocated };
+  });
+  clearReadQueryCache();
+  return result;
+}
+
 async function postAllocatedCustomerPayment(
   client: PoolClient,
   companyId: number,
@@ -609,7 +703,7 @@ async function postAllocatedCustomerPayment(
     date: string;
     description: string;
     clientName: string;
-    allocations?: CustomerPaymentAllocation[];
+    allocations: CustomerPaymentAllocation[];
   },
 ) {
   await client.query(
@@ -623,21 +717,10 @@ async function postAllocatedCustomerPayment(
     [companyId, input.clientId],
   );
   const effectiveSales = sales.rows.map((sale) => ({ ...sale, outstanding: Number(sale.outstanding) }));
-  const requestedIds = new Set(input.allocations?.map((item) => item.saleId) ?? []);
-  const payableSales = input.allocations
-    ? effectiveSales.filter((sale) => requestedIds.has(sale.id))
-    : effectiveSales;
-
-  let allocation: ReturnType<typeof allocatePaymentAmount>;
-  if (input.allocations) {
-    allocation = validateExplicitAllocations(input.amount, input.allocations, payableSales);
-  } else {
-    // Compatibilidad exclusiva para cobros pendientes creados antes de esta mejora.
-    allocation = allocatePaymentAmount(
-      input.amount,
-      payableSales.map((sale) => ({ id: sale.id, outstanding: sale.outstanding, receiptNumber: sale.receipt_number })),
-    );
-  }
+  const requestedIds = new Set(input.allocations.map((item) => item.saleId));
+  const payableSales = effectiveSales.filter((sale) => requestedIds.has(sale.id));
+  // Una selección vacía es explícita: todo queda a favor. Nunca distribuir por FIFO.
+  const allocation = validateExplicitAllocations(input.amount, input.allocations, payableSales);
   for (const item of allocation.allocations) {
     await client.query(
       `
@@ -808,7 +891,7 @@ export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput
       if (!item || typeof item !== "object") throw new Error("invalid");
       const saleId = String((item as { saleId?: unknown }).saleId ?? "");
       const allocationAmount = money(Number((item as { amount?: unknown }).amount));
-      if (!/^[0-9a-fA-F-]{36}$/.test(saleId) || allocationAmount <= 0 || seen.has(saleId)) {
+      if (!/^[0-9a-fA-F-]{36}$/.test(saleId) || !Number.isFinite(allocationAmount) || allocationAmount <= 0 || seen.has(saleId)) {
         throw new Error("invalid");
       }
       seen.add(saleId);
@@ -818,7 +901,7 @@ export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput
     throw new ApiError(400, "La imputacion de remitos no es valida");
   }
 
-  if (amount <= 0) throw new ApiError(400, "El monto debe ser mayor a cero");
+  if (!Number.isFinite(amount) || amount <= 0) throw new ApiError(400, "El monto debe ser mayor a cero");
   if (!PAYMENT_METHODS.has(method)) throw new ApiError(400, "Metodo de cobro invalido");
   if (collectionMethodRequiresOperation(method) && !operation) throw new ApiError(400, "La operacion es obligatoria");
   if (method === "echeck" && !/^\d{1,20}$/.test(operation)) {
@@ -893,7 +976,7 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
         date: input.date,
         description: `Cobro - ${input.method} | Destino ${treasuryTarget?.accountName ?? "E-cheq en cartera"} | ${reference}`.trim(),
         clientName,
-        allocations: explicitAllocations.length ? explicitAllocations : undefined,
+        allocations: explicitAllocations,
       });
       await postCustomerPaymentToTreasury(client, session.companyId, {
         paymentId,
@@ -999,9 +1082,7 @@ export async function approveCustomerPayment(session: AuthSession, paymentId: st
       date: payment.payment_date,
       description: `Cobro aprobado - ${payment.method} | Destino ${treasuryTarget?.accountName ?? "E-cheq en cartera"} | ${payment.reference}`.trim(),
       clientName: payment.entity_name,
-      allocations: requested.rows.length
-        ? requested.rows.map((item) => ({ saleId: item.sale_id, amount: Number(item.amount) }))
-        : undefined,
+      allocations: requested.rows.map((item) => ({ saleId: item.sale_id, amount: Number(item.amount) })),
     });
     await postCustomerPaymentToTreasury(client, session.companyId, {
       paymentId,
@@ -1140,6 +1221,8 @@ export async function voidCustomerPayment(session: AuthSession, paymentId: strin
     }
 
     const hadMovement = payment.status === "registrado";
+
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`${session.companyId}:${payment.client_id}`]);
 
     await client.query(
       `UPDATE payments SET status = 'anulado', updated_at = now() WHERE id = $1::uuid AND empresa_id = $2`,

@@ -91,13 +91,17 @@ test("computeAgingBuckets: sin vencimiento usa la fecha del movimiento", () => {
   assert.equal(b.d30Plus, 100);
 });
 
-test("aging usa los mismos remitos abiertos que el formulario de cobro", () => {
+test("aging no reparte créditos sin imputar para forzar coincidencia con el saldo", () => {
   const sales = [
     { outstanding: 70_583.82, date: "2026-08-13", dueDate: "2026-08-14" },
     { outstanding: 137_649.16, date: "2026-08-20", dueDate: "2026-08-21" },
     { outstanding: 131_209, date: "2026-09-03", dueDate: "2026-09-04" },
   ];
-  const debits = accounts.agingDebitsFromOpenSales(sales, 273_484.28);
+  assert.equal(accounts.agingDebitsFromOpenSales(sales, 273_484.28), null);
+  // Sólo coincide cuando el crédito ya está efectivamente imputado en el mayor.
+  const debits = accounts.agingDebitsFromOpenSales([
+    sales[0], sales[1], { ...sales[2], outstanding: 65_251.30 },
+  ], 273_484.28);
   assert.ok(debits);
   assert.deepEqual(debits.map((item) => item.amount), [70_583.82, 137_649.16, 65_251.30]);
 

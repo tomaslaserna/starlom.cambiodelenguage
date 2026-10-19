@@ -149,7 +149,11 @@ test("registerCustomerPayment: admin registra directo, vendedor deja pendiente",
   // admin: inserta el pago Y el movimiento de crédito
   assert.ok(queries.some((q) => /INSERT INTO payments/i.test(q.sql)));
   assert.ok(queries.some((q) => /INSERT INTO current_account_movements/i.test(q.sql)));
-  assert.ok(queries.some((q) => /UPDATE sales/i.test(q.sql) && /collection_status/i.test(q.sql)));
+  // Sin selección no se toca ningún remito: el total se acredita a la cuenta.
+  assert.equal(queries.some((q) => /UPDATE sales/i.test(q.sql)), false);
+  const credit = queries.find((q) => /INSERT INTO current_account_movements/i.test(q.sql));
+  assert.equal(/sale_id/.test(credit.sql), false);
+  assert.equal(credit.params[3], 100);
   assert.ok(queries.some((q) => /INSERT INTO admin_treasury_movements/i.test(q.sql) && /customer_payment/i.test(q.sql)));
 });
 
@@ -207,6 +211,97 @@ test("approveCustomerPayment inserta el credito y pasa a registrado", () => {
   assert.match(source, /pendiente_aprobacion/);
 });
 
+for (const approval of [false, true]) {
+  for (const selection of [[], [{ saleId: "s2", amount: 40 }]]) {
+    test(`${approval ? "aprobación" : "registro"}: sólo imputa la selección ${JSON.stringify(selection)} y deja el resto a favor`, async () => {
+      const queries = [];
+      const mod = loadCustomerAccounts({
+        sessionAllows: async () => true,
+        withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => {
+          queries.push({ sql, params });
+          if (/FROM payments p/.test(sql)) return { rows: [{ id: "p1", client_id: "c1", amount: "150", payment_date: "2026-10-19", method: "efectivo", entity_name: "Cliente", treasury_account_id: "1", cheque_due_date: "", reference: "", notes: "" }] };
+          if (/FROM customer_payment_allocation_requests/.test(sql)) return { rows: selection.map((a) => ({ sale_id: a.saleId, amount: String(a.amount) })) };
+          if (/FROM sales s/.test(sql)) return { rows: [{ id: "s1", outstanding: "100", receipt_number: 1 }, { id: "s2", outstanding: "80", receipt_number: 2 }] };
+          if (/SELECT COALESCE\(display_name/.test(sql)) return { rows: [{ name: "Cliente", tax_id: "" }] };
+          if (/FROM admin_treasury_accounts/.test(sql)) return { rows: [{ id: "1", name: "Caja", account_type: "cash" }] };
+          return { rows: [{ id: "p1" }] };
+        } }),
+      });
+      const session = { companyId: 1, userId: "u1", role: "administrador" };
+      if (approval) await mod.approveCustomerPayment(session, "p1");
+      else await mod.registerCustomerPayment(session, { clientId: "c1", amount: 150, date: "2026-10-19", method: "efectivo", treasuryAccountId: "1", operation: "", chequeDueDate: "", notes: "", allocations: selection });
+      const rows = queries.filter((q) => /INSERT INTO current_account_movements/.test(q.sql));
+      const targeted = rows.filter((q) => /sale_id/.test(q.sql));
+      assert.deepEqual(targeted.map((q) => [q.params[1], q.params[4]]), selection.map((a) => [a.saleId, a.amount]));
+      const general = rows.find((q) => !/sale_id/.test(q.sql));
+      assert.equal(general.params[3], selection.length ? 110 : 150);
+      assert.equal(queries.some((q) => /UPDATE sales/.test(q.sql) && q.params.includes("s1")), false);
+      assert.equal(queries.find((q) => /INSERT INTO admin_treasury_movements/.test(q.sql)).params[3], 150);
+    });
+  }
+}
+
+const creditClient = "11111111-1111-4111-8111-111111111111";
+const creditTarget = "22222222-2222-4222-8222-222222222222";
+const creditRequest = "33333333-3333-4333-8333-333333333333";
+const creditInput = { clientId: creditClient, sourceId: "general", requestId: creditRequest, allocations: [{ saleId: creditTarget, amount: 40 }] };
+function creditHarness({ available = 100, outstanding = 80, allowed = true, prior = null, missingTarget = false } = {}) {
+  const queries = [];
+  const mod = loadCustomerAccounts({
+    sessionAllows: async () => allowed,
+    withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => {
+      queries.push({ sql, params });
+      if (/SELECT new_data FROM audit_log/.test(sql)) return { rows: prior ? [{ new_data: prior }] : [] };
+      if (/FROM clients/.test(sql)) return { rows: [{ name: "Cliente" }] };
+      if (/HAVING SUM\(m.credit - m.debit\)/.test(sql)) return { rows: available > 0 ? [{ source_id: "general", label: "Saldo a favor", amount: String(available) }] : [] };
+      if (/FROM sales s/.test(sql)) return { rows: missingTarget ? [] : [{ id: creditTarget, outstanding: String(outstanding), receipt_number: 116 }] };
+      return { rows: [] };
+    } }),
+  });
+  return { mod, queries };
+}
+const creditSession = { companyId: 1, userId: "u1", role: "administrador" };
+test("aplicar crédito conserva deuda, no crea cobro ni Tesorería y sólo afecta el destino elegido", async () => {
+  const { mod, queries } = creditHarness();
+  assert.deepEqual(await mod.applyCustomerCredit(creditSession, creditInput), { applied: 40 });
+  const moves = queries.filter((q) => /INSERT INTO current_account_movements/.test(q.sql));
+  assert.equal(moves.length, 2);
+  assert.equal(moves[0].params[1], null);
+  assert.equal(moves[0].params[3], 40);
+  assert.equal(moves[1].params[1], creditTarget);
+  assert.equal(moves[1].params[3], 40);
+  assert.equal(queries.some((q) => /INSERT INTO payments|INSERT INTO admin_|UPDATE fiscal|UPDATE stock/.test(q.sql)), false);
+  const audit = JSON.parse(queries.find((q) => /INSERT INTO audit_log/.test(q.sql)).params[4]);
+  assert.equal(audit.cashReceived, 0); assert.equal(audit.treasuryEffect, 0);
+  assert.ok(queries.some((q) => /pg_advisory_xact_lock/.test(q.sql)));
+});
+for (const [name, options, message] of [
+  ["crédito insuficiente", { available: 20 }, /no puede superar/],
+  ["crédito consumido", { available: 0 }, /ya no está disponible/],
+  ["remito cobrado", { outstanding: 30 }, /supera su saldo/],
+  ["remito ajeno", { missingTarget: true }, /ya no tiene saldo/],
+  ["sin permiso", { allowed: false }, /Sin permiso/],
+]) {
+  test(`aplicar crédito rechaza ${name} sin escribir`, async () => {
+    const { mod, queries } = creditHarness(options);
+    await assert.rejects(() => mod.applyCustomerCredit(creditSession, creditInput), message);
+    assert.equal(queries.some((q) => /INSERT|UPDATE sales/.test(q.sql)), false);
+  });
+}
+test("reintentar la misma imputación de crédito no la duplica", async () => {
+  const { mod, queries } = creditHarness({ prior: { ...creditInput, applied: 40 } });
+  assert.deepEqual(await mod.applyCustomerCredit(creditSession, creditInput), { applied: 40 });
+  assert.equal(queries.some((q) => /INSERT|UPDATE/.test(q.sql)), false);
+  await assert.rejects(() => mod.applyCustomerCredit(creditSession, { ...creditInput, allocations: [{ saleId: creditTarget, amount: 50 }] }), /otros importes/);
+});
+test("créditos rechazan duplicados y montos inválidos", async () => {
+  for (const allocations of [[...creditInput.allocations, ...creditInput.allocations], [{ saleId: creditTarget, amount: NaN }], [{ saleId: creditTarget, amount: -1 }]]) {
+    const { mod, queries } = creditHarness();
+    await assert.rejects(() => mod.applyCustomerCredit(creditSession, { ...creditInput, allocations }), /no es valida/);
+    assert.equal(queries.some((q) => /INSERT/.test(q.sql)), false);
+  }
+});
+
 test("la registracion conserva la imputacion elegida para pagos pendientes", () => {
   assert.match(source, /customer_payment_allocation_requests/);
   assert.match(source, /requested_amount/);
@@ -245,7 +340,8 @@ test("cada cobro genera su contrapartida en Tesoreria dentro de la misma transac
 
 test("el formulario limita cada imputacion al saldo y permite cobros totalmente a favor", () => {
   const dialog = readFileSync(new URL('../src/app/payments/register-payment-dialog.tsx', import.meta.url), 'utf8');
-  assert.match(dialog, /Math\.min\(Math\.max\(Number\(rawValue\)/);
+  assert.match(dialog, /aria-invalid=\{bad\}/);
+  assert.match(dialog, /rowInvalid/);
   assert.match(dialog, /sale\.outstanding/);
   assert.doesNotMatch(dialog, /allocations\.length === 0/);
   assert.doesNotMatch(source, /Selecciona al menos un remito para aplicar el pago/);
