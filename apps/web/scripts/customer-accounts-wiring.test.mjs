@@ -478,6 +478,7 @@ test("el detalle clasifica notas, pagos, anulaciones y ajustes sin inventar remi
   const historicalSale = { ...base, saleId: null, description: "Venta histórica conciliada | REM-2026-0844 | CLIENTE" };
   assert.equal(statementCategory(historicalSale), "remito");
   assert.equal(statementMovementPresentation(historicalSale).title, "Remito histórico REM-2026-0844");
+  assert.equal(statementMovementPresentation({ ...base, description: "Remito #0180 - 02/10/2026", deliveryNumber: 608 }).title, "Remito #0180");
   assert.equal(statementMovementPresentation(payment).amount, -40);
   assert.equal(statementMovementPresentation(payment).title, "Pago · transferencia");
   assert.equal(statementMovementPresentation({ ...base, debit: 100, credit: 5 }).amount, 95);

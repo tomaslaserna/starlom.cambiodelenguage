@@ -26,7 +26,10 @@ export function statementMovementPresentation(line: StatementMovement) {
   const category = statementCategory(line);
   const firstPart = line.description.split("|")[0].trim();
   const historicalReference = category === "remito" && !line.saleId ? line.description.match(/REM-\d{4}-\d+/i)?.[0] : null;
-  const title = category === "remito" && line.deliveryNumber
+  const originalRemittance = category === "remito" ? firstPart.match(/^Remito\s*#[^\s]+/i)?.[0] : null;
+  const title = originalRemittance
+    ? originalRemittance
+    : category === "remito" && line.deliveryNumber
     ? `Remito #${String(line.deliveryNumber).padStart(4, "0")}`
     : historicalReference ? `Remito histórico ${historicalReference}`
     : category === "pago"
