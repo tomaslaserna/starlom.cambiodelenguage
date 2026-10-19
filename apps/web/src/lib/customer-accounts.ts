@@ -652,7 +652,7 @@ export async function applyCustomerCredit(session: AuthSession, input: {
       return { applied: saved.applied };
     }
     const customer = await client.query<{ name: string }>(
-      `SELECT COALESCE(display_name,'') AS name FROM clients WHERE empresa_id = $1 AND id = $2::uuid FOR UPDATE`,
+      `SELECT COALESCE(display_name,'') AS name FROM clients WHERE empresa_id = $1 AND id = $2::uuid FOR KEY SHARE`,
       [session.companyId, input.clientId],
     );
     if (!customer.rows[0]) throw new ApiError(404, "Cliente no encontrado");
