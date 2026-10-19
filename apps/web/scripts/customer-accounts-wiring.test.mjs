@@ -388,13 +388,42 @@ test("payments/actions.ts registra y anula con gate de permiso", () => {
 const accountsPage = () => readFileSync(new URL("../src/app/payments/accounts/page.tsx", import.meta.url), "utf8");
 test("cuentas abiertas usa listOpenCustomerAccounts y linkea al detalle", () => {
   const src = accountsPage();
+  const table = readFileSync(new URL("../src/app/payments/accounts/customer-accounts-table.tsx", import.meta.url), "utf8");
+  const presentation = readFileSync(new URL("../src/lib/customer-account-presentation.ts", import.meta.url), "utf8");
   assert.match(src, /listOpenCustomerAccounts/);
-  assert.match(src, /\/payments\/accounts\//); // link al estado de cuenta [id]
-  assert.match(src, /aging\.d7/);
-  assert.match(src, /aging\.d15/);
-  assert.match(src, /aging\.d30/);
-  assert.match(src, /aging\.d30Plus/);
-  assert.doesNotMatch(src, /aging\.d60|aging\.d90/);
+  assert.match(src, /includeSettled: Boolean\(query\)/);
+  assert.match(src, /requirePagePermission/);
+  assert.match(src, /CustomerAccountsTable/);
+  assert.match(table, /\/payments\/accounts\/\$\{account\.clientId\}/);
+  assert.match(table, /aria-expanded=\{open\}/);
+  assert.match(table, /hidden=\{!open\}/);
+  assert.equal((table.match(/<th scope="col"/g) ?? []).length, 4);
+  assert.match(presentation, /aging\.d7/);
+  assert.match(presentation, /aging\.d15/);
+  assert.match(presentation, /aging\.d30/);
+  assert.match(presentation, /aging\.d30Plus/);
+  assert.doesNotMatch(presentation, /aging\.d60|aging\.d90/);
+  assert.doesNotMatch(src + table, /sampleAccounts|Reporte para contador/);
+});
+
+test("la situación muestra el tramo más antiguo sin alterar el saldo ni los importes", () => {
+  const { customerAccountAging, customerAccountSituation } = loadTypeScriptModule("../src/lib/customer-account-presentation.ts");
+  const aging = { current: 10, d7: 20, d15: 30, d30: 40, d30Plus: 50, overdueTotal: 140 };
+  assert.deepEqual(customerAccountAging(aging).map((bucket) => bucket.amount), [10, 20, 30, 40, 50]);
+  const account = { balance: 150, aging };
+  assert.equal(customerAccountSituation(account).label, "+30 días");
+  assert.equal(customerAccountSituation({ ...account, balance: -150 }).label, "A favor");
+  assert.equal(customerAccountSituation({ ...account, balance: 0 }).label, "Saldada");
+  for (const [expected, zeroed] of [
+    ["16–30 días", { d30Plus: 0 }],
+    ["8–15 días", { d30Plus: 0, d30: 0 }],
+    ["1–7 días", { d30Plus: 0, d30: 0, d15: 0 }],
+    ["Al día", { d30Plus: 0, d30: 0, d15: 0, d7: 0 }],
+  ]) {
+    assert.equal(customerAccountSituation({ balance: 10, aging: { ...aging, ...zeroed } }).label, expected);
+  }
+  assert.equal(account.balance, 150);
+  assert.equal(aging.d30Plus, 50);
 });
 
 test("el PDF contable agrupa toda la deuda por cliente, remito y factura", () => {

@@ -1,171 +1,55 @@
-import Link from "next/link";
 import { ModulePage } from "@/components/module-page";
-import {
-  Button,
-  ButtonLink,
-  Card,
-  DataTable,
-  DataTableBody,
-  DataTableCell,
-  DataTableHead,
-  DataTableHeader,
-  DataTableRow,
-  EmptyState,
-  Field,
-  Input,
-  PageHeader,
-  StatCard,
-  Toolbar,
-} from "@/components/ui";
+import { Button, ButtonLink, Input } from "@/components/ui";
 import { listOpenCustomerAccounts } from "@/lib/customer-accounts";
-import { formatCurrency, formatDate } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { COLLECTIONS_READ_PERMISSION } from "@/lib/route-auth";
+import { CustomerAccountsTable } from "./customer-accounts-table";
 
-type AccountsPageProps = {
-  searchParams: Promise<{ q?: string }>;
-};
+type AccountsPageProps = { searchParams: Promise<{ q?: string }> };
 
 export default async function CustomerAccountsPage({ searchParams }: AccountsPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [COLLECTIONS_READ_PERMISSION]);
-
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
   const { accounts } = await listOpenCustomerAccounts(session.companyId, { query, includeSettled: Boolean(query) });
-
-  const totalDebt = accounts.reduce((sum, account) => (account.balance > 0 ? sum + account.balance : sum), 0);
-  const totalFavor = accounts.reduce((sum, account) => (account.balance < 0 ? sum + Math.abs(account.balance) : sum), 0);
+  const totalDebt = accounts.reduce((sum, account) => sum + Math.max(0, account.balance), 0);
+  const totalFavor = accounts.reduce((sum, account) => sum + Math.max(0, -account.balance), 0);
+  const debtors = accounts.filter((account) => account.balance > 0).length;
 
   return (
-    <ModulePage
-      active="collections"
-      description="Saldos abiertos de cuenta corriente por cliente, con antiguedad de deuda."
-      session={session}
-      title="Cuentas corrientes"
-    >
-      <div className="grid gap-5">
-        <PageHeader
-          description={query ? "La búsqueda incluye cuentas abiertas y saldadas." : "Clientes con saldo distinto de cero. Buscá por cliente o CUIT para consultar también cuentas saldadas."}
-          title={query ? "Resultados de búsqueda" : "Cuentas abiertas"}
-        />
-
-        <Toolbar ariaLabel="Búsqueda de cuentas corrientes">
-          <form
-            action="/payments/accounts"
-            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto] lg:items-end"
-          >
-            <Field htmlFor="accounts-query" label="Buscar">
-              <Input
-                defaultValue={query}
-                id="accounts-query"
-                name="q"
-                placeholder="Cliente o CUIT"
-                type="search"
-              />
-            </Field>
-            <div className="flex items-center gap-2">
+    <ModulePage active="collections" description="Cobranzas · Clientes" session={session} title="Cuentas corrientes">
+      <div className="mx-auto w-full max-w-[1300px] space-y-5">
+        <section aria-label="Resumen de cuentas" className="grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] sm:p-6">
+          <div>
+            <h2 className="text-sm font-medium text-slate-500">Por cobrar{query ? " · resultados de búsqueda" : ""}</h2>
+            <p className="mt-2 break-words text-3xl font-bold tracking-tight text-slate-950 tabular-nums sm:text-4xl">{formatCurrency(totalDebt)}</p>
+            <p className="mt-2 text-xs text-slate-500">{debtors} clientes con saldo pendiente</p>
+          </div>
+          <div className="border-t border-slate-100 pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+            <h2 className="text-sm font-medium text-slate-500">A favor de clientes</h2>
+            <p className="mt-2 break-words text-2xl font-semibold tracking-tight text-emerald-700 tabular-nums">{formatCurrency(totalFavor)}</p>
+            <p className="mt-2 text-xs text-slate-500">Créditos disponibles para próximas compras</p>
+          </div>
+        </section>
+        <section aria-label="Listado de cuentas" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="space-y-4 border-b border-slate-100 p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold tracking-tight">{query ? "Resultados de búsqueda" : "Cuentas abiertas"}</h2>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{accounts.length}</span>
+            </div>
+            <form action="/payments/accounts" method="get" className="flex flex-wrap gap-2">
+              <label htmlFor="accounts-query" className="sr-only">Buscar cliente o CUIT</label>
+              <Input defaultValue={query} id="accounts-query" name="q" placeholder="Buscar cliente o CUIT" type="search" className="min-w-0 flex-1 basis-[220px] text-sm" />
               <Button type="submit">Buscar</Button>
               {query ? <ButtonLink href="/payments/accounts" variant="secondary">Limpiar</ButtonLink> : null}
-            </div>
-          </form>
-        </Toolbar>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <StatCard
-            className="p-3"
-            detail="Suma de saldos deudores"
-            label="Deuda total"
-            tone="danger"
-            value={formatCurrency(totalDebt)}
-          />
-          <StatCard
-            className="p-3"
-            detail="Suma de saldos acreedores"
-            label="A favor"
-            tone="success"
-            value={formatCurrency(totalFavor)}
-          />
-        </div>
-
-        <Card className="overflow-hidden">
-          <DataTable
-            caption={query ? "Cuentas corrientes encontradas, incluidas las saldadas" : "Cuentas corrientes abiertas de clientes"}
-            className="rounded-none border-0 shadow-none"
-            minWidth="1220px"
-            tableLabel={query ? "Resultados de cuentas corrientes" : "Cuentas abiertas"}
-            tableProps={{ className: "table-fixed" }}
-          >
-            <DataTableHeader>
-              <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[19%] px-2">Cliente</DataTableHead>
-                <DataTableHead className="w-[12%] px-2">Vendedor</DataTableHead>
-                <DataTableHead className="w-[11%] px-2">Ult. movimiento</DataTableHead>
-                <DataTableHead align="right" className="w-[9%] px-2">Al día</DataTableHead>
-                <DataTableHead align="right" className="w-[9%] px-2">1–7 días</DataTableHead>
-                <DataTableHead align="right" className="w-[9%] px-2">8–15 días</DataTableHead>
-                <DataTableHead align="right" className="w-[9%] px-2">16–30 días</DataTableHead>
-                <DataTableHead align="right" className="w-[9%] px-2">+30 días</DataTableHead>
-                <DataTableHead align="right" className="w-[13%] px-2">Saldo</DataTableHead>
-              </DataTableRow>
-            </DataTableHeader>
-            <DataTableBody>
-              {accounts.length === 0 ? (
-                <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={9}>
-                    <EmptyState
-                      description={query ? "No encontramos cuentas corrientes para ese cliente o CUIT." : "No hay clientes con saldo abierto. Podés buscar un cliente para consultar su historial."}
-                      title={query ? "Sin resultados" : "Sin cuentas abiertas"}
-                    />
-                  </DataTableCell>
-                </DataTableRow>
-              ) : (
-                accounts.map((account) => (
-                  <DataTableRow key={account.clientId}>
-                    <DataTableCell className="truncate px-2 py-2 font-medium">
-                      <Link
-                        className="text-[color:var(--accent-strong)] underline-offset-2 hover:underline"
-                        href={`/payments/accounts/${account.clientId}`}
-                      >
-                        {account.name || "Sin nombre"}
-                      </Link>
-                    </DataTableCell>
-                    <DataTableCell className="truncate px-2 py-2 text-xs">
-                      {account.sellerName || "-"}
-                    </DataTableCell>
-                    <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
-                      {formatDate(account.lastMovementDate)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                      {formatCurrency(account.aging.current)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                      {formatCurrency(account.aging.d7)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                      {formatCurrency(account.aging.d15)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                      {formatCurrency(account.aging.d30)}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                      {formatCurrency(account.aging.d30Plus)}
-                    </DataTableCell>
-                    <DataTableCell
-                      align="right"
-                      className="whitespace-nowrap px-2 py-2 font-mono text-xs font-black"
-                      style={{ color: account.balance > 0 ? "var(--danger)" : account.balance < 0 ? "var(--success)" : undefined }}
-                    >
-                      {formatCurrency(account.balance)}
-                      {account.balance === 0 ? <span className="mt-1 block font-sans text-xs font-medium text-emerald-700">Saldada</span> : null}
-                    </DataTableCell>
-                  </DataTableRow>
-                ))
-              )}
-            </DataTableBody>
-          </DataTable>
-        </Card>
+            </form>
+            <p className="text-xs text-slate-500">{query ? "La búsqueda incluye cuentas saldadas." : "Sólo cuentas abiertas. Buscá un cliente para consultar también una cuenta saldada."}</p>
+          </div>
+          <CustomerAccountsTable key={query} accounts={accounts} searching={Boolean(query)} />
+        </section>
       </div>
     </ModulePage>
   );
