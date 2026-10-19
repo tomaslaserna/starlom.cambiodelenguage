@@ -297,11 +297,11 @@ test("voidCustomerPayment marca anulado y compensa el credito con un debito", as
 });
 
 test("el estado de cuenta linkea el remito con precios y la factura", () => {
-  const page = readFileSync(new URL("../src/app/payments/accounts/[id]/page.tsx", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../src/app/payments/accounts/[id]/statement-movements.tsx", import.meta.url), "utf8");
   assert.match(source, /delivery_documents/);
   assert.match(source, /has_priced_items/);
   assert.match(source, /has_fiscal_pdf/);
-  // La descripcion "Remito #XXXX" es el unico hipervinculo, y abre el remito con precios.
+  // Los documentos originales quedan disponibles en el detalle desplegable.
   assert.match(page, /remito\?precios=si/);
   assert.doesNotMatch(page, /Abrir Remito/);
   assert.doesNotMatch(page, /con productos y precios/);
@@ -448,10 +448,45 @@ test("el acceso rapido Cobranzas del Escritorio abre Cuentas corrientes", () => 
 
 test("estado de cuenta usa getCustomerStatement, filtro de fecha y saldo anterior", () => {
   const src = readFileSync(new URL("../src/app/payments/accounts/[id]/page.tsx", import.meta.url), "utf8");
+  const table = readFileSync(new URL("../src/app/payments/accounts/[id]/statement-movements.tsx", import.meta.url), "utf8");
   assert.match(src, /getCustomerStatement/);
-  assert.match(src, /Saldo anterior/i);
-  assert.match(src, /openingBalance/);
+  assert.match(table, /Saldo anterior/i);
+  assert.match(table, /openingBalance/);
+  assert.match(table, /statement\.finalBalance/);
+  assert.match(table, /line\.balance/);
+  assert.match(src, /currentBalance = fullResult\.statement\.finalBalance/);
+  assert.match(src, /RegisterPaymentDialog/);
+  assert.match(src, /requirePagePermission/);
   assert.match(src, /api\/pdfs\/accounts\/statement\//);
+});
+
+test("el detalle clasifica notas, pagos, anulaciones y ajustes sin inventar remitos", () => {
+  const { statementCategory, statementMovementPresentation, summarizeStatement, filterStatementLines } =
+    loadTypeScriptModule("../src/lib/customer-statement-presentation.ts");
+  const base = { id: "1", date: "2026-09-01", kind: "remito", description: "Remito #1", debit: 100, credit: 0, balance: 100, saleId: "s1" };
+  const payment = { ...base, id: "2", kind: "pago", description: "Cobro - transferencia | Destino Santander | Op. 123", debit: 0, credit: 40, balance: 60, saleId: null };
+  const credit = { ...base, id: "3", kind: "nota_credito", description: "Nota de crédito interna #1", internalDocumentId: "n1", debit: 0, credit: 10, balance: 50 };
+  const debitNote = { ...base, id: "4", kind: "nota_debito", description: "Nota de débito #2", debit: 5, credit: 0, balance: 55 };
+  const adjustment = { ...base, id: "5", description: "Ajuste contable histórico", debit: 7, balance: 62, saleId: null };
+  const lines = [base, payment, credit, debitNote, adjustment];
+  assert.deepEqual(lines.map(statementCategory), ["remito", "pago", "nota_credito", "nota_debito", "ajuste"]);
+  assert.equal(statementCategory({ ...base, description: "Cobro anulado", saleId: null }), "ajuste");
+  assert.equal(statementCategory({ ...base, description: "Saldo inicial", saleId: null }), "ajuste");
+  assert.equal(statementCategory({ ...base, description: "Mercadería adicional", saleId: null }), "ajuste");
+  assert.equal(statementCategory({ ...payment, description: "Saldo a favor | transferencia" }), "pago");
+  assert.equal(statementCategory({ ...base, saleId: null }), "remito");
+  const historicalSale = { ...base, saleId: null, description: "Venta histórica conciliada | REM-2026-0844 | CLIENTE" };
+  assert.equal(statementCategory(historicalSale), "remito");
+  assert.equal(statementMovementPresentation(historicalSale).title, "Remito histórico REM-2026-0844");
+  assert.equal(statementMovementPresentation(payment).amount, -40);
+  assert.equal(statementMovementPresentation(payment).title, "Pago · transferencia");
+  assert.equal(statementMovementPresentation({ ...base, debit: 100, credit: 5 }).amount, 95);
+  assert.deepEqual(summarizeStatement(lines), { sales: 100, payments: 40, creditNotes: 10, other: 12 });
+  assert.deepEqual(filterStatementLines(lines, "notas").map((line) => line.id), ["3", "4"]);
+  assert.strictEqual(filterStatementLines(lines, "todos"), lines);
+  assert.strictEqual(filterStatementLines(lines, "pago")[0], payment);
+  assert.equal(filterStatementLines(lines, "pago")[0].balance, 60);
+  assert.deepEqual(lines.map((line) => line.balance), [100, 60, 50, 55, 62]);
 });
 test("ruta PDF de estado de cuenta existe y usa getCustomerStatement", () => {
   const src = readFileSync(new URL("../src/app/api/pdfs/accounts/statement/[id]/route.ts", import.meta.url), "utf8");

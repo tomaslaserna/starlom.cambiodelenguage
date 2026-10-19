@@ -1,26 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
-import {
-  Button,
-  ButtonLink,
-  Card,
-  DataTable,
-  DataTableBody,
-  DataTableCell,
-  DataTableHead,
-  DataTableHeader,
-  DataTableRow,
-  EmptyState,
-  Field,
-  Input,
-  PageHeader,
-  StatCard,
-  Toolbar,
-} from "@/components/ui";
+import { ButtonLink, Card, DataTable, DataTableBody, DataTableCell, DataTableHead, DataTableHeader, DataTableRow, cn } from "@/components/ui";
 import { ApiError } from "@/lib/api-response";
 import { requireStaffSession } from "@/lib/auth";
 import { getCustomerStatement, listCustomerOptions } from "@/lib/customer-accounts";
+import { summarizeStatement } from "@/lib/customer-statement-presentation";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getTreasuryAccountOptions } from "@/lib/finance";
 import { requirePagePermission } from "@/lib/page-auth";
@@ -28,6 +13,7 @@ import { COLLECTIONS_READ_PERMISSION } from "@/lib/route-auth";
 import { localDateIso } from "@/lib/timezone";
 import { registerCustomerPaymentAction } from "@/app/payments/actions";
 import { RegisterPaymentDialog } from "@/app/payments/register-payment-dialog";
+import { StatementDateFilter, StatementMovements } from "./statement-movements";
 
 type CustomerStatementPageProps = {
   params: Promise<{ id: string }>;
@@ -37,77 +23,65 @@ type CustomerStatementPageProps = {
 export default async function CustomerStatementPage({ params, searchParams }: CustomerStatementPageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [COLLECTIONS_READ_PERMISSION]);
-
   const { id } = await params;
   if (!/^[0-9a-fA-F-]{36}$/.test(id)) notFound();
   const query = await searchParams;
   const from = query.from ?? "";
   const to = query.to ?? "";
-
+  const filteredPeriod = Boolean(from || to);
+  const loadStatement = (options: { from?: string; to?: string }) => getCustomerStatement(session.companyId, id, options).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  });
+  const fullPromise = loadStatement({});
   const [periodResult, fullResult, customers, treasuryAccounts] = await Promise.all([
-    getCustomerStatement(session.companyId, id, { from, to }).catch((error: unknown) => {
-      if (error instanceof ApiError && error.status === 404) return null;
-      throw error;
-    }),
-    // Llamada sin fechas: el finalBalance del recorte por periodo no es el
-    // saldo actual real, asi que necesitamos el saldo total sin filtro.
-    getCustomerStatement(session.companyId, id, {}).catch(() => null),
+    filteredPeriod ? loadStatement({ from, to }) : fullPromise,
+    fullPromise,
     listCustomerOptions(session.companyId),
     getTreasuryAccountOptions(session.companyId),
   ]);
-  if (!periodResult) notFound();
-
+  if (!periodResult || !fullResult) notFound();
   const { customer, statement, unappliedPayments } = periodResult;
-  const currentBalance = fullResult?.statement.finalBalance ?? statement.finalBalance;
+  const currentBalance = fullResult.statement.finalBalance;
+  const summary = summarizeStatement(statement.lines);
   const today = localDateIso();
-
   const pdfParams = new URLSearchParams();
   if (from) pdfParams.set("from", from);
   if (to) pdfParams.set("to", to);
   const pdfHref = `/api/pdfs/accounts/statement/${id}${pdfParams.toString() ? `?${pdfParams.toString()}` : ""}`;
 
   return (
-    <ModulePage
-      active="collections"
-      description="Estado de cuenta del cliente con saldo anterior y saldo corrido."
-      session={session}
-      title={customer.name || "Cliente"}
-    >
-      <div className="grid gap-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <PageHeader
-            description={
-              [customer.taxId ? `CUIT ${customer.taxId}` : "", customer.sellerName ? `Vendedor: ${customer.sellerName}` : ""]
-                .filter(Boolean)
-                .join(" · ") || "-"
-            }
-            title={customer.name || "Sin nombre"}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Link className="erp-text-body-sm text-[color:var(--accent)] hover:underline" href="/payments/accounts">
-              ← Volver a Cuentas
-            </Link>
-            <RegisterPaymentDialog
-              action={registerCustomerPaymentAction}
-              customers={customers}
-              defaultCustomerId={id}
-              treasuryAccounts={treasuryAccounts}
-              today={today}
-              triggerLabel="+ Registrar pago"
-            />
-            <ButtonLink href={pdfHref} prefetch={false} target="_blank" variant="secondary">
-              Exportar PDF
-            </ButtonLink>
+    <ModulePage active="collections" description="Cobranzas · Detalle del cliente" session={session} title="Cuenta corriente">
+      <div className="mx-auto w-full max-w-[1300px] space-y-5">
+        <Link href="/payments/accounts" className="inline-flex min-h-8 items-center text-xs font-medium text-slate-500 hover:text-blue-700">← Cuentas corrientes</Link>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900">{customer.name || "Sin nombre"}</h2>
+            <p className="mt-1.5 text-xs text-slate-500">{[customer.taxId ? `CUIT ${customer.taxId}` : "", customer.sellerName ? `Vendedor: ${customer.sellerName}` : ""].filter(Boolean).join(" · ") || "Cuenta corriente del cliente"}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href={pdfHref} prefetch={false} target="_blank" variant="secondary">Exportar PDF</ButtonLink>
+            <RegisterPaymentDialog action={registerCustomerPaymentAction} customers={customers} defaultCustomerId={id} treasuryAccounts={treasuryAccounts} today={today} triggerLabel="+ Registrar pago" />
           </div>
         </div>
 
-        <StatCard
-          className="max-w-xs"
-          detail="Saldo total sin filtro de fechas"
-          label="Saldo actual"
-          tone={currentBalance > 0 ? "danger" : currentBalance < 0 ? "success" : "neutral"}
-          value={formatCurrency(currentBalance)}
-        />
+        <section aria-label="Resumen de la cuenta" className="grid gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.5fr)] sm:p-6">
+          <div>
+            <h2 className="text-sm font-medium text-slate-500">Saldo actual · {currentBalance < 0 ? "a favor del cliente" : currentBalance > 0 ? "por cobrar" : "cuenta saldada"}</h2>
+            <p className={cn("mt-2 break-words text-3xl font-bold tracking-tight tabular-nums sm:text-4xl", currentBalance < 0 ? "text-emerald-700" : "text-slate-950")}>{formatCurrency(Math.abs(currentBalance))}</p>
+            <p className="mt-2 text-xs text-slate-500">Cuenta completa · no cambia con los filtros</p>
+          </div>
+          <div className="border-t border-slate-100 pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">
+            <h2 className="text-xs font-medium text-slate-500">{filteredPeriod ? "Movimientos del período" : "Resumen del historial"}</h2>
+            <dl className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(125px,1fr))] gap-x-4 gap-y-3">
+              <div><dt className="text-xs text-slate-500">Ventas / remitos</dt><dd className="mt-1.5 text-base font-semibold tabular-nums">{formatCurrency(summary.sales)}</dd></div>
+              <div><dt className="text-xs text-slate-500">Pagos en cuenta</dt><dd className="mt-1.5 text-base font-semibold text-emerald-700 tabular-nums">{formatCurrency(summary.payments)}</dd></div>
+              <div><dt className="text-xs text-slate-500">Notas de crédito</dt><dd className="mt-1.5 text-base font-semibold text-amber-800 tabular-nums">{formatCurrency(summary.creditNotes)}</dd></div>
+              {summary.other !== 0 ? <div><dt className="text-xs text-slate-500">Otros ajustes (neto)</dt><dd className="mt-1.5 text-base font-semibold tabular-nums">{formatCurrency(summary.other)}</dd></div> : null}
+            </dl>
+            <p className="mt-3 text-[11px] leading-relaxed text-slate-400">Movimientos registrados en cuenta. No incluye pagos pendientes de aplicar.</p>
+          </div>
+        </section>
 
         {unappliedPayments.length ? (
           <Card className="overflow-hidden border-amber-300 bg-amber-50/40">
@@ -152,134 +126,14 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
           </Card>
         ) : null}
 
-        <Toolbar ariaLabel="Filtro de fechas del estado de cuenta">
-          <form
-            action={`/payments/accounts/${id}`}
-            className="grid w-full gap-3 md:grid-cols-[200px_200px_auto] md:items-end"
-            method="GET"
-          >
-            <Field htmlFor="statement-from" label="Desde">
-              <Input defaultValue={from} id="statement-from" name="from" type="date" />
-            </Field>
-            <Field htmlFor="statement-to" label="Hasta">
-              <Input defaultValue={to} id="statement-to" name="to" type="date" />
-            </Field>
-            <Button type="submit">Filtrar</Button>
-          </form>
-        </Toolbar>
 
-        <Card className="overflow-hidden">
-          <DataTable
-            caption="Estado de cuenta del cliente"
-            className="rounded-none border-0 shadow-none"
-            minWidth="860px"
-            tableLabel="Estado de cuenta"
-          >
-            <DataTableHeader>
-              <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[12%] px-2">Fecha</DataTableHead>
-                <DataTableHead className="w-[46%] px-2">Comprobante / Detalle</DataTableHead>
-                <DataTableHead align="right" className="w-[14%] px-2">Debe</DataTableHead>
-                <DataTableHead align="right" className="w-[14%] px-2">Haber</DataTableHead>
-                <DataTableHead align="right" className="w-[14%] px-2">Saldo</DataTableHead>
-              </DataTableRow>
-            </DataTableHeader>
-            <DataTableBody>
-              <DataTableRow className="hover:bg-transparent">
-                <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
-                  {from ? formatDate(from) : "-"}
-                </DataTableCell>
-                <DataTableCell className="px-2 py-2 font-semibold">Saldo anterior</DataTableCell>
-                <DataTableCell align="right" className="px-2 py-2 font-mono text-xs">-</DataTableCell>
-                <DataTableCell align="right" className="px-2 py-2 font-mono text-xs">-</DataTableCell>
-                <DataTableCell align="right" className="px-2 py-2 font-mono text-xs font-semibold">
-                  {formatCurrency(statement.openingBalance)}
-                </DataTableCell>
-              </DataTableRow>
-              {statement.lines.length === 0 ? (
-                <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={5}>
-                    <EmptyState
-                      description="No hay movimientos en el periodo seleccionado."
-                      title="Sin movimientos"
-                    />
-                  </DataTableCell>
-                </DataTableRow>
-              ) : (
-                statement.lines.map((line) => (
-                  <DataTableRow key={line.id}>
-                    <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">
-                      {formatDate(line.date)}
-                    </DataTableCell>
-                    <DataTableCell className="px-2 py-2 text-xs">
-                      <div className="grid gap-1">
-                        {line.debit > 0 && line.saleId && line.hasPricedItems ? (
-                          <Link
-                            className="font-semibold text-[color:var(--accent)] hover:underline"
-                            href={`/api/pdfs/orders/${line.saleId}/remito?precios=si`}
-                            prefetch={false}
-                            target="_blank"
-                          >
-                            {line.description || "-"}
-                          </Link>
-                        ) : (
-                          <span>{line.description || "-"}</span>
-                        )}
-                        {line.debit > 0 && line.saleId && line.hasFiscalPdf ? (
-                          <Link
-                            className="text-[color:var(--accent)] hover:underline"
-                            href={`/api/pdfs/fiscal/sales/${line.saleId}`}
-                            prefetch={false}
-                            target="_blank"
-                          >
-                            Ver factura
-                          </Link>
-                        ) : null}
-                        {line.internalDocumentId ? (
-                          <Link
-                            className="font-semibold text-[color:var(--accent)] hover:underline"
-                            href={`/api/pdfs/sales/notes/${line.internalDocumentId}`}
-                            prefetch={false}
-                            target="_blank"
-                          >
-                            Ver nota interna #{line.internalDocumentNumber ?? "-"}
-                          </Link>
-                        ) : null}
-                        {line.fiscalDocumentId ? (
-                          <Link
-                            className="font-semibold text-[color:var(--accent)] hover:underline"
-                            href={`/api/pdfs/fiscal/notes/${line.fiscalDocumentId}`}
-                            prefetch={false}
-                            target="_blank"
-                          >
-                            Ver nota de crédito fiscal{line.fiscalDocumentNumber ? ` #${line.fiscalDocumentNumber}` : ""}
-                          </Link>
-                        ) : null}
-                      </div>
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                      {line.debit > 0 ? formatCurrency(line.debit) : "-"}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                      {line.credit > 0 ? formatCurrency(line.credit) : "-"}
-                    </DataTableCell>
-                    <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                      {formatCurrency(line.balance)}
-                    </DataTableCell>
-                  </DataTableRow>
-                ))
-              )}
-              <DataTableRow className="hover:bg-transparent">
-                <DataTableCell className="px-2 py-2 font-black" colSpan={4}>
-                  Saldo final del periodo
-                </DataTableCell>
-                <DataTableCell align="right" className="px-2 py-2 font-mono text-xs font-black">
-                  {formatCurrency(statement.finalBalance)}
-                </DataTableCell>
-              </DataTableRow>
-            </DataTableBody>
-          </DataTable>
-        </Card>
+        <section aria-label="Movimientos de cuenta corriente" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+            <div className="flex items-center gap-2"><h2 className="text-base font-semibold">Movimientos</h2><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{statement.lines.length}</span></div>
+            <StatementDateFilter key={`dates-${from}-${to}`} clientId={id} from={from} to={to} />
+          </div>
+          <StatementMovements key={`${id}-${from}-${to}`} statement={statement} from={from} to={to} />
+        </section>
       </div>
     </ModulePage>
   );
