@@ -395,8 +395,6 @@ test("cuentas abiertas usa listOpenCustomerAccounts y linkea al detalle", () => 
   assert.match(src, /aging\.d30/);
   assert.match(src, /aging\.d30Plus/);
   assert.doesNotMatch(src, /aging\.d60|aging\.d90/);
-  assert.match(src, /Reporte para contador/);
-  assert.match(src, /api\/pdfs\/accounts\/current\?type=cliente/);
 });
 
 test("el PDF contable agrupa toda la deuda por cliente, remito y factura", () => {

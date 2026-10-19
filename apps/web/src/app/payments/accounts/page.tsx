@@ -54,7 +54,7 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
         <Toolbar ariaLabel="Búsqueda de cuentas corrientes">
           <form
             action="/payments/accounts"
-            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto_auto] lg:items-end"
+            className="grid w-full gap-3 lg:grid-cols-[minmax(240px,1fr)_auto] lg:items-end"
           >
             <Field htmlFor="accounts-query" label="Buscar">
               <Input
@@ -69,14 +69,6 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
               <Button type="submit">Buscar</Button>
               {query ? <ButtonLink href="/payments/accounts" variant="secondary">Limpiar</ButtonLink> : null}
             </div>
-            <ButtonLink
-              href={`/api/pdfs/accounts/current?type=cliente&download=1${query ? `&q=${encodeURIComponent(query)}` : ""}`}
-              prefetch={false}
-              target="_blank"
-              variant="secondary"
-            >
-              Reporte para contador
-            </ButtonLink>
           </form>
         </Toolbar>
 
