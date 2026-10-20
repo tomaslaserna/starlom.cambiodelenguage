@@ -36,7 +36,7 @@ function loadCustomerAccounts(overrides = {}) {
       queryWithCompanyContext: overrides.queryWithCompanyContext ?? (async () => ({ rows: [] })),
       withCompanyContext: overrides.withCompanyContext ?? (async () => undefined),
     },
-    "@/lib/accounts": { activeAccountMovementWhereSql: () => "TRUE" },
+    "@/lib/accounts": { activeAccountMovementWhereSql: () => "TRUE", visibleAccountMovementWhereSql: () => "TRUE" },
     "@/lib/collection-methods": {
       COLLECTION_METHODS: ["efectivo", "transferencia", "echeck"],
       collectionMethodRequiresOperation: (m) => m !== "efectivo",
@@ -54,6 +54,70 @@ function loadCustomerAccounts(overrides = {}) {
 }
 
 const source = readFileSync(new URL("../src/lib/customer-accounts.ts", import.meta.url), "utf8");
+
+test("conciliación distingue remitos, crédito real y diferencias sin redistribuir saldos", () => {
+  const mod = loadCustomerAccounts();
+  for (const [balance, pending, credit, difference] of [
+    [399840.63, 399840.63, 0, 0], // Campa corregido
+    [529.36, 529.42, 0.06, 0], // Apadro: sobrante genuino de seis centavos
+    [1038487.74, 1146810.67, 108322.93, 0], // NC de Capricho antes de imputar
+    [270624.05, 399840.63, 0, -129216.58], // Campa antes: no legitimar el crédito aparente
+    [-1512.26, 0, 1512.26, 0], // saldo genuino a favor
+    [120, 100, 0, 20], // débito general fuera de los remitos
+  ]) {
+    const result = mod.reconcileCustomerAccount(balance, pending, credit);
+    assert.equal(result.difference, difference);
+    assert.equal(result.needsReview, difference !== 0);
+    assert.equal(result.pendingRemittances, pending);
+    assert.equal(result.accountBalance, balance);
+  }
+});
+
+test("contexto de pagos usa una instantánea única y no escribe ni fuerza la coincidencia", async () => {
+  const queries = [];
+  const mod = loadCustomerAccounts({ queryWithCompanyContext: async (companyId, sql, params, options) => {
+    queries.push({ companyId, sql, params, options });
+    return { rows: [{ account_balance: "529.36", remittances: [{ id: "p132", sale_number: "P-0132", sale_date: "2026-09-15", total: "97529.42", outstanding: "529.42" }], credits: [{ source_id: "general", label: "Saldo a favor sin remito", amount: "0.06" }] }] };
+  } });
+  const result = await mod.getCustomerPaymentContext(1, "client");
+  assert.equal(queries.length, 1);
+  assert.deepEqual(queries[0].params, [1, "client"]);
+  assert.equal(queries[0].options.cache, false);
+  assert.equal(result.data[0].outstanding, 529.42);
+  assert.equal(result.credits[0].amount, 0.06);
+  assert.equal(result.reconciliation.needsReview, false);
+  assert.doesNotMatch(queries[0].sql, /\b(INSERT|UPDATE|DELETE)\b/);
+});
+
+test("créditos sobre remitos exigen débito de apertura, no un traslado de crédito", async () => {
+  let sql = "";
+  const mod = loadCustomerAccounts({ queryWithCompanyContext: async (_company, query) => { sql = query; return { rows: [] }; } });
+  await mod.listCustomerAvailableCredits(1, "client");
+  assert.match(sql, /m\.sale_id IS NULL OR BOOL_OR/);
+  assert.match(sql, /m\.debit > 0 AND m\.payment_id IS NULL/);
+  assert.match(sql, /m\.description ILIKE 'Remito #%'/);
+  assert.doesNotMatch(sql, /ILIKE 'Ajuste de imputación/);
+  const applySource = source.slice(source.indexOf("export async function applyCustomerCredit"), source.indexOf("async function postAllocatedCustomerPayment"));
+  assert.match(applySource, /AVAILABLE_CUSTOMER_CREDITS_SQL/);
+});
+
+test("contexto de pagos no inventa una cuenta saldada para un cliente inexistente", async () => {
+  const mod = loadCustomerAccounts({ queryWithCompanyContext: async () => ({ rows: [] }) });
+  await assert.rejects(() => mod.getCustomerPaymentContext(1, "missing"), (error) => error.status === 404);
+});
+
+test("API y vistas muestran la conciliación sin FIFO ni aplicación automática de créditos", () => {
+  const api = readFileSync(new URL("../src/app/api/payments/open-remittances/route.ts", import.meta.url), "utf8");
+  const dialog = readFileSync(new URL("../src/app/payments/register-payment-dialog.tsx", import.meta.url), "utf8");
+  const detail = readFileSync(new URL("../src/app/payments/accounts/[id]/page.tsx", import.meta.url), "utf8");
+  assert.match(api, /getCustomerPaymentContext/);
+  assert.match(api, /return ok\(\{ \.\.\.context, canApplyCredit \}\)/);
+  for (const view of [dialog, detail]) {
+    assert.match(view, /Crédito pendiente de imputar/);
+    assert.match(view, /Remitos pendientes/);
+    assert.match(view, /reconciliation\.needsReview/);
+  }
+});
 
 test("listOpenCustomerAccounts arma el vencimiento y reusa el filtro de movimientos activos", () => {
   assert.match(source, /activeAccountMovementWhereSql/);

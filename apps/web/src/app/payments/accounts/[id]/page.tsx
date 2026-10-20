@@ -4,7 +4,7 @@ import { ModulePage } from "@/components/module-page";
 import { ButtonLink, Card, DataTable, DataTableBody, DataTableCell, DataTableHead, DataTableHeader, DataTableRow, cn } from "@/components/ui";
 import { ApiError } from "@/lib/api-response";
 import { requireStaffSession } from "@/lib/auth";
-import { getCustomerStatement, listCustomerOptions } from "@/lib/customer-accounts";
+import { getCustomerStatement, getCustomerPaymentContext, listCustomerOptions } from "@/lib/customer-accounts";
 import { summarizeStatement } from "@/lib/customer-statement-presentation";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getTreasuryAccountOptions } from "@/lib/finance";
@@ -34,11 +34,12 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
     throw error;
   });
   const fullPromise = loadStatement({});
-  const [periodResult, fullResult, customers, treasuryAccounts] = await Promise.all([
+  const [periodResult, fullResult, customers, treasuryAccounts, paymentContext] = await Promise.all([
     filteredPeriod ? loadStatement({ from, to }) : fullPromise,
     fullPromise,
     listCustomerOptions(session.companyId),
     getTreasuryAccountOptions(session.companyId),
+    getCustomerPaymentContext(session.companyId, id),
   ]);
   if (!periodResult || !fullResult) notFound();
   const { customer, statement, unappliedPayments } = periodResult;
@@ -70,6 +71,11 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
             <h2 className="text-sm font-medium text-slate-500">Saldo actual · {currentBalance < 0 ? "a favor del cliente" : currentBalance > 0 ? "por cobrar" : "cuenta saldada"}</h2>
             <p className={cn("mt-2 break-words text-3xl font-bold tracking-tight tabular-nums sm:text-4xl", currentBalance < 0 ? "text-emerald-700" : "text-slate-950")}>{formatCurrency(Math.abs(currentBalance))}</p>
             <p className="mt-2 text-xs text-slate-500">Cuenta completa · no cambia con los filtros</p>
+            <dl className="mt-4 space-y-2 text-xs">
+              <div className="flex flex-wrap justify-between gap-2"><dt className="text-slate-500">Remitos pendientes</dt><dd className="font-semibold tabular-nums">{formatCurrency(paymentContext.reconciliation.pendingRemittances)}</dd></div>
+              {paymentContext.reconciliation.availableCredit > 0 ? <div className="flex flex-wrap justify-between gap-2"><dt className="text-slate-500">Crédito pendiente de imputar</dt><dd className="font-semibold text-emerald-700 tabular-nums">−{formatCurrency(paymentContext.reconciliation.availableCredit)}</dd></div> : null}
+            </dl>
+            {paymentContext.reconciliation.needsReview ? <p role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">El saldo incluye otros movimientos o inconsistencias por {formatCurrency(Math.abs(paymentContext.reconciliation.difference))} para revisar. No se imputan automáticamente.</p> : paymentContext.reconciliation.availableCredit > 0 ? <p className="mt-2 text-[11px] leading-relaxed text-slate-500">El crédito ya está descontado del saldo actual, aunque todavía no se aplicó a un remito.</p> : null}
           </div>
           <div className="border-t border-slate-100 pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">
             <h2 className="text-xs font-medium text-slate-500">{filteredPeriod ? "Movimientos del período" : "Resumen del historial"}</h2>

@@ -6,7 +6,7 @@ import { COLLECTION_METHODS, collectionMethodRequiresOperation } from "@/lib/col
 import { formatCurrency, formatDate } from "@/lib/format";
 import { cn } from "@/components/ui/utils";
 import { applyCustomerCreditAction } from "./actions";
-import type { CustomerAvailableCredit } from "@/lib/customer-accounts";
+import type { CustomerAvailableCredit, CustomerAccountReconciliation } from "@/lib/customer-accounts";
 
 const METHODS = [
   { value: "transferencia", label: "Transferencia", hint: "Banco o billetera" },
@@ -35,6 +35,7 @@ export function RegisterPaymentDialog({ action, customers, treasuryAccounts, def
   const [remittances, setRemittances] = useState<OpenRemittance[]>([]);
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [credits, setCredits] = useState<CustomerAvailableCredit[]>([]);
+  const [reconciliation, setReconciliation] = useState<CustomerAccountReconciliation | null>(null);
   const [canApplyCredit, setCanApplyCredit] = useState(false);
   const [mode, setMode] = useState<"payment" | "credit">("payment");
   const [sourceId, setSourceId] = useState("");
@@ -61,10 +62,11 @@ export function RegisterPaymentDialog({ action, customers, treasuryAccounts, def
     const controller = new AbortController();
     fetch(`/api/payments/open-remittances?clientId=${encodeURIComponent(clientId)}`, { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
-        const payload = await response.json() as { data?: OpenRemittance[]; credits?: CustomerAvailableCredit[]; canApplyCredit?: boolean; error?: string };
+        const payload = await response.json() as { data?: OpenRemittance[]; credits?: CustomerAvailableCredit[]; reconciliation?: CustomerAccountReconciliation; canApplyCredit?: boolean; error?: string };
         if (!response.ok) throw new Error(payload.error || "No se pudieron cargar los remitos pendientes");
         if (controller.signal.aborted) return;
         setRemittances(payload.data ?? []); setCredits(payload.credits ?? []);
+        setReconciliation(payload.reconciliation ?? null);
         setCanApplyCredit(Boolean(payload.canApplyCredit));
       })
       .catch((cause: unknown) => { if (!controller.signal.aborted) setLoadError(cause instanceof Error ? cause.message : "No se pudieron cargar los remitos"); })
@@ -81,7 +83,7 @@ export function RegisterPaymentDialog({ action, customers, treasuryAccounts, def
   }, [open]);
 
   function clearSelection(nextClientId: string) {
-    setClientId(nextClientId); setRemittances([]); setAmounts({}); setCredits([]);
+    setClientId(nextClientId); setRemittances([]); setAmounts({}); setCredits([]); setReconciliation(null);
     setMode("payment"); setSourceId(""); setCanApplyCredit(false); setLoadError(""); setError("");
     setAmount(""); setLoading(Boolean(nextClientId)); setRequestId(crypto.randomUUID());
   }
@@ -132,8 +134,16 @@ export function RegisterPaymentDialog({ action, customers, treasuryAccounts, def
             {!defaultCustomerId ? <div className="border-b border-slate-100 px-5 py-4 sm:px-7"><Field htmlFor={`${id}-customer`} label="Cliente" required>
               <SearchableSelect id={`${id}-customer`} onChange={clearSelection} options={customers.map((c) => ({ value: c.id, label: c.name }))} value={clientId} placeholder="Buscar cliente" required />
             </Field></div> : null}
+            {reconciliation ? <div className="border-b border-slate-100 px-5 py-4 sm:px-7">
+              <dl className="grid gap-3 text-sm sm:grid-cols-3">
+                <div><dt className="text-xs text-slate-500">Remitos pendientes</dt><dd className="mt-1 font-semibold tabular-nums">{formatCurrency(reconciliation.pendingRemittances)}</dd></div>
+                <div><dt className="text-xs text-slate-500">Crédito pendiente de imputar</dt><dd className="mt-1 font-semibold text-emerald-700 tabular-nums">{formatCurrency(reconciliation.availableCredit)}</dd></div>
+                <div><dt className="text-xs text-slate-500">{reconciliation.accountBalance < 0 ? "Saldo neto a favor" : "Saldo final de la cuenta"}</dt><dd className="mt-1 font-semibold tabular-nums">{formatCurrency(Math.abs(reconciliation.accountBalance))}</dd></div>
+              </dl>
+              {reconciliation.needsReview ? <p role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">Hay otros movimientos o inconsistencias por {formatCurrency(Math.abs(reconciliation.difference))} que requieren revisión. No se redistribuyen ni se consideran crédito disponible automáticamente.</p> : <p className="mt-2 text-xs text-slate-500">El saldo final ya descuenta el crédito existente. La imputación a remitos se hace sólo con tu selección.</p>}
+            </div> : null}
             {credits.length > 0 ? <div className="border-b border-slate-100 bg-emerald-50/40 px-5 py-4 sm:px-7">
-              <p className="text-sm font-medium text-emerald-900">Crédito disponible: {formatCurrency(round(credits.reduce((sum, c) => sum + c.amount, 0)))}</p>
+              <p className="text-sm font-medium text-emerald-900">Crédito disponible para imputar: {formatCurrency(round(credits.reduce((sum, c) => sum + c.amount, 0)))}</p>
               <p className="mt-1 text-xs text-slate-500">Ya está descontado del saldo de la cuenta. Imputarlo no es recibir otro pago.</p>
               {canApplyCredit ? <div className="mt-3 flex flex-wrap gap-2">{(["payment", "credit"] as const).map((value) => <button type="button" key={value} aria-pressed={mode === value} className={cn("rounded-lg border px-3 py-2 text-xs font-semibold", mode === value ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-500")} onClick={() => { setMode(value); setAmounts({}); setError(""); setRequestId(crypto.randomUUID()); }}>{value === "payment" ? "Registrar dinero recibido" : "Aplicar crédito existente"}</button>)}</div> : <p className="mt-2 text-xs text-slate-500">La imputación de créditos requiere permiso de aprobación de cobranzas.</p>}
             </div> : null}

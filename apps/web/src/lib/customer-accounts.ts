@@ -617,6 +617,13 @@ const AVAILABLE_CUSTOMER_CREDITS_SQL = `
     AND ${activeAccountMovementWhereSql("m", "s")}
   GROUP BY m.sale_id, s.sale_number, s.receipt_number
   HAVING SUM(m.credit - m.debit) > 0.005
+    -- Un cobro sin débito de apertura no demuestra un crédito real del cliente.
+    -- Los asientos de traslado de crédito tampoco pueden legitimar su propio origen.
+    AND (m.sale_id IS NULL OR BOOL_OR(m.debit > 0 AND m.payment_id IS NULL AND (
+      m.description ILIKE 'Remito #%'
+      OR m.description ILIKE 'Factura #%'
+      OR m.description ILIKE 'Saldo pendiente - Remito %'
+    )))
   ORDER BY m.sale_id NULLS FIRST
 `;
 
@@ -625,6 +632,47 @@ export async function listCustomerAvailableCredits(companyId: number, clientId: 
     companyId, AVAILABLE_CUSTOMER_CREDITS_SQL, [companyId, clientId], { cache: false },
   );
   return result.rows.map((row) => ({ sourceId: row.source_id, label: row.label, amount: Number(row.amount) }));
+}
+
+export type CustomerAccountReconciliation = {
+  accountBalance: number; pendingRemittances: number; availableCredit: number;
+  difference: number; needsReview: boolean;
+};
+
+export function reconcileCustomerAccount(accountBalance: number, pendingRemittances: number, availableCredit: number): CustomerAccountReconciliation {
+  const difference = money(accountBalance - money(pendingRemittances - availableCredit));
+  return { accountBalance: money(accountBalance), pendingRemittances: money(pendingRemittances),
+    availableCredit: money(availableCredit), difference, needsReview: Math.abs(difference) > 0.005 };
+}
+
+// Una sola instantánea para el modal: saldo, remitos y créditos no se consultan
+// por separado mientras otros operadores pueden estar registrando cobros.
+export async function getCustomerPaymentContext(companyId: number, clientId: string) {
+  const result = await queryWithCompanyContext<{
+    remittances: (OpenSaleForAllocation & { sale_number: string; sale_date: string; total: string })[];
+    credits: { source_id: string; label: string; amount: string }[];
+    account_balance: string;
+  }>(companyId, `
+    WITH open_remittances AS (${OPEN_SALES_FOR_ALLOCATION_SQL}),
+         available_credits AS (${AVAILABLE_CUSTOMER_CREDITS_SQL})
+    SELECT COALESCE((SELECT json_agg(r ORDER BY r.sale_date, r.id) FROM open_remittances r), '[]'::json) AS remittances,
+           COALESCE((SELECT json_agg(c) FROM available_credits c), '[]'::json) AS credits,
+           COALESCE((SELECT SUM(m.debit - m.credit)
+             FROM current_account_movements m
+             LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
+             WHERE m.empresa_id = $1 AND m.client_id = $2::uuid
+               AND ${activeAccountMovementWhereSql("m", "s")}
+               AND ${visibleAccountMovementWhereSql("m")}), 0)::text AS account_balance
+    FROM clients c WHERE c.empresa_id = $1 AND c.id = $2::uuid
+  `, [companyId, clientId], { cache: false });
+  const row = result.rows[0];
+  if (!row) throw new ApiError(404, "Cliente no encontrado");
+  const data: OpenCustomerRemittance[] = row.remittances.map((r) => ({
+    saleId: r.id, number: r.sale_number, date: r.sale_date, total: Number(r.total), outstanding: Number(r.outstanding),
+  }));
+  const credits: CustomerAvailableCredit[] = row.credits.map((c) => ({ sourceId: c.source_id, label: c.label, amount: Number(c.amount) }));
+  return { data, credits, reconciliation: reconcileCustomerAccount(Number(row.account_balance),
+    money(data.reduce((sum, r) => sum + r.outstanding, 0)), money(credits.reduce((sum, c) => sum + c.amount, 0))) };
 }
 
 export async function applyCustomerCredit(session: AuthSession, input: {
