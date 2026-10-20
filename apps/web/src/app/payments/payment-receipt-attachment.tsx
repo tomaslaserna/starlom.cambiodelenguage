@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PAYMENT_RECEIPT_ACCEPT, paymentReceiptFileError, type PaymentReceiptReading } from "@/lib/payment-receipt";
+import { RECEIPT_READ_CLIENT_TIMEOUT_MS } from "@/lib/payment-receipt-recovery";
 
 export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
   file: File | null;
@@ -39,10 +40,9 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
   }
 
   async function read() {
-    if (!file || busy) return;
-    request.current?.abort();
+    if (!file || busy || request.current) return;
     const controller = new AbortController(); request.current = controller;
-    const timeout = setTimeout(() => controller.abort(), 35_000);
+    const timeout = setTimeout(() => controller.abort(), RECEIPT_READ_CLIENT_TIMEOUT_MS);
     setBusy(true); setError(""); setReading(null); setMessage("");
     try {
       const body = new FormData(); body.set("receipt", file);

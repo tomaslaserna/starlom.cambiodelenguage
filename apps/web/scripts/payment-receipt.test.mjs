@@ -15,6 +15,7 @@ function load(path, aliases = {}) {
 }
 class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const receipt = load("../src/lib/payment-receipt.ts");
+const recovery = load("../src/lib/payment-receipt-recovery.ts");
 const png = () => new File([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jr14AAAAASUVORK5CYII=", "base64")], "prueba.png", { type: "image/png" });
 const session = { companyId: 1, userId: "operator-1" };
 
@@ -82,6 +83,7 @@ function readerRoute(overrides = {}) {
   return load("../src/app/api/payments/read-receipt/route.ts", {
     ai: { generateText: overrides.generate ?? (async () => ({ output: { amount: 123456.78, date: "2026-10-20", operation: "OP-123" } })), Output: { object: (value) => value } },
     "@/lib/payment-receipt": receipt,
+    "@/lib/payment-receipt-recovery": recovery,
     "@/lib/api-response": { ApiError, ok: (data) => Response.json(data), handleApiError: (error) => Response.json({ error: error.message }, { status: error.status ?? 500 }) },
     "@/lib/route-auth": { COLLECTIONS_CREATE_PERMISSION: {}, CRM_READ_PERMISSION: {}, requireApiSession: overrides.auth ?? (async () => session) },
   });
@@ -100,6 +102,7 @@ test("API lectura: autenticación y origen antes de enviar imágenes a IA", asyn
 test("API lectura: devuelve sugerencias sin guardar pagos ni elegir remitos", () => withConfiguredAi(async () => {
   const response = await readerRoute({ generate: async (args) => {
     assert.equal(args.tools, undefined); assert.equal(args.maxRetries, 0); assert.ok(args.abortSignal);
+    assert.equal(args.maxOutputTokens, 4096);
     assert.match(args.system, /NO confiable/);
     return { output: { amount: 123456.78, date: "2026-10-20", operation: "OP-123" } };
   } }).POST(readingRequest());
@@ -111,6 +114,66 @@ test("API lectura: falla de proveedor se traduce a alternativa manual sin filtra
   assert.equal(response.status, 503); const text = await response.text();
   assert.match(text, /manualmente/); assert.doesNotMatch(text, /secret banking/);
 }));
+
+test("API lectura: un fallo transitorio se recupera en el mismo POST, sin intervención del usuario", () => withConfiguredAi(async () => {
+  let calls = 0;
+  const response = await readerRoute({ generate: async () => {
+    if (++calls === 1) throw Object.assign(new Error("secret banking image"), { statusCode: 503 });
+    return { output: { amount: 123456.78, date: "2026-10-20", operation: "OP-123" } };
+  } }).POST(readingRequest());
+  assert.equal(response.status, 200); assert.equal(calls, 2);
+  assert.deepEqual((await response.json()).data, { amount: 123456.78, date: "2026-10-20", operation: "OP-123" });
+}));
+
+for (const name of ["AI_NoOutputGeneratedError", "AI_NoObjectGeneratedError"]) test(`recuperación: ${name} vuelve a leer antes de devolver error`, async () => {
+  let calls = 0; const events = [];
+  const result = await recovery.readReceiptWithRecovery(async () => {
+    if (++calls === 1) throw Object.assign(new Error("private response"), { name });
+    return { amount: 10, date: null, operation: null };
+  }, { signal: new AbortController().signal, retryDelayMs: 0, onAttemptFailure: (event) => events.push(event) });
+  assert.equal(result.attempts, 2); assert.equal(result.data.amount, 10);
+  assert.equal(events[0].kind, "incomplete_output"); assert.equal(events[0].willRetry, true);
+  assert.doesNotMatch(JSON.stringify(events), /private response|amount|operation|date/);
+});
+
+test("recuperación: timeout propio de un intento no aborta el intento de respaldo", async () => {
+  const events = []; let calls = 0;
+  const result = await recovery.readReceiptWithRecovery(async ({ signal }) => {
+    if (++calls === 1) return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    assert.equal(signal.aborted, false); return "read";
+  }, { signal: new AbortController().signal, retryDelayMs: 0, attemptTimeoutsMs: [5, 100], onAttemptFailure: (event) => events.push(event) });
+  assert.equal(result.data, "read"); assert.equal(result.attempts, 2); assert.equal(events[0].kind, "timeout");
+});
+
+for (const statusCode of [400, 401, 402, 403, 404]) test(`recuperación: no insiste ante error permanente ${statusCode}`, async () => {
+  let calls = 0;
+  await assert.rejects(() => recovery.readReceiptWithRecovery(async () => { calls++; throw Object.assign(new Error("permanent"), { statusCode }); }, { signal: new AbortController().signal, retryDelayMs: 0 }), /permanent/);
+  assert.equal(calls, 1);
+});
+
+test("recuperación: limita intentos incluso con fallas repetidas", async () => {
+  let calls = 0; const events = [];
+  await assert.rejects(() => recovery.readReceiptWithRecovery(async () => { calls++; throw Object.assign(new Error("private response"), { statusCode: 503 }); }, {
+    signal: new AbortController().signal, retryDelayMs: 0, attemptTimeoutsMs: [100, 100, 100], onAttemptFailure: (event) => events.push(event),
+  }), /private response/);
+  assert.equal(calls, 2); assert.equal(events[1].willRetry, false);
+});
+
+test("recuperación: cancelar o reemplazar el comprobante impide otra lectura", async () => {
+  const controller = new AbortController(); let calls = 0;
+  await assert.rejects(() => recovery.readReceiptWithRecovery(async () => {
+    calls++; controller.abort(new Error("cancelled")); throw Object.assign(new Error("upstream"), { statusCode: 503 });
+  }, { signal: controller.signal, retryDelayMs: 0 }), /cancelled/);
+  assert.equal(calls, 1);
+  await assert.rejects(() => recovery.readReceiptWithRecovery(async () => { assert.fail("No llamar IA cancelada"); }, { signal: controller.signal }), /cancelled/);
+});
+
+test("recuperación: respeta límites de cuota y Retry-After sin esperas interminables", () => {
+  assert.equal(recovery.receiptReadFailure({ statusCode: 502, cause: { statusCode: 401 } }).retryable, false);
+  assert.equal(recovery.receiptReadFailure({ statusCode: 429, responseHeaders: { "retry-after": "120" } }).retryable, false);
+  assert.equal(recovery.receiptReadFailure({ statusCode: 429, responseHeaders: { "retry-after-ms": "200" } }).retryAfterMs, 200);
+  assert.equal(recovery.receiptReadFailure({ cause: { code: "ECONNRESET" } }).kind, "transport");
+});
 test("API lectura: imagen falsa no llega a IA y limita ráfagas", () => withConfiguredAi(async () => {
   const invalid = new FormData(); invalid.set("receipt", new File(["fake"], "x.png", { type: "image/png" }));
   assert.equal((await readerRoute({ generate: async () => { assert.fail("No enviar imagen falsa"); } }).POST(readingRequest(invalid))).status, 400);
