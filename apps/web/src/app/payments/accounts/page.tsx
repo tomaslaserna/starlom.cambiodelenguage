@@ -31,7 +31,7 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
           <div className="border-t border-slate-100 pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
             <h2 className="text-sm font-medium text-slate-500">A favor de clientes</h2>
             <p className="mt-2 break-words text-2xl font-semibold tracking-tight text-emerald-700 tabular-nums">{formatCurrency(totalFavor)}</p>
-            <p className="mt-2 text-xs text-slate-500">Créditos disponibles para próximas compras</p>
+            <p className="mt-2 text-xs text-slate-500">Saldos a favor registrados en las cuentas</p>
           </div>
         </section>
         <section aria-label="Listado de cuentas" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

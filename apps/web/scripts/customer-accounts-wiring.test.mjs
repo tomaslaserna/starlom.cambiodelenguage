@@ -111,9 +111,10 @@ test("API y vistas muestran la conciliación sin FIFO ni aplicación automática
   const dialog = readFileSync(new URL("../src/app/payments/register-payment-dialog.tsx", import.meta.url), "utf8");
   const detail = readFileSync(new URL("../src/app/payments/accounts/[id]/page.tsx", import.meta.url), "utf8");
   assert.match(api, /getCustomerPaymentContext/);
-  assert.match(api, /return ok\(\{ \.\.\.context, canApplyCredit \}\)/);
+  assert.match(api, /return ok\(\{ data, reconciliation \}\)/);
+  assert.doesNotMatch(api, /canApplyCredit/);
   for (const view of [dialog, detail]) {
-    assert.match(view, /Crédito pendiente de imputar/);
+    assert.doesNotMatch(view, /Crédito pendiente de imputar|Crédito disponible|applyCustomerCreditAction/);
     assert.match(view, /Remitos pendientes/);
     assert.match(view, /reconciliation\.needsReview/);
   }
@@ -166,6 +167,34 @@ test("getCustomerStatement trae todos los movimientos ordenados y delega el cort
   assert.doesNotMatch(source, /movement_date >= \$/);
 });
 
+test("transferencias: comprobante validado reemplaza operación; un booleano enviado por el navegador no", () => {
+  const mod = loadCustomerAccounts();
+  const body = { amount: "100", method: "transferencia", treasuryAccountId: "2", allocations: "[]" };
+  assert.throws(() => mod.customerPaymentFromBody({ ...body, hasValidatedReceipt: true, receiptUrl: "fake" }), /operacion/);
+  assert.equal(mod.customerPaymentFromBody(body, { hasValidatedReceipt: true }).operation, "");
+  assert.throws(() => mod.customerPaymentFromBody({ ...body, method: "echeck" }, { hasValidatedReceipt: true }), /operacion/);
+});
+
+test("un comprobante de otra empresa se rechaza antes de tocar pagos", async () => {
+  const mod = loadCustomerAccounts({ withCompanyContext: async () => { assert.fail("No abrir transacción"); } });
+  await assert.rejects(() => mod.registerCustomerPayment({ companyId: 1 }, { clientId: "c1", receiptUrl: "starlim-storage://uploads/recibos/recibo_2_pago_x.png" }), /empresa/);
+});
+
+test("la misma imagen ya registrada no crea otro cobro ni movimiento de Tesorería", async () => {
+  const queries = [];
+  const mod = loadCustomerAccounts({ withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => {
+    queries.push({ sql, params });
+    if (/SELECT id FROM payments/.test(sql)) return { rows: [{ id: "existing" }] };
+    return { rows: [] };
+  } }) });
+  await assert.rejects(() => mod.registerCustomerPayment({ companyId: 1 }, {
+    clientId: "c1", receiptHash: "a".repeat(64), receiptUrl: `starlim-storage://uploads/recibos/recibo_1_pago_x_${"a".repeat(64)}.png`,
+  }), /ya está vinculado/);
+  assert.match(queries[0].sql, /pg_advisory_xact_lock/);
+  assert.equal(queries.some((q) => /INSERT|UPDATE/.test(q.sql)), false);
+  assert.equal(queries[1].params[0], 1);
+});
+
 test("customerPaymentFromBody valida monto, metodo y operacion", () => {
   const mod = loadCustomerAccounts();
   const allocation = JSON.stringify([{ saleId: "11111111-1111-4111-8111-111111111111", amount: 10 }]);
@@ -186,6 +215,27 @@ test("customerPaymentFromBody valida monto, metodo y operacion", () => {
     () => mod.customerPaymentFromBody({ amount: "5", method: "efectivo", treasuryAccountId: "1", clientId: "c1", allocations: allocation }),
     /no puede superar el monto recibido/i,
   );
+});
+
+for (const canApprove of [true, false]) test(`comprobante persistido con pago ${canApprove ? "registrado" : "pendiente"}, sin alterar su aprobación`, async () => {
+  const queries = [];
+  const mod = loadCustomerAccounts({ sessionAllows: async () => canApprove,
+    withCompanyContext: async (_companyId, fn) => fn({ query: async (sql, params) => {
+      queries.push({ sql, params });
+      if (/SELECT COALESCE\(display_name/.test(sql)) return { rows: [{ name: "Cliente", tax_id: "" }] };
+      if (/FROM admin_treasury_accounts/.test(sql)) return { rows: [{ id: "2", name: "Banco", account_type: "bank" }] };
+      if (/INSERT INTO payments/.test(sql)) return { rows: [{ id: "p1" }] };
+      return { rows: [] };
+    } }),
+  });
+  const receiptUrl = "starlim-storage://uploads/recibos/recibo_1_pago_test.png";
+  const result = await mod.registerCustomerPayment({ companyId: 1, userId: "u1" }, {
+    clientId: "c1", amount: 100, date: "2026-10-20", method: "transferencia", treasuryAccountId: "2", operation: "", chequeDueDate: "", notes: "", allocations: [], receiptUrl,
+  });
+  assert.equal(result.status, canApprove ? "registrado" : "pendiente_aprobacion");
+  const insert = queries.find((q) => /INSERT INTO payments/.test(q.sql));
+  assert.match(insert.sql, /receipt_url/); assert.equal(insert.params.at(-1), receiptUrl);
+  assert.equal(queries.filter((q) => /INSERT INTO admin_treasury_movements/.test(q.sql)).length, canApprove ? 1 : 0);
 });
 
 test("registerCustomerPayment: admin registra directo, vendedor deja pendiente", async () => {

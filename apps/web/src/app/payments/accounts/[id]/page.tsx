@@ -73,9 +73,8 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
             <p className="mt-2 text-xs text-slate-500">Cuenta completa · no cambia con los filtros</p>
             <dl className="mt-4 space-y-2 text-xs">
               <div className="flex flex-wrap justify-between gap-2"><dt className="text-slate-500">Remitos pendientes</dt><dd className="font-semibold tabular-nums">{formatCurrency(paymentContext.reconciliation.pendingRemittances)}</dd></div>
-              {paymentContext.reconciliation.availableCredit > 0 ? <div className="flex flex-wrap justify-between gap-2"><dt className="text-slate-500">Crédito pendiente de imputar</dt><dd className="font-semibold text-emerald-700 tabular-nums">−{formatCurrency(paymentContext.reconciliation.availableCredit)}</dd></div> : null}
             </dl>
-            {paymentContext.reconciliation.needsReview ? <p role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">El saldo incluye otros movimientos o inconsistencias por {formatCurrency(Math.abs(paymentContext.reconciliation.difference))} para revisar. No se imputan automáticamente.</p> : paymentContext.reconciliation.availableCredit > 0 ? <p className="mt-2 text-[11px] leading-relaxed text-slate-500">El crédito ya está descontado del saldo actual, aunque todavía no se aplicó a un remito.</p> : null}
+            {paymentContext.reconciliation.needsReview ? <p role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">El saldo incluye otros movimientos o inconsistencias por {formatCurrency(Math.abs(paymentContext.reconciliation.difference))} para revisar. No se imputan automáticamente.</p> : null}
           </div>
           <div className="border-t border-slate-100 pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">
             <h2 className="text-xs font-medium text-slate-500">{filteredPeriod ? "Movimientos del período" : "Resumen del historial"}</h2>

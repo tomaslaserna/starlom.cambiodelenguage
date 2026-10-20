@@ -26,6 +26,7 @@ export type StatementMovement = {
   internalDocumentNumber?: number | null;
   fiscalDocumentId?: string | null;
   fiscalDocumentNumber?: number | null;
+  paymentReceiptId?: string | null;
 };
 export type AccountMovementRow = StatementMovement & { paymentId?: string | null };
 export type StatementLine = StatementMovement & { balance: number };
@@ -358,6 +359,7 @@ export async function getCustomerStatement(
     id: string; movement_date: string; description: string; debit: string; credit: string; payment_id: string | null;
     sale_id: string | null; sale_number: string | null; delivery_number: number | null; has_priced_items: boolean;
     has_fiscal_pdf: boolean;
+    payment_receipt_id: string | null;
     internal_document_id: string | null; internal_document_number: number | null;
     fiscal_document_id: string | null; fiscal_document_number: number | null;
   }>(
@@ -367,6 +369,7 @@ export async function getCustomerStatement(
              COALESCE(m.description, '') AS description, m.debit::text, m.credit::text,
              m.payment_id::text AS payment_id, m.sale_id::text AS sale_id,
              s.sale_number,
+             CASE WHEN receipt_payment.receipt_url LIKE 'starlim-storage://%' THEN receipt_payment.id::text END AS payment_receipt_id,
              (
                SELECT dd.delivery_number
                FROM delivery_documents dd
@@ -391,6 +394,7 @@ export async function getCustomerStatement(
               fiscal_note.fiscal_receipt_number::int AS fiscal_document_number
       FROM current_account_movements m
       LEFT JOIN sales s ON s.id = m.sale_id AND s.empresa_id = m.empresa_id
+      LEFT JOIN payments receipt_payment ON receipt_payment.id = m.payment_id AND receipt_payment.empresa_id = m.empresa_id
       LEFT JOIN sales_internal_documents internal_note
         ON internal_note.id = m.sales_internal_document_id
        AND internal_note.empresa_id = m.empresa_id
@@ -422,6 +426,7 @@ export async function getCustomerStatement(
     credit: Number(row.credit),
     kind: movementKind(row.description, Number(row.debit)),
     paymentId: row.payment_id,
+    paymentReceiptId: row.payment_receipt_id ?? null,
     saleId: row.sale_id,
     saleNumber: row.sale_number,
     deliveryNumber: row.delivery_number === null ? null : Number(row.delivery_number),
@@ -481,6 +486,8 @@ export type CustomerPaymentInput = {
   clientId: string; amount: number; date: string; method: string;
   treasuryAccountId: string; operation: string; chequeDueDate: string; notes: string;
   allocations: CustomerPaymentAllocation[];
+  receiptUrl?: string;
+  receiptHash?: string;
 };
 
 export type CustomerPaymentAllocation = { saleId: string; amount: number };
@@ -920,12 +927,12 @@ async function postCustomerPaymentToTreasury(
   );
 }
 
-export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput {
+export function customerPaymentFromBody(body: RequestBody, evidence: { hasValidatedReceipt?: boolean } = {}): CustomerPaymentInput {
   const clientId = textField(body, "clientId") || textField(body, "cliente_id");
   const amount = numberField(body, "amount", numberField(body, "monto", 0));
   const method = (textField(body, "method") || textField(body, "metodo")).toLowerCase();
   const treasuryAccountId = textField(body, "treasuryAccountId").trim();
-  const operation = textField(body, "operation") || textField(body, "operacion");
+  const operation = (textField(body, "operation") || textField(body, "operacion")).trim();
   const chequeDueDate = textField(body, "chequeDueDate").trim();
   const notes = textField(body, "notes") || textField(body, "notas");
   const date = textField(body, "date") || textField(body, "fecha") || localDateIso();
@@ -951,7 +958,9 @@ export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput
 
   if (!Number.isFinite(amount) || amount <= 0) throw new ApiError(400, "El monto debe ser mayor a cero");
   if (!PAYMENT_METHODS.has(method)) throw new ApiError(400, "Metodo de cobro invalido");
-  if (collectionMethodRequiresOperation(method) && !operation) throw new ApiError(400, "La operacion es obligatoria");
+  if (collectionMethodRequiresOperation(method) && !operation && !(method === "transferencia" && evidence.hasValidatedReceipt)) {
+    throw new ApiError(400, "Ingresá el número de operacion o adjuntá el comprobante de transferencia");
+  }
   if (method === "echeck" && !/^\d{1,20}$/.test(operation)) {
     throw new ApiError(400, "El numero de E-cheq debe contener solo digitos");
   }
@@ -971,10 +980,23 @@ export function customerPaymentFromBody(body: RequestBody): CustomerPaymentInput
 
 export async function registerCustomerPayment(session: AuthSession, input: CustomerPaymentInput) {
   if (!input.clientId) throw new ApiError(400, "El cliente es obligatorio");
+  if (input.receiptUrl && !new RegExp(`^starlim-storage://[^/]+/recibos/recibo_${session.companyId}_pago_[a-zA-Z0-9._-]+$`).test(input.receiptUrl)) {
+    throw new ApiError(400, "Comprobante de pago no válido para esta empresa");
+  }
   const canApprove = await sessionAllows(session, [COLLECTIONS_APPROVE_PERMISSION]);
   const status = canApprove ? "registrado" : "pendiente_aprobacion";
 
   const result = await withCompanyContext(session.companyId, async (client) => {
+    if (input.receiptHash) {
+      if (!/^[0-9a-f]{64}$/.test(input.receiptHash)) throw new ApiError(400, "Comprobante inválido");
+      // Serialize retries of exactly the same image within this company.
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`payment-receipt:${session.companyId}:${input.receiptHash}`]);
+      const duplicate = await client.query(
+        "SELECT id FROM payments WHERE empresa_id = $1 AND status::text <> 'anulado' AND receipt_url LIKE $2 LIMIT 1",
+        [session.companyId, `%_${input.receiptHash}.%`],
+      );
+      if (duplicate.rows.length) throw new ApiError(409, "Este comprobante ya está vinculado a un pago. Revisá los pagos registrados antes de continuar.");
+    }
     const clientInfo = await client.query(
       `SELECT COALESCE(display_name,'') AS name, COALESCE(tax_id,'') AS tax_id
          FROM clients WHERE id = $1::uuid AND empresa_id = $2 LIMIT 1`,
@@ -992,16 +1014,17 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
         INSERT INTO payments (
           client_id, payment_date, amount, method, reference, status,
           registered_by, entity_type, entity_name, concept, notes, empresa_id,
-          treasury_account_id, treasury_reference, cheque_due_date
+          treasury_account_id, treasury_reference, cheque_due_date, receipt_url
         )
         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::uuid, 'cliente', $8, $9, $10, $11,
-                $12::bigint, $13, $14::date)
+                $12::bigint, $13, $14::date, $15)
         RETURNING id::text AS id
       `,
       [
         input.clientId, input.date, input.amount, input.method, reference, status,
         session.userId, clientName, `Cobro ${input.method}`, input.notes, session.companyId,
         treasuryTarget?.accountId ?? null, input.operation, input.chequeDueDate || null,
+        input.receiptUrl || null,
       ],
     );
     const paymentId = payment.rows[0].id as string;
