@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PAYMENT_RECEIPT_ACCEPT, paymentReceiptFileError, type PaymentReceiptReading } from "@/lib/payment-receipt";
-import { RECEIPT_READ_CLIENT_TIMEOUT_MS } from "@/lib/payment-receipt-recovery";
+import { receiptTaskWithSignal, RECEIPT_READ_CLIENT_TIMEOUT_MS } from "@/lib/payment-receipt-recovery";
 
 export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
   file: File | null;
@@ -46,8 +46,11 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
     setBusy(true); setError(""); setReading(null); setMessage("");
     try {
       const body = new FormData(); body.set("receipt", file);
-      const response = await fetch("/api/payments/read-receipt", { method: "POST", body, signal: controller.signal });
-      const result = await response.json() as { data?: PaymentReceiptReading; error?: string };
+      const { response, result } = await receiptTaskWithSignal(async () => {
+        const response = await fetch("/api/payments/read-receipt", { method: "POST", body, signal: controller.signal });
+        const result = await response.json() as { data?: PaymentReceiptReading; error?: string };
+        return { response, result };
+      }, controller.signal);
       if (request.current !== controller) return;
       if (!response.ok || !result.data) throw new Error(result.error || "No se pudo leer el comprobante");
       setReading(result.data);

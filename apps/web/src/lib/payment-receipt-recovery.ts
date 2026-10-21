@@ -1,6 +1,23 @@
 // Read-only recovery. This function must never register payments or persist images.
-export const RECEIPT_READ_CLIENT_TIMEOUT_MS = 45_000;
-const ATTEMPT_TIMEOUTS_MS = [15_000, 20_000] as const;
+export const RECEIPT_READ_CLIENT_TIMEOUT_MS = 25_000;
+export const RECEIPT_READ_SERVER_TIMEOUT_MS = 20_000;
+const ATTEMPT_TIMEOUTS_MS = [8_000, 10_000] as const;
+
+// Abort alone is advisory: a stalled SDK/fetch/body reader may ignore it.
+// Settle our wait independently, consume late rejection, and remove listeners.
+export function receiptTaskWithSignal<T>(work: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const onAbort = () => { cleanup(); reject(signal.reason); };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) { onAbort(); return; }
+    Promise.resolve().then(() => { signal.throwIfAborted(); return work(); }).then(
+      (value) => { cleanup(); if (signal.aborted) reject(signal.reason); else resolve(value); },
+      (error) => { cleanup(); reject(error); },
+    );
+  });
+}
 
 type FailureKind = "timeout" | "incomplete_output" | "rate_limit" | "upstream" | "transport" | "configuration" | "invalid_request" | "unknown";
 type Failure = { kind: FailureKind; retryable: boolean; status?: number; retryAfterMs?: number };
@@ -50,7 +67,7 @@ export async function readReceiptWithRecovery<T>(
     const signal = AbortSignal.any([options.signal, deadline.signal]);
     try {
       // Reserve enough tokens for reasoning AND the final structured object.
-      const data = await read({ signal, attempt: index + 1, maxOutputTokens: 4096 });
+      const data = await receiptTaskWithSignal(() => read({ signal, attempt: index + 1, maxOutputTokens: 4096 }), signal);
       signal.throwIfAborted();
       return { data, attempts: index + 1 };
     } catch (error) {

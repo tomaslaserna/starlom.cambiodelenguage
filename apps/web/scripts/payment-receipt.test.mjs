@@ -102,7 +102,8 @@ test("API lectura: autenticación y origen antes de enviar imágenes a IA", asyn
 test("API lectura: devuelve sugerencias sin guardar pagos ni elegir remitos", () => withConfiguredAi(async () => {
   const response = await readerRoute({ generate: async (args) => {
     assert.equal(args.tools, undefined); assert.equal(args.maxRetries, 0); assert.ok(args.abortSignal);
-    assert.equal(args.maxOutputTokens, 4096);
+    assert.equal(args.model, "openai/gpt-5.4-mini");
+    assert.equal(args.reasoning, "none"); assert.equal(args.maxOutputTokens, 768);
     assert.match(args.system, /NO confiable/);
     return { output: { amount: 123456.78, date: "2026-10-20", operation: "OP-123" } };
   } }).POST(readingRequest());
@@ -117,8 +118,10 @@ test("API lectura: falla de proveedor se traduce a alternativa manual sin filtra
 
 test("API lectura: un fallo transitorio se recupera en el mismo POST, sin intervención del usuario", () => withConfiguredAi(async () => {
   let calls = 0;
-  const response = await readerRoute({ generate: async () => {
+  const response = await readerRoute({ generate: async (args) => {
     if (++calls === 1) throw Object.assign(new Error("secret banking image"), { statusCode: 503 });
+    assert.equal(args.model, "google/gemini-3.5-flash"); assert.equal(args.reasoning, "low");
+    assert.equal(args.maxOutputTokens, 4096);
     return { output: { amount: 123456.78, date: "2026-10-20", operation: "OP-123" } };
   } }).POST(readingRequest());
   assert.equal(response.status, 200); assert.equal(calls, 2);
@@ -143,6 +146,32 @@ test("recuperación: timeout propio de un intento no aborta el intento de respal
     assert.equal(signal.aborted, false); return "read";
   }, { signal: new AbortController().signal, retryDelayMs: 0, attemptTimeoutsMs: [5, 100], onAttemptFailure: (event) => events.push(event) });
   assert.equal(result.data, "read"); assert.equal(result.attempts, 2); assert.equal(events[0].kind, "timeout");
+});
+
+test("espera: corta también SDK o respuesta JSON que ignoran AbortSignal", async () => {
+  const controller = new AbortController();
+  const wait = recovery.receiptTaskWithSignal(() => new Promise(() => {}), controller.signal);
+  controller.abort(new DOMException("Deadline", "TimeoutError"));
+  await assert.rejects(wait, { name: "TimeoutError" });
+  assert.equal(recovery.RECEIPT_READ_CLIENT_TIMEOUT_MS, 25000);
+  assert.ok(recovery.RECEIPT_READ_SERVER_TIMEOUT_MS < recovery.RECEIPT_READ_CLIENT_TIMEOUT_MS);
+});
+
+test("recuperación: no depende de que el proveedor respete la cancelación", async () => {
+  let calls = 0;
+  const result = await recovery.readReceiptWithRecovery(async () => {
+    if (++calls === 1) return new Promise(() => {});
+    return "backup";
+  }, { signal: new AbortController().signal, attemptTimeoutsMs: [5, 100], retryDelayMs: 0 });
+  assert.equal(result.data, "backup"); assert.equal(result.attempts, 2);
+});
+
+test("espera: ignora una resolución tardía y consume su rechazo sin efectos", async () => {
+  const controller = new AbortController(); let finish;
+  const wait = recovery.receiptTaskWithSignal(() => new Promise((_resolve, reject) => { finish = reject; }), controller.signal);
+  await Promise.resolve(); controller.abort(new Error("cancelled"));
+  await assert.rejects(wait, /cancelled/); finish(new Error("late rejection"));
+  await new Promise((resolve) => setImmediate(resolve));
 });
 
 for (const statusCode of [400, 401, 402, 403, 404]) test(`recuperación: no insiste ante error permanente ${statusCode}`, async () => {
