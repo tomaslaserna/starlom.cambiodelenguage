@@ -4,6 +4,10 @@ import sharp from "sharp";
 import { mkdirSync, writeFileSync } from "node:fs";
 
 const examples = [
+  { name: "duplicate-check", amount: 64500, date: "2026-10-20", operation: "1", lines: [
+    "COMPROBANTE DE TRANSFERENCIA", "Transferencia realizada - Moneda: ARS", "Importe: $ 64.500,00",
+    "Fecha de pago: 20/10/2026", "Numero de operacion: 1",
+  ] },
   { name: "completed", amount: 577408.19, date: "2026-10-13", operation: "LR7DHfL581", lines: [
     "COMPROBANTE DE TRANSFERENCIA", "Transferencia realizada - ARS", "Importe: $ 577.408,19",
     "Fecha de pago: 13/10/2026 19:11", "Fecha de impresion: 21/10/2026",
@@ -35,5 +39,5 @@ if (process.argv.includes("--write-fixtures")) {
   const directory = new URL("../.next/receipt-fixtures/", import.meta.url);
   mkdirSync(directory, { recursive: true });
   for (const fixture of await paymentReceiptFixtures()) writeFileSync(new URL(`${fixture.name}.jpg`, directory), fixture.image);
-  console.log("Generated 3 synthetic receipts in .next/receipt-fixtures");
+  console.log("Generated synthetic receipts in .next/receipt-fixtures");
 }
