@@ -143,12 +143,14 @@ export async function storefrontDashboard(companyId:number, days=30) {
       SELECT session_id::text,channel,status,contact_name,contact_phone,contact_email,business_name,business_type,delivery_address,item_count::text,estimated_amount::text,started_at::text,last_activity_at::text,cart_snapshot
       FROM storefront_checkout_sessions WHERE empresa_id=$1 AND status IN ('iniciada','en_progreso')
         AND last_activity_at>=now()-($2::int||' days')::interval ORDER BY last_activity_at DESC LIMIT 100`,[companyId,days],{cache:false}),queryWithCompanyContext<{day:string;views:string;checkouts:string;requests:string}>(companyId,`
-      WITH days AS (SELECT generate_series(CURRENT_DATE-LEAST($2::int-1,29),CURRENT_DATE,'1 day')::date day)
-      SELECT d.day::text,
-        (SELECT count(*) FROM storefront_events e WHERE e.empresa_id=$1 AND e.event_type='page_view' AND e.created_at::date=d.day)::text views,
-        (SELECT count(*) FROM storefront_checkout_sessions s WHERE s.empresa_id=$1 AND s.started_at::date=d.day)::text checkouts,
-        (SELECT count(*) FROM order_requests r WHERE r.empresa_id=$1 AND r.created_at::date=d.day)::text requests
-      FROM days d ORDER BY d.day`,[companyId,days],{cache:false})]);
+      WITH date_series AS (
+        SELECT generate_series(CURRENT_DATE-LEAST($2::int-1,29),CURRENT_DATE,'1 day')::date AS report_date
+      )
+      SELECT d.report_date::text AS day,
+        (SELECT count(*) FROM storefront_events e WHERE e.empresa_id=$1 AND e.event_type='page_view' AND e.created_at::date=d.report_date)::text views,
+        (SELECT count(*) FROM storefront_checkout_sessions s WHERE s.empresa_id=$1 AND s.started_at::date=d.report_date)::text checkouts,
+        (SELECT count(*) FROM order_requests r WHERE r.empresa_id=$1 AND r.created_at::date=d.report_date)::text requests
+      FROM date_series d ORDER BY d.report_date`,[companyId,days],{cache:false})]);
   const row=result.rows[0]!;
   const metrics=Object.fromEntries(Object.entries(row).map(([k,v])=>[k,Number(v)])) as Record<keyof typeof row,number>;
   return {...metrics,channels:channels.rows.map(item=>({...item,views:Number(item.views),checkouts:Number(item.checkouts),incomplete:Number(item.incomplete),requests:Number(item.requests),approved:Number(item.approved),salesAmount:Number(item.sales_amount)})),abandoned:abandoned.rows.map(item=>({...item,itemCount:Number(item.item_count),estimatedAmount:Number(item.estimated_amount)})),recent:recent.rows.map(item=>({...item,views:Number(item.views),checkouts:Number(item.checkouts),requests:Number(item.requests)}))};

@@ -20,6 +20,7 @@ test("operaciones expone solicitudes y la aprobación crea el pedido",async()=>{
   assert.match(orders,/\/orders\/requests/);
   assert.match(requestService,/acceptQuote\(session, request\.quote_id\)/);
   assert.match(requestService,/status='aprobada'/);
+  assert.match(requestService,/AS report_date/);
 });
 
 test("tienda tiene métricas, búsqueda por tokens y catálogo acotado",async()=>{
