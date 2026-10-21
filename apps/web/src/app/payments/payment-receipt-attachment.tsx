@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { PAYMENT_RECEIPT_ACCEPT, paymentReceiptFileError, type PaymentReceiptReading } from "@/lib/payment-receipt";
@@ -27,7 +27,6 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
     reader.readAsDataURL(file);
     return () => { reader.abort(); };
   }, [file]);
-  useEffect(() => () => { request.current?.abort(); }, []);
 
   function choose(next: File | null) {
     request.current?.abort(); request.current = null;
@@ -39,8 +38,8 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
     setPreview(""); onFileChange(next);
   }
 
-  async function read() {
-    if (!file || busy || request.current) return;
+  const read = useCallback(async () => {
+    if (!file || request.current) return;
     const controller = new AbortController(); request.current = controller;
     const timeout = setTimeout(() => controller.abort(), RECEIPT_READ_CLIENT_TIMEOUT_MS);
     setBusy(true); setError(""); setReading(null); setMessage("");
@@ -61,7 +60,18 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
       clearTimeout(timeout);
       if (request.current === controller) { request.current = null; setBusy(false); }
     }
-  }
+  }, [file]);
+
+  useEffect(() => {
+    if (!file || paymentReceiptFileError(file)) return;
+    // Deferring lets Strict Mode cancel its first setup before any paid request.
+    // A replaced image/remounted form starts a new read, never reuses old results.
+    const automaticRead = setTimeout(() => { void read(); }, 0);
+    return () => {
+      clearTimeout(automaticRead);
+      request.current?.abort(); request.current = null;
+    };
+  }, [file, read]);
 
   return <section className="mt-5 rounded-xl border border-dashed border-blue-200 bg-blue-50/25 p-4" aria-labelledby={`${id}-title`}
     onPaste={(event) => {
@@ -69,11 +79,11 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
       if (image) { event.preventDefault(); event.stopPropagation(); choose(image); }
     }}>
     <h4 id={`${id}-title`} className="text-sm font-semibold">Comprobante de transferencia</h4>
-    <p className="mt-1 text-xs leading-relaxed text-slate-500">Pegá la captura acá con Ctrl+V o adjuntala. Con un comprobante, el número de operación es opcional.</p>
+    <p className="mt-1 text-xs leading-relaxed text-slate-500">Pegá la captura con Ctrl+V o adjuntala: la IA la lee automáticamente. Después revisás y elegís si usar los datos. Con un comprobante, el número de operación es opcional.</p>
     <input ref={input} type="file" accept={PAYMENT_RECEIPT_ACCEPT} className="sr-only" aria-label="Adjuntar comprobante" onChange={(event) => { choose(event.target.files?.[0] ?? null); event.target.value = ""; }} />
     <div tabIndex={0} role="group" aria-label="Pegar imagen del comprobante con Ctrl+V" className="mt-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
       <div className="flex flex-wrap items-center gap-2"><Button type="button" variant="secondary" size="sm" onClick={() => input.current?.click()}>{file ? "Cambiar imagen" : "Adjuntar imagen"}</Button>
-        {file ? <><Button type="button" variant="secondary" size="sm" onClick={() => choose(null)}>Quitar</Button><Button type="button" size="sm" disabled={busy} onClick={read}>{busy ? "Leyendo…" : "Leer datos con IA"}</Button></> : <span className="text-[11px] text-slate-400">JPG, PNG o WEBP · hasta 3 MB</span>}</div>
+        {file ? <><Button type="button" variant="secondary" size="sm" onClick={() => choose(null)}>Quitar</Button><Button type="button" size="sm" disabled={busy} onClick={read}>{busy ? "Leyendo…" : error ? "Reintentar lectura" : "Volver a leer"}</Button></> : <span className="text-[11px] text-slate-400">JPG, PNG o WEBP · hasta 3 MB</span>}</div>
       {file ? <p className="mt-2 break-all text-[11px] text-slate-500">{file.name} · Se guardará junto al pago.</p> : null}
       {/* Native image is intentional: this is a local, non-public data URL preview. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}

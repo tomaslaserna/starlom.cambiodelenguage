@@ -7,7 +7,7 @@ import ts from "typescript";
 const require = createRequire(import.meta.url);
 function load(path, aliases = {}) {
   const compiled = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   const module = { exports: {} };
   Function("require", "module", "exports", compiled)((name) => aliases[name] ?? require(name), module, module.exports);
@@ -218,6 +218,83 @@ test("UI: OCR requiere usar sugerencias explícitamente, conserva sólo remitos 
   assert.match(dialog, /if \(method === "transferencia" && receipt\) formData.set\("receipt", receipt\)/);
   assert.doesNotMatch(dialog, /Aplicar crédito|creditMode|setAmounts\(.*reading/);
   assert.match(dialog, /remittances.filter\(\(s\) => Object.hasOwn\(amounts, s.saleId\)\)/);
+});
+
+// Exercise the component's actual effect/read callbacks with isolated hook slots.
+// Browser rendering is verified separately; these tests never call a paid model.
+function attachmentLifecycle(file = png()) {
+  const effects = []; const writes = []; let applied = 0; let changed = 0;
+  const component = load("../src/app/payments/payment-receipt-attachment.tsx", {
+    react: {
+      useId: () => "receipt-test", useCallback: (fn) => fn,
+      useRef: (value) => ({ current: value }),
+      useState: (value) => [value, (next) => writes.push(next)],
+      useEffect: (setup) => effects.push(setup),
+    },
+    "@/components/ui": { Button: () => null },
+    "@/lib/format": { formatCurrency: String, formatDate: String },
+    "@/lib/payment-receipt": receipt,
+    "@/lib/payment-receipt-recovery": recovery,
+  });
+  component.PaymentReceiptAttachment({ file, onFileChange: () => changed++, onUseReading: () => applied++ });
+  return { setup: effects.at(-1), writes, applied: () => applied, changed: () => changed };
+}
+const settleAutomaticRead = () => new Promise((resolve) => setTimeout(resolve, 15));
+
+test("UI automática: pegar/adjuntar inicia una única lectura incluso con setup doble de Strict Mode", async () => {
+  const before = globalThis.fetch; let calls = 0;
+  const detected = { amount: 10, date: "2026-10-21", operation: "TEST-1" };
+  globalThis.fetch = async (url, options) => {
+    calls++; assert.equal(url, "/api/payments/read-receipt"); assert.equal(options.method, "POST");
+    assert.ok(options.body.get("receipt") instanceof File);
+    return Response.json({ data: detected });
+  };
+  let cleanup;
+  try {
+    const lifecycle = attachmentLifecycle();
+    const firstCleanup = lifecycle.setup(); firstCleanup();
+    cleanup = lifecycle.setup();
+    await settleAutomaticRead();
+    assert.equal(calls, 1); assert.ok(lifecycle.writes.includes(detected) || lifecycle.writes.some((value) => value?.operation === "TEST-1"));
+    assert.equal(lifecycle.applied(), 0); assert.equal(lifecycle.changed(), 0);
+  } finally { cleanup?.(); globalThis.fetch = before; }
+});
+
+test("UI automática: sin imagen o con imagen inválida no inicia lectura", async () => {
+  const before = globalThis.fetch;
+  globalThis.fetch = async () => { assert.fail("No leer imagen ausente/inválida"); };
+  try {
+    assert.equal(attachmentLifecycle(null).setup(), undefined);
+    assert.equal(attachmentLifecycle(new File(["fake"], "document.pdf", { type: "application/pdf" })).setup(), undefined);
+    await settleAutomaticRead();
+  } finally { globalThis.fetch = before; }
+});
+
+test("UI automática: quitar imagen/cerrar antes de iniciar cancela la lectura", async () => {
+  const before = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; return Response.json({ data: {} }); };
+  try {
+    const cleanup = attachmentLifecycle().setup(); cleanup();
+    await settleAutomaticRead(); assert.equal(calls, 0);
+  } finally { globalThis.fetch = before; }
+});
+
+test("UI automática: imagen reemplazada descarta el resultado tardío y nunca aplica datos sola", async () => {
+  const before = globalThis.fetch; let finish; let signal;
+  globalThis.fetch = async (_url, options) => {
+    signal = options.signal;
+    return new Promise((resolve) => { finish = resolve; });
+  };
+  let cleanup;
+  try {
+    const lifecycle = attachmentLifecycle(); cleanup = lifecycle.setup();
+    await settleAutomaticRead(); assert.ok(finish);
+    cleanup(); assert.equal(signal.aborted, true);
+    finish(Response.json({ data: { amount: 99, date: null, operation: "STALE" } }));
+    await settleAutomaticRead();
+    assert.equal(lifecycle.writes.some((value) => value?.operation === "STALE"), false);
+    assert.equal(lifecycle.applied(), 0);
+  } finally { cleanup?.(); globalThis.fetch = before; }
 });
 
 test("descarga: exige permiso, empresa y titularidad CRM antes de firmar la URL", async () => {
