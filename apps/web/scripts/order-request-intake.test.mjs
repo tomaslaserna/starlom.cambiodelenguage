@@ -34,6 +34,7 @@ test("tienda tiene métricas, búsqueda por tokens y catálogo acotado",async()=
   assert.match(storefront,/needles\.every/);
   assert.match(storefront,/visibleLimit/);
   assert.match(storefront,/Mostrar también productos sin stock/);
+  assert.match(storefront,/function addCombo[\s\S]*setBrowseAll\(true\)/);
 });
 
 test("tienda y portal cierran el checkout al generar una solicitud",async()=>{

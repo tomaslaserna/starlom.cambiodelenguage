@@ -286,6 +286,8 @@ export function Storefront({ products, recommendations = [], combos = [], portal
       }
       return next;
     });
+    setBrowseAll(true);
+    window.setTimeout(() => catalogRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
 
   function activateChallenge() {
