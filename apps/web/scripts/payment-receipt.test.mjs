@@ -211,19 +211,23 @@ test("API lectura: imagen falsa no llega a IA y limita ráfagas", () => withConf
   assert.equal((await route.POST(readingRequest())).status, 429);
 }));
 
-test("UI: OCR requiere usar sugerencias explícitamente, conserva sólo remitos elegidos", () => {
+test("UI: OCR completa campos sin registrar pagos ni cambiar los remitos elegidos", () => {
   const component = readFileSync(new URL("../src/app/payments/payment-receipt-attachment.tsx", import.meta.url), "utf8");
   const dialog = readFileSync(new URL("../src/app/payments/register-payment-dialog.tsx", import.meta.url), "utf8");
-  assert.match(component, /onPaste=/); assert.match(component, /Usar estos datos/); assert.match(component, /request.current !== controller/);
+  assert.match(component, /onPaste=/); assert.doesNotMatch(component, /Usar estos datos/); assert.match(component, /request.current !== controller/);
+  assert.match(component, /applyReading.current\(result.data\)/);
+  assert.match(component, /}, \[file\]\)/); // Applying fields must not restart the read.
+  assert.doesNotMatch(component, /requestSubmit|\.submit\(|registerCustomerPayment|\/api\/collections/);
   assert.match(dialog, /if \(method === "transferencia" && receipt\) formData.set\("receipt", receipt\)/);
   assert.doesNotMatch(dialog, /Aplicar crédito|creditMode|setAmounts\(.*reading/);
   assert.match(dialog, /remittances.filter\(\(s\) => Object.hasOwn\(amounts, s.saleId\)\)/);
+  for (const field of ["amount", "date", "operation"]) assert.ok(dialog.includes(`if (reading.${field} !== null)`));
 });
 
 // Exercise the component's actual effect/read callbacks with isolated hook slots.
 // Browser rendering is verified separately; these tests never call a paid model.
 function attachmentLifecycle(file = png()) {
-  const effects = []; const writes = []; let applied = 0; let changed = 0;
+  const effects = []; const writes = []; const readings = []; let changed = 0;
   const component = load("../src/app/payments/payment-receipt-attachment.tsx", {
     react: {
       useId: () => "receipt-test", useCallback: (fn) => fn,
@@ -236,8 +240,8 @@ function attachmentLifecycle(file = png()) {
     "@/lib/payment-receipt": receipt,
     "@/lib/payment-receipt-recovery": recovery,
   });
-  component.PaymentReceiptAttachment({ file, onFileChange: () => changed++, onUseReading: () => applied++ });
-  return { setup: effects.at(-1), writes, applied: () => applied, changed: () => changed };
+  component.PaymentReceiptAttachment({ file, onFileChange: () => changed++, onUseReading: (data) => readings.push(data) });
+  return { setup: effects.at(-1), writes, readings, applied: () => readings.length, changed: () => changed };
 }
 const settleAutomaticRead = () => new Promise((resolve) => setTimeout(resolve, 15));
 
@@ -255,8 +259,8 @@ test("UI automática: pegar/adjuntar inicia una única lectura incluso con setup
     const firstCleanup = lifecycle.setup(); firstCleanup();
     cleanup = lifecycle.setup();
     await settleAutomaticRead();
-    assert.equal(calls, 1); assert.ok(lifecycle.writes.includes(detected) || lifecycle.writes.some((value) => value?.operation === "TEST-1"));
-    assert.equal(lifecycle.applied(), 0); assert.equal(lifecycle.changed(), 0);
+    assert.equal(calls, 1); assert.deepEqual(lifecycle.readings, [detected]);
+    assert.equal(lifecycle.applied(), 1); assert.equal(lifecycle.changed(), 0);
   } finally { cleanup?.(); globalThis.fetch = before; }
 });
 
@@ -279,7 +283,7 @@ test("UI automática: quitar imagen/cerrar antes de iniciar cancela la lectura",
   } finally { globalThis.fetch = before; }
 });
 
-test("UI automática: imagen reemplazada descarta el resultado tardío y nunca aplica datos sola", async () => {
+test("UI automática: imagen reemplazada descarta el resultado tardío sin completar datos viejos", async () => {
   const before = globalThis.fetch; let finish; let signal;
   globalThis.fetch = async (_url, options) => {
     signal = options.signal;
@@ -294,6 +298,27 @@ test("UI automática: imagen reemplazada descarta el resultado tardío y nunca a
     await settleAutomaticRead();
     assert.equal(lifecycle.writes.some((value) => value?.operation === "STALE"), false);
     assert.equal(lifecycle.applied(), 0);
+  } finally { cleanup?.(); globalThis.fetch = before; }
+});
+
+test("UI autocompletado: datos no legibles no reemplazan los campos existentes", async () => {
+  const before = globalThis.fetch; let cleanup;
+  globalThis.fetch = async () => Response.json({ data: { amount: null, date: null, operation: null } });
+  try {
+    const lifecycle = attachmentLifecycle(); cleanup = lifecycle.setup();
+    await settleAutomaticRead(); assert.equal(lifecycle.applied(), 0);
+    assert.ok(lifecycle.writes.some((value) => typeof value === "string" && value.includes("No se detectaron")));
+  } finally { cleanup?.(); globalThis.fetch = before; }
+});
+
+test("UI autocompletado: lectura parcial conserva campos nulos para no borrar datos manuales", async () => {
+  const before = globalThis.fetch; let cleanup;
+  const detected = { amount: 94.18, date: null, operation: null };
+  globalThis.fetch = async () => Response.json({ data: detected });
+  try {
+    const lifecycle = attachmentLifecycle(); cleanup = lifecycle.setup();
+    await settleAutomaticRead(); assert.deepEqual(lifecycle.readings, [detected]);
+    assert.ok(lifecycle.writes.some((value) => typeof value === "string" && value.includes("Lectura parcial")));
   } finally { cleanup?.(); globalThis.fetch = before; }
 });
 
