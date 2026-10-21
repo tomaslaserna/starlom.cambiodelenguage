@@ -40,7 +40,7 @@ export function StatementDateFilter({ clientId, from, to }: { clientId: string; 
   );
 }
 
-export function StatementMovements({ statement, from, to }: { statement: CustomerStatement; from: string; to: string }) {
+export function StatementMovements({ statement, from, to, compactView = false, lastZeroDate = null }: { statement: CustomerStatement; from: string; to: string; compactView?: boolean; lastZeroDate?: string | null }) {
   const [filter, setFilter] = useState<"todos" | "notas" | StatementCategory>("todos");
   const [expanded, setExpanded] = useState<string | null>(null);
   const lines = filterStatementLines(statement.lines, filter);
@@ -54,7 +54,7 @@ export function StatementMovements({ statement, from, to }: { statement: Custome
           ))}
         </div>
         <p className="text-xs leading-relaxed text-slate-500">
-          {filteredPeriod ? `Período: ${from ? formatDate(from) : "inicio"} a ${to ? formatDate(to) : "último movimiento"}. ` : "Historial completo. "}
+          {filteredPeriod ? `Período: ${from ? formatDate(from) : "inicio"} a ${to ? formatDate(to) : "último movimiento"}. ` : compactView ? lastZeroDate ? "Movimientos posteriores al último saldo cero. " : "Movimientos de la cuenta · sin cierres previos. " : "Historial completo. "}
           <span className="font-medium text-slate-700">+ aumenta la deuda</span> · <span className="font-medium text-emerald-700">− la reduce</span>
         </p>
         {filter !== "todos" ? <p className="text-xs text-blue-700">{lines.length} movimientos visibles. Cada saldo conserva todos los movimientos, incluso los que no se muestran.</p> : null}
@@ -114,7 +114,7 @@ export function StatementMovements({ statement, from, to }: { statement: Custome
                 </Fragment>
               );
             })}
-            {lines.length === 0 ? <tr><td colSpan={4} className="px-5 py-8"><EmptyState title="Sin movimientos" description="No hay movimientos para estos filtros." /></td></tr> : null}
+            {lines.length === 0 ? <tr><td colSpan={4} className="px-5 py-8"><EmptyState title={compactView && statement.finalBalance === 0 ? "Cuenta al día" : "Sin movimientos"} description={compactView && lastZeroDate && filter === "todos" ? "No hay movimientos posteriores al último cierre. Podés consultar el historial completo." : "No hay movimientos para estos filtros."} /></td></tr> : null}
           </tbody>
           <tfoot className="border-t-2 border-slate-200 bg-slate-50">
             <tr><th colSpan={3} scope="row" className="px-5 py-4 text-left text-sm font-semibold">{filteredPeriod ? "Saldo al cierre del período" : "Saldo final de la cuenta"}</th><td className={cn("whitespace-nowrap px-5 py-4 text-right text-lg font-bold tabular-nums", statement.finalBalance < 0 && "text-emerald-700")}>{formatCurrency(Math.abs(statement.finalBalance))}{statement.finalBalance < 0 ? <span className="mt-0.5 block text-[11px] font-medium">a favor</span> : null}</td></tr>

@@ -1,4 +1,21 @@
-import type { StatementLine, StatementMovement } from "./customer-accounts";
+import type { CustomerStatement, StatementLine, StatementMovement } from "./customer-accounts";
+
+/** Display-only cut by ledger position, not date: a new cycle can start on the closing day. */
+export function statementSinceLastZero(full: CustomerStatement) {
+  let lastZero = -1;
+  for (let index = 0; index < full.lines.length; index++) {
+    if (full.lines[index].balance === 0) lastZero = index;
+  }
+  return {
+    statement: lastZero < 0 ? full : {
+      openingBalance: 0,
+      lines: full.lines.slice(lastZero + 1),
+      finalBalance: full.finalBalance,
+    },
+    hiddenCount: lastZero + 1,
+    lastZeroDate: lastZero < 0 ? null : full.lines[lastZero].date,
+  };
+}
 
 export type StatementCategory = "remito" | "pago" | "nota_credito" | "nota_debito" | "ajuste";
 

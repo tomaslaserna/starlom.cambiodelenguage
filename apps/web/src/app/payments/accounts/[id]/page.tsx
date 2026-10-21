@@ -5,7 +5,7 @@ import { ButtonLink, Card, DataTable, DataTableBody, DataTableCell, DataTableHea
 import { ApiError } from "@/lib/api-response";
 import { requireStaffSession } from "@/lib/auth";
 import { getCustomerStatement, getCustomerPaymentContext, listCustomerOptions } from "@/lib/customer-accounts";
-import { summarizeStatement } from "@/lib/customer-statement-presentation";
+import { statementSinceLastZero, summarizeStatement } from "@/lib/customer-statement-presentation";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { getTreasuryAccountOptions } from "@/lib/finance";
 import { requirePagePermission } from "@/lib/page-auth";
@@ -17,7 +17,7 @@ import { StatementDateFilter, StatementMovements } from "./statement-movements";
 
 type CustomerStatementPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; history?: string }>;
 };
 
 export default async function CustomerStatementPage({ params, searchParams }: CustomerStatementPageProps) {
@@ -29,6 +29,8 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
   const from = query.from ?? "";
   const to = query.to ?? "";
   const filteredPeriod = Boolean(from || to);
+  const completeHistory = query.history === "completo";
+  const compactView = !filteredPeriod && !completeHistory;
   const loadStatement = (options: { from?: string; to?: string }) => getCustomerStatement(session.companyId, id, options).catch((error: unknown) => {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
@@ -42,7 +44,9 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
     getCustomerPaymentContext(session.companyId, id),
   ]);
   if (!periodResult || !fullResult) notFound();
-  const { customer, statement, unappliedPayments } = periodResult;
+  const { customer, unappliedPayments } = periodResult;
+  const currentPeriod = statementSinceLastZero(fullResult.statement);
+  const statement = compactView ? currentPeriod.statement : periodResult.statement;
   const currentBalance = fullResult.statement.finalBalance;
   const summary = summarizeStatement(statement.lines);
   const today = localDateIso();
@@ -61,7 +65,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
             <p className="mt-1.5 text-xs text-slate-500">{[customer.taxId ? `CUIT ${customer.taxId}` : "", customer.sellerName ? `Vendedor: ${customer.sellerName}` : ""].filter(Boolean).join(" · ") || "Cuenta corriente del cliente"}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <ButtonLink href={pdfHref} prefetch={false} target="_blank" variant="secondary">Exportar PDF</ButtonLink>
+            <ButtonLink href={pdfHref} prefetch={false} target="_blank" variant="secondary">{compactView ? "Exportar PDF completo" : "Exportar PDF"}</ButtonLink>
             <RegisterPaymentDialog action={registerCustomerPaymentAction} customers={customers} defaultCustomerId={id} treasuryAccounts={treasuryAccounts} today={today} triggerLabel="+ Registrar pago" />
           </div>
         </div>
@@ -77,7 +81,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
             {paymentContext.reconciliation.needsReview ? <p role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-900">El saldo incluye otros movimientos o inconsistencias por {formatCurrency(Math.abs(paymentContext.reconciliation.difference))} para revisar. No se imputan automáticamente.</p> : null}
           </div>
           <div className="border-t border-slate-100 pt-4 md:border-l md:border-t-0 md:pl-6 md:pt-0">
-            <h2 className="text-xs font-medium text-slate-500">{filteredPeriod ? "Movimientos del período" : "Resumen del historial"}</h2>
+            <h2 className="text-xs font-medium text-slate-500">{filteredPeriod ? "Movimientos del período" : compactView ? "Resumen del período actual" : "Resumen del historial"}</h2>
             <dl className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(125px,1fr))] gap-x-4 gap-y-3">
               <div><dt className="text-xs text-slate-500">Ventas / remitos</dt><dd className="mt-1.5 text-base font-semibold tabular-nums">{formatCurrency(summary.sales)}</dd></div>
               <div><dt className="text-xs text-slate-500">Pagos en cuenta</dt><dd className="mt-1.5 text-base font-semibold text-emerald-700 tabular-nums">{formatCurrency(summary.payments)}</dd></div>
@@ -135,9 +139,17 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
         <section aria-label="Movimientos de cuenta corriente" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 p-5">
             <div className="flex items-center gap-2"><h2 className="text-base font-semibold">Movimientos</h2><span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{statement.lines.length}</span></div>
-            <StatementDateFilter key={`dates-${from}-${to}`} clientId={id} from={from} to={to} />
+            <div className="flex flex-wrap items-center gap-2">
+              {!compactView ? <ButtonLink href={`/payments/accounts/${id}`} variant="secondary">Último período</ButtonLink> : null}
+              {!completeHistory || filteredPeriod ? <ButtonLink href={`/payments/accounts/${id}?history=completo`} variant="secondary">Historial completo</ButtonLink> : null}
+              <StatementDateFilter key={`dates-${from}-${to}`} clientId={id} from={from} to={to} />
+            </div>
           </div>
-          <StatementMovements key={`${id}-${from}-${to}`} statement={statement} from={from} to={to} />
+          {compactView && currentPeriod.hiddenCount > 0 ? <div className="mx-5 mb-4 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-relaxed text-slate-600">
+            {statement.finalBalance === 0 && statement.lines.length === 0 ? <strong className="text-emerald-700">Cuenta al día. </strong> : null}
+            Último cierre en $0,00: {formatDate(currentPeriod.lastZeroDate!)}. {currentPeriod.hiddenCount} movimientos anteriores disponibles en «Historial completo».
+          </div> : null}
+          <StatementMovements key={`${id}-${from}-${to}-${completeHistory}`} statement={statement} from={from} to={to} compactView={compactView} lastZeroDate={currentPeriod.lastZeroDate} />
         </section>
       </div>
     </ModulePage>
