@@ -74,7 +74,7 @@ export const navigationGroups: NavigationGroup[] = [
   },
   {
     href: "/store",
-    label: "Tienda",
+    label: "Tienda y Portal",
     active: "store",
     permission: ORDERS_READ_PERMISSION,
   },
@@ -264,10 +264,10 @@ export const navigationSections: NavigationSection[] = [
     ],
   },
   {
-    label: "Tienda",
+    label: "Tienda y Portal",
     href: "/store",
-    icon: "cart",
-    groups: [groupByLabel("Tienda")],
+    icon: "eye",
+    groups: [groupByLabel("Tienda y Portal")],
   },
   {
     label: "Datos",

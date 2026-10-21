@@ -3,7 +3,7 @@
 import { createClient, type Session } from "@supabase/supabase-js";
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVisibilityAwarePolling } from "@/components/use-visibility-aware-polling";
 import { formatCurrency } from "@/lib/format";
 import { money as roundMoney, priceForList } from "@/lib/order-pricing";
@@ -37,6 +37,7 @@ type Data = {
     name: string;
     selectedList: string;
     payment_term_days: number | null;
+    phone: string;
   };
   lists: string[];
   products: Product[];
@@ -115,6 +116,9 @@ export function PortalOrderBuilder({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [created, setCreated] = useState("");
+  const analyticsSessionRef = useRef("");
+  const pageTrackedRef = useRef(false);
+  const checkoutTrackedRef = useRef(false);
   useEffect(() => {
     supabase?.auth
       .getSession()
@@ -179,6 +183,25 @@ export function PortalOrderBuilder({
   const vatRate = 21;
   const vatAmount = roundMoney((netSubtotal * vatRate) / 100);
   const total = roundMoney(netSubtotal + vatAmount);
+  useEffect(() => {
+    if (!data || pageTrackedRef.current) return;
+    const sessionId = crypto.randomUUID();
+    analyticsSessionRef.current = sessionId;
+    pageTrackedRef.current = true;
+    void fetch("/api/storefront/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, eventType: "page_view", channel: "portal" }) });
+  }, [data]);
+  useEffect(() => {
+    if (!data || !rows.length || checkoutTrackedRef.current) return;
+    const sessionId = analyticsSessionRef.current || crypto.randomUUID();
+    analyticsSessionRef.current = sessionId;
+    checkoutTrackedRef.current = true;
+    void fetch("/api/storefront/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, eventType: "checkout_started", channel: "portal", name: data.customer.name, phone: data.customer.phone, businessName: data.customer.name, estimatedAmount: total, cart: rows.map(({ product, qty }) => ({ productId: product.id, name: product.name, quantity: qty })) }) });
+  }, [data, rows, total]);
+  useEffect(() => {
+    if (!data || !rows.length || !analyticsSessionRef.current) return;
+    const timer = window.setTimeout(() => void fetch("/api/storefront/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: analyticsSessionRef.current, eventType: "checkout_updated", channel: "portal", name: data.customer.name, phone: data.customer.phone, businessName: data.customer.name, estimatedAmount: total, cart: rows.map(({ product, qty }) => ({ productId: product.id, name: product.name, quantity: qty })) }) }), 500);
+    return () => window.clearTimeout(timer);
+  }, [data, rows, total]);
   const regularTotal = rows.reduce(
     (sum, row) =>
       sum +
@@ -262,6 +285,7 @@ export function PortalOrderBuilder({
           clientId: data.customer.id,
           paymentMethod: payment,
           customerObservation,
+          analyticsSessionId: analyticsSessionRef.current,
           items: rows.map((r) => ({
             productId: r.product.id,
             quantity: r.qty,
