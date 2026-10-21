@@ -216,12 +216,11 @@ export const navigationGroups: NavigationGroup[] = [
   { href: "/bank", label: "Banco", active: "bank" },
   { href: "/supervisor-lab", label: "LA TIRRA ia.1.1", active: "supervisor-lab", permission: CRM_READ_PERMISSION },
   // CRM (segundo mundo para vendedores). active: "crm" agrupa estos en la seccion CRM.
-  { href: "/crm/perfil", label: "Perfil", active: "crm", permission: CRM_READ_PERMISSION },
-  { href: "/crm/clientes", label: "Clientes", active: "crm", permission: CRM_READ_PERMISSION },
-  { href: "/crm/cobros", label: "Cobros", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/crm/perfil", label: "Hoy", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/crm/clientes", label: "Personas", active: "crm", permission: CRM_READ_PERMISSION },
   { href: "/crm/leads", label: "Leads", active: "crm", permission: CRM_READ_PERMISSION },
-  { href: "/crm/presupuestos", label: "Presupuestos", active: "crm", permission: CRM_READ_PERMISSION },
-  { href: "/crm/listas", label: "Listas de precios", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/crm/cobros", label: "Cobros", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/crm/presupuestos", label: "Oportunidades", active: "crm", permission: CRM_READ_PERMISSION },
 ];
 
 export type NavigationSection = {

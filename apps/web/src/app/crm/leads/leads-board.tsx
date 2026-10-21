@@ -8,7 +8,7 @@ import { ORDER_CONFIRMATION_RECEIPT_OPTIONS } from "@/lib/receipt-types";
 
 type Action = (formData: FormData) => Promise<void>;
 type View = "hoy" | "embudo" | "todos";
-type Props = { active: Record<string, Lead[]>; closed: Lead[]; counts: Record<string, number>; createAction: Action; moveAction: Action; discardAction: Action; convertAction: Action; recordAction: Action; agenda: LeadFollowupAgendaItem[]; initialCreating?: boolean };
+type Props = { active: Record<string, Lead[]>; closed: Lead[]; counts: Record<string, number>; createAction: Action; moveAction: Action; discardAction: Action; convertAction: Action; recordAction: Action; agenda: LeadFollowupAgendaItem[]; initialCreating?: boolean; initialLeadId?: string };
 
 const COLUMNS = [{ key: "nuevo", label: "Nuevos" }, { key: "contactado", label: "Contactados" }, { key: "interesado", label: "Interesados" }];
 const NEXT_STAGE: Record<string, string> = { nuevo: "contactado", contactado: "interesado" };
@@ -25,10 +25,11 @@ function isActive(lead: Lead) { return ["nuevo", "contactado", "interesado"].inc
 function dateTone(date: string | null) { if (!date || date < localDate()) return "border-[color:var(--danger)] text-[color:var(--danger)]"; if (date <= localDate(3)) return "border-[color:var(--warning)] text-[color:var(--warning)]"; return "border-[color:var(--border)] text-[color:var(--muted)]"; }
 function whatsappUrl(phone: string) { const digits = phone.replace(/\D/g, ""); return digits ? `https://wa.me/${digits.startsWith("54") ? digits : `54${digits}`}` : ""; }
 
-export function LeadsBoard({ active, closed, counts, createAction, moveAction, discardAction, convertAction, recordAction, agenda, initialCreating = false }: Props) {
+export function LeadsBoard({ active, closed, counts, createAction, moveAction, discardAction, convertAction, recordAction, agenda, initialCreating = false, initialLeadId }: Props) {
+  const initialLead = [...Object.values(active).flat(), ...closed].find((lead) => lead.id === initialLeadId) ?? null;
   const [view, setView] = useState<View>("hoy");
   const [creating, setCreating] = useState(initialCreating);
-  const [selected, setSelected] = useState<Lead | null>(null);
+  const [selected, setSelected] = useState<Lead | null>(initialLead);
   const [delay, setDelay] = useState(7);
   const [outcome, setOutcome] = useState<LeadContactOutcome>("contactado");
   const [query, setQuery] = useState("");

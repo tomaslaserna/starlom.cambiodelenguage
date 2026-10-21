@@ -6,13 +6,10 @@ import { AppIcon, ButtonLink, cn } from "@/components/ui";
 import type { AppIconName } from "@/components/ui/app-icon";
 
 const SECTIONS: Array<{ href: string; label: string; icon: AppIconName }> = [
-  { href: "/crm/perfil", label: "Mi día", icon: "chart" },
-  { href: "/crm/clientes", label: "Clientes", icon: "user" },
-  { href: "/crm/leads", label: "Leads", icon: "trend" },
-  { href: "/crm/presupuestos", label: "Presupuestos", icon: "quote" },
+  { href: "/crm/perfil", label: "Hoy", icon: "clock" },
+  { href: "/crm/clientes", label: "Personas", icon: "user" },
+  { href: "/crm/presupuestos", label: "Oportunidades", icon: "trend" },
   { href: "/crm/cobros", label: "Cobros", icon: "wallet" },
-  { href: "/crm/calendario", label: "Agenda", icon: "calendar" },
-  { href: "/crm/listas", label: "Precios", icon: "package" },
 ];
 
 export function CrmCommandBar() {
@@ -26,10 +23,11 @@ export function CrmCommandBar() {
             <span className="h-2 w-2 rounded-full bg-[#ffb238]" />
             Centro comercial
           </div>
-          <p className="mt-1 text-sm font-semibold text-[#526174]">Contactá, cotizá y hacé seguimiento sin perder el próximo paso.</p>
+          <p className="mt-1 text-sm font-semibold text-[#526174]">Toda la información comercial, convertida en un próximo paso.</p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex">
+        <div className="grid grid-cols-3 gap-2 sm:flex">
           <ButtonLink href="/crm/leads?nuevo=1" leadingIcon={<AppIcon className="h-4 w-4" name="trend" />} size="sm" variant="secondary">Nuevo lead</ButtonLink>
+          <ButtonLink href="/crm/clientes/nuevo" leadingIcon={<AppIcon className="h-4 w-4" name="user" />} size="sm" variant="secondary">Nuevo cliente</ButtonLink>
           <ButtonLink href="/crm/presupuestos/nuevo" leadingIcon={<AppIcon className="h-4 w-4" name="quote" />} size="sm">Presupuestar</ButtonLink>
         </div>
       </div>
@@ -51,6 +49,10 @@ export function CrmCommandBar() {
             </Link>
           );
         })}
+        <span className="mx-1 hidden w-px shrink-0 bg-[#dce5f0] sm:block" />
+        <Link className="flex min-h-10 shrink-0 items-center gap-2 rounded-[10px] px-3 text-sm font-bold text-[#64748b] transition hover:bg-[#edf5ff] hover:text-[#075ac7]" href="/crm/leads"><AppIcon className="h-4 w-4" name="trend" />Leads</Link>
+        <Link className="flex min-h-10 shrink-0 items-center gap-2 rounded-[10px] px-3 text-sm font-bold text-[#64748b] transition hover:bg-[#edf5ff] hover:text-[#075ac7]" href="/crm/calendario"><AppIcon className="h-4 w-4" name="calendar" />Agenda</Link>
+        <Link className="flex min-h-10 shrink-0 items-center gap-2 rounded-[10px] px-3 text-sm font-bold text-[#64748b] transition hover:bg-[#edf5ff] hover:text-[#075ac7]" href="/crm/listas"><AppIcon className="h-4 w-4" name="package" />Precios</Link>
       </nav>
     </section>
   );
