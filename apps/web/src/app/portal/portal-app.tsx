@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { CustomerWhatsAppButton } from "@/components/customer-whatsapp-button";
 import { PortalQuotes } from "./portal-quotes";
+import { PortalAccountStatement } from "./portal-account-statement";
 import { useVisibilityAwarePolling } from "@/components/use-visibility-aware-polling";
 import { formatCurrency } from "@/lib/format";
 
@@ -188,7 +189,7 @@ export function PortalApp() {
       <p className="-mt-3 text-right text-xs font-semibold text-[#64748b]">Información actualizada {new Date(summary.updatedAt).toLocaleString("es-AR")}</p>
       {message ? <p className="rounded-2xl bg-emerald-50 p-4 font-bold text-emerald-700">{message}</p> : null}{error ? <p className="rounded-2xl border border-amber-200 bg-amber-50 p-4 font-bold text-amber-800">{error}</p> : null}
       <nav aria-label="Navegación del portal" className="sticky top-2 z-20 flex gap-2 overflow-x-auto rounded-2xl border border-[#dbe5f1] bg-white/95 p-2 shadow-md backdrop-blur">
-        <PortalNavLink href="#presupuestos" label="Presupuestos" /><PortalNavLink href="#pedidos" label="Pedidos" /><PortalNavLink href="#facturas" label="Facturas" /><PortalNavLink href="#pagos" label="Pagos" /><PortalNavLink href="#pagar" label="Pagar ahora" /><PortalNavLink href="#preferencias" label="Preferencias" />
+        <PortalNavLink href="#cuenta-corriente" label="Cuenta corriente" /><PortalNavLink href="#presupuestos" label="Presupuestos" /><PortalNavLink href="#pedidos" label="Pedidos" /><PortalNavLink href="#facturas" label="Facturas" /><PortalNavLink href="#pagos" label="Pagos" /><PortalNavLink href="#pagar" label="Pagar ahora" /><PortalNavLink href="#preferencias" label="Preferencias" />
       </nav>
       <div><span className="text-xs font-extrabold uppercase tracking-[.12em] text-[#075ac7]">Acciones rápidas</span><h2 className="mt-1 text-2xl font-black">¿Qué querés hacer?</h2></div>
       <nav aria-label="Accesos rápidos del portal" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -199,6 +200,7 @@ export function PortalApp() {
         <PortalShortcut description="Revisá únicamente los pagos ya aprobados." href="#pagos" title="Ver pagos" />
         <PortalShortcut description="Elegí facturas pendientes y pagalas en el acto." href="#pagar" title="Pagar facturas" />
       </nav>
+      {branch ? <PortalAccountStatement key={`${session.user.id}:${branch}`} clientId={branch} accessToken={session.access_token} updatedAt={summary.updatedAt} /> : null}
       <PortalQuotes accessToken={session.access_token} onChanged={(value) => setSummary(value as Summary)} quotes={quotes} />
       <div className="scroll-mt-5" id="pedidos"><PortalDocumentTable title="Historial de pedidos" empty="Todavía no hay pedidos para esta sucursal." rows={sales.map((sale) => ({ id: sale.id, cells: [sale.date, sale.number || "Pedido", sale.status, formatCurrency(Number(sale.total))] }))} onOpen={(id) => openDocument(`/api/portal/documents/orders/${id}`)} /></div>
       <div className="scroll-mt-5" id="facturas"><PortalDocumentTable title="Facturas y notas fiscales" empty="Todavía no hay comprobantes fiscales emitidos para esta sucursal." rows={invoices.map((invoice) => ({ id: `${invoice.kind}:${invoice.id}`, cells: [invoice.date, `${invoice.kind === "credit_note" ? "Nota de crédito" : invoice.kind === "debit_note" ? "Nota de débito" : "Factura"} ${invoice.number}`, formatCurrency(Number(invoice.total))] }))} onOpen={(key) => { const [kind, id] = key.split(":"); openDocument(kind === "invoice" ? `/api/portal/documents/invoices/${id}` : `/api/portal/documents/notes/${id}`); }} /></div>

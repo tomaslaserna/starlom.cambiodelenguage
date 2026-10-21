@@ -31,7 +31,7 @@ function route(full = fixture(), options = {}) {
   const pdf = { doc: { y: 0 }, drawHeader: (value) => { observed.header = value; }, section() {}, title() {},
     muted: (value) => observed.notes.push(value), table: (_cols, rows) => { observed.rows = rows; },
     totals: (...args) => { observed.totals = args; }, note: (value) => observed.notes.push(value) };
-  const mod = load("../src/app/api/pdfs/accounts/statement/[id]/route.ts", {
+  const aliases = {
     "@/lib/api-response": { handleApiError: (error) => Response.json({ error: error.message }, { status: error.status ?? 500 }) },
     "@/lib/customer-accounts": { getCustomerStatement: async (company, id, dates) => {
       assert.equal(company, 1); assert.equal(id, clientId); observed.queries.push(dates);
@@ -46,7 +46,9 @@ function route(full = fixture(), options = {}) {
       return { companyId: 1 };
     } },
     "@/lib/timezone": { localDateIso: () => "2026-10-21" },
-  });
+  };
+  const builder = load("../src/lib/pdf/customer-statement.ts", aliases);
+  const mod = load("../src/app/api/pdfs/accounts/statement/[id]/route.ts", { ...aliases, "@/lib/pdf/customer-statement": builder });
   return { observed, get: (query = "") => mod.GET({ nextUrl: new URL(`https://starlim.test/api/pdfs/accounts/statement/${clientId}${query}`) }, { params: Promise.resolve({ id: clientId }) }) };
 }
 
