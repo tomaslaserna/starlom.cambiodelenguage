@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function CrmHomePage() {
-  redirect("/crm/clientes");
+  redirect("/crm/perfil");
 }

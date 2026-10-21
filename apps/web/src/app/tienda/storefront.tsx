@@ -102,6 +102,8 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   const catalogRef = useRef<HTMLDivElement>(null);
   const analyticsSessionRef = useRef("");
   const recommendationRef = useRef<HTMLDivElement>(null);
+  const checkoutFormRef = useRef<HTMLFormElement>(null);
+  const checkoutUpdateTimerRef = useRef<number | null>(null);
   const categoryCounts = useMemo(() => products.reduce((counts, product) => {
     if (product.category) counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
     return counts;
@@ -225,9 +227,25 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   }
 
   function goToCheckout() {
-    void fetch("/api/storefront/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: analyticsSessionRef.current, eventType: "checkout_started", channel: challengeActive ? "desafio" : "tienda" }) });
+    void sendCheckoutSnapshot("checkout_started");
     setStep("checkout");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function checkoutSnapshot(form?:HTMLFormElement|null){
+    const values=form?Object.fromEntries(new FormData(form).entries()):{};
+    return {sessionId:analyticsSessionRef.current,eventType:"checkout_updated",channel:challengeActive?"desafio":portalClientId?"portal":"tienda",...values,name:String(values.name??challengeCustomer.name),phone:String(values.phone??challengeCustomer.phone),businessName:String(values.businessName??challengeCustomer.businessName??discovery.companyName),businessType:discovery.businessType||discovery.industry,address:location.address,estimatedAmount:finalCartAmount,cart:selected.map((product)=>({productId:product.id,name:product.name,quantity:cart[product.id]}))};
+  }
+
+  function sendCheckoutSnapshot(eventType:"checkout_started"|"checkout_updated",form:HTMLFormElement|null=checkoutFormRef.current){
+    if(!analyticsSessionRef.current)return;
+    void fetch("/api/storefront/events",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...checkoutSnapshot(form),eventType})});
+  }
+
+  function scheduleCheckoutSnapshot(event:FormEvent<HTMLFormElement>){
+    if(checkoutUpdateTimerRef.current)window.clearTimeout(checkoutUpdateTimerRef.current);
+    const form=event.currentTarget;
+    checkoutUpdateTimerRef.current=window.setTimeout(()=>sendCheckoutSnapshot("checkout_updated",form),500);
   }
 
   function openCategory(value: string) {
@@ -268,6 +286,8 @@ export function Storefront({ products, recommendations = [], combos = [], portal
       }
       return next;
     });
+    setBrowseAll(true);
+    window.setTimeout(() => catalogRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
 
   function activateChallenge() {
@@ -336,7 +356,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
         if (url && key) accessToken = (await createClient(url, key).auth.getSession()).data.session?.access_token ?? "";
       }
       if (!requestKeyRef.current) requestKeyRef.current = crypto.randomUUID();
-      const response = await fetch("/api/storefront/requests", { method: "POST", headers: { "Content-Type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) }, body: JSON.stringify({ ...Object.fromEntries(form.entries()), ...discovery, usualPurchases: discovery.usualPurchases, ...location, portalClientId, requestKey: requestKeyRef.current, paymentMethod, challengeToken, challengeStartedAt: challengeStartedAt ? new Date(challengeStartedAt).toISOString() : "", items: selected.map((product) => ({ productId: product.id, quantity: cart[product.id] })) }) });
+      const response = await fetch("/api/storefront/requests", { method: "POST", headers: { "Content-Type": "application/json", ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) }, body: JSON.stringify({ ...Object.fromEntries(form.entries()), ...discovery, usualPurchases: discovery.usualPurchases, ...location, portalClientId, requestKey: requestKeyRef.current, analyticsSessionId: analyticsSessionRef.current, paymentMethod, challengeToken, challengeStartedAt: challengeStartedAt ? new Date(challengeStartedAt).toISOString() : "", items: selected.map((product) => ({ productId: product.id, quantity: cart[product.id] })) }) });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "No pudimos enviar el pedido");
       setSubmittedReference(String(payload.data?.quoteNumber ?? ""));
@@ -440,7 +460,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
       {filtered.length >= visibleLimit && <div className="mt-6 text-center"><button className="rounded-xl border border-[#075ac7] px-6 py-3 font-bold text-[#075ac7]" onClick={()=>setVisibleLimit((value)=>value+60)} type="button">Mostrar 60 productos más</button></div>}
       <div className="sticky bottom-4 z-20 mt-8 flex items-center justify-between gap-4 rounded-[16px] bg-[#102d52] px-5 py-4 text-white shadow-2xl"><div><strong className="block text-lg">{totalUnits} {totalUnits === 1 ? "unidad" : "unidades"}</strong><span className="text-sm text-white/70">{selected.length} {selected.length === 1 ? "producto" : "productos"} en el carrito</span></div><button className="rounded-[11px] bg-[#ffb74d] px-5 py-3 font-extrabold text-[#173052] disabled:opacity-50" disabled={!totalUnits} onClick={goToCheckout} type="button">Continuar</button></div>
       </>}
-    </> : <form className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]" onSubmit={submit}>
+    </> : <form className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]" onChange={scheduleCheckoutSnapshot} onSubmit={submit} ref={checkoutFormRef}>
       <div className="rounded-[18px] border border-[#dbe5f1] bg-white p-5 shadow-sm sm:p-7"><button className="mb-5 text-sm font-bold text-[#075ac7]" onClick={() => setStep("catalog")} type="button">← Volver al catálogo</button><span className="text-xs font-extrabold uppercase tracking-[0.12em] text-[#075ac7]">Último paso</span><h2 className="mt-2 text-2xl font-extrabold">¿A dónde te enviamos la propuesta?</h2><p className="mt-2 text-[#64748b]">Ya elegiste lo que te interesa. Ahora un comercial prepara la cotización y te contacta.</p><div className="mt-6 grid gap-4 sm:grid-cols-2">{[["name","Nombre y apellido *"],["phone","WhatsApp o teléfono *"],["email","Email"],["brand","Marca o nombre comercial"],["taxId","CUIT"],["businessName","Razón social"]].map(([name,label]) => <label className="grid gap-1.5 text-sm font-bold" key={name}>{label}<input className={fieldClass} defaultValue={name === "name" ? challengeCustomer.name : name === "phone" ? challengeCustomer.phone : name === "businessName" ? challengeCustomer.businessName : ""} name={name} type={name === "email" ? "email" : "text"} required={name === "name" || name === "phone" || (name === "email" && paymentMethod === "qr")} /></label>)}<label className="grid gap-1.5 text-sm font-bold">Rubro<input className={fieldClass} name="industry" onChange={(event) => setDiscovery((current) => ({ ...current, industry: event.target.value }))} value={discovery.industry} /></label></div>
       <fieldset className="mt-6"><legend className="text-sm font-black">Forma de pago</legend><div className="mt-2 grid gap-3 sm:grid-cols-2"><button className={`rounded-xl border p-4 text-left ${paymentMethod === "cash" ? "border-[#075ac7] bg-[#eef5ff] ring-2 ring-[#075ac7]/20" : "border-[#dbe5f1]"}`} onClick={() => setPaymentMethod("cash")} type="button"><strong className="block">Efectivo al recibir</strong><span className="mt-1 block text-sm text-[#64748b]">El pedido queda para confirmación comercial.</span></button><button className={`rounded-xl border p-4 text-left ${paymentMethod === "qr" ? "border-[#075ac7] bg-[#eef5ff] ring-2 ring-[#075ac7]/20" : "border-[#dbe5f1]"}`} onClick={() => setPaymentMethod("qr")} type="button"><strong className="block">QR Mercado Pago</strong><span className="mt-1 block text-sm text-[#64748b]">Precio Lista 1 y acreditación en vivo.</span></button></div><p className="mt-2 text-xs font-semibold text-[#64748b]">La cuenta corriente es exclusiva para clientes habilitados en el Portal de clientes.</p></fieldset>
       {(discovery.businessType || discovery.usualPurchases.length > 0) && <div className="mt-5 rounded-[12px] bg-[#eef5ff] p-4 text-sm text-[#315170]"><strong className="block">Perfil de compra guardado</strong><span>{[discovery.businessType, discovery.usualPurchases.join(", ")].filter(Boolean).join(" · ")}</span></div>}

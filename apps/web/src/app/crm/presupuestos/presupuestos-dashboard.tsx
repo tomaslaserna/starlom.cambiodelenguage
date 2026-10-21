@@ -97,14 +97,10 @@ export function PresupuestosDashboard({ buckets, counts, topClients }: Props) {
                   <span className="block erp-text-caption">Vencimiento</span>
                   {vencimientoLegend(selected, quote.daysRemaining)}
                 </div>
-                <a
-                  href={`/api/pdfs/quotes/${quote.id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="erp-text-body-sm justify-self-start rounded-[9px] border border-[color:var(--accent)] bg-[color:var(--accent)] px-3 py-2 font-semibold text-white transition-colors hover:bg-[color:var(--accent-strong)] sm:justify-self-end"
-                >
-                  Ver PDF
-                </a>
+                <div className="flex flex-wrap gap-2 sm:justify-self-end">
+                  <a href={`/crm/clientes?q=${encodeURIComponent(quote.clientName)}`} className="erp-text-body-sm rounded-[9px] border border-[color:var(--border)] bg-white px-3 py-2 font-semibold text-[color:var(--accent)] transition-colors hover:bg-[color:var(--accent-subtle)]">Ver cliente</a>
+                  <a href={`/api/pdfs/quotes/${quote.id}`} target="_blank" rel="noreferrer" className="erp-text-body-sm rounded-[9px] border border-[color:var(--accent)] bg-[color:var(--accent)] px-3 py-2 font-semibold text-white transition-colors hover:bg-[color:var(--accent-strong)]">Ver PDF</a>
+                </div>
               </li>
             ))}
           </ul>

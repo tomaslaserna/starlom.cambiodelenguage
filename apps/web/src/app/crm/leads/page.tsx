@@ -16,7 +16,7 @@ import {
 import { SalesActivityPanel } from "@/app/crm/leads/sales-activity-panel";
 import { getSalesActivityDashboard } from "@/lib/sales-activity";
 
-export default async function CrmLeadsPage({ searchParams }: { searchParams: Promise<{ nuevo?: string }> }) {
+export default async function CrmLeadsPage({ searchParams }: { searchParams: Promise<{ nuevo?: string; lead?: string }> }) {
   const session = await requireStaffSession();
   if (!(await sessionCanUseCrm(session))) redirect("/");
   const isSeller = normalizeRole(session.role) === "vendedor";
@@ -48,6 +48,7 @@ export default async function CrmLeadsPage({ searchParams }: { searchParams: Pro
               counts={counts}
               createAction={createLeadAction}
               initialCreating={params.nuevo === "1"}
+              initialLeadId={params.lead}
               discardAction={discardLeadAction}
               moveAction={moveLeadStageAction}
               agenda={leadAgenda}

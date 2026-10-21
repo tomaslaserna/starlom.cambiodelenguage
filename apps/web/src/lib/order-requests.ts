@@ -112,7 +112,7 @@ export async function rejectOrderRequest(session: AuthSession, requestId: string
 }
 
 export async function storefrontDashboard(companyId:number, days=30) {
-  const result = await queryWithCompanyContext<{
+  const [result,channels,abandoned,recent] = await Promise.all([queryWithCompanyContext<{
     views:string; unique_sessions:string; checkout_started:string; requests:string; incomplete:string;
     approved:string; sales_amount:string; pending:string; challenge_pending:string;
   }>(companyId, `
@@ -125,12 +125,33 @@ export async function storefrontDashboard(companyId:number, days=30) {
       (SELECT count(DISTINCT session_id) FROM e WHERE event_type='page_view')::text unique_sessions,
       (SELECT count(DISTINCT session_id) FROM e WHERE event_type='checkout_started')::text checkout_started,
       (SELECT count(*) FROM r)::text requests,
-      GREATEST((SELECT count(DISTINCT session_id) FROM e WHERE event_type='checkout_started')-(SELECT count(*) FROM r),0)::text incomplete,
+      (SELECT count(*) FROM storefront_checkout_sessions WHERE empresa_id=$1 AND status IN ('iniciada','en_progreso') AND last_activity_at >= now()-($2::int||' days')::interval)::text incomplete,
       (SELECT count(*) FROM r WHERE status='aprobada')::text approved,
       COALESCE((SELECT sum(s.total_amount) FROM r JOIN sales s ON s.id=r.approved_order_id WHERE r.status='aprobada'),0)::text sales_amount,
       (SELECT count(*) FROM r WHERE status='solicitud')::text pending,
       (SELECT count(*) FROM r WHERE status='solicitud' AND channel='desafio')::text challenge_pending`,
-    [companyId,days], { cache:false });
+    [companyId,days], { cache:false }),queryWithCompanyContext<{channel:OrderRequestChannel;views:string;checkouts:string;incomplete:string;requests:string;approved:string;sales_amount:string}>(companyId,`
+      WITH channels(channel) AS (VALUES ('tienda'),('desafio'),('portal'))
+      SELECT c.channel::text channel,
+        (SELECT count(*) FROM storefront_events e WHERE e.empresa_id=$1 AND e.channel=c.channel AND e.event_type='page_view' AND e.created_at>=now()-($2::int||' days')::interval)::text views,
+        (SELECT count(*) FROM storefront_checkout_sessions s WHERE s.empresa_id=$1 AND s.channel=c.channel AND s.started_at>=now()-($2::int||' days')::interval)::text checkouts,
+        (SELECT count(*) FROM storefront_checkout_sessions s WHERE s.empresa_id=$1 AND s.channel=c.channel AND s.status IN ('iniciada','en_progreso') AND s.last_activity_at>=now()-($2::int||' days')::interval)::text incomplete,
+        (SELECT count(*) FROM order_requests r WHERE r.empresa_id=$1 AND r.channel=c.channel AND r.created_at>=now()-($2::int||' days')::interval)::text requests,
+        (SELECT count(*) FROM order_requests r WHERE r.empresa_id=$1 AND r.channel=c.channel AND r.status='aprobada' AND r.created_at>=now()-($2::int||' days')::interval)::text approved,
+        COALESCE((SELECT sum(s.total_amount) FROM order_requests r JOIN sales s ON s.id=r.approved_order_id AND s.empresa_id=r.empresa_id WHERE r.empresa_id=$1 AND r.channel=c.channel AND r.status='aprobada' AND r.created_at>=now()-($2::int||' days')::interval),0)::text sales_amount
+      FROM channels c`,[companyId,days],{cache:false}),queryWithCompanyContext<{session_id:string;channel:OrderRequestChannel;status:string;contact_name:string;contact_phone:string;contact_email:string;business_name:string;business_type:string;delivery_address:string;item_count:string;estimated_amount:string;started_at:string;last_activity_at:string;cart_snapshot:unknown}>(companyId,`
+      SELECT session_id::text,channel,status,contact_name,contact_phone,contact_email,business_name,business_type,delivery_address,item_count::text,estimated_amount::text,started_at::text,last_activity_at::text,cart_snapshot
+      FROM storefront_checkout_sessions WHERE empresa_id=$1 AND status IN ('iniciada','en_progreso')
+        AND last_activity_at>=now()-($2::int||' days')::interval ORDER BY last_activity_at DESC LIMIT 100`,[companyId,days],{cache:false}),queryWithCompanyContext<{day:string;views:string;checkouts:string;requests:string}>(companyId,`
+      WITH date_series AS (
+        SELECT generate_series(CURRENT_DATE-LEAST($2::int-1,29),CURRENT_DATE,'1 day')::date AS report_date
+      )
+      SELECT d.report_date::text AS day,
+        (SELECT count(*) FROM storefront_events e WHERE e.empresa_id=$1 AND e.event_type='page_view' AND e.created_at::date=d.report_date)::text views,
+        (SELECT count(*) FROM storefront_checkout_sessions s WHERE s.empresa_id=$1 AND s.started_at::date=d.report_date)::text checkouts,
+        (SELECT count(*) FROM order_requests r WHERE r.empresa_id=$1 AND r.created_at::date=d.report_date)::text requests
+      FROM date_series d ORDER BY d.report_date`,[companyId,days],{cache:false})]);
   const row=result.rows[0]!;
-  return Object.fromEntries(Object.entries(row).map(([k,v])=>[k,Number(v)])) as Record<keyof typeof row,number>;
+  const metrics=Object.fromEntries(Object.entries(row).map(([k,v])=>[k,Number(v)])) as Record<keyof typeof row,number>;
+  return {...metrics,channels:channels.rows.map(item=>({...item,views:Number(item.views),checkouts:Number(item.checkouts),incomplete:Number(item.incomplete),requests:Number(item.requests),approved:Number(item.approved),salesAmount:Number(item.sales_amount)})),abandoned:abandoned.rows.map(item=>({...item,itemCount:Number(item.item_count),estimatedAmount:Number(item.estimated_amount)})),recent:recent.rows.map(item=>({...item,views:Number(item.views),checkouts:Number(item.checkouts),requests:Number(item.requests)}))};
 }

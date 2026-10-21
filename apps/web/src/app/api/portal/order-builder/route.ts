@@ -61,7 +61,7 @@ export async function GET(request: Request) {
             price_list_name: string | null;
             payment_term_days: number | null;
           }>(
-            `SELECT id::text, display_name AS name, price_list_name, payment_term_days FROM clients WHERE empresa_id=$1 AND id=$2::uuid`,
+            `SELECT id::text, display_name AS name, price_list_name, payment_term_days,COALESCE(phone,'') phone FROM clients WHERE empresa_id=$1 AND id=$2::uuid`,
             [identity.companyId, clientId],
           )
         ).rows[0];
@@ -213,6 +213,7 @@ export async function POST(request: Request) {
       clientId?: string;
       paymentMethod?: string;
       customerObservation?: string;
+      analyticsSessionId?: string;
       items?: { productId?: string; quantity?: number }[];
     };
     const clientId = String(body.clientId ?? "");
@@ -405,10 +406,16 @@ export async function POST(request: Request) {
            VALUES ($1,$2::uuid,'portal',$3) RETURNING id::text`,
           [identity.companyId,quote.rows[0]!.id,paymentMethod],
         )).rows[0]!.id;
+        const analyticsSessionId=/^[0-9a-f-]{36}$/i.test(String(body.analyticsSessionId??""))?String(body.analyticsSessionId):randomUUID();
         await client.query(
           `INSERT INTO storefront_events (empresa_id,session_id,event_type,channel,request_id)
-           VALUES ($1,gen_random_uuid(),'request_submitted','portal',$2::uuid)`,
-          [identity.companyId,requestId],
+           VALUES ($1,$3::uuid,'request_submitted','portal',$2::uuid)`,
+          [identity.companyId,requestId,analyticsSessionId],
+        );
+        await client.query(
+          `UPDATE storefront_checkout_sessions SET status='enviada',request_id=$1::uuid,submitted_at=now(),last_activity_at=now()
+            WHERE empresa_id=$2 AND session_id=$3::uuid`,
+          [requestId,identity.companyId,analyticsSessionId],
         );
         return {
           requestId,

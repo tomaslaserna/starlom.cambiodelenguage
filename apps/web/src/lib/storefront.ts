@@ -33,6 +33,7 @@ export type StorefrontRequest = {
   challengeStartedAt: string;
   challengeToken: string;
   requestKey: string;
+  analyticsSessionId: string;
   paymentMethod: "cash" | "qr";
   items: StorefrontLine[];
 };
@@ -64,6 +65,7 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
     challengeStartedAt: clean(body.challengeStartedAt, 40),
     challengeToken: clean(body.challengeToken, 4096),
     requestKey: clean(body.requestKey, 36),
+    analyticsSessionId: clean(body.analyticsSessionId, 36),
     paymentMethod: clean(body.paymentMethod, 10) === "qr" ? "qr" as const : "cash" as const,
     latitude: Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null,
     longitude: Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null,
@@ -72,6 +74,7 @@ export function parseStorefrontRequest(value: unknown): StorefrontRequest {
   if (!parsed.address) throw new ApiError(400, "Completá la dirección de entrega");
   if (!items.length) throw new ApiError(400, "Agregá al menos un producto");
   if (!UUID_RE.test(parsed.requestKey)) throw new ApiError(400, "Identificador de solicitud inválido");
+  if (parsed.analyticsSessionId && !UUID_RE.test(parsed.analyticsSessionId)) throw new ApiError(400, "Sesión de navegación inválida");
   if (parsed.paymentMethod === "qr" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(parsed.email)) throw new ApiError(400, "Ingresá un email válido para pagar con QR");
   return parsed;
 }
@@ -178,10 +181,16 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
        VALUES ($1,$2::uuid,$3,$4) RETURNING id::text`,
       [COMPANY_ID,quote.rows[0]!.id,challengeEligible ? "desafio" : portalClient ? "portal" : "tienda",input.paymentMethod],
     )).rows[0]!.id;
+    const analyticsSessionId = input.analyticsSessionId || input.requestKey;
     await client.query(
       `INSERT INTO storefront_events (empresa_id,session_id,event_type,channel,request_id)
        VALUES ($1,$2::uuid,'request_submitted',$3,$4::uuid)`,
-      [COMPANY_ID,input.requestKey,challengeEligible ? "desafio" : portalClient ? "portal" : "tienda",requestId],
+      [COMPANY_ID,analyticsSessionId,challengeEligible ? "desafio" : portalClient ? "portal" : "tienda",requestId],
+    );
+    await client.query(
+      `UPDATE storefront_checkout_sessions SET status='enviada',request_id=$1::uuid,submitted_at=now(),last_activity_at=now()
+        WHERE empresa_id=$2 AND session_id=$3::uuid`,
+      [requestId,COMPANY_ID,analyticsSessionId],
     );
     return { requestId, leadId: null, quoteId: quote.rows[0]!.id, quoteNumber, amount: Math.round(estimatedAmount * 1.21 * 100) / 100, challengeEligible, duplicated: false };
   });
