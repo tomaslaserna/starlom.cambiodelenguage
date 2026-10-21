@@ -117,47 +117,22 @@ export async function processStorefrontPayment(payment: MercadoPagoPayment, comp
   if (Math.abs(Number(payment.transaction_amount) - Number(intent.amount)) > 0.01) {
     throw new Error("Mercado Pago amount mismatch");
   }
-  if (!intent.seller_id) throw new Error("Storefront payment quote has no seller");
-  const order = await convertStorefrontQuoteToOrder(intent.quote_id, companyId, "qr");
   await withCompanyContext(companyId, async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(83015,hashtext($1))", [paymentReference]);
-    const sale = (await client.query<{ client_id: string }>(
-      `SELECT client_id::text FROM sales WHERE empresa_id=$1 AND id=$2::uuid`, [companyId, order.orderId],
-    )).rows[0];
-    if (!sale?.client_id) throw new Error("Converted storefront order has no client");
-    let paymentId = (await client.query<{ id: string }>(
-      `SELECT id::text FROM payments WHERE empresa_id=$1 AND reference=$2 LIMIT 1`,
-      [companyId, `Mercado Pago #${paymentReference}`],
-    )).rows[0]?.id;
-    if (!paymentId) {
-      paymentId = (await client.query<{ id: string }>(
-        `INSERT INTO payments (client_id,payment_date,amount,method,reference,status,entity_type,entity_name,concept,notes,empresa_id)
-         SELECT $1::uuid,CURRENT_DATE,$2,'transferencia',$3,'registrado','cliente',COALESCE(display_name,''),'Pedido Tienda abonado por Mercado Pago','Acreditado automáticamente antes de enviar el pedido al ERP',$4
-           FROM clients WHERE id=$1::uuid AND empresa_id=$4 RETURNING id::text`,
-        [sale.client_id, intent.amount, `Mercado Pago #${paymentReference}`, companyId],
-      )).rows[0]?.id;
-    }
-    if (!paymentId) throw new Error("Storefront customer not found");
-    await client.query(
-      `INSERT INTO current_account_movements (client_id,sale_id,payment_id,movement_date,debit,credit,description,entity_type,entity_name,empresa_id)
-       SELECT $1::uuid,$2::uuid,$3::uuid,CURRENT_DATE,0,$4,$5,'cliente',COALESCE(display_name,''),$6
-         FROM clients WHERE id=$1::uuid AND empresa_id=$6
-          AND NOT EXISTS (SELECT 1 FROM current_account_movements WHERE empresa_id=$6 AND payment_id=$3::uuid AND sale_id=$2::uuid)`,
-      [sale.client_id, order.orderId, paymentId, intent.amount, `Pedido Tienda pagado · Mercado Pago #${paymentReference}`, companyId],
-    );
-    await client.query(
-      `UPDATE sales SET collection_status='recibido',payment_condition='Mercado Pago - pagado',
-       notes=CONCAT_WS(E'\n',NULLIF(notes,''),'PEDIDO PAGADO — NO COBRAR AL ENTREGAR. Pago acreditado por Mercado Pago el '||TO_CHAR(CURRENT_DATE,'DD/MM/YYYY')||'.'),updated_at=now()
-       WHERE empresa_id=$1 AND id=$2::uuid`, [companyId, order.orderId],
-    );
     await client.query(
       `UPDATE storefront_payment_intents SET status='approved',mp_payment_id=$1,approved_at=now(),updated_at=now()
         WHERE empresa_id=$2 AND id=$3::uuid`, [paymentReference, companyId, intentId],
     );
     await client.query(
+      `UPDATE order_requests SET payment_status='pagado',payment_reference=$1,updated_at=now()
+        WHERE empresa_id=$2 AND quote_id=$3::uuid AND status='solicitud'`,
+      [paymentReference,companyId,intent.quote_id],
+    );
+    await client.query(
       `INSERT INTO audit_log (action,entity_table,entity_id,new_data,empresa_id)
-       VALUES ('storefront_order.mercadopago_approved','sales',$1::uuid,$2::jsonb,$3)`,
-      [order.orderId, JSON.stringify({ mpPaymentId: paymentReference, intentId }), companyId],
+       SELECT 'storefront_request.mercadopago_approved','order_requests',id,$1::jsonb,$2
+         FROM order_requests WHERE empresa_id=$2 AND quote_id=$3::uuid`,
+      [JSON.stringify({ mpPaymentId: paymentReference, intentId }), companyId,intent.quote_id],
     );
   });
   return "approved";

@@ -76,6 +76,8 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   const [brand, setBrand] = useState("");
   const [section, setSection] = useState<SectionKey>("all");
   const [browseAll, setBrowseAll] = useState(false);
+  const [showOutOfStock, setShowOutOfStock] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(60);
   const [showDiscovery, setShowDiscovery] = useState(false);
   const [showRecommendedSelection, setShowRecommendedSelection] = useState(false);
   const [discoveryStep, setDiscoveryStep] = useState<1 | 2>(1);
@@ -98,6 +100,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   const [challengeIdentityOpen, setChallengeIdentityOpen] = useState(false);
   const [challengeCustomer, setChallengeCustomer] = useState({ name: "", phone: "", businessName: "" });
   const catalogRef = useRef<HTMLDivElement>(null);
+  const analyticsSessionRef = useRef("");
   const recommendationRef = useRef<HTMLDivElement>(null);
   const categoryCounts = useMemo(() => products.reduce((counts, product) => {
     if (product.category) counts.set(product.category, (counts.get(product.category) ?? 0) + 1);
@@ -139,14 +142,15 @@ export function Storefront({ products, recommendations = [], combos = [], portal
     return gastronomySelection.map((product) => ({ ...product, typicalQuantity: 1, provisional: true }));
   }, [discovery.businessType, gastronomySelection, products, recommendations]);
   const filtered = useMemo(() => products.filter((product) => {
-    const needle = query.trim().toLocaleLowerCase("es");
+    const needles = query.trim().toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/).filter(Boolean);
     const haystack = `${product.name} ${product.code} ${product.category} ${product.brand}`.toLocaleLowerCase("es").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const sectionTerms = sectionFilters.find((item) => item.key === section)?.terms ?? [];
-    return (!category || product.category === category)
+    return (showOutOfStock || product.available !== "out")
+      && (!category || product.category === category)
       && (!brand || product.brand === brand)
       && (section === "all" || sectionTerms.some((term) => haystack.includes(term)))
-      && (!needle || haystack.includes(needle.normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
-  }), [products, query, category, brand, section]);
+      && needles.every((needle) => haystack.includes(needle));
+  }).slice(0, visibleLimit), [products, query, category, brand, section, showOutOfStock, visibleLimit]);
   const groupedProducts = useMemo(() => {
     const groups = new Map<string, Product[]>();
     for (const product of filtered) {
@@ -161,8 +165,12 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   const qualifiesForList2 = list3Amount >= 50_000;
   const effectiveUnitPrice = (product: Product) => {
     const quantity = cart[product.id] ?? 0;
-    const completesPresentation = product.presentationUnits > 1 && quantity >= product.presentationUnits && quantity % product.presentationUnits === 0;
-    return paymentMethod === "qr" || completesPresentation ? product.prices.list1 : qualifiesForList2 ? product.prices.list2 : product.prices.list3;
+    if (paymentMethod === "qr") return product.prices.list1;
+    const presentation = Math.max(1, product.presentationUnits);
+    const volumeQuantity = presentation > 1 ? Math.floor(quantity / presentation) * presentation : 0;
+    const regularQuantity = quantity - volumeQuantity;
+    const regularPrice = qualifiesForList2 ? product.prices.list2 : product.prices.list3;
+    return quantity > 0 ? (volumeQuantity * product.prices.list1 + regularQuantity * regularPrice) / quantity : regularPrice;
   };
   const estimatedCartAmount = selected.reduce((sum, product) => sum + effectiveUnitPrice(product) * (cart[product.id] ?? 0), 0);
   const estimatedSavings = Math.max(0, list3Amount - estimatedCartAmount);
@@ -175,6 +183,12 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   const mapUrl = location.latitude && location.longitude
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${Number(location.longitude) - .01}%2C${Number(location.latitude) - .01}%2C${Number(location.longitude) + .01}%2C${Number(location.latitude) + .01}&layer=mapnik&marker=${location.latitude}%2C${location.longitude}`
     : "https://www.openstreetmap.org/export/embed.html?bbox=-64.35%2C-31.55%2C-64.05%2C-31.25&layer=mapnik";
+
+  useEffect(() => {
+    const existing = sessionStorage.getItem("starlim-store-session") || crypto.randomUUID();
+    analyticsSessionRef.current = existing; sessionStorage.setItem("starlim-store-session", existing);
+    void fetch("/api/storefront/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: existing, eventType: "page_view" }) });
+  }, []);
 
   useEffect(() => {
     try {
@@ -211,6 +225,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
   }
 
   function goToCheckout() {
+    void fetch("/api/storefront/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: analyticsSessionRef.current, eventType: "checkout_started", channel: challengeActive ? "desafio" : "tienda" }) });
     setStep("checkout");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -325,7 +340,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "No pudimos enviar el pedido");
       setSubmittedReference(String(payload.data?.quoteNumber ?? ""));
-      setSubmittedChallengeOrder(String(payload.data?.challengeOrder?.orderNumber ?? ""));
+      setSubmittedChallengeOrder(payload.data?.challengeEligible ? String(payload.data?.quoteNumber ?? "") : "");
       if (payload.data?.payment) { setStorePayment({ ...payload.data.payment, status: "created" }); setStep("payment"); }
       else setStep("success"); window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos enviar el pedido"); }
@@ -349,7 +364,7 @@ export function Storefront({ products, recommendations = [], combos = [], portal
 
   if (step === "payment" && storePayment) return <section className="mx-auto grid min-h-[620px] max-w-3xl place-items-center px-5 py-12 text-center"><div className="w-full rounded-[24px] border border-[#b9d3ef] bg-white p-7 shadow-xl sm:p-10"><span className="text-xs font-black uppercase tracking-[.14em] text-[#075ac7]">Pago seguro</span><h2 className="mt-2 text-3xl font-black">Escaneá el QR de Mercado Pago</h2><p className="mt-2 text-[#64748b]">Referencia {submittedReference} · Total final con IVA 21%</p><strong className="mt-4 block text-3xl text-[#075ac7]">{formatCurrency(storePayment.amount)}</strong><Image alt="QR de Mercado Pago" className="mx-auto mt-5 rounded-2xl border border-[#dbe5f1]" height={320} src={storePayment.qrDataUrl} unoptimized width={320} /><a className="mt-5 inline-flex rounded-xl bg-[#075ac7] px-6 py-3 font-black text-white" href={storePayment.checkoutUrl} rel="noreferrer" target="_blank">Abrir Mercado Pago</a><div className="mt-6 rounded-xl bg-[#eef5ff] p-4 text-left text-sm font-semibold text-[#315170]"><span className="block">{storePayment.status === "approved" ? "✓ Pago acreditado" : "1. Esperando acreditación de Mercado Pago…"}</span><span className="mt-2 block">2. Al acreditarse, el pedido entra automáticamente al ERP.</span><span className="mt-2 block">3. Recibirás la confirmación de entrega.</span></div></div></section>;
 
-  if (step === "success") return <section className="mx-auto grid min-h-[520px] max-w-3xl place-items-center px-5 py-16 text-center"><div className="rounded-[22px] border border-[#b8e3cf] bg-white p-8 shadow-xl sm:p-12"><span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#e7f8ef] text-3xl text-[#07834f]">✓</span><h2 className="mt-6 text-3xl font-extrabold">Solicitud recibida</h2>{submittedReference && <p className="mt-3 text-xl font-extrabold text-[#075ac7]">Referencia {submittedReference}</p>}<p className="mt-4 text-lg leading-7 text-[#5b6b82]">{paymentMethod === "qr" ? "El pago fue acreditado y el pedido ingresó automáticamente al ERP, pendiente de entrega." : submittedChallengeOrder ? `Completaste el Desafío Starlim: el pedido ${submittedChallengeOrder} ingresó al ERP y quedó pendiente de confirmación.` : "La solicitud ingresó al CRM de Starlim y quedó asignada para confirmación comercial."}</p><div className="mt-5 grid gap-2 rounded-xl bg-[#eef5ff] p-4 text-left text-sm font-semibold text-[#315170]">{paymentMethod === "qr" ? <><span>✓ Pago acreditado</span><span>✓ Pedido registrado en el ERP</span><span>Próximo paso: preparación y entrega</span></> : submittedChallengeOrder ? <><span>✓ Ubicación, tiempo y compra mínima validados</span><span>✓ Pedido registrado en el ERP</span><span>Próximo paso: confirmación de Starlim; desde allí corre la garantía de 24 horas hábiles</span></> : <><span>✓ Carrito y precios registrados</span><span>✓ Prospecto creado para seguimiento</span><span>Próximo paso: confirmación de un comercial</span></>}</div><button className="mt-8 rounded-[11px] bg-[#075ac7] px-6 py-3 font-bold text-white" onClick={() => { setCart({}); requestKeyRef.current = ""; setSubmittedReference(""); setSubmittedChallengeOrder(""); setStorePayment(null); setPaymentMethod("cash"); setStep("catalog"); }} type="button">Volver a la tienda</button></div></section>;
+  if (step === "success") return <section className="mx-auto grid min-h-[520px] max-w-3xl place-items-center px-5 py-16 text-center"><div className="rounded-[22px] border border-[#b8e3cf] bg-white p-8 shadow-xl sm:p-12"><span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#e7f8ef] text-3xl text-[#07834f]">✓</span><h2 className="mt-6 text-3xl font-extrabold">Solicitud recibida</h2>{submittedReference && <p className="mt-3 text-xl font-extrabold text-[#075ac7]">Referencia {submittedReference}</p>}<p className="mt-4 text-lg leading-7 text-[#5b6b82]">{paymentMethod === "qr" ? "El pago fue acreditado. Un operador revisará el pedido antes de enviarlo a preparación." : submittedChallengeOrder ? `Completaste el Desafío Starlim: la solicitud ${submittedChallengeOrder} quedó lista para revisión prioritaria.` : "La solicitud llegó a Operaciones de Starlim para su revisión."}</p><div className="mt-5 grid gap-2 rounded-xl bg-[#eef5ff] p-4 text-left text-sm font-semibold text-[#315170]"><span>✓ Carrito, datos y precios registrados</span>{paymentMethod === "qr" ? <span>✓ Pago acreditado; no se volverá a cobrar</span> : null}<span>Próximo paso: un operador verifica la solicitud y, al aprobarla, pasa a Pendientes de armado.</span></div><button className="mt-8 rounded-[11px] bg-[#075ac7] px-6 py-3 font-bold text-white" onClick={() => { setCart({}); requestKeyRef.current = ""; setSubmittedReference(""); setSubmittedChallengeOrder(""); setStorePayment(null); setPaymentMethod("cash"); setStep("catalog"); }} type="button">Volver a la tienda</button></div></section>;
 
   return <section className={`${challengeActive ? "challenge-fire-screen " : ""}mx-auto max-w-[1380px] px-4 py-8 sm:px-8`}>
     {step === "catalog" ? <>
@@ -417,10 +432,12 @@ export function Storefront({ products, recommendations = [], combos = [], portal
       <div className="rounded-[16px] border border-[#dbe5f1] bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e5ebf2] pb-4"><div><strong className="block text-lg">+{products.length} artículos en lista</strong><span className="text-sm font-medium text-[#64748b]">{filtered.length} visibles con los filtros actuales</span></div><button className="rounded-[11px] bg-[#ffb74d] px-5 py-3 font-extrabold text-[#173052] shadow-sm disabled:opacity-50" disabled={!totalUnits} onClick={goToCheckout} type="button">Continuar · {totalUnits} {totalUnits === 1 ? "unidad" : "unidades"}</button></div>
         <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Secciones de productos">{sectionFilters.map((item) => <button aria-pressed={section === item.key} className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-bold ${section === item.key ? "bg-[#075ac7] text-white" : "border border-[#cbd8e8] text-[#315170] hover:bg-[#f4f8fc]"}`} key={item.key} onClick={() => { setSection(item.key); setCategory(""); setBrowseAll(true); }} type="button">{item.label}</button>)}</div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_230px_230px]"><input className={fieldClass} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar producto, código, marca o categoría" type="search" value={query} /><select className={`${fieldClass} bg-white`} onChange={(event) => { setCategory(event.target.value); if (!event.target.value) setBrowseAll(true); }} value={category}><option value="">Todas las categorías</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><select className={`${fieldClass} bg-white`} onChange={(event) => setBrand(event.target.value)} value={brand}><option value="">Todas las marcas</option>{brands.map((value) => <option key={value}>{value}</option>)}</select></div>
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_230px_230px]"><input className={fieldClass} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar varias palabras, ej. mopa 100" type="search" value={query} /><select className={`${fieldClass} bg-white`} onChange={(event) => { setCategory(event.target.value); if (!event.target.value) setBrowseAll(true); }} value={category}><option value="">Todas las categorías</option>{categories.map((value) => <option key={value}>{value}</option>)}</select><select className={`${fieldClass} bg-white`} onChange={(event) => setBrand(event.target.value)} value={brand}><option value="">Todas las marcas</option>{brands.map((value) => <option key={value}>{value}</option>)}</select></div>
+        <label className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-[#315170]"><input checked={showOutOfStock} onChange={(event)=>setShowOutOfStock(event.target.checked)} type="checkbox"/>Mostrar también productos sin stock</label>
       </div>
       <div className="mt-7 grid gap-10">{groupedProducts.map(([group, groupProducts]) => <section key={group}><div className="mb-4 flex items-end justify-between gap-3 border-b border-[#cfdbea] pb-2"><h2 className="text-2xl font-extrabold tracking-[-0.025em]">{group}</h2><span className="text-sm font-bold text-[#64748b]">{groupProducts.length} {groupProducts.length === 1 ? "artículo" : "artículos"}</span></div><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{groupProducts.map((product) => <article className="overflow-hidden rounded-[16px] border border-[#dbe5f1] bg-white shadow-sm" key={product.id}><div className="relative aspect-[4/3] bg-white">{product.imageUrl ? <Image alt={product.name} className="object-contain p-4" fill sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 25vw" src={product.imageUrl} /> : <div className="grid h-full place-items-center bg-[#edf3f9] text-5xl text-[#9aabc0]">▧</div>}</div><div className="p-4"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs font-bold uppercase text-[#64748b]">{product.brand || product.category || "Producto"}</span><AvailabilityBadge available={product.available} /></div><h3 className="mt-2 min-h-12 font-extrabold leading-6">{product.name}</h3>{product.code && <p className="mt-1 text-xs text-[#718096]">Código {product.code}</p>}<div className="mt-3 rounded-[10px] bg-[#f4f8fc] p-3"><span className="text-xs font-bold uppercase tracking-wide text-[#64748b]">Precio Lista 3</span><strong className="mt-1 block text-xl text-[#075ac7]">{formatCurrency(product.prices.list3)}</strong>{product.presentationUnits > 1 && <span className="mt-1 block text-xs font-semibold text-[#315170]">Bulto de {product.presentationUnits}: accede a Lista 1</span>}</div><div className="mt-4 flex items-center justify-between gap-2"><button aria-label={`Quitar ${product.name}`} className="h-10 w-10 rounded-full border border-[#cbd8e8] text-xl font-bold" onClick={() => changeQuantity(product.id, -1)} type="button">−</button><strong className="text-lg tabular-nums">{cart[product.id] ?? 0}</strong><button aria-label={`Agregar ${product.name}`} className="h-10 w-10 rounded-full bg-[#075ac7] text-xl font-bold text-white disabled:cursor-not-allowed disabled:bg-[#aebdce]" disabled={product.available === "out"} onClick={() => changeQuantity(product.id, 1)} type="button">+</button></div></div></article>)}</div></section>)}</div>
       {!filtered.length && <p className="py-16 text-center font-semibold text-[#64748b]">No encontramos productos con ese filtro.</p>}
+      {filtered.length >= visibleLimit && <div className="mt-6 text-center"><button className="rounded-xl border border-[#075ac7] px-6 py-3 font-bold text-[#075ac7]" onClick={()=>setVisibleLimit((value)=>value+60)} type="button">Mostrar 60 productos más</button></div>}
       <div className="sticky bottom-4 z-20 mt-8 flex items-center justify-between gap-4 rounded-[16px] bg-[#102d52] px-5 py-4 text-white shadow-2xl"><div><strong className="block text-lg">{totalUnits} {totalUnits === 1 ? "unidad" : "unidades"}</strong><span className="text-sm text-white/70">{selected.length} {selected.length === 1 ? "producto" : "productos"} en el carrito</span></div><button className="rounded-[11px] bg-[#ffb74d] px-5 py-3 font-extrabold text-[#173052] disabled:opacity-50" disabled={!totalUnits} onClick={goToCheckout} type="button">Continuar</button></div>
       </>}
     </> : <form className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px]" onSubmit={submit}>

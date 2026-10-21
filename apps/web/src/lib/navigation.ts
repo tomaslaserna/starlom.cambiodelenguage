@@ -33,6 +33,7 @@ export type NavigationBadgeKey =
   | "tasks"
   | "ordersLoaded"
   | "ordersConfirmed"
+  | "orderRequests"
   | "quotes"
   | "payables"
   | "purchases";
@@ -68,7 +69,13 @@ export const navigationGroups: NavigationGroup[] = [
     href: "/orders",
     label: "Pedidos",
     active: "orders",
-    badge: "ordersConfirmed",
+    badge: "orderRequests",
+    permission: ORDERS_READ_PERMISSION,
+  },
+  {
+    href: "/store",
+    label: "Tienda",
+    active: "store",
     permission: ORDERS_READ_PERMISSION,
   },
   {
@@ -257,6 +264,12 @@ export const navigationSections: NavigationSection[] = [
     ],
   },
   {
+    label: "Tienda",
+    href: "/store",
+    icon: "cart",
+    groups: [groupByLabel("Tienda")],
+  },
+  {
     label: "Datos",
     icon: "package",
     groups: [groupByLabel("Precios"), groupByLabel("Base de datos"), groupByLabel("Stock")],
@@ -398,6 +411,7 @@ export function emptyNavigationIndicators(): NavigationIndicators {
     tasks: 0,
     ordersLoaded: 0,
     ordersConfirmed: 0,
+    orderRequests: 0,
     quotes: 0,
     payables: 0,
     purchases: 0,
@@ -428,6 +442,7 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     assigned_tasks: string;
     orders_loaded: string;
     orders_confirmed: string;
+    order_requests: string;
     quotes: string;
     payables: string;
     purchases: string;
@@ -452,6 +467,8 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
          WHERE empresa_id = $1 AND ${normalizedOrderStatusSql("sales")} = 'cargado')::text AS orders_loaded,
         (SELECT COUNT(*) FROM sales
          WHERE empresa_id = $1 AND ${normalizedOrderStatusSql("sales")} = 'confirmado')::text AS orders_confirmed,
+        (SELECT COUNT(*) FROM order_requests
+         WHERE empresa_id = $1 AND status = 'solicitud')::text AS order_requests,
         (SELECT COUNT(*) FROM quotes
          WHERE empresa_id = $1 AND status = 'pendiente')::text AS quotes,
         (SELECT COUNT(*) FROM purchases
@@ -487,6 +504,7 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     tasks: Number(row.personal_tasks) + Number(row.assigned_tasks),
     ordersLoaded: Number(row.orders_loaded),
     ordersConfirmed: Number(row.orders_confirmed),
+    orderRequests: Number(row.order_requests),
     quotes: Number(row.quotes),
     payables: Number(row.payables),
     purchases: Number(row.purchases),

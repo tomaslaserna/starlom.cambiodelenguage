@@ -9,8 +9,6 @@ import {
 } from "@/lib/order-pricing";
 import { createPreference } from "@/lib/mercadopago";
 import { requirePortalIdentity } from "@/lib/portal-auth";
-import { acceptQuote } from "@/lib/quotes";
-import type { AuthSession } from "@/lib/auth";
 
 import { publicProductImageUrl } from "@/lib/storage";
 
@@ -402,7 +400,18 @@ export async function POST(request: Request) {
               identity.companyId,
             ],
           );
+        const requestId = (await client.query<{id:string}>(
+          `INSERT INTO order_requests (empresa_id,quote_id,channel,payment_method)
+           VALUES ($1,$2::uuid,'portal',$3) RETURNING id::text`,
+          [identity.companyId,quote.rows[0]!.id,paymentMethod],
+        )).rows[0]!.id;
+        await client.query(
+          `INSERT INTO storefront_events (empresa_id,session_id,event_type,channel,request_id)
+           VALUES ($1,gen_random_uuid(),'request_submitted','portal',$2::uuid)`,
+          [identity.companyId,requestId],
+        );
         return {
+          requestId,
           quoteId: quote.rows[0]!.id,
           quoteNumber: number,
           sellerId: fallbackSeller,
@@ -447,6 +456,7 @@ export async function POST(request: Request) {
         {
           data: {
             quoteNumber: result.quoteNumber,
+            requestId: result.requestId,
             checkout: {
               intentId,
               amount: result.amount,
@@ -463,31 +473,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const systemSession: AuthSession = {
-      userId: result.sellerId,
-      username: identity.displayName,
-      email: identity.email,
-      displayName: identity.displayName,
-      role: "vendedor",
-      companyId: identity.companyId,
-      companyName: "Starlim",
-      expiresAt: Math.floor(Date.now() / 1000) + 300,
-    };
-    const accepted = await acceptQuote(systemSession, result.quoteId);
-    if (result.paymentMethod === "efectivo") {
-      await withCompanyContext(identity.companyId, (client) =>
-        client.query(
-          `UPDATE sales
-              SET payment_condition='efectivo contra entrega',
-                  notes=CONCAT_WS(E'\n', NULLIF(notes,''), 'COBRAR EN EFECTIVO AL ENTREGAR: el cliente abonará cuando reciba la mercadería.'),
-                  updated_at=now()
-            WHERE empresa_id=$1 AND id=$2::uuid`,
-          [identity.companyId, accepted.orderId],
-        ),
-      );
-    }
     return ok(
-      { data: { quoteNumber: result.quoteNumber, orderId: accepted.orderId } },
+      { data: { quoteNumber: result.quoteNumber, requestId: result.requestId } },
       201,
     );
   } catch (error) {

@@ -85,7 +85,8 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
     )).rows[0];
     if (existing) {
       const stored = (await client.query<{ total_amount: string }>("SELECT total_amount::text FROM quotes WHERE empresa_id=$1 AND id=$2::uuid", [COMPANY_ID, existing.id])).rows[0];
-      return { leadId: null, quoteId: existing.id, quoteNumber: existing.quote_number, amount: Number(stored?.total_amount ?? 0), challengeEligible: existing.storefront_challenge_eligible, duplicated: true };
+      const request = (await client.query<{id:string}>("SELECT id::text FROM order_requests WHERE empresa_id=$1 AND quote_id=$2::uuid",[COMPANY_ID,existing.id])).rows[0];
+      return { requestId: request?.id ?? null, leadId: null, quoteId: existing.id, quoteNumber: existing.quote_number, amount: Number(stored?.total_amount ?? 0), challengeEligible: existing.storefront_challenge_eligible, duplicated: true };
     }
     const productIds = input.items.map((item) => item.productId);
     const products = await client.query<{
@@ -113,9 +114,14 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
     const pricedItems = input.items.map((item) => {
       const product = byId.get(item.productId)!;
       const presentation = Math.max(1, Number(product.presentation_units ?? 1));
-      const completesPresentation = presentation > 1 && item.quantity >= presentation && item.quantity % presentation === 0;
-      const unitPrice = Number(input.paymentMethod === "qr" || completesPresentation ? product.price_list_1 : qualifiesForList2 ? product.price_list_2 : product.price_list_3);
-      return { ...item, name: product.name, unitPrice, total: unitPrice * item.quantity };
+      const volumeQuantity = presentation > 1 ? Math.floor(item.quantity / presentation) * presentation : 0;
+      const regularQuantity = item.quantity - volumeQuantity;
+      const regularPrice = Number(qualifiesForList2 ? product.price_list_2 : product.price_list_3);
+      const total = input.paymentMethod === "qr"
+        ? Number(product.price_list_1) * item.quantity
+        : Number(product.price_list_1) * volumeQuantity + regularPrice * regularQuantity;
+      const unitPrice = total / item.quantity;
+      return { ...item, name: product.name, unitPrice, total };
     });
     const estimatedAmount = pricedItems.reduce((sum, item) => sum + item.total, 0);
     const challengeClaims = input.challengeToken ? verifyChallengeToken(input.challengeToken) : null;
@@ -149,13 +155,7 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
     const leadNotes = [`Solicitud web ${quoteNumber}`, `Forma de pago: ${input.paymentMethod === "qr" ? "QR Mercado Pago" : "Efectivo contra entrega"}`, challengeEligible && `DESAFÍO STARLIM validado · estimado $${estimatedAmount.toFixed(2)} · distancia ${challengeDistance!.toFixed(2)} km`, `Marca: ${input.brand || "-"}`, input.companyName && `Negocio informado: ${input.companyName}`, `Razón social: ${input.businessName || "-"}`, `CUIT: ${input.taxId || "-"}`, `Rubro: ${input.industry || input.businessType || "-"}`, input.usualPurchases.length && `Compra habitualmente: ${input.usualPurchases.join(", ")}`, input.currentSupplier && `Proveedor actual: ${input.currentSupplier}`, input.supplierCount && `Cantidad de proveedores: ${input.supplierCount}`, `Dirección: ${fullAddress}`, location, input.notes && `Comentarios: ${input.notes}`, "Productos:", cartText].filter(Boolean).join("\n");
 
     const portalClient = portalClientId ? (await client.query<{ id: string; name: string; legal_name: string; tax_id: string; phone: string; address: string; fiscal_condition: string }>(`SELECT id::text, display_name AS name, COALESCE(legal_name,'') AS legal_name, COALESCE(tax_id,'') AS tax_id, COALESCE(phone,'') AS phone, COALESCE(address,'') AS address, COALESCE(fiscal_condition,'') AS fiscal_condition FROM clients WHERE empresa_id=$1 AND id=$2::uuid`, [COMPANY_ID, portalClientId])).rows[0] : null;
-    const requestSource = challengeEligible ? "Desafío Starlim" : "Tienda web";
-    const followUpDays = challengeEligible ? 0 : 1;
-    const lead = portalClient ? null : await client.query<{ id: string }>(
-      `INSERT INTO crm_leads (empresa_id, assigned_seller, name, phone, locality, source, stage, next_followup, notes, created_by, business_segment)
-       VALUES ($1,$2,$3,$4,$5,$8,'nuevo',CURRENT_DATE + $9::int,$6,'tienda-web',NULLIF($7,'')) RETURNING id::text`,
-      [COMPANY_ID, seller.identity, input.name, input.phone, [input.city, input.province].filter(Boolean).join(", "), leadNotes, input.businessType, requestSource, followUpDays],
-    );
+    const requestSource = challengeEligible ? "Desafío Starlim" : portalClient ? "Portal de clientes" : "Tienda web";
     const quote = await client.query<{ id: string }>(
       `INSERT INTO quotes (quote_number, client_id, seller_id, status, total_amount, validity_days, include_vat, vat_rate,
         desired_document, active_price_list, price_list_name, discount_percent, net_amount, discount_amount, subtotal_amount,
@@ -173,6 +173,16 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
         [quote.rows[0]!.id, item.productId, item.name, item.quantity, item.unitPrice, item.total, COMPANY_ID],
       );
     }
-    return { leadId: lead?.rows[0]?.id ?? null, quoteId: quote.rows[0]!.id, quoteNumber, amount: Math.round(estimatedAmount * 1.21 * 100) / 100, challengeEligible, duplicated: false };
+    const requestId = (await client.query<{id:string}>(
+      `INSERT INTO order_requests (empresa_id,quote_id,channel,payment_method)
+       VALUES ($1,$2::uuid,$3,$4) RETURNING id::text`,
+      [COMPANY_ID,quote.rows[0]!.id,challengeEligible ? "desafio" : portalClient ? "portal" : "tienda",input.paymentMethod],
+    )).rows[0]!.id;
+    await client.query(
+      `INSERT INTO storefront_events (empresa_id,session_id,event_type,channel,request_id)
+       VALUES ($1,$2::uuid,'request_submitted',$3,$4::uuid)`,
+      [COMPANY_ID,input.requestKey,challengeEligible ? "desafio" : portalClient ? "portal" : "tienda",requestId],
+    );
+    return { requestId, leadId: null, quoteId: quote.rows[0]!.id, quoteNumber, amount: Math.round(estimatedAmount * 1.21 * 100) / 100, challengeEligible, duplicated: false };
   });
 }
