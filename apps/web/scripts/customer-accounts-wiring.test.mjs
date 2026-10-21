@@ -217,6 +217,40 @@ test("customerPaymentFromBody valida monto, metodo y operacion", () => {
   );
 });
 
+for (const method of ["efectivo", "transferencia", "echeck"]) {
+  for (const canApprove of [true, false]) test(`pago sin imagen: ${method}, ${canApprove ? "registrado" : "pendiente"}, respeta receipt_url NOT NULL`, async () => {
+    const queries = [];
+    const mod = loadCustomerAccounts({ sessionAllows: async () => canApprove,
+      withCompanyContext: async (companyId, fn) => {
+        assert.equal(companyId, 1);
+        return fn({ query: async (sql, params) => {
+          queries.push({ sql, params });
+          if (/SELECT COALESCE\(display_name/.test(sql)) return { rows: [{ name: "Cliente de prueba", tax_id: "" }] };
+          if (/FROM admin_treasury_accounts/.test(sql)) return { rows: [{ id: "2", name: "Destino", account_type: method === "efectivo" ? "cash" : "bank" }] };
+          if (/INSERT INTO payments/.test(sql)) {
+            // Simulate the production NOT NULL constraint, without touching a real database.
+            assert.equal(typeof params.at(-1), "string", "receipt_url no puede ser NULL");
+            return { rows: [{ id: "p1" }] };
+          }
+          return { rows: [] };
+        } });
+      },
+    });
+    const result = await mod.registerCustomerPayment({ companyId: 1, userId: "u1" }, {
+      clientId: "c1", amount: 100, date: "2026-10-21", method, treasuryAccountId: method === "echeck" ? "" : "2",
+      operation: method === "efectivo" ? "" : "123456", chequeDueDate: method === "echeck" ? "2026-11-01" : "", notes: "", allocations: [],
+    });
+    assert.equal(result.status, canApprove ? "registrado" : "pendiente_aprobacion");
+    const inserts = queries.filter((q) => /INSERT INTO payments/.test(q.sql));
+    assert.equal(inserts.length, 1);
+    assert.equal(inserts[0].params.at(-1), "");
+    assert.equal(queries.filter((q) => /INSERT INTO current_account_movements/.test(q.sql)).length, canApprove ? 1 : 0);
+    assert.equal(queries.some((q) => /UPDATE sales/.test(q.sql)), false);
+    assert.equal(queries.filter((q) => /INSERT INTO admin_treasury_movements/.test(q.sql)).length, canApprove && method !== "echeck" ? 1 : 0);
+    assert.equal(queries.filter((q) => /INSERT INTO admin_echeqs/.test(q.sql)).length, canApprove && method === "echeck" ? 1 : 0);
+  });
+}
+
 for (const canApprove of [true, false]) test(`comprobante persistido con pago ${canApprove ? "registrado" : "pendiente"}, sin alterar su aprobación`, async () => {
   const queries = [];
   const mod = loadCustomerAccounts({ sessionAllows: async () => canApprove,

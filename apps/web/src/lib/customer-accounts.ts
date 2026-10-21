@@ -1024,7 +1024,8 @@ export async function registerCustomerPayment(session: AuthSession, input: Custo
         input.clientId, input.date, input.amount, input.method, reference, status,
         session.userId, clientName, `Cobro ${input.method}`, input.notes, session.companyId,
         treasuryTarget?.accountId ?? null, input.operation, input.chequeDueDate || null,
-        input.receiptUrl || null,
+        // Legacy payments.receipt_url is NOT NULL DEFAULT ''; no attachment is empty text.
+        input.receiptUrl || "",
       ],
     );
     const paymentId = payment.rows[0].id as string;
