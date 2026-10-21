@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { handleApiError } from "@/lib/api-response";
 import { getCustomerStatement } from "@/lib/customer-accounts";
+import { statementSinceLastZero } from "@/lib/customer-statement-presentation";
 import {
   createPdfFile,
   pdfDate,
@@ -33,18 +34,27 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const from = searchParams.get("from") ?? "";
     const to = searchParams.get("to") ?? "";
 
-    const { customer, statement } = await getCustomerStatement(session.companyId, clientId, { from, to });
+    const completeHistory = searchParams.get("history") === "completo";
+    const compactView = !from && !to && !completeHistory;
+    const result = await getCustomerStatement(session.companyId, clientId, { from, to });
+    const { customer } = result;
+    const currentPeriod = compactView ? statementSinceLastZero(result.statement) : null;
+    const statement = currentPeriod?.statement ?? result.statement;
+    const periodLabel = currentPeriod
+      ? currentPeriod.lastZeroDate ? `Desde ultimo saldo cero: ${pdfDate(currentPeriod.lastZeroDate)}` : "Desde inicio (sin cierres previos)"
+      : dateRangeLabel(from, to);
+    const scope = compactView ? "actual" : from || to ? "periodo" : "completo";
 
-    const filename = `estado_cuenta_${safeFilename(customer.name) || "cliente"}_${localDateIso()}.pdf`;
+    const filename = `estado_cuenta_${safeFilename(customer.name) || "cliente"}_${scope}_${localDateIso()}.pdf`;
     const file = await createPdfFile(filename, ({ pdf }) => {
       pdf.drawHeader({
         title: "Estado de cuenta",
         code: "EC",
         number: `EC-${localDateIso().replaceAll("-", "")}`,
         date: pdfDate(localDateIso()),
-        extra: [customer.taxId ? `CUIT ${customer.taxId}` : "", `Periodo: ${dateRangeLabel(from, to)}`].filter(Boolean),
+        extra: [customer.taxId ? `CUIT ${customer.taxId}` : "", `Periodo: ${periodLabel}`].filter(Boolean),
         footerLeft: `Estado de cuenta - ${customer.name || "Cliente"}`,
-        footerRight: dateRangeLabel(from, to),
+        footerRight: periodLabel,
         continuationSubject: customer.name || "Cliente",
       });
 
@@ -54,12 +64,18 @@ export async function GET(request: NextRequest, context: RouteContext) {
         [
           customer.taxId ? `CUIT ${customer.taxId}` : "",
           customer.sellerName ? `Vendedor: ${customer.sellerName}` : "",
-          `Periodo: ${dateRangeLabel(from, to)}`,
+          `Periodo: ${periodLabel}`,
         ]
           .filter(Boolean)
           .join(" - "),
       );
       pdf.doc.y += 14;
+      if (currentPeriod?.hiddenCount) {
+        pdf.muted(statement.lines.length === 0
+          ? "Cuenta al dia. No hay movimientos posteriores al ultimo saldo cero."
+          : "Se muestran unicamente los movimientos posteriores al ultimo saldo cero.");
+        pdf.doc.y += 10;
+      }
 
       const rows: PdfTableCell[][] = [
         [from ? pdfDate(from) : "-", "Saldo anterior", "-", "-", pdfMoney(statement.openingBalance)],

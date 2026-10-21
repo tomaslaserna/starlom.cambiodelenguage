@@ -91,7 +91,7 @@ test("invariantes: el resumen compacto reconstruye exactamente el saldo final", 
   }
 });
 
-test("página: fechas e historial completo omiten el recorte; saldo real y PDF no cambian", () => {
+test("página: fechas e historial completo omiten el recorte; saldo real no cambia", () => {
   const page = readFileSync(new URL("../src/app/payments/accounts/[id]/page.tsx", import.meta.url), "utf8");
   assert.match(page, /compactView = !filteredPeriod && !completeHistory/);
   assert.match(page, /statement = compactView \? currentPeriod.statement : periodResult.statement/);
@@ -99,7 +99,7 @@ test("página: fechas e historial completo omiten el recorte; saldo real y PDF n
   assert.match(page, /history=completo/);
   assert.match(page, />Historial completo</);
   assert.match(page, />Último período</);
-  assert.match(page, /Exportar PDF completo/);
+  assert.match(page, /PDF historial completo/);
   assert.doesNotMatch(source, /\b(?:INSERT|UPDATE|DELETE)\b|queryWithCompanyContext/);
 });
 
@@ -157,6 +157,14 @@ for (const query of [{}, { history: "completo" }, { from: "2026-10-21" }, { to: 
     const links = nodes.filter((node) => node.type === ButtonLink);
     assert.equal(links.some((node) => node.props.children === "Historial completo"), query.history !== "completo" || dated);
     assert.equal(links.some((node) => node.props.children === "Último período"), !compact);
+    const pdf = links.find((node) => node.props.children === "Exportar PDF");
+    const pdfQuery = new URL(pdf.props.href, "https://starlim.test").searchParams;
+    assert.equal(pdfQuery.get("history"), !dated && !compact ? "completo" : null);
+    assert.equal(pdfQuery.get("from"), query.from ?? null);
+    assert.equal(pdfQuery.get("to"), query.to ?? null);
+    const fullDownload = links.find((node) => node.props.children === "PDF historial completo");
+    assert.equal(Boolean(fullDownload), compact || dated);
+    if (fullDownload) assert.ok(fullDownload.props.href.endsWith("?history=completo&download=1"));
     assert.equal(full.lines.length, 4);
     assert.equal(full.finalBalance, 150);
     assert.equal(calls.length, dated ? 2 : 1);

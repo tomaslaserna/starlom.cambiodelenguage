@@ -53,6 +53,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
   const pdfParams = new URLSearchParams();
   if (from) pdfParams.set("from", from);
   if (to) pdfParams.set("to", to);
+  if (completeHistory && !filteredPeriod) pdfParams.set("history", "completo");
   const pdfHref = `/api/pdfs/accounts/statement/${id}${pdfParams.toString() ? `?${pdfParams.toString()}` : ""}`;
 
   return (
@@ -65,7 +66,8 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
             <p className="mt-1.5 text-xs text-slate-500">{[customer.taxId ? `CUIT ${customer.taxId}` : "", customer.sellerName ? `Vendedor: ${customer.sellerName}` : ""].filter(Boolean).join(" · ") || "Cuenta corriente del cliente"}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <ButtonLink href={pdfHref} prefetch={false} target="_blank" variant="secondary">{compactView ? "Exportar PDF completo" : "Exportar PDF"}</ButtonLink>
+            <ButtonLink href={pdfHref} prefetch={false} target="_blank" variant="secondary">Exportar PDF</ButtonLink>
+            {compactView || filteredPeriod ? <ButtonLink href={`/api/pdfs/accounts/statement/${id}?history=completo&download=1`} prefetch={false} variant="secondary">PDF historial completo</ButtonLink> : null}
             <RegisterPaymentDialog action={registerCustomerPaymentAction} customers={customers} defaultCustomerId={id} treasuryAccounts={treasuryAccounts} today={today} triggerLabel="+ Registrar pago" />
           </div>
         </div>
