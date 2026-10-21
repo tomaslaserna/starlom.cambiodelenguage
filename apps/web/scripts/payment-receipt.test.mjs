@@ -81,11 +81,13 @@ test("imagen adulterada: rechaza antes de subir archivo o guardar dinero", async
 
 function readerRoute(overrides = {}) {
   return load("../src/app/api/payments/read-receipt/route.ts", {
+    "@/lib/payment-receipt-duplicates": { findPaymentReceiptDuplicate: overrides.duplicate ?? (async () => null) },
+    "@/lib/crm": { assertVendorOwnsClient: overrides.owns ?? (async () => undefined) },
     ai: { generateText: overrides.generate ?? (async () => ({ output: { amount: 123456.78, date: "2026-10-20", operation: "OP-123" } })), Output: { object: (value) => value } },
     "@/lib/payment-receipt": receipt,
     "@/lib/payment-receipt-recovery": recovery,
     "@/lib/api-response": { ApiError, ok: (data) => Response.json(data), handleApiError: (error) => Response.json({ error: error.message }, { status: error.status ?? 500 }) },
-    "@/lib/route-auth": { COLLECTIONS_CREATE_PERMISSION: {}, CRM_READ_PERMISSION: {}, requireApiSession: overrides.auth ?? (async () => session) },
+    "@/lib/route-auth": { COLLECTIONS_CREATE_PERMISSION: {}, CRM_READ_PERMISSION: {}, sessionAllows: overrides.allows ?? (async () => true), requireApiSession: overrides.auth ?? (async () => session) },
   });
 }
 function readingRequest(data = form(), origin = "https://starlim.test") { return new Request("https://starlim.test/api/payments/read-receipt", { method: "POST", body: data, headers: { origin } }); }
@@ -98,6 +100,48 @@ test("API lectura: autenticación y origen antes de enviar imágenes a IA", asyn
   const unauthorized = readerRoute({ auth: async () => { throw new ApiError(401, "Ingresá"); }, generate: async () => { assert.fail("IA no autorizada"); } });
   assert.equal((await unauthorized.POST(readingRequest())).status, 401);
   assert.equal((await readerRoute().POST(readingRequest(form(), "https://evil.test"))).status, 403);
+});
+
+test("API duplicados: misma imagen avisa antes de llamar IA, sin exponer pagos", async () => {
+  const response = await readerRoute({ duplicate: async (_company, input) => {
+    assert.match(input.hash, /^[0-9a-f]{64}$/); return { kind: "receipt" };
+  }, generate: async () => { assert.fail("No gastar IA en imagen ya registrada"); } }).POST(readingRequest());
+  assert.equal(response.status, 200); assert.match(response.headers.get("cache-control"), /no-store/);
+  assert.deepEqual(await response.json(), { data: { amount: null, date: null, operation: null }, duplicate: { kind: "receipt" } });
+});
+
+test("API duplicados: CRM no consulta coincidencias de un cliente ajeno", async () => {
+  const data = form(); data.set("clientId", "3d96a8fa-7fb2-4024-bbc0-df4768b3abe3");
+  const response = await readerRoute({ allows: async () => false, owns: async () => { throw new ApiError(403, "Cliente ajeno"); }, duplicate: async () => { assert.fail("No consultar"); } }).POST(readingRequest(data));
+  assert.equal(response.status, 403);
+});
+
+test("API duplicados: compara datos OCR normalizados dentro del cliente seleccionado", () => withConfiguredAi(async () => {
+  const data = form(); data.set("clientId", "3d96a8fa-7fb2-4024-bbc0-df4768b3abe3");
+  const response = await readerRoute({ duplicate: async (company, input) => {
+    assert.equal(company, 1);
+    if (input.hash) return null;
+    assert.equal(input.clientId, data.get("clientId")); assert.equal(input.reading.operation, "OP-123");
+    return { kind: "details" };
+  } }).POST(readingRequest(data));
+  assert.equal((await response.json()).duplicate.kind, "details");
+}));
+
+test("consulta duplicados: empresa, cliente, estado, importe, fecha y operación; siempre sin caché", async () => {
+  let calls = 0;
+  const module = load("../src/lib/payment-receipt-duplicates.ts", {
+    "server-only": {}, "@/lib/db": { queryWithCompanyContext: async (company, sql, params, options) => {
+      calls++; assert.equal(company, 7); assert.equal(params[0], 7); assert.equal(options.cache, false);
+      assert.match(sql, /empresa_id = \$1/); assert.doesNotMatch(sql, /INSERT|UPDATE|DELETE/);
+      if (calls === 1) { assert.match(sql, /status::text <> 'anulado'/); return { rows: [] }; }
+      assert.match(sql, /client_id = \$2::uuid/); assert.match(sql, /payment_date = \$3::date AND amount = \$4::numeric/);
+      assert.match(sql, /pendiente_aprobacion/); assert.equal(params[4], "OP-1"); return { rows: [{}] };
+    } },
+  });
+  assert.equal(await module.findPaymentReceiptDuplicate(7, { clientId: "client", reading: { amount: 1, date: null, operation: "OP-1" } }), null);
+  assert.equal(calls, 0);
+  assert.deepEqual(await module.findPaymentReceiptDuplicate(7, { hash: "a".repeat(64), clientId: "client", reading: { amount: 1, date: "2026-10-21", operation: "OP-1" } }), { kind: "details" });
+  assert.equal(calls, 2);
 });
 test("API lectura: devuelve sugerencias sin guardar pagos ni elegir remitos", () => withConfiguredAi(async () => {
   const response = await readerRoute({ generate: async (args) => {
@@ -216,7 +260,7 @@ test("UI: OCR completa campos sin registrar pagos ni cambiar los remitos elegido
   const dialog = readFileSync(new URL("../src/app/payments/register-payment-dialog.tsx", import.meta.url), "utf8");
   assert.match(component, /onPaste=/); assert.doesNotMatch(component, /Usar estos datos/); assert.match(component, /request.current !== controller/);
   assert.match(component, /applyReading.current\(result.data\)/);
-  assert.match(component, /}, \[file\]\)/); // Applying fields must not restart the read.
+  assert.match(component, /}, \[file, clientId\]\)/); // Applying fields must not restart the read.
   assert.doesNotMatch(component, /requestSubmit|\.submit\(|registerCustomerPayment|\/api\/collections/);
   assert.match(dialog, /if \(method === "transferencia" && receipt\) formData.set\("receipt", receipt\)/);
   assert.doesNotMatch(dialog, /Aplicar crédito|creditMode|setAmounts\(.*reading/);
@@ -319,6 +363,16 @@ test("UI autocompletado: lectura parcial conserva campos nulos para no borrar da
     const lifecycle = attachmentLifecycle(); cleanup = lifecycle.setup();
     await settleAutomaticRead(); assert.deepEqual(lifecycle.readings, [detected]);
     assert.ok(lifecycle.writes.some((value) => typeof value === "string" && value.includes("Lectura parcial")));
+  } finally { cleanup?.(); globalThis.fetch = before; }
+});
+
+for (const kind of ["receipt", "details"]) test(`UI aviso duplicado ${kind}: visible sin guardar el pago`, async () => {
+  const before = globalThis.fetch; let cleanup;
+  globalThis.fetch = async () => Response.json({ data: { amount: 10, date: "2026-10-21", operation: "OP-1" }, duplicate: { kind } });
+  try {
+    const lifecycle = attachmentLifecycle(); cleanup = lifecycle.setup(); await settleAutomaticRead();
+    assert.ok(lifecycle.writes.includes(kind));
+    assert.equal(lifecycle.applied(), kind === "receipt" ? 0 : 1);
   } finally { cleanup?.(); globalThis.fetch = before; }
 });
 

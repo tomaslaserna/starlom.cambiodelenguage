@@ -1,8 +1,10 @@
 import { generateText, Output } from "ai";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError, handleApiError, ok } from "@/lib/api-response";
-import { COLLECTIONS_CREATE_PERMISSION, CRM_READ_PERMISSION, requireApiSession } from "@/lib/route-auth";
+import { COLLECTIONS_CREATE_PERMISSION, CRM_READ_PERMISSION, requireApiSession, sessionAllows } from "@/lib/route-auth";
+import { assertVendorOwnsClient } from "@/lib/crm";
+import { findPaymentReceiptDuplicate } from "@/lib/payment-receipt-duplicates";
 import { normalizePaymentReceiptReading, PAYMENT_RECEIPT_MAX_BYTES, paymentReceiptBytes } from "@/lib/payment-receipt";
 import { readReceiptWithRecovery, RECEIPT_READ_SERVER_TIMEOUT_MS } from "@/lib/payment-receipt-recovery";
 
@@ -23,7 +25,6 @@ export async function POST(request: Request) {
     const attempt = attempts.get(key) ?? { count: 0, until: now + 60_000 };
     if (attempt.count >= 5) throw new ApiError(429, "Esperá un minuto antes de leer otro comprobante");
     attempt.count += 1; attempts.set(key, attempt);
-    if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN && process.env.VERCEL !== "1") throw new ApiError(503, "La lectura automática no está configurada. Podés adjuntar el comprobante y completar los datos manualmente.");
     const reader = request.body?.getReader();
     if (!reader) throw new ApiError(400, "Falta el comprobante");
     const chunks: Uint8Array[] = []; let size = 0;
@@ -37,8 +38,18 @@ export async function POST(request: Request) {
     const form = await new Response(Buffer.concat(chunks), { headers: { "content-type": request.headers.get("content-type")! } }).formData();
     const file = form.get("receipt");
     if (!(file instanceof File)) throw new ApiError(400, "Falta el comprobante");
+    const clientId = String(form.get("clientId") ?? "");
+    if (clientId && !z.string().uuid().safeParse(clientId).success) throw new ApiError(400, "Cliente inválido");
+    if (clientId && !await sessionAllows(session, [COLLECTIONS_CREATE_PERMISSION])) await assertVendorOwnsClient(session, clientId);
     let bytes: Uint8Array;
     try { bytes = await paymentReceiptBytes(file); } catch (error) { throw new ApiError(400, error instanceof Error ? error.message : "Imagen inválida"); }
+    const duplicate = await findPaymentReceiptDuplicate(session.companyId, { hash: createHash("sha256").update(bytes).digest("hex") });
+    if (duplicate) {
+      const response = ok({ data: { amount: null, date: null, operation: null }, duplicate });
+      response.headers.set("Cache-Control", "private, no-store");
+      return response;
+    }
+    if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL_OIDC_TOKEN && process.env.VERCEL !== "1") throw new ApiError(503, "La lectura automática no está configurada. Podés adjuntar el comprobante y completar los datos manualmente.");
     try {
       const requestId = randomUUID();
       const startedAt = Date.now();
@@ -65,7 +76,9 @@ export async function POST(request: Request) {
         onAttemptFailure: (event) => console.warn(JSON.stringify({ event: "payment_receipt.read_attempt_failed", requestId, ...event })),
       });
       console.info(JSON.stringify({ event: "payment_receipt.read_succeeded", requestId, attempts: recovered.attempts, elapsedMs: Date.now() - startedAt }));
-      const response = ok({ data: normalizePaymentReceiptReading(recovered.data) });
+      const data = normalizePaymentReceiptReading(recovered.data);
+      const possibleDuplicate = clientId ? await findPaymentReceiptDuplicate(session.companyId, { clientId, reading: data }) : null;
+      const response = ok({ data, ...(possibleDuplicate ? { duplicate: possibleDuplicate } : {}) });
       response.headers.set("Cache-Control", "private, no-store");
       return response;
     } catch {

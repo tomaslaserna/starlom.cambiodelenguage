@@ -24,6 +24,8 @@ if (!Number.isInteger(runs) || runs < 1 || runs > 3) throw new Error("Use --runs
 const simulateTransientFirst = process.argv.includes("--simulate-transient-first");
 let sdkCalls = 0;
 const route = load("../src/app/api/payments/read-receipt/route.ts", {
+  "@/lib/payment-receipt-duplicates": { findPaymentReceiptDuplicate: async () => null },
+  "@/lib/crm": { assertVendorOwnsClient: async () => undefined },
   ai: { ...ai, generateText: async (options) => {
     sdkCalls++;
     if (simulateTransientFirst && sdkCalls === 1) throw Object.assign(new Error("Synthetic transient failure"), { statusCode: 503 });

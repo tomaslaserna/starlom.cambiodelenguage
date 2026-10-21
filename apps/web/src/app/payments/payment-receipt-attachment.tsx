@@ -5,8 +5,9 @@ import { Button } from "@/components/ui";
 import { PAYMENT_RECEIPT_ACCEPT, paymentReceiptFileError, type PaymentReceiptReading } from "@/lib/payment-receipt";
 import { receiptTaskWithSignal, RECEIPT_READ_CLIENT_TIMEOUT_MS } from "@/lib/payment-receipt-recovery";
 
-export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
+export function PaymentReceiptAttachment({ file, clientId, onFileChange, onUseReading }: {
   file: File | null;
+  clientId?: string;
   onFileChange: (file: File | null) => void;
   onUseReading: (reading: PaymentReceiptReading) => void;
 }) {
@@ -18,6 +19,7 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [duplicate, setDuplicate] = useState<"receipt" | "details" | null>(null);
 
   // The parent callback changes when form fields render. Updating it must not
   // restart the automatic read or overwrite subsequent manual corrections.
@@ -33,7 +35,7 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
 
   function choose(next: File | null) {
     request.current?.abort(); request.current = null;
-    setBusy(false); setMessage(""); setError("");
+    setBusy(false); setMessage(""); setError(""); setDuplicate(null);
     if (next) {
       const invalid = paymentReceiptFileError(next);
       if (invalid) { setError(invalid); return; }
@@ -45,16 +47,19 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
     if (!file || request.current) return;
     const controller = new AbortController(); request.current = controller;
     const timeout = setTimeout(() => controller.abort(), RECEIPT_READ_CLIENT_TIMEOUT_MS);
-    setBusy(true); setError(""); setMessage("");
+    setBusy(true); setError(""); setMessage(""); setDuplicate(null);
     try {
       const body = new FormData(); body.set("receipt", file);
+      if (clientId) body.set("clientId", clientId);
       const { response, result } = await receiptTaskWithSignal(async () => {
         const response = await fetch("/api/payments/read-receipt", { method: "POST", body, signal: controller.signal });
-        const result = await response.json() as { data?: PaymentReceiptReading; error?: string };
+        const result = await response.json() as { data?: PaymentReceiptReading; error?: string; duplicate?: { kind: "receipt" | "details" } };
         return { response, result };
       }, controller.signal);
       if (request.current !== controller) return;
       if (!response.ok || !result.data) throw new Error(result.error || "No se pudo leer el comprobante");
+      setDuplicate(result.duplicate?.kind ?? null);
+      if (result.duplicate?.kind === "receipt") return;
       if (Object.values(result.data).every((value) => value === null)) {
         setMessage("No se detectaron datos legibles. Podés completar los campos manualmente.");
       } else {
@@ -69,7 +74,7 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
       clearTimeout(timeout);
       if (request.current === controller) { request.current = null; setBusy(false); }
     }
-  }, [file]);
+  }, [file, clientId]);
 
   useEffect(() => {
     if (!file || paymentReceiptFileError(file)) return;
@@ -99,6 +104,9 @@ export function PaymentReceiptAttachment({ file, onFileChange, onUseReading }: {
       {file && preview ? <img src={preview} alt="Comprobante adjunto para revisar" className="mt-3 max-h-52 max-w-full rounded-lg border border-slate-200 object-contain" /> : null}
     </div>
     {message ? <p role="status" className="mt-3 text-xs text-blue-800">{message}</p> : null}
+    {duplicate ? <p role="alert" className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">{duplicate === "receipt"
+      ? "Este comprobante ya está vinculado a un pago registrado o pendiente de aprobación. Revisá los pagos existentes: no lo cargues otra vez."
+      : "Posible pago duplicado: ya existe una transferencia de este cliente con la misma operación, importe y fecha. Revisá los pagos existentes antes de registrar."}</p> : null}
     {error ? <p role="alert" className="mt-3 text-xs text-rose-700">{error}</p> : null}
     <p className="mt-3 text-[10px] leading-relaxed text-slate-400">La lectura envía la imagen al servicio de IA del sistema. No verifica la acreditación bancaria ni registra el pago: siempre confirmás vos.</p>
   </section>;
