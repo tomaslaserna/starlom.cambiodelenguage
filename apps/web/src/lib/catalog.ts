@@ -425,7 +425,7 @@ export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
     presentationUnits: Math.max(1, Number(row.presentation_units ?? 1)),
     prices: { list1: Number(row.price_list_1 ?? 0), list2: Number(row.price_list_2 ?? 0), list3: Number(row.price_list_3 ?? 0) },
     availability: Number(row.available) <= 0 ? "out" as const : Number(row.available) <= 5 ? "check" as const : "available" as const,
-  }));
+  })).filter((product) => product.prices.list1 > 0 && product.prices.list2 > 0 && product.prices.list3 > 0);
 }
 
 export async function listProducts(input: ListInput = {}): Promise<ProductsResult> {

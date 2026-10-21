@@ -94,6 +94,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           <ButtonLink href="/orders" size="sm" variant={!result.meta.status ? "primary" : "secondary"}>
             Registro
           </ButtonLink>
+          <ButtonLink href="/orders/requests" size="sm" variant="secondary">Solicitudes</ButtonLink>
           <ButtonLink href="/orders?status=cargado" size="sm" variant={result.meta.status === "cargado" ? "primary" : "secondary"}>
             Pendientes
           </ButtonLink>

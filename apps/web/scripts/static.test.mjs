@@ -1155,7 +1155,8 @@ test("public store shows commercial scales and persists server-calculated prices
   assert.match(client, /para acceder a Lista 2/);
   assert.match(client, /accede a Lista 1/);
   assert.match(client, /Solicitud recibida/);
-  assert.match(client, /Ya ingresó al CRM de Starlim/);
+  assert.doesNotMatch(client, /ingresó al CRM de Starlim/);
+  assert.match(client, /llegó a Operaciones de Starlim/);
   assert.match(client, /navigator\.geolocation/);
   assert.match(client, /Dirección completa/);
   assert.match(client, /Conocé nuestros combos/);

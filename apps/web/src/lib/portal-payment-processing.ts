@@ -1,6 +1,4 @@
-import { type AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
-import { acceptQuote } from "@/lib/quotes";
 
 type MercadoPagoPayment = {
   id?: string | number;
@@ -61,81 +59,32 @@ export async function processPortalPayment(
   }
 
   if (intent.purpose === "order_payment") {
-    if (!intent.quote_id || !intent.seller_id)
-      throw new Error("Portal order payment is missing its quote or seller");
-    const session: AuthSession = {
-      userId: intent.seller_id,
-      username: "Portal de clientes",
-      email: "portal@starlim.com.ar",
-      displayName: "Portal de clientes",
-      role: "vendedor",
-      companyId,
-      companyName: "Starlim",
-      expiresAt: Math.floor(Date.now() / 1000) + 300,
-    };
-    const order = await acceptQuote(session, intent.quote_id);
+    if (!intent.quote_id) throw new Error("Portal order payment is missing its quote");
     await withCompanyContext(companyId, async (client) => {
       await client.query("SELECT pg_advisory_xact_lock(83014,hashtext($1))", [
         paymentReference,
       ]);
-      const existing = await client.query<{ id: string }>(
-        `SELECT id::text FROM payments WHERE empresa_id=$1 AND reference=$2 LIMIT 1`,
-        [companyId, `Mercado Pago #${paymentReference}`],
-      );
-      let paymentId = existing.rows[0]?.id;
-      if (!paymentId) {
-        const created = await client.query<{ id: string }>(
-          `INSERT INTO payments (client_id,payment_date,amount,method,reference,status,entity_type,entity_name,concept,notes,empresa_id)
-           SELECT $1::uuid,CURRENT_DATE,$2,'transferencia',$3,'registrado','cliente',COALESCE(c.display_name,''),'Pedido abonado por Mercado Pago','Acreditado automáticamente antes de enviar el pedido al ERP',$4
-             FROM clients c WHERE c.id=$1::uuid AND c.empresa_id=$4 RETURNING id::text`,
-          [
-            intent.client_id,
-            intent.amount,
-            `Mercado Pago #${paymentReference}`,
-            companyId,
-          ],
-        );
-        paymentId = created.rows[0]?.id;
-      }
-      if (!paymentId) throw new Error("Customer not found");
-      await client.query(
-        `INSERT INTO current_account_movements (client_id,sale_id,payment_id,movement_date,debit,credit,description,entity_type,entity_name,empresa_id)
-         SELECT $1::uuid,$2::uuid,$3::uuid,CURRENT_DATE,0,$4,$5,'cliente',COALESCE(display_name,''),$6
-           FROM clients
-          WHERE id=$1::uuid AND empresa_id=$6
-            AND NOT EXISTS (SELECT 1 FROM current_account_movements WHERE empresa_id=$6 AND payment_id=$3::uuid AND sale_id=$2::uuid)`,
-        [
-          intent.client_id,
-          order.orderId,
-          paymentId,
-          intent.amount,
-          `Pedido abonado por Mercado Pago #${paymentReference}`,
-          companyId,
-        ],
-      );
-      await client.query(
-        `UPDATE sales
-            SET collection_status='recibido',
-                payment_condition='Mercado Pago - pagado',
-                notes=CONCAT_WS(E'\n', NULLIF(notes,''), 'PEDIDO PAGADO — NO COBRAR AL ENTREGAR. Pago acreditado por Mercado Pago el ' || TO_CHAR(CURRENT_DATE, 'DD/MM/YYYY') || '.'),
-                updated_at=now()
-          WHERE empresa_id=$1 AND id=$2::uuid`,
-        [companyId, order.orderId],
-      );
       await client.query(
         `UPDATE customer_portal_payment_intents SET status='approved',mp_payment_id=$1,approved_at=now(),updated_at=now() WHERE id=$2::uuid AND empresa_id=$3`,
         [paymentReference, intentId, companyId],
       );
       await client.query(
-        `INSERT INTO audit_log (action,entity_table,entity_id,new_data,empresa_id) VALUES ('customer_order.mercadopago_approved','sales',$1::uuid,$2::jsonb,$3)`,
+        `UPDATE order_requests SET payment_status='pagado',payment_reference=$1,updated_at=now()
+          WHERE empresa_id=$2 AND quote_id=$3::uuid AND status='solicitud'`,
+        [paymentReference,companyId,intent.quote_id],
+      );
+      await client.query(
+        `INSERT INTO audit_log (action,entity_table,entity_id,new_data,empresa_id)
+         SELECT 'customer_request.mercadopago_approved','order_requests',id,$1::jsonb,$2
+           FROM order_requests WHERE empresa_id=$2 AND quote_id=$3::uuid`,
         [
-          order.orderId,
           JSON.stringify({
             mpPaymentId: paymentReference,
             intentId,
             quoteNumber: intent.quote_number,
           }),
           companyId,
+          intent.quote_id,
         ],
       );
     });
