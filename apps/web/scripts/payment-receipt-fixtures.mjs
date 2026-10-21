@@ -25,7 +25,7 @@ export async function paymentReceiptFixtures() {
   return Promise.all(examples.map(async ({ name, amount, date, operation, lines }) => {
     const small = name === "small-text";
     const font = small ? 17 : 25; const spacing = small ? 46 : 55;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="700" height="800"><rect width="100%" height="100%" fill="white"/><g font-family="Arial" fill="#172033">${lines.map((line, index) => `<text x="28" y="${55 + index * spacing}" font-size="${font}">${line}</text>`).join("")}<text x="28" y="760" font-size="14">PRUEBA SINTETICA - NO REPRESENTA UN PAGO REAL</text></g></svg>`;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="700" height="800"><rect width="100%" height="100%" fill="white"/><g font-family="Arial" fill="#172033">${lines.map((line, index) => `<text x="28" y="${55 + index * spacing}" font-size="${font}">${line}</text>`).join("")}<text x="28" y="760" font-size="14">MUESTRA SINTETICA PARA PRUEBA DE LECTURA</text></g></svg>`;
     const image = await sharp(Buffer.from(svg)).jpeg({ quality: 88 }).toBuffer();
     return { name, image, mediaType: "image/jpeg", expected: { amount, date, operation } };
   }));
