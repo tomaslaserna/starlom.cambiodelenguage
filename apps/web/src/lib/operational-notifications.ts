@@ -12,6 +12,7 @@ import { getReplenishmentSuggestions } from "@/lib/replenishment";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { getSalesMissionStates } from "@/lib/sales-missions";
 import { listTasks } from "@/lib/tasks";
+import { localDateIso } from "@/lib/timezone";
 
 export type OperationalNotificationPriority = "urgent" | "high" | "normal";
 
@@ -57,7 +58,31 @@ async function missionNotification(session: AuthSession): Promise<OperationalNot
     getPriceListFollowupSignals(session),
     getSalesMissionStates(session),
   ]);
-  const missions = buildCrmMissions({ clients, leads, quotes: quotes.buckets, priceListSignals, missionStates });
+  const today = localDateIso();
+  const dueToday = (missionKey: string) => missionStates[missionKey]?.nextFollowupOn === today;
+  const currentClients = {
+    ...clients,
+    groups: Object.fromEntries(Object.entries(clients.groups).map(([key, rows]) => [
+      key,
+      rows.filter((client) => client.expectedNextPurchase === today || dueToday(`client-${client.customerId}`)),
+    ])),
+  };
+  const currentQuotes = {
+    ...quotes.buckets,
+    vencidos: quotes.buckets.vencidos.filter((quote) => dueToday(`quote-${quote.id}`)),
+    por_vencer: [
+      ...quotes.buckets.por_vencer,
+      ...quotes.buckets.vigentes.filter((quote) => quote.daysRemaining !== null && quote.daysRemaining >= 4 && quote.daysRemaining <= 7),
+    ],
+  };
+  const missions = buildCrmMissions({
+    clients: currentClients,
+    leads: leads.filter((lead) => lead.nextFollowup === today),
+    quotes: currentQuotes,
+    priceListSignals: priceListSignals.filter((signal) => signal.followUpOn === today),
+    missionStates,
+    today,
+  });
   if (!missions.length) return [];
   const urgent = missions.filter((mission) => mission.urgency === "ahora").length;
   const alreadyRecontacted = missions.filter((mission) => mission.completedBefore).length;
@@ -75,25 +100,30 @@ async function missionNotification(session: AuthSession): Promise<OperationalNot
 }
 
 async function collectionNotifications(companyId: number): Promise<OperationalNotification[]> {
-  const overdue = (await listSalesToCollect(companyId)).filter((sale) => sale.overdue);
-  const items = overdue.slice(0, 3).map<OperationalNotification>((sale) => ({
+  const today = localDateIso();
+  const newlyDue = (await listSalesToCollect(companyId)).filter((sale) =>
+    sale.dueDate === today || (sale.overdue && sale.overdueDays === 1),
+  );
+  const items = newlyDue.slice(0, 3).map<OperationalNotification>((sale) => ({
     id: `collection-${sale.id}`,
     title: `Cobrar a ${sale.customerName || "cliente sin identificar"}`,
-    detail: `${formatCurrency(sale.outstandingAmount)} · venció hace ${sale.overdueDays} ${sale.overdueDays === 1 ? "día" : "días"}.`,
+    detail: sale.overdue
+      ? `${formatCurrency(sale.outstandingAmount)} · venció ayer.`
+      : `${formatCurrency(sale.outstandingAmount)} · vence hoy según la condición pactada.`,
     href: "/payments/accounts",
     category: "collections",
     priority: sale.overdueDays >= 7 ? "urgent" : "high",
     count: 1,
   }));
-  if (overdue.length > items.length) {
+  if (newlyDue.length > items.length) {
     items.push({
       id: "collections-more",
-      title: `Hay ${overdue.length - items.length} cobranzas vencidas más`,
-      detail: "Revisá la cola completa y priorizá las cuentas con mayor atraso.",
+      title: `Hay ${newlyDue.length - items.length} cobranzas de hoy más`,
+      detail: "Son saldos que vencen hoy o que ingresaron hoy en mora.",
       href: "/payments/accounts",
       category: "collections",
       priority: "high",
-      count: overdue.length - items.length,
+      count: newlyDue.length - items.length,
     });
   }
   return items;
@@ -136,11 +166,17 @@ async function orderNotifications(companyId: number, includeOrders: boolean, inc
         AND ${canonicalSalesSourceSql("s")}
         AND (
           (${includeOrders ? "TRUE" : "FALSE"} AND ${normalizedOrderStatusSql("s")} IN ('cargado', 'confirmado')
-            AND COALESCE(s.created_at::date, s.sale_date::date, CURRENT_DATE) <= CURRENT_DATE - 3)
+            AND COALESCE(s.created_at::date, s.sale_date::date, CURRENT_DATE) = CURRENT_DATE - 3)
           OR
           (${includeFiscal ? "TRUE" : "FALSE"} AND ${normalizedOrderStatusSql("s")} = 'entregado'
             AND COALESCE(s.desired_document, '') IN ('factura_a', 'factura_b')
-            AND COALESCE(s.fiscal_status, 'no_enviado') <> 'aprobado')
+            AND COALESCE(s.fiscal_status, 'no_enviado') <> 'aprobado'
+            AND EXISTS (
+              SELECT 1 FROM delivery_documents today_delivery
+              WHERE today_delivery.empresa_id = s.empresa_id
+                AND today_delivery.sale_id = s.id
+                AND today_delivery.created_at::date = CURRENT_DATE
+            ))
         )
       ORDER BY days_pending DESC, s.created_at ASC
       LIMIT 80
@@ -167,7 +203,7 @@ async function orderNotifications(companyId: number, includeOrders: boolean, inc
     notifications.push({
       id: "deliveries-more",
       title: `${deliveries.length - 3} pedidos demorados más`,
-      detail: "Llevan al menos 3 días sin registrarse como entregados.",
+      detail: "Hoy cumplen 3 días sin registrarse como entregados.",
       href: "/orders?status=cargado",
       category: "deliveries",
       priority: "high",
@@ -217,19 +253,19 @@ async function purchaseNotification(companyId: number): Promise<OperationalNotif
 
 async function taskNotification(session: AuthSession): Promise<OperationalNotification[]> {
   const tasks = await listTasks(session);
-  const pending = [...tasks.personal, ...tasks.received];
+  const today = localDateIso();
+  const pending = [...tasks.personal, ...tasks.received].filter((task) =>
+    task.deadline?.slice(0, 10) === today || (!task.deadline && task.createdAt.slice(0, 10) === today),
+  );
   if (!pending.length) return [];
-  const overdue = pending.filter((task) => task.status === "vencido");
   const urgent = pending.filter((task) => task.priority === "urgente").length;
   return [{
     id: "pending-tasks",
-    title: overdue.length > 0
-      ? `Tenés ${overdue.length} ${overdue.length === 1 ? "recordatorio vencido" : "recordatorios vencidos"}`
-      : `Tenés ${pending.length} ${pending.length === 1 ? "recordatorio pendiente" : "recordatorios pendientes"}`,
+    title: `Tenés ${pending.length} ${pending.length === 1 ? "recordatorio para hoy" : "recordatorios para hoy"}`,
     detail: urgent > 0 ? `${urgent} ${urgent === 1 ? "está marcado" : "están marcados"} como urgente.` : "Abrí el calendario para completarlos.",
     href: "/calendar",
     category: "tasks",
-    priority: overdue.length > 0 || urgent > 0 ? "urgent" : "normal",
+    priority: urgent > 0 ? "urgent" : "normal",
     count: pending.length,
   }];
 }
@@ -257,8 +293,8 @@ export async function getOperationalNotifications(
   const actionable = [...missions, ...collections, ...orders, ...purchases, ...tasks]
     .sort((left, right) => PRIORITY_ORDER[left.priority] - PRIORITY_ORDER[right.priority] || left.title.localeCompare(right.title));
   return {
-    pendingCount: actionable.reduce((total, item) => total + item.count, 0),
-    urgentCount: actionable.filter((item) => item.priority === "urgent").reduce((total, item) => total + item.count, 0),
+    pendingCount: actionable.length,
+    urgentCount: actionable.filter((item) => item.priority === "urgent").length,
     items: actionable.slice(0, 14),
     generatedAt: new Date().toISOString(),
   };

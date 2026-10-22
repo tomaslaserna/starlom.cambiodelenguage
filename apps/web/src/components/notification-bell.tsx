@@ -83,7 +83,7 @@ export function NotificationBell({ initialSnapshot, compact = false }: Notificat
         <div className="flex items-start justify-between gap-3 border-b border-[#e2e8f0] bg-[linear-gradient(135deg,#f8fbff,#eef5ff)] px-4 py-3.5">
           <div>
             <h2 className="text-sm font-black">Centro de notificaciones</h2>
-            <p className="mt-0.5 text-xs font-medium text-[#64748b]">Trabajo que requiere una accion concreta.</p>
+            <p className="mt-0.5 text-xs font-medium text-[#64748b]">Prioridades de hoy y próximos vencimientos.</p>
           </div>
           <div className={cn("rounded-full px-2.5 py-1 text-xs font-black", snapshot.urgentCount > 0 ? "bg-[#fee2e2] text-[#b91c1c]" : "bg-[#dcfce7] text-[#166534]") }>
             {snapshot.urgentCount > 0 ? `${snapshot.urgentCount} urgentes` : "Al dia"}

@@ -34,3 +34,13 @@ test("permission checks prevent irrelevant operational alerts", () => {
     assert.match(source, new RegExp(permission.replace(".", "\\.")));
   }
 });
+
+test("the bell only surfaces current work instead of historical backlogs", () => {
+  assert.match(source, /lead\.nextFollowup === today/);
+  assert.match(source, /signal\.followUpOn === today/);
+  assert.match(source, /sale\.dueDate === today/);
+  assert.match(source, /sale\.overdueDays === 1/);
+  assert.match(source, /= CURRENT_DATE - 3/);
+  assert.match(source, /today_delivery\.created_at::date = CURRENT_DATE/);
+  assert.match(source, /pendingCount: actionable\.length/);
+});
