@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { normalizeRole, type AuthSession } from "@/lib/auth";
 import { LogoutButton } from "@/components/logout-button";
+import { NotificationBell } from "@/components/notification-bell";
 import { PresenceIndicator, PresenceProvider } from "@/components/presence-indicator";
 import { SessionKeepAlive } from "@/components/session-keep-alive";
 import { ShellNavigation } from "@/components/shell-navigation";
@@ -15,6 +16,7 @@ import {
   getNavigationIndicators,
   type NavigationAuthorization,
 } from "@/lib/navigation";
+import { emptyOperationalNotificationSnapshot, getOperationalNotifications } from "@/lib/operational-notifications";
 
 type ModulePageProps = {
   title: string;
@@ -28,6 +30,7 @@ type ModulePageProps = {
 
 const NAVIGATION_AUTHORIZATION_TIMEOUT_MS = 5_000;
 const NAVIGATION_INDICATORS_TIMEOUT_MS = 2_000;
+const NOTIFICATIONS_TIMEOUT_MS = 4_000;
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T) {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -105,11 +108,19 @@ export async function ModulePage({
         .filter((section) => section.groups.length > 0)
     : sections;
 
-  indicators = await withTimeout(
-    getNavigationIndicators(session),
-    NAVIGATION_INDICATORS_TIMEOUT_MS,
-    emptyNavigationIndicators(),
-  ).catch(() => emptyNavigationIndicators());
+  const [resolvedIndicators, notifications] = await Promise.all([
+    withTimeout(
+      getNavigationIndicators(session),
+      NAVIGATION_INDICATORS_TIMEOUT_MS,
+      emptyNavigationIndicators(),
+    ).catch(() => emptyNavigationIndicators()),
+    withTimeout(
+      getOperationalNotifications(session, authorization),
+      NOTIFICATIONS_TIMEOUT_MS,
+      emptyOperationalNotificationSnapshot(),
+    ).catch(() => emptyOperationalNotificationSnapshot()),
+  ]);
+  indicators = resolvedIndicators;
 
   return (
     <PresenceProvider>
@@ -142,6 +153,7 @@ export async function ModulePage({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <PresenceIndicator />
+              <NotificationBell initialSnapshot={notifications} />
               <div className="erp-text-caption flex h-10 max-w-[360px] items-center truncate rounded-[9px] border border-[#d9e2ef] bg-[#f8fafc] px-3 shadow-[var(--shadow-xs)]">
                 <span className="font-bold">{session.displayName}</span>
                 <span className="font-medium text-[#64748b]"> - {session.role} - {session.companyName}</span>
@@ -171,7 +183,10 @@ export async function ModulePage({
               </details>
               <BrandBlock title={title} />
               <div className="ml-auto">
-                <PresenceIndicator compact />
+                <div className="flex items-center gap-2">
+                  <NotificationBell compact initialSnapshot={notifications} />
+                  <PresenceIndicator compact />
+                </div>
               </div>
             </div>
           </div>
