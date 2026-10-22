@@ -2,6 +2,7 @@ import { handleApiError, ok } from "@/lib/api-response";
 import { getCustomerStatement } from "@/lib/customer-accounts";
 import { statementSinceLastZero } from "@/lib/customer-statement-presentation";
 import { requirePortalStatementAccess } from "@/lib/portal-statement-access";
+import { portalHistoryScope } from "@/lib/portal-history";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       statement: completeHistory ? full.statement : current.statement,
       lastZeroDate: current.lastZeroDate, hiddenCount: completeHistory ? 0 : current.hiddenCount,
       completeHistory,
+      historyScope: portalHistoryScope(full.statement),
     } });
     response.headers.set("Cache-Control", "private, no-store");
     return response;

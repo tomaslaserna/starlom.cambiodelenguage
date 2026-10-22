@@ -9,13 +9,15 @@ import { PortalQuotes } from "./portal-quotes";
 import { PortalAccountStatement } from "./portal-account-statement";
 import { useVisibilityAwarePolling } from "@/components/use-visibility-aware-polling";
 import { formatCurrency } from "@/lib/format";
+import { portalCurrentOrders, portalCurrentPayments, type PortalHistoryScope } from "@/lib/portal-history";
+import { PortalHistorySection } from "./portal-history-section";
 
 type Summary = {
   profile: { email: string; displayName: string };
   preferences: { notify_orders: boolean; notify_invoices: boolean; notify_offers: boolean };
   clients: { id: string; name: string; address: string; locality: string }[];
   sales: { id: string; client_id: string; number: string; date: string; status: string; total: string; outstanding: string; invoice_number: string; item_count: number; collection_status: string }[];
-  payments: { id: string; client_id: string; sale_id: string; date: string; description: string; amount: string }[];
+  payments: { id: string; payment_id?: string; client_id: string; sale_id: string; date: string; description: string; amount: string }[];
   invoices: { id: string; client_id: string; date: string; number: string; total: string; kind: "invoice" | "credit_note" | "debit_note" }[];
   quotes: { id: string; client_id: string; number: string; issue_date: string; expiration_date: string; total: string; status: string }[];
   balances: Record<string, number>;
@@ -50,6 +52,10 @@ export function PortalApp() {
   const [selectedSales, setSelectedSales] = useState<string[]>([]);
   const [checkout, setCheckout] = useState<CheckoutState | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [historyResult, setHistoryResult] = useState<{ key: string; scope: PortalHistoryScope } | null>(null);
+  const historyKey = `${session?.user.id}:${branch}:${summary?.updatedAt}`;
+  const historyScope = historyResult?.key === historyKey ? historyResult.scope : null;
+  const receiveHistoryScope = useCallback((scope: PortalHistoryScope) => setHistoryResult({ key: historyKey, scope }), [historyKey]);
 
   useEffect(() => {
     if (!client) return;
@@ -132,6 +138,8 @@ export function PortalApp() {
 
   const sales = summary?.sales.filter((sale) => !branch || sale.client_id === branch) ?? [];
   const payments = summary?.payments.filter((payment) => !branch || payment.client_id === branch) ?? [];
+  const currentOrders = historyScope ? portalCurrentOrders(sales, historyScope) : [];
+  const currentPayments = historyScope ? portalCurrentPayments(payments, historyScope) : [];
   const invoices = summary?.invoices.filter((invoice) => !branch || invoice.client_id === branch) ?? [];
   const quotes = summary?.quotes.filter((quote) => !branch || quote.client_id === branch) ?? [];
   const branchBalance = branch ? Number(summary?.balances?.[branch] ?? 0) : Number(summary?.balance ?? 0);
@@ -200,11 +208,11 @@ export function PortalApp() {
         <PortalShortcut description="Revisá únicamente los pagos ya aprobados." href="#pagos" title="Ver pagos" />
         <PortalShortcut description="Elegí facturas pendientes y pagalas en el acto." href="#pagar" title="Pagar facturas" />
       </nav>
-      {branch ? <PortalAccountStatement key={`${session.user.id}:${branch}`} clientId={branch} accessToken={session.access_token} updatedAt={summary.updatedAt} /> : null}
+      {branch ? <PortalAccountStatement key={`${session.user.id}:${branch}`} clientId={branch} accessToken={session.access_token} updatedAt={summary.updatedAt} onHistoryScope={receiveHistoryScope} /> : null}
       <PortalQuotes accessToken={session.access_token} onChanged={(value) => setSummary(value as Summary)} quotes={quotes} />
-      <div className="scroll-mt-5" id="pedidos"><PortalDocumentTable title="Historial de pedidos" empty="Todavía no hay pedidos para esta sucursal." rows={sales.map((sale) => ({ id: sale.id, cells: [sale.date, sale.number || "Pedido", sale.status, formatCurrency(Number(sale.total))] }))} onOpen={(id) => openDocument(`/api/portal/documents/orders/${id}`)} /></div>
+      <PortalHistorySection key={`orders:${historyKey}`} id="pedidos" scope={historyScope}>{(complete) => <PortalDocumentTable key={String(complete)} title="Historial de pedidos" empty={complete ? "Todavía no hay pedidos para esta sucursal." : "No hay pedidos en este período. Podés ver todo el historial."} rows={(complete ? sales : currentOrders).map((sale) => ({ id: sale.id, cells: [sale.date, sale.number || "Pedido", sale.status, formatCurrency(Number(sale.total))] }))} onOpen={(id) => openDocument(`/api/portal/documents/orders/${id}`)} />}</PortalHistorySection>
       <div className="scroll-mt-5" id="facturas"><PortalDocumentTable title="Facturas y notas fiscales" empty="Todavía no hay comprobantes fiscales emitidos para esta sucursal." rows={invoices.map((invoice) => ({ id: `${invoice.kind}:${invoice.id}`, cells: [invoice.date, `${invoice.kind === "credit_note" ? "Nota de crédito" : invoice.kind === "debit_note" ? "Nota de débito" : "Factura"} ${invoice.number}`, formatCurrency(Number(invoice.total))] }))} onOpen={(key) => { const [kind, id] = key.split(":"); openDocument(kind === "invoice" ? `/api/portal/documents/invoices/${id}` : `/api/portal/documents/notes/${id}`); }} /></div>
-      <div className="scroll-mt-5" id="pagos"><PortalTable title="Pagos realizados y registrados" empty="No hay pagos aprobados registrados." rows={payments.map((payment) => [payment.date, payment.description, `Pago ${formatCurrency(Number(payment.amount))}`])} /></div>
+      <PortalHistorySection key={`payments:${historyKey}`} id="pagos" scope={historyScope}>{(complete) => <PortalTable key={String(complete)} title="Pagos realizados y registrados" empty={complete ? "No hay pagos aprobados registrados." : "No hay pagos posteriores al último cierre. Podés ver todo el historial."} rows={(complete ? payments : currentPayments).map((payment) => [payment.date, payment.description, `Pago ${formatCurrency(Number(payment.amount))}`])} />}</PortalHistorySection>
       <PaymentCheckout checkout={checkout} loading={checkoutLoading} onCreate={createCheckout} onToggle={(id) => { setCheckout(null); setSelectedSales((current) => { const position = payableSales.findIndex((sale) => sale.id === id); return current.includes(id) ? payableSales.slice(0, position).map((sale) => sale.id) : payableSales.slice(0, position + 1).map((sale) => sale.id); }); }} sales={payableSales} selected={selectedSales} />
       <section className="scroll-mt-5 rounded-2xl border border-[#dbe5f1] bg-white p-5" id="preferencias"><h2 className="text-xl font-black">Avisos por correo</h2><p className="mt-1 text-sm text-[#64748b]">Elegí qué novedades querés recibir en {summary.profile.email}.</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><Preference checked={summary.preferences.notify_orders} label="Estado de pedidos" onChange={(v) => savePreferences("notify_orders", v)} /><Preference checked={summary.preferences.notify_invoices} label="Facturas y vencimientos" onChange={(v) => savePreferences("notify_invoices", v)} /><Preference checked={summary.preferences.notify_offers} label="Ofertas y novedades" onChange={(v) => savePreferences("notify_offers", v)} /></div></section>
       <section className="rounded-2xl border border-[#dbe5f1] bg-white p-5"><h2 className="text-xl font-black">Contraseña de acceso</h2><p className="mt-1 text-sm text-[#64748b]">Creala después de ingresar por primera vez o cambiala cuando quieras.</p><form className="mt-4 flex flex-wrap gap-3" onSubmit={savePassword}><input autoComplete="new-password" className="min-h-11 min-w-64 flex-1 rounded-xl border border-[#cbd8e8] px-4" minLength={8} onChange={(event) => setNewPassword(event.target.value)} placeholder="Nueva contraseña (mínimo 8 caracteres)" required type="password" value={newPassword} /><button className="min-h-11 rounded-xl bg-[#075ac7] px-5 font-bold text-white" type="submit">Guardar contraseña</button></form></section>

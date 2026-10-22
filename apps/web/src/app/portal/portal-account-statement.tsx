@@ -4,13 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import type { CustomerStatement } from "@/lib/customer-accounts";
 import { statementMovementPresentation } from "@/lib/customer-statement-presentation";
 import { formatCurrency, formatDate } from "@/lib/format";
+import type { PortalHistoryScope } from "@/lib/portal-history";
 
 type AccountData = {
   clientId: string; customerName: string; currentBalance: number; statement: CustomerStatement;
   lastZeroDate: string | null; hiddenCount: number; completeHistory: boolean;
+  historyScope: PortalHistoryScope;
 };
 
-export function PortalAccountStatement({ clientId, accessToken, updatedAt }: { clientId: string; accessToken: string; updatedAt: string }) {
+export function PortalAccountStatement({ clientId, accessToken, updatedAt, onHistoryScope }: { clientId: string; accessToken: string; updatedAt: string; onHistoryScope?: (scope: PortalHistoryScope) => void }) {
   const [completeHistory, setCompleteHistory] = useState(false);
   const [result, setResult] = useState<{ key: string; data?: AccountData; error?: string } | null>(null);
   const [downloadError, setDownloadError] = useState("");
@@ -28,12 +30,15 @@ export function PortalAccountStatement({ clientId, accessToken, updatedAt }: { c
     }).then(async (response) => {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "No pudimos cargar tu cuenta corriente");
-      if (!controller.signal.aborted) setResult({ key, data: payload.data as AccountData });
+      if (!controller.signal.aborted) {
+        setResult({ key, data: payload.data as AccountData });
+        if (payload.data.historyScope) onHistoryScope?.(payload.data.historyScope);
+      }
     }).catch((cause: unknown) => {
       if (!controller.signal.aborted) setResult({ key, error: cause instanceof Error ? cause.message : "No pudimos cargar tu cuenta corriente" });
     });
     return () => controller.abort();
-  }, [clientId, accessToken, completeHistory, key]);
+  }, [clientId, accessToken, completeHistory, key, onHistoryScope]);
 
   useEffect(() => () => { downloadRequest.current?.abort(); }, []);
 

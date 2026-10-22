@@ -12,6 +12,7 @@ class ApiError extends Error { constructor(status, message) { super(message); th
 const id = "2c425a04-f47a-4e55-b6bf-5c25a38cac75";
 const other = "5b6906f2-8723-4234-862a-67668dc5e4b6";
 const presentation = load("../src/lib/customer-statement-presentation.ts");
+const history = load("../src/lib/portal-history.ts", { "./customer-statement-presentation": presentation });
 const format = load("../src/lib/format.ts");
 const renderer = load("../src/lib/pdf/renderer.ts", { "../format": format });
 function setup({ authStatus, members = [id], settled = false } = {}) {
@@ -34,6 +35,7 @@ function setup({ authStatus, members = [id], settled = false } = {}) {
       queries.push({ company, client, options }); assert.equal(company, 7); assert.equal(client, id); assert.deepEqual(options, {}); return full;
     } },
     "@/lib/customer-statement-presentation": presentation,
+    "@/lib/portal-history": history,
     "@/lib/pdf/renderer": renderer,
     "@/lib/timezone": { localDateIso: () => "2026-10-21" },
   };
