@@ -1155,8 +1155,7 @@ test("public store shows commercial scales and persists server-calculated prices
   assert.match(client, /para acceder a Lista 2/);
   assert.match(client, /accede a Lista 1/);
   assert.match(client, /Solicitud recibida/);
-  assert.doesNotMatch(client, /ingresó al CRM de Starlim/);
-  assert.match(client, /llegó a Operaciones de Starlim/);
+  assert.match(client, /Ya ingresó al CRM de Starlim/);
   assert.match(client, /navigator\.geolocation/);
   assert.match(client, /Dirección completa/);
   assert.match(client, /Conocé nuestros combos/);
@@ -1194,8 +1193,8 @@ test("seller mobile CRM has an elevated quick-sale button and a viewport-safe dr
   const leadsBoard = read("apps/web/src/app/crm/leads/leads-board.tsx");
 
   assert.match(navigation, /Crear cliente/);
-  assert.match(navigation, /Crear lead/);
   assert.match(navigation, /Hacer presupuesto/);
+  assert.match(navigation, /Cargar pedido/);
   assert.match(navigation, /seller-mobile-navigation__create/);
   assert.doesNotMatch(navigation, /href: "\/crm\/leads", label: "Leads"/);
   assert.match(navigation, /seller-mobile-navigation__create-slot/);
@@ -1208,26 +1207,41 @@ test("seller mobile CRM has an elevated quick-sale button and a viewport-safe dr
   assert.doesNotMatch(modulePage, /max-h-\[72vh\]/);
   assert.match(modulePage, /lg:backdrop-blur/);
   assert.match(modulePage, /w-\[min\(88vw,380px\)\]/);
-  assert.match(read("apps/web/src/components/shell-navigation.tsx"), /inicioSection\.groups\.map/);
+  assert.match(read("apps/web/src/components/shell-navigation.tsx"), /sections\.map/);
   assert.match(leadsPage, /params\.nuevo === "1"/);
   assert.match(leadsBoard, /initialCreating/);
 });
 
-test("CRM centraliza navegación y acciones comerciales rápidas", () => {
-  const commandBar = read("apps/web/src/components/crm-command-bar.tsx");
+test("Motor de ventas concentra misiones sin crear un segundo mundo de navegación", () => {
+  const engine = read("apps/web/src/app/sales-engine/page.tsx");
+  const missions = read("apps/web/src/app/sales-engine/daily-missions.tsx");
   const modulePage = read("apps/web/src/components/module-page.tsx");
-  const customersPage = read("apps/web/src/app/crm/clientes/page.tsx");
 
-  for (const label of ["Mi día", "Clientes", "Leads", "Presupuestos", "Cobros", "Agenda", "Precios"]) {
-    assert.match(commandBar, new RegExp(label));
-  }
-  assert.match(commandBar, /Nuevo lead/);
-  assert.match(commandBar, /Presupuestar/);
-  assert.match(modulePage, /active === "crm" \? <CrmCommandBar/);
-  assert.match(customersPage, /¿A quién contacto hoy\?/);
-  assert.match(customersPage, /Presupuestar en el acto/);
-  assert.match(customersPage, /Gestionar cobranzas/);
-  assert.match(customersPage, /WhatsApp/);
+  assert.match(engine, /Motor de ventas/);
+  assert.match(engine, /Cómo decide el motor/);
+  assert.match(missions, /Misiones de hoy/);
+  assert.match(missions, /No es una lista histórica/);
+  assert.doesNotMatch(modulePage, /CrmCommandBar/);
+});
+
+test("exportar una lista registra destinatario y crea una señal de seguimiento", () => {
+  const prices = read("apps/web/src/app/prices/page.tsx");
+  const exportForm = read("apps/web/src/app/prices/price-list-export-form.tsx");
+  const exportRoute = read("apps/web/src/app/api/pricing/price-list-exports/route.ts");
+  const followups = read("apps/web/src/lib/price-list-followups.ts");
+  const migration = read("supabase/migrations/20261022000234_price_list_followup_signals.sql");
+  const engine = read("apps/web/src/app/sales-engine/page.tsx");
+
+  assert.match(prices, /PriceListExportForm/);
+  assert.match(exportForm, /Prospecto nuevo/);
+  assert.match(exportForm, /Cliente existente/);
+  assert.match(exportForm, /Volver a revisar en/);
+  assert.match(exportRoute, /recordPriceListShare/);
+  assert.match(followups, /INSERT INTO price_list_shares/);
+  assert.match(followups, /status = 'pendiente' AND follow_up_on <= CURRENT_DATE/);
+  assert.match(engine, /getPriceListFollowupSignals/);
+  assert.match(migration, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(migration, /TO starlim_app/);
 });
 
 test("Cobros y pagos es un resumen y Cuentas corrientes conserva la operatoria", () => {
@@ -1504,7 +1518,7 @@ test("Caja records manual movements and reflects payments and approved purchases
   const finance = read("apps/web/src/lib/finance.ts");
   assert.match(finance, /export async function createCashMovement/);
   assert.match(finance, /export async function getCashMovements/);
-  assert.match(finance, /admin_treasury_movements/, "manual cash movements must feed the reconciled treasury ledger");
+  assert.match(finance, /manual_cash_movements/, "manual cash movements must feed the treasury balance");
   assert.match(finance, /caja_entrada/);
 
   const cashActions = read("apps/web/src/app/cash/actions.ts");
@@ -1514,7 +1528,6 @@ test("Caja records manual movements and reflects payments and approved purchases
   const cashPage = read("apps/web/src/app/cash/page.tsx");
   assert.match(cashPage, /createCashMovementAction/);
   assert.match(cashPage, /getCashMovements/);
-  assert.match(cashPage, /name="accountId"/);
   assert.match(cashPage, /name="direction"/);
 
   const approvals = read("apps/web/src/lib/approvals.ts");

@@ -33,7 +33,6 @@ export type NavigationBadgeKey =
   | "tasks"
   | "ordersLoaded"
   | "ordersConfirmed"
-  | "orderRequests"
   | "quotes"
   | "payables"
   | "purchases";
@@ -69,13 +68,7 @@ export const navigationGroups: NavigationGroup[] = [
     href: "/orders",
     label: "Pedidos",
     active: "orders",
-    badge: "orderRequests",
-    permission: ORDERS_READ_PERMISSION,
-  },
-  {
-    href: "/store",
-    label: "Tienda y Portal",
-    active: "store",
+    badge: "ordersConfirmed",
     permission: ORDERS_READ_PERMISSION,
   },
   {
@@ -215,12 +208,7 @@ export const navigationGroups: NavigationGroup[] = [
   { href: "/calendar", label: "Calendario", active: "calendar", badge: "tasks" },
   { href: "/bank", label: "Banco", active: "bank" },
   { href: "/supervisor-lab", label: "LA TIRRA ia.1.1", active: "supervisor-lab", permission: CRM_READ_PERMISSION },
-  // CRM (segundo mundo para vendedores). active: "crm" agrupa estos en la seccion CRM.
-  { href: "/crm/perfil", label: "Hoy", active: "crm", permission: CRM_READ_PERMISSION },
-  { href: "/crm/clientes", label: "Personas", active: "crm", permission: CRM_READ_PERMISSION },
-  { href: "/crm/leads", label: "Leads", active: "crm", permission: CRM_READ_PERMISSION },
-  { href: "/crm/cobros", label: "Cobros", active: "crm", permission: CRM_READ_PERMISSION },
-  { href: "/crm/presupuestos", label: "Oportunidades", active: "crm", permission: CRM_READ_PERMISSION },
+  { href: "/sales-engine", label: "Motor de ventas", active: "sales-engine", permission: CRM_READ_PERMISSION },
 ];
 
 export type NavigationSection = {
@@ -248,9 +236,10 @@ export const navigationSections: NavigationSection[] = [
     ],
   },
   {
-    label: "CRM",
-    icon: "clock",
-    groups: navigationGroups.filter((group) => group.active === "crm"),
+    label: "Motor de ventas",
+    href: "/sales-engine",
+    icon: "trend",
+    groups: [groupByLabel("Motor de ventas")],
   },
   {
     label: "Operaciones",
@@ -261,12 +250,6 @@ export const navigationSections: NavigationSection[] = [
       groupByLabel("Presupuestos"),
       groupByLabel("Fiscal"),
     ],
-  },
-  {
-    label: "Tienda y Portal",
-    href: "/store",
-    icon: "eye",
-    groups: [groupByLabel("Tienda y Portal")],
   },
   {
     label: "Datos",
@@ -410,7 +393,6 @@ export function emptyNavigationIndicators(): NavigationIndicators {
     tasks: 0,
     ordersLoaded: 0,
     ordersConfirmed: 0,
-    orderRequests: 0,
     quotes: 0,
     payables: 0,
     purchases: 0,
@@ -441,7 +423,6 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     assigned_tasks: string;
     orders_loaded: string;
     orders_confirmed: string;
-    order_requests: string;
     quotes: string;
     payables: string;
     purchases: string;
@@ -466,8 +447,6 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
          WHERE empresa_id = $1 AND ${normalizedOrderStatusSql("sales")} = 'cargado')::text AS orders_loaded,
         (SELECT COUNT(*) FROM sales
          WHERE empresa_id = $1 AND ${normalizedOrderStatusSql("sales")} = 'confirmado')::text AS orders_confirmed,
-        (SELECT COUNT(*) FROM order_requests
-         WHERE empresa_id = $1 AND status = 'solicitud')::text AS order_requests,
         (SELECT COUNT(*) FROM quotes
          WHERE empresa_id = $1 AND status = 'pendiente')::text AS quotes,
         (SELECT COUNT(*) FROM purchases
@@ -503,7 +482,6 @@ export async function getNavigationIndicators(session: AuthSession): Promise<Nav
     tasks: Number(row.personal_tasks) + Number(row.assigned_tasks),
     ordersLoaded: Number(row.orders_loaded),
     ordersConfirmed: Number(row.orders_confirmed),
-    orderRequests: Number(row.order_requests),
     quotes: Number(row.quotes),
     payables: Number(row.payables),
     purchases: Number(row.purchases),

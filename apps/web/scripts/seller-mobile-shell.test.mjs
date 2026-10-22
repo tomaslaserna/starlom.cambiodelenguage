@@ -8,32 +8,30 @@ const styles = readFileSync(new URL("../src/app/globals.css", import.meta.url), 
 
 test("el modo móvil comercial se activa únicamente para vendedores", () => {
   assert.match(modulePage, /normalizeRole\(session\.role\) === "vendedor"/);
-  assert.match(modulePage, /section\.label === "Inicio" \|\| section\.label === "CRM"/);
+  assert.match(modulePage, /section\.label === "Inicio" \|\| section\.label === "Motor de ventas"/);
   assert.match(modulePage, /group\.active === "supervisor-lab"/);
   assert.match(modulePage, /<SellerMobileNavigation/);
 });
 
-test("la barra inferior expone Inicio y los destinos principales del CRM", () => {
-  for (const href of ["/crm/perfil", "/crm/clientes", "/crm/presupuestos", "/crm/listas"]) {
+test("la barra inferior expone Motor de ventas y destinos canónicos del ERP", () => {
+  for (const href of ["/sales-engine", "/customers", "/quotes", "/prices"]) {
     assert.match(mobileNav, new RegExp(`href: "${href.replaceAll("/", "\\/")}"`));
   }
-  assert.doesNotMatch(mobileNav, /href: "\/crm\/leads", label: "Leads"/);
-  assert.match(mobileNav, /href: "\/crm\/leads\?nuevo=1"/);
+  assert.doesNotMatch(mobileNav, /href: "\/crm\//);
+  assert.doesNotMatch(mobileNav, /Crear lead/);
   assert.match(mobileNav, /seller-mobile-navigation__create-slot/);
   assert.match(styles, /env\(safe-area-inset-bottom\)/);
   assert.match(styles, /grid-template-columns: repeat\(5/);
 });
 
-const crmProfile = readFileSync(new URL("../src/app/crm/perfil/page.tsx", import.meta.url), "utf8");
+const salesEngine = readFileSync(new URL("../src/app/sales-engine/page.tsx", import.meta.url), "utf8");
 const crmSource = readFileSync(new URL("../src/lib/crm.ts", import.meta.url), "utf8");
 
-test("el inicio CRM muestra el tablero comercial solicitado con métricas reales", () => {
-  assert.match(crmProfile, /Ventas vs meta/);
-  assert.match(crmProfile, /Presupuestos a revisar/);
-  assert.match(crmProfile, /Clientes a cobrar/);
-  assert.match(crmProfile, /Contactos pendientes hoy/);
-  assert.match(crmProfile, /Top 5 clientes del mes/);
-  assert.match(crmProfile, /normalizeRole\(session\.role\) !== "vendedor"/);
+test("el Motor de ventas muestra misiones explicadas con métricas reales", () => {
+  assert.match(salesEngine, /Qué conviene hacer hoy/);
+  assert.match(salesEngine, /Presupuestos accionables/);
+  assert.match(salesEngine, /Recontactos sugeridos/);
+  assert.match(salesEngine, /Cómo decide el motor/);
   assert.match(crmSource, /FROM vendor_goals/);
   assert.match(crmSource, /LIMIT 5/);
 });

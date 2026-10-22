@@ -1,9 +1,9 @@
 import type { CrmClientsResult } from "@/lib/crm";
-import type { OpenCustomerAccount } from "@/lib/customer-accounts";
 import type { LeadFollowupAgendaItem } from "@/lib/leads";
 import type { VendorQuote, QuoteBucket } from "@/lib/crm-quotes";
+import type { PriceListFollowupSignal } from "@/lib/price-list-followups";
 
-export type CrmMissionKind = "lead" | "cliente" | "presupuesto" | "cobro";
+export type CrmMissionKind = "lead" | "cliente" | "presupuesto" | "lista";
 export type CrmMissionUrgency = "ahora" | "hoy" | "proximo";
 
 export type CrmMission = {
@@ -17,13 +17,14 @@ export type CrmMission = {
   href: string;
   actionLabel: string;
   phone?: string;
+  priceListSignalId?: string;
 };
 
 type MissionInput = {
   clients: CrmClientsResult;
   leads: LeadFollowupAgendaItem[];
   quotes: Record<QuoteBucket, VendorQuote[]>;
-  accounts: OpenCustomerAccount[];
+  priceListSignals?: PriceListFollowupSignal[];
 };
 
 function whatsappPhone(phone: string) {
@@ -31,7 +32,7 @@ function whatsappPhone(phone: string) {
   if (!digits) return undefined;
   return digits.startsWith("54") ? digits : `54${digits}`;
 }
-export function buildCrmMissions({ clients, leads, quotes, accounts }: MissionInput): CrmMission[] {
+export function buildCrmMissions({ clients, leads, quotes, priceListSignals = [] }: MissionInput): CrmMission[] {
   const missions: CrmMission[] = [];
 
   for (const lead of leads.filter((item) => !item.contactedToday)) {
@@ -49,7 +50,7 @@ export function buildCrmMissions({ clients, leads, quotes, accounts }: MissionIn
     });
   }
 
-  for (const quote of quotes.vencidos) {
+  for (const quote of quotes.vencidos.filter((item) => item.daysRemaining != null && item.daysRemaining >= -7)) {
     missions.push({
       id: `quote-overdue-${quote.id}`,
       kind: "presupuesto",
@@ -77,6 +78,22 @@ export function buildCrmMissions({ clients, leads, quotes, accounts }: MissionIn
     });
   }
 
+  for (const signal of priceListSignals) {
+    missions.push({
+      id: `price-list-${signal.id}`,
+      kind: "lista",
+      urgency: "hoy",
+      score: signal.recipientType === "prospecto" ? 89 : 82,
+      title: `Revisar la lista enviada a ${signal.recipientName}`,
+      reason: `${signal.priceListName} · ${signal.purpose}`,
+      detail: `Seguimiento previsto para ${signal.followUpOn}`,
+      href: `/prices?list=${signal.priceListId}`,
+      actionLabel: "Ver lista",
+      phone: whatsappPhone(signal.recipientPhone),
+      priceListSignalId: signal.id,
+    });
+  }
+
   const clientBuckets = [
     { key: "perdido", score: 86, urgency: "ahora" as const, reason: "Se alejó más del doble de su ritmo habitual" },
     { key: "riesgo", score: 78, urgency: "hoy" as const, reason: "Está fuera de su ritmo habitual de compra" },
@@ -97,20 +114,6 @@ export function buildCrmMissions({ clients, leads, quotes, accounts }: MissionIn
         phone: whatsappPhone(client.phone),
       });
     }
-  }
-
-  for (const account of accounts.filter((item) => item.balance > 0.005).slice(0, 4)) {
-    missions.push({
-      id: `account-${account.clientId}`,
-      kind: "cobro",
-      urgency: "proximo",
-      score: 50 + Math.min(15, account.balance / 100_000),
-      title: `Revisar saldo de ${account.name}`,
-      reason: "Tiene cuenta corriente abierta",
-      detail: new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(account.balance),
-      href: `/crm/cobros?q=${encodeURIComponent(account.name)}`,
-      actionLabel: "Gestionar cobro",
-    });
   }
 
   return missions.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title)).slice(0, 16);

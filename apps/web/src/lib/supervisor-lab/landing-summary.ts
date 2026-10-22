@@ -124,8 +124,8 @@ export async function getSupervisorLandingSummary(session: AuthSession): Promise
       greeting: `Hola, ${firstName}. Este es tu seguimiento comercial de hoy.`,
       description: "Recompra y cobranzas calculadas con el historial y las condiciones de pago del ERP.",
       cards: [
-        { label: "Cerca de recomprar", value: approaching.length, detail: "Clientes dentro de su ventana habitual", href: "/crm/perfil", tone: "info" },
-        { label: "Recompra atrasada", value: overdueCustomers.length, detail: "Clientes fuera de su ritmo habitual", href: "/crm/perfil", tone: overdueCustomers.length ? "warning" : "success" },
+        { label: "Cerca de recomprar", value: approaching.length, detail: "Clientes dentro de su ventana habitual", href: "/sales-engine", tone: "info" },
+        { label: "Recompra atrasada", value: overdueCustomers.length, detail: "Clientes fuera de su ritmo habitual", href: "/sales-engine", tone: overdueCustomers.length ? "warning" : "success" },
         { label: "Cobrar hoy", value: unique(todayCollections), detail: "Clientes con saldo que vence hoy", href: "/payments/accounts", tone: todayCollections.length ? "warning" : "success" },
         { label: "Cobrar esta semana", value: unique(weekCollections), detail: "Clientes con vencimiento en los próximos 7 días", href: "/payments/accounts", tone: "neutral" },
       ],
@@ -146,7 +146,7 @@ export async function getSupervisorLandingSummary(session: AuthSession): Promise
           stage: lead.stage,
           dueDate: lead.nextFollowup,
           reason: lead.nextFollowup ? `Seguimiento programado para ${lead.nextFollowup}` : "Lead sin fecha de seguimiento",
-          href: "/crm/leads",
+          href: "/sales-engine",
         })),
       },
     };

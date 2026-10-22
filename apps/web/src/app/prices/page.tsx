@@ -16,7 +16,6 @@ import {
   Field,
   Input,
   PageHeader,
-  Select,
   Toolbar,
 } from "@/components/ui";
 import { listSalePrices } from "@/lib/catalog";
@@ -26,6 +25,8 @@ import { localDateIso } from "@/lib/timezone";
 import { isAdminRole, requireStaffSession } from "@/lib/auth";
 import { PRODUCTS_CREATE_PERMISSION, sessionAllows, sessionCanReadProducts } from "@/lib/route-auth";
 import { ProductImageCell } from "@/app/prices/product-image-cell";
+import { PriceListExportForm } from "@/app/prices/price-list-export-form";
+import { listPriceListRecipients } from "@/lib/price-list-followups";
 
 export const dynamic = "force-dynamic";
 
@@ -43,9 +44,10 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
   if (!(await sessionCanReadProducts(session))) redirect("/");
 
   const params = await searchParams;
-  const [lists, result] = await Promise.all([
+  const [lists, result, exportRecipients] = await Promise.all([
     listPriceLists(session.companyId),
     listSalePrices({ companyId: session.companyId, query: params.q, page: params.page, pageSize: "25" }),
+    listPriceListRecipients(session.companyId),
   ]);
 
   const requestedListId = Number(params.list);
@@ -139,37 +141,7 @@ export default async function PricesPage({ searchParams }: PricesPageProps) {
                   <summary className="inline-flex h-[var(--control-height-md)] cursor-pointer list-none items-center rounded-[9px] border border-[#d9e2ef] bg-white px-4 text-sm font-bold text-[#334155] shadow-[var(--shadow-xs)] hover:border-[#2563eb]">
                     Exportar PDF
                   </summary>
-                  <form
-                    action="/api/pdfs/pricing/price-list"
-                    className="absolute right-0 z-20 mt-2 grid w-[300px] gap-3 rounded-[10px] border border-[#d9e2ef] bg-white p-4 shadow-[var(--shadow-lg)]"
-                    method="GET"
-                    target="_blank"
-                  >
-                    <input name="list" type="hidden" value={activeList.id} />
-                    <p className="erp-text-caption font-bold text-[#0f172a]">Exportar “{activeList.name}”</p>
-                    <Field htmlFor="pdf-vigencia" label="Vigencia desde">
-                      <Input defaultValue={localDateIso()} id="pdf-vigencia" name="vigencia" type="date" />
-                    </Field>
-                    <Field htmlFor="pdf-stock" label="Productos">
-                      <Select defaultValue="todos" id="pdf-stock" name="stock">
-                        <option value="todos">Todos</option>
-                        <option value="con">Solo con stock</option>
-                      </Select>
-                    </Field>
-                    <Field htmlFor="pdf-group" label="Agrupar por">
-                      <Select defaultValue="categoria" id="pdf-group" name="groupBy">
-                        <option value="categoria">Categoría</option>
-                        <option value="proveedor">Proveedor</option>
-                      </Select>
-                    </Field>
-                    <Field htmlFor="pdf-filter" label="Filtrar (opcional)">
-                      <Input id="pdf-filter" name="filter" placeholder="Categoría o proveedor" />
-                    </Field>
-                    <p className="rounded-[9px] bg-[#eef4ff] px-3 py-2 text-xs font-semibold text-[#334155]">
-                      El PDF muestra siempre precios netos, sin IVA.
-                    </p>
-                    <Button type="submit">Generar PDF</Button>
-                  </form>
+                  <PriceListExportForm customers={exportRecipients} defaultDate={localDateIso()} listId={activeList.id} listName={activeList.name} />
                 </details>
               ) : null}
               {canCreateProducts ? <ButtonLink href="/prices/new" variant="outline">Nuevo producto</ButtonLink> : null}
