@@ -6,6 +6,7 @@ export type PriceListRecipient = { id: string; name: string };
 
 export type PriceListFollowupSignal = {
   id: string;
+  customerId: string | null;
   priceListId: number;
   priceListName: string;
   recipientType: "cliente" | "prospecto";
@@ -110,6 +111,7 @@ export async function recordPriceListShare(session: AuthSession, input: PriceLis
 export async function getPriceListFollowupSignals(session: AuthSession): Promise<PriceListFollowupSignal[]> {
   const result = await queryWithCompanyContext<{
     id: string;
+    customer_id: string | null;
     price_list_id: string;
     price_list_name: string;
     recipient_type: "cliente" | "prospecto";
@@ -120,7 +122,7 @@ export async function getPriceListFollowupSignals(session: AuthSession): Promise
     shared_at: string;
   }>(
     session.companyId,
-    `SELECT id::text, price_list_id::text, price_list_name, recipient_type,
+    `SELECT id::text, customer_id::text, price_list_id::text, price_list_name, recipient_type,
             recipient_name, recipient_phone, purpose, follow_up_on::text, shared_at::text
        FROM price_list_shares
       WHERE empresa_id = $1 AND seller_id = $2::uuid
@@ -132,6 +134,7 @@ export async function getPriceListFollowupSignals(session: AuthSession): Promise
   );
   return result.rows.map((row) => ({
     id: row.id,
+    customerId: row.customer_id,
     priceListId: Number(row.price_list_id),
     priceListName: row.price_list_name,
     recipientType: row.recipient_type,

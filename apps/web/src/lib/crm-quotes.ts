@@ -3,6 +3,7 @@
 
 export type VendorQuote = {
   id: string;
+  clientId: string | null;
   quoteNumber: string;
   clientName: string;
   total: number;
