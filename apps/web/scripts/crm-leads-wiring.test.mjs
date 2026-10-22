@@ -27,8 +27,9 @@ test("leads.ts scopea por vendedor y la conversión reutiliza createCustomer", (
 
 const navSource = readFileSync(new URL("../src/lib/navigation.ts", import.meta.url), "utf8");
 
-test("navigation incluye el ítem de Leads del CRM", () => {
-  assert.match(navSource, /href: "\/crm\/leads", label: "Leads", active: "crm"/);
+test("navigation evita un segundo mundo CRM y expone Motor de ventas", () => {
+  assert.match(navSource, /href: "\/sales-engine", label: "Motor de ventas"/);
+  assert.doesNotMatch(navSource, /href: "\/crm\/leads", label: "Leads"/);
 });
 
 const activityMigration = readFileSync(
@@ -42,7 +43,6 @@ const leadsBoard = readFileSync(new URL("../src/app/crm/leads/leads-board.tsx", 
 const calendarPage = readFileSync(new URL("../src/app/calendar/page.tsx", import.meta.url), "utf8");
 const calendarActions = readFileSync(new URL("../src/app/calendar/actions.ts", import.meta.url), "utf8");
 const shellNavigation = readFileSync(new URL("../src/components/shell-navigation.tsx", import.meta.url), "utf8");
-const crmCommandBar = readFileSync(new URL("../src/components/crm-command-bar.tsx", import.meta.url), "utf8");
 const crmCustomersPage = readFileSync(new URL("../src/app/crm/clientes/page.tsx", import.meta.url), "utf8");
 const mobileNavigation = readFileSync(new URL("../src/components/seller-mobile-navigation.tsx", import.meta.url), "utf8");
 
@@ -87,10 +87,9 @@ test("Leads abre su bandeja operativa antes de la actividad comercial", () => {
   assert.match(leadsBoard, /\["todos", "Todos"\]/);
 });
 
-test("el CRM conserva su contexto y el calendario programa contactos de leads", () => {
-  assert.match(shellNavigation, /href: "\/crm\/perfil", label: "Inicio comercial"/);
-  assert.match(shellNavigation, /href: "\/crm\/calendario"/);
-  assert.match(shellNavigation, /href: "\/crm\/supervisor"/);
+test("el calendario conserva la programación de contactos sin crear una navegación paralela", () => {
+  assert.doesNotMatch(shellNavigation, /CrmWorldNavigation/);
+  assert.doesNotMatch(shellNavigation, /pathname\.startsWith\("\/crm"\)/);
   assert.match(calendarPage, /Leads sugeridos para contactar/);
   assert.match(calendarPage, /Leads programados/);
   assert.match(calendarPage, /name="leadId"/);
@@ -98,11 +97,9 @@ test("el CRM conserva su contexto y el calendario programa contactos de leads", 
   assert.match(leadsSource, /export async function scheduleLeadReminder/);
 });
 
-test("las acciones comerciales conservan el contexto CRM", () => {
-  assert.doesNotMatch(crmCommandBar, /href="\/quotes/);
+test("las pantallas históricas siguen disponibles pero salen de la navegación principal", () => {
   assert.doesNotMatch(crmCustomersPage, /href="\/quotes|href=\{`\/customers/);
-  assert.doesNotMatch(mobileNavigation, /href: "\/(quotes|customers)/);
-  assert.match(crmCommandBar, /href="\/crm\/presupuestos\/nuevo"/);
+  assert.match(mobileNavigation, /href: "\/sales-engine"/);
   assert.match(crmCustomersPage, /`\/crm\/clientes\/\$\{customer\.id\}`/);
-  assert.match(shellNavigation, /Volver al sistema/);
+  assert.doesNotMatch(shellNavigation, /Volver al sistema/);
 });

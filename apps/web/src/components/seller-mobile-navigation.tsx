@@ -7,16 +7,16 @@ import { AppIcon, cn } from "@/components/ui";
 import type { AppIconName } from "@/components/ui/app-icon";
 
 const ITEMS: Array<{ href: string; label: string; icon: AppIconName }> = [
-  { href: "/crm/perfil", label: "Inicio", icon: "chart" },
-  { href: "/crm/clientes", label: "Clientes", icon: "search" },
-  { href: "/crm/presupuestos", label: "Presup.", icon: "quote" },
-  { href: "/crm/listas", label: "Precios", icon: "package" },
+  { href: "/sales-engine", label: "Ventas", icon: "trend" },
+  { href: "/customers", label: "Clientes", icon: "search" },
+  { href: "/quotes", label: "Presup.", icon: "quote" },
+  { href: "/prices", label: "Precios", icon: "package" },
 ];
 
 const QUICK_ACTIONS: Array<{ href: string; label: string; description: string; icon: AppIconName }> = [
-  { href: "/crm/clientes/nuevo", label: "Crear cliente", description: "Dar de alta una cuenta nueva", icon: "search" },
-  { href: "/crm/leads?nuevo=1", label: "Crear lead", description: "Registrar un prospecto en el acto", icon: "clock" },
-  { href: "/crm/presupuestos/nuevo", label: "Hacer presupuesto", description: "Cotizar y cerrar con el cliente", icon: "quote" },
+  { href: "/customers/new", label: "Crear cliente", description: "Dar de alta una cuenta nueva", icon: "search" },
+  { href: "/quotes/new", label: "Hacer presupuesto", description: "Cotizar y cerrar con el cliente", icon: "quote" },
+  { href: "/orders/new", label: "Cargar pedido", description: "Registrar una venta nueva", icon: "cart" },
 ];
 
 export function SellerMobileNavigation() {
@@ -63,7 +63,7 @@ export function SellerMobileNavigation() {
         );
       })}
       <span className="seller-mobile-navigation__create-slot">
-        <button aria-expanded={quickOpen} aria-label="Crear cliente, lead o presupuesto" className={cn("seller-mobile-navigation__create", quickOpen && "is-open")} onClick={() => setQuickOpen((value) => !value)} type="button">+</button>
+        <button aria-expanded={quickOpen} aria-label="Crear cliente, presupuesto o pedido" className={cn("seller-mobile-navigation__create", quickOpen && "is-open")} onClick={() => setQuickOpen((value) => !value)} type="button">+</button>
       </span>
       {ITEMS.slice(2).map((item) => {
         const current = pathname.startsWith(item.href);

@@ -4,12 +4,13 @@ import test from "node:test";
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
 
-test("nav CRM incluye /crm/cobros con crm.ver", () => {
+test("la navegación concentra el seguimiento en Motor de ventas", () => {
   const nav = read("../src/lib/navigation.ts");
-  assert.match(nav, /href: "\/crm\/cobros"/);
-  const line = nav.split("\n").find((l) => l.includes('"/crm/cobros"'));
-  assert.match(line, /active: "crm"/);
+  assert.match(nav, /href: "\/sales-engine", label: "Motor de ventas"/);
+  const line = nav.split("\n").find((l) => l.includes('"/sales-engine"'));
+  assert.match(line, /active: "sales-engine"/);
   assert.match(line, /CRM_READ_PERMISSION/);
+  assert.doesNotMatch(nav, /href: "\/crm\/(perfil|clientes|leads|cobros|presupuestos)"/);
 });
 
 test("pagina /crm/cobros usa getVendorOpenAccounts (saldo corrido)", () => {
@@ -34,15 +35,14 @@ test("pagina /crm/clientes es DB pura del vendedor: tabla, sin tablero ni tira d
   assert.doesNotMatch(src, /getVendorProfile/); // saca la tira de perfil
 });
 
-test("el seguimiento de clientes (tablero) vive en Perfil", () => {
-  const src = read("../src/app/crm/perfil/page.tsx");
-  assert.match(src, /ClientesDashboard/);
+test("el seguimiento comercial vive en Motor de ventas y Perfil redirige", () => {
+  const src = read("../src/app/sales-engine/page.tsx");
+  const legacy = read("../src/app/crm/perfil/page.tsx");
+  assert.match(src, /DailyMissions/);
   assert.match(src, /getVendorClients/);
-  assert.match(src, /agendarClienteAction/);
   assert.match(src, /getVendorProfile/); // mantiene los numeros del vendedor
   assert.match(src, /sessionCanUseCrm\(session\)/);
-  assert.doesNotMatch(src, /normalizeRole\(session\.role\) !== "vendedor"/);
-  assert.match(src, /isSeller \? await getSalesActivityDashboard/);
+  assert.match(legacy, /redirect\("\/sales-engine"\)/);
 });
 
 test("registerCrmCustomerPaymentAction: gate crm.ver + guard de propiedad + registerCustomerPayment", () => {

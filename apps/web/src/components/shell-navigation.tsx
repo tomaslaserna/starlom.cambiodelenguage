@@ -263,62 +263,6 @@ function SectionAccordion({
   );
 }
 
-// Segundo mundo del CRM: retorno al sistema + Modo CRM (items planos) + Inicio
-// (menu incondicional compartido: escritorio, calendario, banco).
-function CrmWorldNavigation({
-  active,
-  current,
-  crmSection,
-  inicioSection,
-  indicators,
-}: {
-  active: string;
-  current: CurrentLocation;
-  crmSection: NavigationSection;
-  inicioSection?: NavigationSection;
-  indicators: NavigationIndicators;
-}) {
-  const crmInicioSection = inicioSection
-    ? {
-        ...inicioSection,
-        groups: inicioSection.groups.map((group) => {
-            if (group.label === "Banco") return null;
-            if (group.label === "Escritorio") return { ...group, href: "/crm/perfil", label: "Inicio comercial" };
-            if (group.label === "Calendario") return { ...group, href: "/crm/calendario" };
-            if (group.label === "LA TIRRA ia.1.1") return { ...group, href: "/crm/supervisor" };
-            return group;
-          }).filter((group): group is NavigationGroup => Boolean(group)),
-      }
-    : undefined;
-
-  return (
-    <nav aria-label="Navegacion CRM" className="grid gap-2">
-      <Link className={cn(navigationRowClass(false), "crm-system-return text-[#93b4ff]")} href="/">
-        <span aria-hidden="true" className="erp-text-caption w-3 shrink-0 text-center">
-          &lt;
-        </span>
-        <span className="min-w-0 flex-1 truncate">Volver al sistema</span>
-      </Link>
-      <div className="erp-text-caption mt-1 flex items-center gap-2 rounded-[999px] border border-white/16 bg-white/10 px-3 py-1.5 font-semibold uppercase tracking-[0.08em] text-white/72">
-        {crmSection.icon ? <AppIcon aria-hidden="true" className="h-3.5 w-3.5 shrink-0" name={crmSection.icon} /> : null}
-        Modo CRM
-      </div>
-      <div className="mt-1 grid gap-1">
-        {crmSection.groups.map((group) => (
-          <NavigationGroupBlock active={active} current={current} group={group} indicators={indicators} key={group.label} />
-        ))}
-      </div>
-      {crmInicioSection ? (
-        <div className="mt-2 grid gap-1 border-t border-white/14 pt-3">
-          {crmInicioSection.groups.map((group) => (
-            <NavigationGroupBlock active={active} current={current} group={group} indicators={indicators} key={group.label} />
-          ))}
-        </div>
-      ) : null}
-    </nav>
-  );
-}
-
 export function ShellNavigation({ active, indicators, sections }: ShellNavigationProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -326,22 +270,6 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
     pathname,
     searchParams: new URLSearchParams(searchParams.toString()),
   };
-
-  // Segundo mundo: dentro del CRM se muestra su propia barra (retorno + items).
-  const inCrmWorld = pathname.startsWith("/crm");
-  const crmSection = sections.find((section) => section.label === "CRM");
-  const inicioSection = sections.find((section) => section.label === "Inicio");
-  if (inCrmWorld && crmSection) {
-    return (
-      <CrmWorldNavigation
-        active={active}
-        current={current}
-        crmSection={crmSection}
-        inicioSection={inicioSection}
-        indicators={indicators}
-      />
-    );
-  }
 
   return (
     <nav aria-label="Navegacion principal" className="grid gap-2">
@@ -357,17 +285,6 @@ export function ShellNavigation({ active, indicators, sections }: ShellNavigatio
             >
               {section.icon ? <AppIcon aria-hidden="true" className="h-4 w-4 shrink-0" name={section.icon} /> : null}
               <span className="min-w-0 flex-1 truncate">{section.label}</span>
-            </Link>
-          );
-        }
-
-        // La seccion CRM es una puerta de entrada: un link directo al segundo mundo.
-        if (section.label === "CRM") {
-          return (
-            <Link className={sectionSummaryClass(false)} href="/crm/clientes" key={section.label}>
-              {section.icon ? <AppIcon aria-hidden="true" className="h-4 w-4 shrink-0" name={section.icon} /> : null}
-              <span className="min-w-0 flex-1 truncate">{section.label}</span>
-              <span aria-hidden="true" className="erp-text-caption shrink-0 text-white/50">&gt;</span>
             </Link>
           );
         }

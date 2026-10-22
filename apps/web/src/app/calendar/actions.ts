@@ -26,7 +26,7 @@ export async function createCalendarTaskAction(formData: FormData) {
       String(formData.get("description") ?? "").trim().slice(0, 500),
     );
     revalidatePath("/crm/leads");
-    revalidatePath("/crm/perfil");
+    revalidatePath("/sales-engine");
     revalidatePath("/crm/calendario");
     return;
   }

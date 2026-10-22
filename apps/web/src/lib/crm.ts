@@ -251,6 +251,7 @@ export async function getVendorQuotes(session: AuthSession): Promise<VendorQuote
   const rows = (
     await queryWithCompanyContext<{
       id: string;
+      client_id: string | null;
       quote_number: string;
       client_name: string;
       total: string;
@@ -262,7 +263,7 @@ export async function getVendorQuotes(session: AuthSession): Promise<VendorQuote
     }>(
       session.companyId,
       `
-        SELECT q.id::text AS id,
+        SELECT q.id::text AS id, q.client_id::text AS client_id,
                COALESCE(NULLIF(q.quote_number, ''), 'Sin numero') AS quote_number,
                COALESCE(NULLIF(q.client_name, ''), c.display_name, c.legal_name, '') AS client_name,
                q.total_amount::text AS total,
@@ -285,6 +286,7 @@ export async function getVendorQuotes(session: AuthSession): Promise<VendorQuote
 
   const quotes: VendorQuote[] = rows.map((row) => ({
     id: row.id,
+    clientId: row.client_id,
     quoteNumber: row.quote_number,
     clientName: row.client_name,
     total: Number(row.total),

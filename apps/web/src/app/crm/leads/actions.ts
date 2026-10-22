@@ -16,7 +16,7 @@ import { recordSalesActivity, SALES_ACTIVITY_OUTCOMES, type RecommerceBucket } f
 
 function revalidateLeads() {
   revalidatePath("/crm/leads");
-  revalidatePath("/crm/perfil");
+  revalidatePath("/sales-engine");
   revalidatePath("/supervisor-lab");
 }
 

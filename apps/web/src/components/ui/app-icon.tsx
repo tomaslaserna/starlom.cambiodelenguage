@@ -2,6 +2,7 @@ import type { SVGProps } from "react";
 import { cn } from "./utils";
 
 export type AppIconName =
+  | "bell"
   | "calendar"
   | "cart"
   | "chart"
@@ -28,6 +29,12 @@ type AppIconProps = SVGProps<SVGSVGElement> & {
 
 export function AppIcon({ className, name, ...props }: AppIconProps) {
   const content = {
+    bell: (
+      <>
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+        <path d="M10 21h4" />
+      </>
+    ),
     calendar: (
       <>
         <rect height="16" rx="2" width="18" x="3" y="5" />
