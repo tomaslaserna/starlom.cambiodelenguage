@@ -331,7 +331,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
 
         {view === "results" ? (
           <div className="grid gap-5">
-            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,250px),1fr))] gap-3">
               <StatCard compact detail={percentage(metrics.sales.deltaPercent)} label="Ventas netas" tone="accent" value={formatCurrency(metrics.sales.current)} />
               <StatCard compact detail={`${grossMarginPercent.toLocaleString("es-AR", { maximumFractionDigits: 1 })}% sobre ventas netas`} label="Margen bruto" tone="success" value={formatCurrency(metrics.margin.grossProfit)} />
               <StatCard compact detail="Gastos del período + RRHH, sin duplicados" label="Costos operativos" tone="warning" value={formatCurrency(metrics.margin.operatingCosts)} />

@@ -82,7 +82,7 @@ test("controls wrap without fixed six-column widths; summaries have compact card
   const page = read("src/app/administration/page.tsx");
   assert.match(page, /grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4/);
   assert.doesNotMatch(page, /minmax\(220px,1\.4fr\)_160px/);
-  assert.match(page, /grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5/);
+  assert.match(page, /repeat\(auto-fit,minmax\(min\(100%,250px\),1fr\)\)/);
   assert.match(page, /Contado en RRHH/); assert.match(page, /Gastos incluidos/);
   assert.match(page, /Sueldos, aguinaldo y cargas/);
   assert.doesNotMatch(page, /Costos completos\./);
