@@ -6,6 +6,7 @@ import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { periodBounds, type Period } from "@/lib/period-range";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { netSalesAmountSql } from "@/lib/sales-vat";
+import { payrollDuplicateEmployeeSql } from "@/lib/operating-cost-source";
 
 function monthBounds(date = new Date()) {
   const month = currentMonth(date);
@@ -46,7 +47,7 @@ type AdminMetrics = {
     grossPrevious: number;
   };
   collections: { current: number; previous: number; deltaPercent: number | null };
-  margin: { grossCost: number; grossProfit: number; operatingCosts: number; operatingResult: number };
+  margin: { grossCost: number; grossProfit: number; operatingCosts: number; scheduledCosts: number; payrollCosts: number; operatingResult: number };
   stock: { value: number; units: number; products: number };
   purchases: { current: number; openTotal: number };
   receivables: { openTotal: number };
@@ -77,6 +78,8 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
     stock_units: string;
     stock_products: string;
     operating_costs_current: string;
+    scheduled_costs_current: string;
+    payroll_costs_current: string;
     purchases_current: string;
     open_sales_total: string;
     open_purchases_total: string;
@@ -187,6 +190,7 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
          AND monthly.month = $2::date
         WHERE c.empresa_id = $4
           AND c.active = true
+          AND ${payrollDuplicateEmployeeSql("c")} IS NULL
           AND c.start_month <= $2::date
           AND (c.duration_months IS NULL OR c.start_month + make_interval(months => c.duration_months) > $2::date)
           AND COALESCE(monthly.included, CASE WHEN c.duration_months IS NULL THEN c.start_month = $2::date ELSE true END)
@@ -217,6 +221,8 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
              gross_cost_current::text, gross_cost_previous::text,
              stock_value::text, stock_units::text, stock_products::text,
              (operating_costs_current + salaries_current)::text AS operating_costs_current,
+             operating_costs_current::text AS scheduled_costs_current,
+             salaries_current::text AS payroll_costs_current,
              purchases_current::text,
              open_sales_total::text, open_purchases_total::text
       FROM sales_summary, open_sales, payments_summary, stock, operating, salaries, purchases
@@ -248,6 +254,8 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
       grossCost: grossCostCurrent,
       grossProfit: salesCurrent - grossCostCurrent,
       operatingCosts,
+      scheduledCosts: Number(row.scheduled_costs_current ?? 0),
+      payrollCosts: Number(row.payroll_costs_current ?? 0),
       operatingResult: salesCurrent - grossCostCurrent - operatingCosts,
     },
     stock: {
@@ -468,6 +476,7 @@ export async function getAccumulatedOperatingResult(
                   AND monthly.month = m.month_start
                  WHERE c.empresa_id = $1
                    AND c.active = TRUE
+                   AND ${payrollDuplicateEmployeeSql("c")} IS NULL
                    AND c.start_month <= m.month_start
                    AND (c.duration_months IS NULL OR c.start_month + make_interval(months => c.duration_months) > m.month_start)
                    AND COALESCE(monthly.included, CASE WHEN c.duration_months IS NULL THEN c.start_month = m.month_start ELSE TRUE END)

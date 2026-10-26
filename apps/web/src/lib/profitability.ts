@@ -11,6 +11,7 @@ import {
 } from "@/lib/operating-cost-schedule";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { netSalesAmountSql } from "@/lib/sales-vat";
+import { payrollDuplicateEmployeeSql } from "@/lib/operating-cost-source";
 
 export type OperatingCost = {
   id: string;
@@ -26,6 +27,7 @@ export type ScheduledOperatingCost = OperatingCost & {
   durationMonths: number | null;
   included: boolean;
   overrideIncluded: boolean | null;
+  payrollEmployee: string | null;
 };
 
 export type ScheduledOperatingCostInput = {
@@ -129,6 +131,7 @@ export async function listScheduledOperatingCosts(companyId: number, month: stri
     start_month: string;
     duration_months: number | null;
     override_included: boolean | null;
+    payroll_employee: string | null;
   }>(
     companyId,
     `SELECT c.id::text AS id,
@@ -139,7 +142,8 @@ export async function listScheduledOperatingCosts(companyId: number, month: stri
             c.cost_type,
             c.start_month::text AS start_month,
             c.duration_months,
-            monthly.included AS override_included
+            monthly.included AS override_included,
+            ${payrollDuplicateEmployeeSql("c")} AS payroll_employee
        FROM costos_operativos c
        LEFT JOIN admin_operating_cost_month_status monthly
          ON monthly.empresa_id = c.empresa_id
@@ -163,7 +167,8 @@ export async function listScheduledOperatingCosts(companyId: number, month: stri
     startMonth: row.start_month.slice(0, 7),
     durationMonths: row.duration_months,
     overrideIncluded: row.override_included,
-    included: operatingCostAppliesToMonth({
+    payrollEmployee: row.payroll_employee ?? null,
+    included: !row.payroll_employee && operatingCostAppliesToMonth({
       startMonth: row.start_month.slice(0, 7),
       durationMonths: row.duration_months,
       overrideIncluded: row.override_included,
@@ -231,7 +236,12 @@ export async function getBreakEvenStatus(companyId: number, month: string): Prom
 
   const costsResult = await queryWithCompanyContext<{ total: string }>(
     companyId,
-    `SELECT COALESCE(SUM(c.monto), 0)::text AS total
+    `SELECT (COALESCE(SUM(c.monto), 0) + (
+         SELECT COALESCE(SUM(sueldo_mensual
+           + CASE WHEN COALESCE(aguinaldo_aplica, true) THEN sueldo_mensual / 12 ELSE 0 END
+           + sueldo_mensual * COALESCE(cargas_pct, 0) / 100), 0)
+         FROM admin_sueldos_config WHERE empresa_id = $1 AND activo = true
+       ))::text AS total
        FROM costos_operativos c
        LEFT JOIN admin_operating_cost_month_status monthly
          ON monthly.empresa_id = c.empresa_id
@@ -239,6 +249,7 @@ export async function getBreakEvenStatus(companyId: number, month: string): Prom
         AND monthly.month = $2::date
       WHERE c.empresa_id = $1
         AND c.active = true
+        AND ${payrollDuplicateEmployeeSql("c")} IS NULL
         AND c.start_month <= $2::date
         AND (c.duration_months IS NULL OR c.start_month + make_interval(months => c.duration_months) > $2::date)
         AND COALESCE(monthly.included, CASE WHEN c.duration_months IS NULL THEN c.start_month = $2::date ELSE true END)`,

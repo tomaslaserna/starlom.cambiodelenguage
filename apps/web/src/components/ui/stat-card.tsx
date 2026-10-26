@@ -50,9 +50,10 @@ type StatCardProps = {
   footer?: ReactNode;
   tone?: StatCardTone;
   className?: string;
+  compact?: boolean;
 };
 
-export function StatCard({ className, detail, footer, icon, label, tone = "neutral", value }: StatCardProps) {
+export function StatCard({ className, detail, footer, icon, label, tone = "neutral", value, compact = false }: StatCardProps) {
   const toneClass = toneClasses[tone];
 
   return (
@@ -63,8 +64,8 @@ export function StatCard({ className, detail, footer, icon, label, tone = "neutr
         className,
       )}
     >
-      <div className="grid w-full grid-cols-[48px_minmax(0,1fr)] items-center gap-3.5">
-        <span
+      <div className={cn("grid w-full min-w-0 items-center gap-3.5", compact ? "grid-cols-1" : "grid-cols-[48px_minmax(0,1fr)]")}>
+        {!compact ? <span
           aria-hidden="true"
           className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-full ring-1 ring-inset ring-black/[0.025]", toneClass.markerShell)}
         >
@@ -75,10 +76,10 @@ export function StatCard({ className, detail, footer, icon, label, tone = "neutr
           ) : (
             <span className={cn("h-2.5 w-2.5 rounded-full", toneClass.marker)} />
           )}
-        </span>
+        </span> : null}
         <div className="flex min-w-0 flex-col justify-center">
-          <div className="erp-display-font erp-text-caption truncate font-semibold uppercase leading-[1.15] tracking-[0.035em] text-[#526177]">{label}</div>
-          <div className="erp-display-font mt-1 whitespace-nowrap text-[clamp(1.15rem,1.55vw,1.7rem)] font-bold leading-none tracking-[-0.04em] text-[color:var(--foreground)] tabular-nums">
+          <div className={cn("erp-display-font erp-text-caption font-semibold uppercase leading-[1.15] tracking-[0.035em] text-[#526177]", compact ? "whitespace-normal" : "truncate")}>{label}</div>
+          <div className={cn("erp-display-font mt-1 whitespace-nowrap font-bold leading-none tracking-[-0.04em] text-[color:var(--foreground)] tabular-nums", compact ? "text-[clamp(1.1rem,1.65vw,1.5rem)]" : "text-[clamp(1.15rem,1.55vw,1.7rem)]")}>
             {value}
           </div>
           <div

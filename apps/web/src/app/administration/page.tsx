@@ -220,7 +220,8 @@ export default async function AdministrationPage({ searchParams }: Administratio
   const grossMarginPercent = metrics.sales.current > 0
     ? (metrics.margin.grossProfit / metrics.sales.current) * 100
     : 0;
-  const suspendedIndefiniteCosts = operatingCosts.filter((cost) => cost.durationMonths === null && !cost.included);
+  const suspendedIndefiniteCosts = operatingCosts.filter((cost) => cost.durationMonths === null && !cost.included && !cost.payrollEmployee);
+  const payrollDuplicates = operatingCosts.filter((cost) => cost.payrollEmployee);
   const closeChecks = [
     { label: "Costos de ventas completos", ready: profitability.complete, detail: profitability.complete ? "Todos los remitos tienen costo comprobable" : `${profitability.missingCostSales} ventas sin costo` },
     { label: "Conciliación bancaria completa", ready: reconciliation.ready, detail: reconciliation.ready ? "Extractos sin diferencias pendientes" : `${reconciliation.pendingLines + reconciliation.partialLines} movimientos a revisar` },
@@ -254,7 +255,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
               Una sola lectura para decidir. Cada cifra indica si representa resultado, liquidez, obligación o patrimonio.
             </p>
           </div>
-          <form action="/administration" className="flex items-end gap-2">
+          <form action="/administration" className="flex min-w-0 flex-wrap items-end gap-2">
             <input name="view" type="hidden" value={view} />
             <Field htmlFor="administration-month" label="Período de análisis">
               <Input defaultValue={month} id="administration-month" name="month" type="month" />
@@ -330,34 +331,40 @@ export default async function AdministrationPage({ searchParams }: Administratio
 
         {view === "results" ? (
           <div className="grid gap-5">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              <StatCard detail={percentage(metrics.sales.deltaPercent)} label="Ventas netas" tone="accent" value={formatCurrency(metrics.sales.current)} />
-              <StatCard detail={`${grossMarginPercent.toLocaleString("es-AR", { maximumFractionDigits: 1 })}% sobre ventas netas`} label="Margen bruto" tone="success" value={formatCurrency(metrics.margin.grossProfit)} />
-              <StatCard label="Costos operativos" tone="warning" value={formatCurrency(metrics.margin.operatingCosts)} />
-              <StatCard label="Resultado operativo" tone={metrics.margin.operatingResult >= 0 ? "success" : "danger"} value={formatCurrency(metrics.margin.operatingResult)} />
-              <StatCard detail={`${accumulated.months} meses · desde ${accumulated.startMonth}`} label="Rentabilidad acumulada" tone={accumulated.operatingResult >= 0 ? "success" : "danger"} value={formatCurrency(accumulated.operatingResult)} />
+            <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+              <StatCard compact detail={percentage(metrics.sales.deltaPercent)} label="Ventas netas" tone="accent" value={formatCurrency(metrics.sales.current)} />
+              <StatCard compact detail={`${grossMarginPercent.toLocaleString("es-AR", { maximumFractionDigits: 1 })}% sobre ventas netas`} label="Margen bruto" tone="success" value={formatCurrency(metrics.margin.grossProfit)} />
+              <StatCard compact detail="Gastos del período + RRHH, sin duplicados" label="Costos operativos" tone="warning" value={formatCurrency(metrics.margin.operatingCosts)} />
+              <StatCard compact label="Resultado operativo" tone={metrics.margin.operatingResult >= 0 ? "success" : "danger"} value={formatCurrency(metrics.margin.operatingResult)} />
+              <StatCard compact detail={`${accumulated.months} meses · desde ${accumulated.startMonth}`} label="Rentabilidad acumulada" tone={accumulated.operatingResult >= 0 ? "success" : "danger"} value={formatCurrency(accumulated.operatingResult)} />
             </div>
             {!profitability.complete ? (
               <ConfidenceNote><strong>Resultado provisional.</strong> Faltan costos en {profitability.missingCostSales} ventas que representan {formatCurrency(profitability.missingCostRevenue)}. La cobertura comprobable es {profitability.costCoveragePercent.toLocaleString("es-AR", { maximumFractionDigits: 1 })}%.</ConfidenceNote>
             ) : (
-              <ConfidenceNote tone="success"><strong>Costos completos.</strong> El resultado del período puede utilizarse para el cierre gerencial.</ConfidenceNote>
+              <ConfidenceNote tone="success"><strong>Costo de mercadería completo.</strong> Todas las ventas tienen costo comprobable. El cierre también requiere confirmar gastos y conciliación bancaria.</ConfidenceNote>
             )}
             {canWriteMetrics ? <Card>
               <CardHeader><CardTitle>Agregar costo programado</CardTitle></CardHeader>
               <CardContent>
-                <form action={createAdministrationCostAction} className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_160px_150px_150px_180px_auto] xl:items-end">
+                <form action={createAdministrationCostAction} className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
                   <input name="month" type="hidden" value={month} />
-                  <Field htmlFor="admin-cost-concept" label="Concepto" required><Input id="admin-cost-concept" name="concept" required /></Field>
+                  <Field className="sm:col-span-2" htmlFor="admin-cost-concept" label="Concepto" required><Input id="admin-cost-concept" name="concept" required /></Field>
                   <Field htmlFor="admin-cost-amount" label="Monto" required><MoneyInput id="admin-cost-amount" min="0.01" name="amount" required /></Field>
                   <Field htmlFor="admin-cost-type" label="Etiqueta" required><Select defaultValue="fijo" id="admin-cost-type" name="costType" required><option value="fijo">Fijo</option><option value="variable">Variable</option><option value="unico">Único</option></Select></Field>
-                  <Field htmlFor="admin-cost-start" label="Desde" required><Input defaultValue={month} id="admin-cost-start" name="startMonth" required type="month" /></Field>
-                  <Field htmlFor="admin-cost-duration" label="Duración" required><Select defaultValue="indefinite" id="admin-cost-duration" name="durationMonths" required><option value="1">1 mes</option><option value="2">2 meses</option><option value="3">3 meses</option><option value="6">6 meses</option><option value="12">12 meses</option><option value="indefinite">Indefinido, confirmar cada mes</option></Select></Field>
-                  <Button type="submit">Guardar costo</Button>
+                  <Field htmlFor="admin-cost-start" label="Desde" required><Input className="min-w-0 max-w-full" defaultValue={month} id="admin-cost-start" name="startMonth" required type="month" /></Field>
+                  <Field className="xl:col-span-2" htmlFor="admin-cost-duration" label="Duración" required><Select defaultValue="indefinite" id="admin-cost-duration" name="durationMonths" required><option value="1">1 mes</option><option value="2">2 meses</option><option value="3">3 meses</option><option value="6">6 meses</option><option value="12">12 meses</option><option value="indefinite">Indefinido, confirmar cada mes</option></Select></Field>
+                  <Button className="w-full sm:col-span-2 xl:col-span-1" type="submit">Guardar costo</Button>
                 </form>
               </CardContent>
             </Card> : null}
             <Card>
               <CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><CardTitle>Costos del período</CardTitle><span className="text-xs text-[#64748b]">Los indefinidos quedan suspendidos al cambiar de mes hasta confirmarlos.</span></div></CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-3">
+                <div><p className="text-sm text-[#64748b]">Gastos incluidos</p><strong className="tabular-nums">{formatCurrency(metrics.margin.scheduledCosts)}</strong></div>
+                <div><p className="text-sm text-[#64748b]">Sueldos, aguinaldo y cargas · RRHH</p><strong className="tabular-nums">{formatCurrency(metrics.margin.payrollCosts)}</strong></div>
+                <div><p className="text-sm text-[#64748b]">Total operativo</p><strong className="tabular-nums">{formatCurrency(metrics.margin.operatingCosts)}</strong></div>
+                {payrollDuplicates.length ? <p className="sm:col-span-3 text-sm text-amber-800">{payrollDuplicates.length} registros manuales de sueldo coinciden en nombre e importe con RRHH. Se conservan para consulta y se cuentan una sola vez desde RRHH.</p> : null}
+              </CardContent>
               <DataTable caption="Costos operativos programados" className="rounded-none border-0 shadow-none" minWidth="1050px" tableLabel="Costos programados">
                 <DataTableHeader><DataTableRow><DataTableHead>Concepto</DataTableHead><DataTableHead>Etiqueta</DataTableHead><DataTableHead>Vigencia</DataTableHead><DataTableHead>Estado</DataTableHead><DataTableHead align="right">Monto</DataTableHead><DataTableHead align="center">Acciones</DataTableHead></DataTableRow></DataTableHeader>
                 <DataTableBody>
@@ -368,11 +375,11 @@ export default async function AdministrationPage({ searchParams }: Administratio
                         <DataTableCell className="font-bold">{cost.concept}</DataTableCell>
                         <DataTableCell><StatusBadge tone={cost.costType === "fijo" ? "accent" : cost.costType === "variable" ? "warning" : "neutral"}>{cost.costType === "unico" ? "Único" : cost.costType === "fijo" ? "Fijo" : "Variable"}</StatusBadge></DataTableCell>
                         <DataTableCell>Desde {cost.startMonth} · {duration}</DataTableCell>
-                        <DataTableCell><StatusBadge tone={cost.included ? "success" : "neutral"}>{cost.included ? "Incluido" : "Suspendido"}</StatusBadge></DataTableCell>
+                        <DataTableCell><StatusBadge tone={cost.included ? "success" : "neutral"}>{cost.payrollEmployee ? "Contado en RRHH" : cost.included ? "Incluido" : "Suspendido"}</StatusBadge></DataTableCell>
                         <DataTableCell align="right" className="font-mono font-bold">{formatCurrency(cost.amount)}</DataTableCell>
                         <DataTableCell align="center">
-                          {canWriteMetrics ? <div className="flex justify-center gap-2">
-                            <form action={setAdministrationCostMonthAction}><input name="id" type="hidden" value={cost.id} /><input name="month" type="hidden" value={month} /><input name="included" type="hidden" value={String(!cost.included)} /><Button size="sm" type="submit" variant="secondary">{cost.included ? "Suspender" : "Incluir"}</Button></form>
+                          {canWriteMetrics ? <div className="flex flex-wrap justify-center gap-2">
+                            {!cost.payrollEmployee ? <form action={setAdministrationCostMonthAction}><input name="id" type="hidden" value={cost.id} /><input name="month" type="hidden" value={month} /><input name="included" type="hidden" value={String(!cost.included)} /><Button size="sm" type="submit" variant="secondary">{cost.included ? "Suspender" : "Incluir"}</Button></form> : null}
                             <TableHoverActionMenu label={`Editar ${cost.concept}`} width={360}>
                               <form action={updateAdministrationCostAction} className="grid gap-2">
                                 <input name="id" type="hidden" value={cost.id} /><input name="month" type="hidden" value={month} />
@@ -401,10 +408,11 @@ export default async function AdministrationPage({ searchParams }: Administratio
                     ["Ventas netas", metrics.sales.current],
                     ["Costo de mercadería vendida", -metrics.margin.grossCost],
                     ["Margen bruto", metrics.margin.grossProfit],
-                    ["Costos operativos y sueldos", -metrics.margin.operatingCosts],
+                    ["Gastos operativos incluidos", -metrics.margin.scheduledCosts],
+                    ["Sueldos, aguinaldo y cargas (RRHH)", -metrics.margin.payrollCosts],
                     ["Resultado operativo", metrics.margin.operatingResult],
                   ].map(([label, amount], index) => (
-                    <DataTableRow className={index === 3 || index === 5 ? "bg-[#f8fafc] font-bold" : ""} key={String(label)}><DataTableCell>{label}</DataTableCell><DataTableCell align="right" className="font-mono">{formatCurrency(Number(amount))}</DataTableCell></DataTableRow>
+                    <DataTableRow className={index === 3 || index === 6 ? "bg-[#f8fafc] font-bold" : ""} key={String(label)}><DataTableCell>{label}</DataTableCell><DataTableCell align="right" className="font-mono">{formatCurrency(Number(amount))}</DataTableCell></DataTableRow>
                   ))}
                 </DataTableBody>
               </DataTable>

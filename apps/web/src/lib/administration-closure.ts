@@ -92,7 +92,7 @@ export async function getAdministrationClosePreview(
     listScheduledOperatingCosts(companyId, month),
     getBankReconciliationSummary(companyId, period),
   ]);
-  const suspendedIndefiniteCosts = operatingCosts.filter((cost) => cost.durationMonths === null && !cost.included).length;
+  const suspendedIndefiniteCosts = operatingCosts.filter((cost) => cost.durationMonths === null && !cost.included && !cost.payrollEmployee).length;
   const assets = treasury.meta.total + metrics.receivables.openTotal + metrics.stock.value;
 
   const checks: AdministrationCloseCheck[] = [
