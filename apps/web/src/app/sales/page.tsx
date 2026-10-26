@@ -191,6 +191,9 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                       <DataTableCell align="center" className="px-2 py-2">
                         <div className="flex justify-center">
                           <TableHoverActionMenu label={`Opciones de la venta ${saleNumberLabel}`}>
+                            <a className={`${tableActionItemClass} font-black text-[color:var(--accent)]`} href={`/sales/${sale.id}`}>
+                              Ver ficha del pedido
+                            </a>
                             <div className="px-2.5 pb-1 pt-0.5 text-left text-[10px] font-black uppercase tracking-[0.08em] text-[color:var(--muted)]">
                               Comprobantes asociados
                             </div>
