@@ -35,6 +35,7 @@ import {
 } from "@/lib/route-auth";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { deleteSaleAction, requestFiscalNoteAction } from "@/app/sales/actions";
+import { saleOrderDocument } from "@/lib/receipt-types";
 
 type SalesPageProps = {
   searchParams: Promise<{ q?: string; page?: string; month?: string; error?: string; message?: string }>;
@@ -156,6 +157,8 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                 </DataTableRow>
               ) : (
                 sales.data.map((sale) => {
+                  const requiresInvoice = ["factura_a", "factura_b"].includes(saleOrderDocument(sale.desiredDocument) ?? "");
+                  const hasInvoice = sale.fiscalStatus === "aprobado";
                   const saleNumberLabel = formatSaleCommercialCode({
                     commercialNumber: sale.commercialNumber,
                     saleNumber: sale.saleNumber,
@@ -191,22 +194,22 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                             <div className="px-2.5 pb-1 pt-0.5 text-left text-[10px] font-black uppercase tracking-[0.08em] text-[color:var(--muted)]">
                               Comprobantes asociados
                             </div>
-                          {sale.deliveryNumber ? (
-                            <a
-                              aria-label={`Ver PDF del remito ${sale.deliveryNumber}`}
-                              className={tableActionItemClass}
-                              href={`/api/pdfs/orders/${sale.id}/remito`}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              Remito #{String(sale.deliveryNumber).padStart(4, "0")}
-                            </a>
+                          {!requiresInvoice && !hasInvoice ? sale.deliveryNumber ? (
+                              <a
+                                aria-label={`Remito con precios de la venta ${saleNumberLabel}`}
+                                className={tableActionItemClass}
+                                href={`/api/pdfs/orders/${sale.id}/remito?precios=si`}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                Remito con precios #{String(sale.deliveryNumber).padStart(4, "0")}
+                              </a>
                           ) : (
                             <span className={`${tableActionItemClass} cursor-default text-[color:var(--muted)] hover:bg-transparent hover:text-[color:var(--muted)]`}>Sin remito</span>
-                          )}
-                          {sale.fiscalStatus === "aprobado" ? (
+                          ) : null}
+                          {hasInvoice ? (
                             <a className={tableActionItemClass} href={`/api/pdfs/orders/${sale.id}/document`} rel="noreferrer" target="_blank">Factura</a>
-                          ) : sale.desiredDocument === "factura_a" || sale.desiredDocument === "factura_b" ? (
+                          ) : requiresInvoice ? (
                             <a className={tableActionItemClass} href="/billing">Factura pendiente en Fiscal</a>
                           ) : null}
                           {sale.associatedDocuments.map((document) => document.fiscal ? (
