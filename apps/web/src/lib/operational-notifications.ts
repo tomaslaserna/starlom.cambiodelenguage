@@ -8,7 +8,7 @@ import { getLeadFollowupAgenda } from "@/lib/leads";
 import type { NavigationAuthorization } from "@/lib/navigation";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { getPriceListFollowupSignals } from "@/lib/price-list-followups";
-import { getReplenishmentSuggestions } from "@/lib/replenishment";
+import { getReplenishmentSuggestions } from "@/lib/replenishment-v2";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { getSalesMissionStates } from "@/lib/sales-missions";
 import { listTasks } from "@/lib/tasks";

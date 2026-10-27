@@ -35,9 +35,9 @@ export const ERP_GUIDE = {
     guidance: "Abrí Datos > Productos para consultar y mantener el catálogo general de artículos.",
   },
   purchases: {
-    label: "Nueva compra",
+    label: "Compra recibida",
     href: "/purchases",
-    guidance: "Abrí Compras > Nueva compra. Dentro de Mercadería recibida usá + Agregar producto nuevo para dar de alta un artículo que llegó de un proveedor; al registrar la compra también se incorpora su stock inicial y costo.",
+    guidance: "Abrí Compras > Compra recibida. Dentro de Mercadería recibida usá + Agregar producto nuevo para dar de alta un artículo que llegó de un proveedor; al registrar la compra también se incorpora su stock inicial y costo. Si todavía no llegó, usá Pedido al proveedor: quedará en tránsito sin modificar stock ni deuda.",
   },
   customers: {
     label: "Clientes",

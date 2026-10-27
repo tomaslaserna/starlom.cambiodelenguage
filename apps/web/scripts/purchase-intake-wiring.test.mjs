@@ -16,22 +16,24 @@ test("Nueva compra registra costo, stock e IVA sin habilitar una segunda recepci
   assert.match(purchases, /La mercadería de esta compra ya fue ingresada al stock/);
 });
 
-test("las solicitudes MRP siguen pendientes y no ingresan stock automáticamente", () => {
+test("los pedidos al proveedor siguen pendientes y no ingresan stock automáticamente", () => {
   assert.match(purchases, /isSupplierIntake \? "recibida" : input\.status/);
   assert.match(purchases, /isSupplierIntake \? "revisado" : "pendiente"/);
   assert.match(purchases, /if \(isSupplierIntake\) \{[\s\S]*UPDATE products SET cost/);
+  assert.match(entry, /value=\{isOrder \? "orden_compra" : "compra"\}/);
+  assert.match(entry, /value=\{isOrder \? "pendiente" : "recibida"\}/);
 });
 
 test("el formulario filtra productos, muestra imagen, costo, IVA y efectos", () => {
   assert.match(entry, /Costo unitario s\/IVA/);
   assert.match(entry, /imageUrl/);
   assert.match(entry, /Agregar producto nuevo/);
-  assert.match(page, /Una carga actualiza cuatro sectores/);
+  assert.match(page, /Una recepción actualiza cuatro sectores/);
   assert.match(page, /cuenta por pagar/);
   assert.match(entry, /El costo se completa con el valor actual y queda disponible para corregirlo/);
-  assert.match(entry, /PurchaseSubmit disabled=\{payload\.length === 0\}/);
+  assert.match(entry, /PurchaseSubmit disabled=\{payload\.length === 0\} mode=\{mode\}/);
   assert.match(entry, /Buscar un producto existente en todo el catálogo/);
-  assert.match(entry, /Procesando nueva compra/);
+  assert.match(entry, /Procesando compra recibida/);
   assert.match(purchases, /newProductName/);
   assert.match(purchases, /foreignProducts/);
   assert.match(entry, /Comprobante del proveedor \/ observaciones/);

@@ -50,7 +50,7 @@ import {
 import { PurchaseEntryFields } from "@/app/purchases/purchase-entry-fields";
 import { PurchaseReceiptUpload } from "@/app/purchases/purchase-receipt-upload";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
-import { getReplenishmentSuggestions } from "@/lib/replenishment";
+import { getReplenishmentSuggestions } from "@/lib/replenishment-v2";
 
 type PurchasesPageProps = {
   searchParams: Promise<{
@@ -79,10 +79,17 @@ const purchaseRequestTypes = ["solicitud", "solicitud_compra", "solicitud de com
 const purchaseViews = {
   nueva: {
     href: "/purchases?view=nueva",
-    title: "Nueva compra",
-    description: "Carga una compra de proveedor con los datos operativos necesarios.",
+    title: "Compra recibida",
+    description: "Registrá mercadería que acaba de llegar. Esta operación ingresa stock, actualiza costos y genera la cuenta por pagar.",
     excludeTypes: null,
     emptyTitle: "No hay compras recientes",
+  },
+  planificar: {
+    href: "/purchases?view=planificar",
+    title: "Pedido al proveedor",
+    description: "Prepará una compra futura. Queda en tránsito y no modifica stock, costos ni deuda hasta su recepción.",
+    excludeTypes: null,
+    emptyTitle: "No hay pedidos planificados",
   },
   registro: {
     href: "/purchases",
@@ -101,6 +108,7 @@ type PurchaseView = (typeof purchaseViews)[keyof typeof purchaseViews];
 
 function viewForParams(type: string, viewParam: string) {
   if (normalizePurchaseType(viewParam) === "nueva") return purchaseViews.nueva;
+  if (normalizePurchaseType(viewParam) === "planificar") return purchaseViews.planificar;
   const normalized = normalizePurchaseType(type);
   if (purchaseRequestTypes.some((requestType) => normalizePurchaseType(requestType) === normalized)) {
     redirect("/admin/approvals");
@@ -158,8 +166,9 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   const viewParam = params.view?.trim() ?? "";
   const view = viewForParams(type, viewParam);
   const today = localDateIso();
-  const showCreateForm = view === purchaseViews.nueva;
-  const showRegistry = !showCreateForm;
+  const showCreateForm = view === purchaseViews.nueva || view === purchaseViews.planificar;
+  const planningOrder = view === purchaseViews.planificar;
+  const showRegistry = view === purchaseViews.registro;
   const [canCreatePurchases, canEditPurchases, canDeleteRecords] = await Promise.all([
     sessionAllows(session, [PURCHASES_CREATE_PERMISSION]),
     sessionAllows(session, [PURCHASES_EDIT_PERMISSION]),
@@ -171,7 +180,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
   const mrpSupplierId = params.mrpSupplier?.trim() ?? "";
   let initialSupplierId = "";
   let initialLines: { productId: string; quantity: number }[] = [];
-  if (showCreateForm && mrpSupplierId) {
+  if (planningOrder && mrpSupplierId) {
     const suggestions = await getReplenishmentSuggestions(session.companyId);
     const supplierItems = suggestions.items.filter((item) => item.supplierId === mrpSupplierId && item.suggestedQuantity > 0);
     if (supplierItems.length) {
@@ -187,8 +196,9 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
           matchesType(item, view),
       )
     : [];
-  const openBalance = purchases.reduce((sum, item) => sum + item.balance, 0);
-  const total = purchases.reduce((sum, item) => sum + item.total, 0);
+  const receivedPurchases = purchases.filter((item) => item.status === "recibida");
+  const openBalance = receivedPurchases.reduce((sum, item) => sum + item.balance, 0);
+  const total = receivedPurchases.reduce((sum, item) => sum + item.total, 0);
   const pendingReviewIds = purchases
     .filter((item) => item.status === "recibida" && item.packageStatus === "pendiente")
     .map((item) => item.id);
@@ -210,6 +220,13 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
           title={view.title}
         />
 
+        <div className="flex flex-wrap gap-2 rounded-[var(--radius-lg)] border border-[color:var(--border)] bg-white p-2">
+          <ButtonLink href="/purchases" variant={showRegistry ? "primary" : "secondary"}>Registro</ButtonLink>
+          <ButtonLink href="/purchases?view=nueva" variant={view === purchaseViews.nueva ? "primary" : "secondary"}>Compra recibida</ButtonLink>
+          <ButtonLink href="/purchases?view=planificar" variant={planningOrder ? "primary" : "secondary"}>Pedido al proveedor</ButtonLink>
+          <ButtonLink href="/purchases/replenishment" variant="secondary">Compras inteligentes</ButtonLink>
+        </div>
+
         {params.error === "1" ? (
           <div
             className="rounded-lg border border-[color:var(--danger)] bg-[color:var(--danger-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--danger)]"
@@ -221,23 +238,29 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
 
         {showCreateForm && params.created ? (
           <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800" role="status">
-            Compra registrada correctamente. El stock, los costos, el IVA y la cuenta por pagar ya fueron actualizados.
+            {planningOrder
+              ? "Pedido al proveedor registrado. Quedó en tránsito y se descontará del plan de recompra."
+              : "Compra recibida correctamente. El stock, los costos, el IVA y la cuenta por pagar ya fueron actualizados."}
           </div>
         ) : null}
 
         {showCreateForm && canCreatePurchases ? (
           <Card className="p-4">
             <div className="mb-4 rounded-[10px] border border-[#bfdbfe] bg-[#eff6ff] px-4 py-3">
-              <div className="font-black text-[#075ac7]">Una carga actualiza cuatro sectores</div>
-              <p className="erp-text-body-sm mt-1 text-[#475569]">Al registrar el remito, el sistema guarda la compra y su IVA, genera la cuenta por pagar, ingresa las unidades al stock y actualiza el costo de cada producto.</p>
+              <div className="font-black text-[#075ac7]">{planningOrder ? "Planificá sin alterar la realidad del depósito" : "Una recepción actualiza cuatro sectores"}</div>
+              <p className="erp-text-body-sm mt-1 text-[#475569]">
+                {planningOrder
+                  ? "Este pedido queda en tránsito: reduce la sugerencia de recompra, pero todavía no ingresa stock, no actualiza costos y no genera deuda."
+                  : "Al registrar el remito, el sistema guarda la compra y su IVA, genera la cuenta por pagar, ingresa las unidades al stock y actualiza el costo de cada producto."}
+              </p>
             </div>
             <form action={createPurchaseAction} className="grid gap-4">
-              <PurchaseEntryFields defaultDate={today} initialLines={initialLines} initialSupplierId={initialSupplierId} />
+              <PurchaseEntryFields defaultDate={today} initialLines={initialLines} initialSupplierId={initialSupplierId} mode={planningOrder ? "order" : "received"} />
             </form>
           </Card>
         ) : null}
 
-        {view === purchaseViews.nueva && !canCreatePurchases ? (
+        {showCreateForm && !canCreatePurchases ? (
           <Card className="p-4">
             <EmptyState
               description="Tu usuario puede consultar compras, pero no tiene permiso para cargar una nueva."
@@ -343,12 +366,12 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                           <DataTableCell className="whitespace-nowrap px-2 py-2 text-xs">{formatDate(purchase.date)}</DataTableCell>
                           <DataTableCell className="px-2 py-2">
                             <StatusBadge tone={purchaseStatusTone(purchase.status)}>
-                              {statusLabel(purchase.status)}
+                              {purchase.status === "pendiente" && purchase.type === "orden_compra" ? "En tránsito" : statusLabel(purchase.status)}
                             </StatusBadge>
                           </DataTableCell>
                           <DataTableCell className="px-2 py-2">
                             <StatusBadge tone={packageStatusTone(purchase.packageStatus)}>
-                              {statusLabel(purchase.packageStatus)}
+                              {purchase.status === "pendiente" && purchase.type === "orden_compra" ? "A recibir" : statusLabel(purchase.packageStatus)}
                             </StatusBadge>
                           </DataTableCell>
                           <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
@@ -358,7 +381,7 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
                             {formatCurrency(purchase.paidAmount)}
                           </DataTableCell>
                           <DataTableCell align="right" className="whitespace-nowrap px-2 py-2 font-mono text-xs">
-                            {formatCurrency(purchase.balance)}
+                            {purchase.status === "recibida" ? formatCurrency(purchase.balance) : "No devengado"}
                           </DataTableCell>
                           <DataTableCell align="center" className="px-2 py-2">
                             <div className="flex justify-center">

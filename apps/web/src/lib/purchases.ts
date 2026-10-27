@@ -452,7 +452,7 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
           supplier_id, description, total_amount, purchase_date, status,
           purchase_type, tax_mode, vat_rate, package_status, due_date, empresa_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $4::date + $10::int, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CASE WHEN $12::boolean THEN $4::date + $10::int ELSE NULL END, $11)
         RETURNING id
       `,
       [
@@ -467,6 +467,7 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
         isSupplierIntake ? "revisado" : "pendiente",
         supplier.rows[0].payment_term_days,
         session.companyId,
+        isSupplierIntake,
       ],
     );
     const purchaseId = result.rows[0].id;
@@ -490,7 +491,7 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
         await client.query(
           `INSERT INTO stock_movements (
              product_id, movement_type, quantity, purchase_id, notes, created_by, empresa_id, idempotency_key
-           ) VALUES ($1, 'entrada_compra', $2, $3, 'Ingreso automático desde Nueva compra', $4, $5, $6)
+           ) VALUES ($1, 'entrada_compra', $2, $3, 'Ingreso automático desde Compra recibida', $4, $5, $6)
            ON CONFLICT (empresa_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
           [item.productId, item.quantity, purchaseId, session.userId, session.companyId, `purchase-intake:${purchaseId}:${item.productId}`],
         );
@@ -526,7 +527,21 @@ export async function updatePurchaseStatus(companyId: number, id: string, status
   const nextStatus = normalizePurchaseStatus(status);
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,
-    "UPDATE purchases SET status = $1, updated_at = now() WHERE id = $2 AND empresa_id = $3 RETURNING id",
+    `UPDATE purchases p
+        SET status = $1,
+            purchase_date = CASE
+              WHEN $1 = 'recibida' AND p.status IS DISTINCT FROM 'recibida' THEN CURRENT_DATE
+              ELSE p.purchase_date
+            END,
+            due_date = CASE
+              WHEN $1 = 'recibida' AND p.status IS DISTINCT FROM 'recibida'
+                THEN CURRENT_DATE + COALESCE((SELECT s.payment_term_days FROM suppliers s WHERE s.id = p.supplier_id AND s.empresa_id = p.empresa_id), 0)::int
+              WHEN $1 <> 'recibida' THEN NULL
+              ELSE p.due_date
+            END,
+            updated_at = now()
+      WHERE p.id = $2 AND p.empresa_id = $3
+      RETURNING p.id`,
     [nextStatus, id, companyId],
   );
   if (!result.rows[0]) throw new ApiError(404, "Compra no encontrada");
@@ -631,19 +646,24 @@ export async function reviewPurchasePackage(
         "UPDATE purchases SET package_status = 'revisado', failure_description = '', updated_at = now() WHERE id = $1 AND empresa_id = $2",
         [id, session.companyId],
       );
-      const detail = await client.query<{ product_id: string; quantity: string }>(
-        "SELECT product_id, quantity::text FROM purchase_items WHERE purchase_id = $1 AND empresa_id = $2 AND product_id IS NOT NULL",
+      const detail = await client.query<{ product_id: string; quantity: string; unit_cost: string }>(
+        "SELECT product_id, quantity::text, unit_cost::text FROM purchase_items WHERE purchase_id = $1 AND empresa_id = $2 AND product_id IS NOT NULL",
         [id, session.companyId],
       );
       for (const item of detail.rows) {
         await client.query(
+          "UPDATE products SET cost = $1, updated_at = now() WHERE id = $2::uuid AND empresa_id = $3 AND cost IS DISTINCT FROM $1",
+          [Number(item.unit_cost), item.product_id, session.companyId],
+        );
+        await client.query(
           `
             INSERT INTO stock_movements (
-              product_id, movement_type, quantity, purchase_id, notes, created_by, empresa_id
+              product_id, movement_type, quantity, purchase_id, notes, created_by, empresa_id, idempotency_key
             )
-            VALUES ($1, 'entrada_compra', $2, $3, $4, $5, $6)
+            VALUES ($1, 'entrada_compra', $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (empresa_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
           `,
-          [item.product_id, Number(item.quantity), id, "Compra recibida y revisada", session.userId, session.companyId],
+          [item.product_id, Number(item.quantity), id, "Compra recibida y revisada", session.userId, session.companyId, `purchase-received:${id}:${item.product_id}`],
         );
       }
     } else {

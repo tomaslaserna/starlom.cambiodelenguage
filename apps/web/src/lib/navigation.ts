@@ -122,10 +122,11 @@ export const navigationGroups: NavigationGroup[] = [
     active: "purchases",
     badge: "purchases",
     items: [
-      { href: "/purchases?view=nueva", label: "Nueva compra", active: "purchases", permission: PURCHASES_READ_PERMISSION },
+      { href: "/purchases?view=nueva", label: "Compra recibida", active: "purchases", permission: PURCHASES_READ_PERMISSION },
+      { href: "/purchases?view=planificar", label: "Pedido al proveedor", active: "purchases", permission: PURCHASES_READ_PERMISSION },
       {
         href: "/purchases/replenishment",
-        label: "Recompra MRP",
+        label: "Compras inteligentes",
         active: "purchases",
         permission: PURCHASES_READ_PERMISSION,
       },

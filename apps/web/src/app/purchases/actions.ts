@@ -31,6 +31,8 @@ export async function createPurchaseAction(formData: FormData) {
       taxMode: formData.get("taxMode"),
       vatRate: formData.get("vatRate"),
       productsJson: formData.get("productsJson"),
+      type: formData.get("type"),
+      status: formData.get("status"),
     }),
   );
   revalidatePath("/purchases");
@@ -40,7 +42,7 @@ export async function createPurchaseAction(formData: FormData) {
   revalidatePath("/billing");
   revalidatePath("/treasury/accounts-payable");
   revalidatePath("/treasury/cash-flow");
-  redirect(`/purchases?view=nueva&created=${purchase.id}`);
+  redirect(`/purchases?view=${purchase.type === "orden_compra" ? "planificar" : "nueva"}&created=${purchase.id}`);
 }
 
 export async function updatePurchaseStatusAction(formData: FormData) {

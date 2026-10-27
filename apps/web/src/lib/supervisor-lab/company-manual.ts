@@ -81,7 +81,7 @@ export const COMPANY_MANUAL: CompanyManualEntry[] = [
     keywords: ["compra", "proveedor", "remito proveedor", "costo", "iva compras", "ingreso stock"],
     summary: "Registrar una compra ingresa stock, actualiza costos cuando corresponde, registra IVA y genera la obligación con el proveedor.",
     steps: [
-      "Ingresar en Compras y elegir Nueva compra.",
+      "Ingresar en Compras y elegir Compra recibida.",
       "Seleccionar proveedor, fecha y comprobante recibido.",
       "Agregar productos, cantidades y costo unitario sin IVA.",
       "Discriminar neto gravado e IVA y controlar el total del comprobante.",

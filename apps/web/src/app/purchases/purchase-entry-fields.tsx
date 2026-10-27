@@ -36,11 +36,12 @@ type PurchaseEntryFieldsProps = {
   defaultDate: string;
   initialSupplierId?: string;
   initialLines?: Array<{ productId: string; quantity: number }>;
+  mode?: "received" | "order";
 };
 
 const emptyLine = (): PurchaseLineDraft => ({ productId: "", quantity: "1", unitCost: "" });
 
-function PurchaseProcessingOverlay() {
+function PurchaseProcessingOverlay({ mode }: { mode: "received" | "order" }) {
   const [stage, setStage] = useState(0);
 
   useEffect(() => {
@@ -48,13 +49,15 @@ function PurchaseProcessingOverlay() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const stages = ["Registrando la compra y el IVA", "Ingresando unidades al stock", "Actualizando costos y productos", "Generando la cuenta por pagar"];
+  const stages = mode === "order"
+    ? ["Registrando el pedido", "Reservando mercadería en tránsito", "Actualizando el plan de recompra", "Preparando el seguimiento"]
+    : ["Registrando la compra y el IVA", "Ingresando unidades al stock", "Actualizando costos y productos", "Generando la cuenta por pagar"];
   return (
     <div className="fixed inset-0 z-[100] grid place-items-center bg-slate-950/40 p-4 backdrop-blur-[2px]" role="status" aria-live="polite">
           <div className="w-full max-w-md rounded-2xl border border-blue-100 bg-white p-6 shadow-2xl">
             <div className="flex items-center gap-3">
               <span className="h-8 w-8 animate-spin rounded-full border-4 border-blue-100 border-t-[color:var(--accent)]" />
-              <div><div className="font-black">Procesando nueva compra</div><div className="text-sm text-[color:var(--muted)]">No cierres esta pantalla.</div></div>
+              <div><div className="font-black">{mode === "order" ? "Preparando pedido al proveedor" : "Procesando compra recibida"}</div><div className="text-sm text-[color:var(--muted)]">No cierres esta pantalla.</div></div>
             </div>
             <div className="mt-5 grid gap-2">
               {stages.map((label, index) => (
@@ -69,9 +72,9 @@ function PurchaseProcessingOverlay() {
   );
 }
 
-function PurchaseSubmit({ disabled }: { disabled: boolean }) {
+function PurchaseSubmit({ disabled, mode }: { disabled: boolean; mode: "received" | "order" }) {
   const { pending } = useFormStatus();
-  return <><Button className="w-full" disabled={disabled || pending} type="submit">{pending ? "Registrando..." : "Registrar compra e ingreso"}</Button>{pending ? <PurchaseProcessingOverlay /> : null}</>;
+  return <><Button className="w-full" disabled={disabled || pending} type="submit">{pending ? "Registrando..." : mode === "order" ? "Crear pedido al proveedor" : "Registrar compra recibida"}</Button>{pending ? <PurchaseProcessingOverlay mode={mode} /> : null}</>;
 }
 
 function numericInput(value: string, fallback = 0) {
@@ -79,7 +82,8 @@ function numericInput(value: string, fallback = 0) {
   return Number.isFinite(numberValue) ? numberValue : fallback;
 }
 
-export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initialLines = [] }: PurchaseEntryFieldsProps) {
+export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initialLines = [], mode = "received" }: PurchaseEntryFieldsProps) {
+  const isOrder = mode === "order";
   const [taxMode, setTaxMode] = useState("con_iva");
   const [vatRate, setVatRate] = useState("21");
   const [supplierId, setSupplierId] = useState(initialSupplierId);
@@ -259,12 +263,14 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
     <div className="grid gap-5 rounded-[var(--radius-md)] border border-[color:var(--border)] bg-white p-4">
       <input name="productsJson" type="hidden" value={JSON.stringify(payload)} />
       <input name="total" type="hidden" value={purchaseTotal.toFixed(2)} />
+      <input name="type" type="hidden" value={isOrder ? "orden_compra" : "compra"} />
+      <input name="status" type="hidden" value={isOrder ? "pendiente" : "recibida"} />
 
       <div className="flex flex-wrap items-center gap-2 border-b border-[color:var(--border)] pb-3">
         {[
           ["1", "Proveedor"],
-          ["2", "Mercadería"],
-          ["3", "IVA y confirmación"],
+          ["2", isOrder ? "Pedido" : "Mercadería"],
+          ["3", isOrder ? "Costo y confirmación" : "IVA y confirmación"],
         ].map(([step, label]) => (
           <span className="inline-flex items-center gap-2 rounded-full bg-[color:var(--panel-subtle)] px-3 py-1.5 erp-text-caption font-bold text-[color:var(--foreground)]" key={step}>
             <span className="grid h-5 w-5 place-items-center rounded-full bg-[color:var(--accent)] text-white">{step}</span>
@@ -294,13 +300,13 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h3 className="erp-text-title-sm font-black">Mercadería recibida</h3>
-          <p className="erp-text-caption mt-1 text-[color:var(--muted)]">Buscá dentro del catálogo completo del proveedor o agregá un artículo nuevo.</p>
+          <h3 className="erp-text-title-sm font-black">{isOrder ? "Mercadería a pedir" : "Mercadería recibida"}</h3>
+          <p className="erp-text-caption mt-1 text-[color:var(--muted)]">{isOrder ? "Revisá la sugerencia inteligente y ajustá cantidades o costos antes de enviar el pedido." : "Buscá dentro del catálogo completo del proveedor o agregá un artículo nuevo."}</p>
         </div>
-        <Button type="button" variant="outline" onClick={() => setNewProductOpen((current) => !current)}>+ Agregar producto nuevo</Button>
+        {!isOrder ? <Button type="button" variant="outline" onClick={() => setNewProductOpen((current) => !current)}>+ Agregar producto nuevo</Button> : null}
       </div>
 
-      {newProductOpen ? (
+      {!isOrder && newProductOpen ? (
         <div className="grid gap-3 rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 md:grid-cols-2 xl:grid-cols-12 xl:items-end">
           <Field className="xl:col-span-5" htmlFor="purchase-new-product-name" label="Nombre del nuevo producto"><Input id="purchase-new-product-name" placeholder="Ej.: Detergente concentrado 5 L" value={newProductName} onChange={(event) => setNewProductName(event.target.value)} /></Field>
           <Field className="xl:col-span-2" htmlFor="purchase-new-product-code" label="Código (opcional)"><Input id="purchase-new-product-code" value={newProductCode} onChange={(event) => setNewProductCode(event.target.value)} /></Field>
@@ -420,12 +426,12 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
         <div className="rounded-[var(--radius-md)] border border-dashed border-[color:var(--border)] px-3 py-2 text-sm font-semibold text-[color:var(--muted)]">
           {supplierId && filteredProducts.length === 0
             ? "Este proveedor no tiene productos asociados."
-            : "Todavia no agregaste productos a esta compra."}
+            : isOrder ? "Todavía no agregaste productos al pedido." : "Todavía no agregaste productos a esta compra."}
         </div>
       )}
 
       <div className="grid gap-3 rounded-[10px] border border-[color:var(--border)] bg-[color:var(--panel-subtle)] p-4 md:grid-cols-[1fr_180px_160px] md:items-end">
-        <div className="erp-text-body-sm text-[color:var(--muted)]">El costo se toma del remito. Si cambió, actualizará automáticamente la ficha del producto.</div>
+        <div className="erp-text-body-sm text-[color:var(--muted)]">{isOrder ? "El costo es estimado. El costo real se actualizará recién cuando llegue la mercadería." : "El costo se toma del remito. Si cambió, actualizará automáticamente la ficha del producto."}</div>
         <Field htmlFor="purchase-tax-mode" label="IVA"><Select id="purchase-tax-mode" name="taxMode" value={taxMode} onChange={(event) => setTaxMode(event.target.value)}><option value="con_iva">Con IVA</option><option value="sin_iva">Sin IVA</option></Select></Field>
         <Field htmlFor="purchase-vat-rate" label="Alícuota"><Select disabled={taxMode === "sin_iva"} id="purchase-vat-rate" name="vatRate" value={vatRate} onChange={(event) => setVatRate(event.target.value)}><option value="21">21%</option><option value="10.5">10,5%</option><option value="0">0%</option></Select></Field>
         <div className="md:col-span-3 grid overflow-hidden rounded-[9px] border border-[color:var(--border)] bg-white text-right sm:grid-cols-3">
@@ -437,9 +443,9 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
 
       <div className="grid gap-3 border-t border-[color:var(--border)] pt-4 md:grid-cols-[minmax(0,1fr)_240px] md:items-end">
         <Field className="min-w-0" htmlFor="purchase-description" label="Comprobante del proveedor / observaciones">
-          <Input className="w-full min-w-0" id="purchase-description" name="description" placeholder="Ej.: Remito 4581 · entrega completa" />
+          <Input className="w-full min-w-0" id="purchase-description" name="description" placeholder={isOrder ? "Ej.: Pedido semanal · entrega estimada viernes" : "Ej.: Remito 4581 · entrega completa"} />
         </Field>
-        <PurchaseSubmit disabled={payload.length === 0} />
+        <PurchaseSubmit disabled={payload.length === 0} mode={mode} />
       </div>
     </div>
   );

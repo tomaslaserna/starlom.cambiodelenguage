@@ -362,8 +362,9 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
   );
   assert.doesNotMatch(navigation, /label: "Panel admin"/);
   assert.match(navigation, /label: "Compras"[\s\S]*groups: \[groupByLabel\("Compras"\)\]/);
-  assert.match(navigation, /href: "\/purchases\?view=nueva", label: "Nueva compra"/);
-  assert.match(navigation, /href: "\/purchases\/replenishment",\s*label: "Recompra MRP"/);
+  assert.match(navigation, /href: "\/purchases\?view=nueva", label: "Compra recibida"/);
+  assert.match(navigation, /href: "\/purchases\?view=planificar", label: "Pedido al proveedor"/);
+  assert.match(navigation, /href: "\/purchases\/replenishment",\s*label: "Compras inteligentes"/);
   assert.match(navigation, /href: "\/purchases",\s*label: "Registro de compras"/);
   assert.doesNotMatch(navigation, /label: "Urgentes"|label: "Anticipadas"|label: "Solicitudes de compra"/);
   assert.match(navigation, /href: "\/sales",\s*label: "Registro de ventas",\s*active: "sales"/);
@@ -421,7 +422,7 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
   assert.match(salesSource, /sale_date < DATE '\$\{DRIVE_SALES_CUTOFF\}'/);
   assert.match(salesSource, /ENTREGAS MACRO/);
 
-  const replenishment = read("apps/web/src/lib/replenishment.ts");
+  const replenishment = read("apps/web/src/lib/replenishment-v2.ts");
   assert.match(replenishment, /export async function getReplenishmentSuggestions/);
   assert.match(replenishment, /INTERVAL '90 days'/);
   assert.match(replenishment, /suggestedQuantity/);
@@ -430,16 +431,12 @@ test("orders lifecycle delivers loaded orders directly and opens collection only
   assert.match(replenishment, /TARGET_COVER_DAYS = 30/);
 
   const replenishmentPage = read("apps/web/src/app/purchases/replenishment/page.tsx");
-  assert.match(replenishmentPage, /title="Recompra MRP"/);
+  assert.match(replenishmentPage, /title="Compras inteligentes"/);
   assert.match(replenishmentPage, /getReplenishmentSuggestions/);
-  assert.match(replenishmentPage, /cubrir \$\{replenishment\.meta\.targetDays\} dias/);
-  assert.match(replenishmentPage, /Mandar a nueva compra/);
-  assert.match(replenishmentPage, /\/purchases\?view=nueva&mrpSupplier=/);
-  assert.match(replenishmentPage, /createReplenishmentPurchaseRequestAction/);
-  assert.match(
-    read("apps/web/src/app/purchases/replenishment/actions.ts"),
-    /export async function createReplenishmentPurchaseRequestAction/,
-  );
+  assert.match(replenishmentPage, /Demanda prevista \+ stock de seguridad/);
+  assert.match(replenishmentPage, /Preparar pedido/);
+  assert.match(replenishmentPage, /\/purchases\?view=planificar&mrpSupplier=/);
+  assert.doesNotMatch(replenishmentPage, /createReplenishmentPurchaseRequestAction/);
 
   const approvals = read("apps/web/src/lib/approvals.ts");
   assert.match(approvals, /ApprovalSource = "collection" \| "request" \| "purchase"/);
@@ -1553,15 +1550,15 @@ test("Auditoria screen surfaces the operational audit log", () => {
   assert.match(page, /<HrNavigation active="audit"/);
 });
 
-test("Recompra MRP groups by supplier and preserves both purchase request paths", () => {
+test("Compras inteligentes agrupa por proveedor y prepara pedidos en tránsito", () => {
   const page = read("apps/web/src/app/purchases/replenishment/page.tsx");
   // agrupa por proveedor y despliega el detalle
   assert.match(page, /<details/, "supplier boxes must be expandable");
   assert.match(page, /group\.items\.length/, "each supplier box shows how many articles to re-buy");
   assert.match(page, /group\.supplierId/);
-  // boton que manda a nueva compra precargada
-  assert.match(page, /Mandar a nueva compra/);
-  assert.match(page, /\/purchases\?view=nueva&mrpSupplier=\$\{group\.supplierId\}/);
+  // botón que manda a un pedido al proveedor precargado
+  assert.match(page, /Preparar pedido/);
+  assert.match(page, /\/purchases\?view=planificar&mrpSupplier=\$\{group\.supplierId\}/);
 
   // la pantalla de nueva compra lee mrpSupplier y precarga el form
   const purchasesPage = read("apps/web/src/app/purchases/page.tsx");
@@ -1574,13 +1571,7 @@ test("Recompra MRP groups by supplier and preserves both purchase request paths"
   assert.match(entry, /initialSupplierId/);
   assert.match(entry, /initialLines/);
 
-  // la solicitud directa por item convive con la compra agrupada y editable
-  assert.equal(
-    existsSync(join(webRoot, "src/app/purchases/replenishment/actions.ts")),
-    true,
-    "the per-item request action must stay available",
-  );
-  assert.match(page, /createReplenishmentPurchaseRequestAction/);
+  assert.doesNotMatch(page, /createReplenishmentPurchaseRequestAction/);
 });
 
 test("Registro de ventas protects delivered sales and exposes accounting adjustments", () => {
