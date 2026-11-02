@@ -6,9 +6,9 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../src/lib/customer-statement-presentation.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-const module = { exports: {} };
-Function("exports", compiled)(module.exports);
-const { statementSinceLastZero } = module.exports;
+const loadedModule = { exports: {} };
+Function("exports", compiled)(loadedModule.exports);
+const { statementSinceLastZero } = loadedModule.exports;
 
 function statement(deltas, dates = []) {
   let balance = 0;
@@ -129,7 +129,7 @@ for (const query of [{}, { history: "completo" }, { from: "2026-10-21" }, { to: 
         listCustomerOptions: async () => [],
         getCustomerPaymentContext: async () => ({ reconciliation: { pendingRemittances: 150, needsReview: false } }),
       },
-      "@/lib/customer-statement-presentation": module.exports,
+      "@/lib/customer-statement-presentation": loadedModule.exports,
       "@/lib/format": { formatCurrency: String, formatDate: String },
       "@/lib/finance": { getTreasuryAccountOptions: async () => [] },
       "@/lib/timezone": { localDateIso: () => "2026-10-21" },

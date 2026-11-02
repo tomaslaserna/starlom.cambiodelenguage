@@ -2,7 +2,7 @@
 
 Fecha de revisión: 2 de noviembre de 2026, Argentina.
 Base de código revisada: `starlom/main`, commit `79bec1b`.
-Corrección local: rama `codex/tirra-response-reliability`.
+Implementación: rama `codex/tirra-response-reliability`, publicada en `main` del repositorio que despliega StarLim.
 
 ## Evidencia del incidente
 
@@ -72,11 +72,27 @@ Las etiquetas de herramientas diferencian «sin resultado», «sin permiso» y �
 - UNIVERSITA IT: compras entregadas del 9/7, 3/8, 31/8 y 25/9: promedio de 26 días. Último pedido P-0261, fecha comercial 2/11, carga 30/10, importe $43.092,08, estado cargado. Octubre: cero por fecha comercial; uno por fecha de carga.
 - TORRE DEL CARMEN tiene pedidos entregados en octubre: P-0186 del 7/10 por $61.786,54 y P-0259 del 29/10 por $48.552,24. Ambos encabezados suman $110.338,78. Es evidencia de que existen datos para responder, no una validación de todas las cifras históricas del cliente.
 
+## Verificación real y publicación
+
+Se confirmó mediante Vercel que `starlim.vercel.app` ejecutaba el commit `79bec1b`. Las correcciones locales de la primera revisión no habían sido desplegadas. Se publicó `49bd84d` y la prueba real encontró que podía responder por TORRE DEL CARMEN cuando la última pregunta nombraba UNIVERSITA IT, retomando una pregunta anterior sin respuesta del historial.
+
+Se separó la solicitud vigente de la conversación anterior en `request-context.ts`, sin sumar llamadas al modelo: `currentQuestion` es la única tarea actual y `conversationContext` sirve solo para referencias. Esta corrección se publicó como `4ca6a6c`; Vercel confirmó que el alias de producción apuntaba a `dpl_9iJWscTzDm223tGhUscroGvXgYPE` en estado READY.
+
+Pruebas realizadas desde el navegador, autenticado como administrador, y contrastadas con la respuesta persistida en PostgreSQL:
+
+1. **12:29 Argentina — prompt original sin modificar.** Respondió UNIVERSITA IT, 26 días de frecuencia, último pedido P-0261 por $43.092,08, octubre con cero por fecha comercial y uno por fecha de carga. La respuesta quedó persistida aproximadamente 6,7 segundos después de la pregunta.
+2. **12:30 — «hace lo mismo para torre del carmen».** Respondió TORRE DEL CARMEN, último P-0259 por $48.552,24, dos pedidos de octubre por $110.338,78. Respuesta persistida aproximadamente 6 segundos después de la pregunta.
+3. **12:33 — «mostrame los ultimos dos comprobantes de Torre del Carmen».** Devolvió Factura B 0002-00000017 y Remito 00000680, ambos del 29/10 por $48.552,24, con sus enlaces PDF y aclaración de que corresponden a la misma entrega. Respuesta persistida aproximadamente 5,7 segundos después de la pregunta.
+
+Se verificó que el navegador recibía esos textos. Se agregó seguimiento del final de la conversación al cargar historial, enviar y recibir mensajes, para que la respuesta nueva quede visible; si el usuario desplaza el historial hacia arriba, se respeta esa lectura.
+
 ## Validación y límites
 
-- `npm run test:supervisor-evaluation`: 46 pruebas aprobadas. Incluyen cálculo, ceros, límites mensuales, cancelados, centavos, ticket promedio, documentos emitidos y su cantidad/PDF, permisos, homónimos, clientes consecutivos, composición del resumen comercial y una secuencia real del AI SDK con modelo simulado: búsqueda → historial → texto final. Las pruebas del cierre sin texto pasan por `createUIMessageStream` y `readUIMessageStream` y comprueban el texto visible y persistido, la ausencia de reintentos en respuestas normales, los errores, cancelaciones y límites de evidencia. Una prueba integra además `ToolLoopAgent`, un proveedor simulado que termina sin texto, y `generateText` sin herramientas para redactar la recuperación.
+- `npm run test:supervisor-evaluation`: 49 pruebas aprobadas. Incluyen cálculo, ceros, límites mensuales, cancelados, centavos, ticket promedio, documentos emitidos y su cantidad/PDF, permisos, homónimos, clientes consecutivos, composición del resumen comercial, aislamiento de la pregunta vigente y una secuencia real del AI SDK con modelo simulado: búsqueda → historial → texto final. Las pruebas del cierre sin texto pasan por `createUIMessageStream` y `readUIMessageStream` y comprueban el texto visible y persistido, la ausencia de reintentos en respuestas normales, los errores, cancelaciones y límites de evidencia. Una prueba integra además `ToolLoopAgent`, un proveedor simulado que termina sin texto, y `generateText` sin herramientas para redactar la recuperación.
 - `npx --no-install tsc --noEmit`: aprobado.
-- No se llamó a inferencia paga para las pruebas. El modelo simulado verifica el flujo del SDK; no certifica comportamiento real de Gemini ni tiempos de producción.
-- ESLint de los archivos de lógica y pruebas modificados: aprobado.
+- Las pruebas automatizadas usan modelos simulados. Las tres pruebas del navegador sí utilizaron el modelo real configurado en la aplicación.
+- `npm run lint`: aprobado para toda la aplicación. Para desbloquear este control se renombraron cuatro variables locales `module` de tres scripts de pruebas existentes, sin cambiar su lógica; se ejecutaron las pruebas unitarias de comprobantes y cuenta corriente afectadas.
+- `npm run security:scan`: aprobado.
+- `npm test` general: 362 aprobadas y 14 fallidas en comprobantes/IVA, expectativas de pantallas, navegación y PDF, fuera de la funcionalidad de LA TIRRA. No se afirma que la suite general esté verde. Su salida queda en el registro local ignorado `tmp/tirra-full-tests.log`.
 - `npm run build`: aprobado con Next.js 16.3.3/Turbopack, incluyendo TypeScript y generación de las 145 páginas. El bloqueo inicial era el enlace local de dependencias compartidas: se sustituyó por una instalación propia con `npm ci --ignore-scripts` y el lockfile existente. El intento previo con Webpack había fallado en la cadena `leads-board.tsx → leads-domain.ts → api-response.ts → node:crypto`; no fue necesario modificar ese circuito para completar la compilación normal con Turbopack.
-- No se desplegó ni publicó esta corrección. El cierre productivo requiere publicar el cambio y repetir las preguntas originales y su seguimiento en el chat autenticado de StarLim.
+- La verificación real se hizo con un administrador; no constituye una prueba física de todos los perfiles de vendedor ni de todas las consultas posibles. No se modificaron registros comerciales ni el esquema.

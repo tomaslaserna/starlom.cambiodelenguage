@@ -155,6 +155,9 @@ test("la pantalla queda oculta y usa el transporte actual del AI SDK", () => {
   assert.match(chat, /fixed inset-3/);
   assert.match(chat, /Escape/);
   assert.match(chat, /scrollIntoView/);
+  assert.match(chat, /ref=\{conversationRef\}/);
+  assert.match(chat, /conversation\.scrollTop = conversation\.scrollHeight/);
+  assert.match(chat, /followConversation\.current = true/);
   assert.doesNotMatch(chat, /dangerouslySetInnerHTML/);
   assert.match(navigation, /href: "\/supervisor-lab"/);
   assert.match(navigation, /groupByLabel\("LA TIRRA ia\.1\.1"\)/);

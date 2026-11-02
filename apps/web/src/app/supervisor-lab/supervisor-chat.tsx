@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, getToolName, isToolUIPart } from "ai";
 import { Button, Card, Textarea } from "@/components/ui";
@@ -61,6 +61,8 @@ function toolLabel(toolName: string) {
 }
 
 export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
+  const conversationRef = useRef<HTMLDivElement>(null);
+  const followConversation = useRef(true);
   const [input, setInput] = useState("");
   const [timedOut, setTimedOut] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
@@ -89,6 +91,12 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
     .reverse()
     .find((message) => message.role === "user")
     ?.parts.find((part) => part.type === "text")?.text ?? "";
+
+  useEffect(() => {
+    const conversation = conversationRef.current;
+    if (!conversation || loadingHistory || !followConversation.current) return;
+    conversation.scrollTop = conversation.scrollHeight;
+  }, [messages, status, loadingHistory]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -143,6 +151,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
   function submitText(text: string) {
     const value = text.trim();
     if (!value || busy || loadingHistory) return;
+    followConversation.current = true;
     setTimedOut(false);
     void sendMessage({ text: value });
     setInput("");
@@ -260,7 +269,15 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
             </Button>
           </div>
         </div>
-        <div aria-live="polite" className="grid min-h-0 min-w-0 content-start gap-5 overflow-x-hidden overflow-y-auto bg-[#fbfdff] p-4 sm:p-6 lg:p-7">
+        <div
+          aria-live="polite"
+          ref={conversationRef}
+          onScroll={(event) => {
+            const container = event.currentTarget;
+            followConversation.current = container.scrollHeight - container.scrollTop - container.clientHeight < 96;
+          }}
+          className="grid min-h-0 min-w-0 content-start gap-5 overflow-x-hidden overflow-y-auto bg-[#fbfdff] p-4 sm:p-6 lg:p-7"
+        >
           {loadingHistory ? (
             <div className="m-auto max-w-md py-20 text-center text-sm font-semibold text-[#64748b]">
               Recuperando tu conversación de las últimas 48 horas…

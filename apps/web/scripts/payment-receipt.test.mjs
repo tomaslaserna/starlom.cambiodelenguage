@@ -9,9 +9,9 @@ function load(path, aliases = {}) {
   const compiled = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  const module = { exports: {} };
-  Function("require", "module", "exports", compiled)((name) => aliases[name] ?? require(name), module, module.exports);
-  return module.exports;
+  const loadedModule = { exports: {} };
+  Function("require", "module", "exports", compiled)((name) => aliases[name] ?? require(name), loadedModule, loadedModule.exports);
+  return loadedModule.exports;
 }
 class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const receipt = load("../src/lib/payment-receipt.ts");
@@ -129,7 +129,7 @@ test("API duplicados: compara datos OCR normalizados dentro del cliente seleccio
 
 test("consulta duplicados: empresa, cliente, estado, importe, fecha y operación; siempre sin caché", async () => {
   let calls = 0;
-  const module = load("../src/lib/payment-receipt-duplicates.ts", {
+  const loadedModule = load("../src/lib/payment-receipt-duplicates.ts", {
     "server-only": {}, "@/lib/db": { queryWithCompanyContext: async (company, sql, params, options) => {
       calls++; assert.equal(company, 7); assert.equal(params[0], 7); assert.equal(options.cache, false);
       assert.match(sql, /empresa_id = \$1/); assert.doesNotMatch(sql, /INSERT|UPDATE|DELETE/);
@@ -138,9 +138,9 @@ test("consulta duplicados: empresa, cliente, estado, importe, fecha y operación
       assert.match(sql, /pendiente_aprobacion/); assert.equal(params[4], "OP-1"); return { rows: [{}] };
     } },
   });
-  assert.equal(await module.findPaymentReceiptDuplicate(7, { clientId: "client", reading: { amount: 1, date: null, operation: "OP-1" } }), null);
+  assert.equal(await loadedModule.findPaymentReceiptDuplicate(7, { clientId: "client", reading: { amount: 1, date: null, operation: "OP-1" } }), null);
   assert.equal(calls, 0);
-  assert.deepEqual(await module.findPaymentReceiptDuplicate(7, { hash: "a".repeat(64), clientId: "client", reading: { amount: 1, date: "2026-10-21", operation: "OP-1" } }), { kind: "details" });
+  assert.deepEqual(await loadedModule.findPaymentReceiptDuplicate(7, { hash: "a".repeat(64), clientId: "client", reading: { amount: 1, date: "2026-10-21", operation: "OP-1" } }), { kind: "details" });
   assert.equal(calls, 2);
 });
 test("API lectura: devuelve sugerencias sin guardar pagos ni elegir remitos", () => withConfiguredAi(async () => {

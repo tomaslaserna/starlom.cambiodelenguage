@@ -12,9 +12,9 @@ function load(path, aliases = {}) {
   const compiled = ts.transpileModule(readFileSync(new URL(path, import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
-  const module = { exports: {} };
-  Function("require", "module", "exports", compiled)((name) => aliases[name] ?? require(name), module, module.exports);
-  return module.exports;
+  const loadedModule = { exports: {} };
+  Function("require", "module", "exports", compiled)((name) => aliases[name] ?? require(name), loadedModule, loadedModule.exports);
+  return loadedModule.exports;
 }
 class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const receipt = load("../src/lib/payment-receipt.ts");
