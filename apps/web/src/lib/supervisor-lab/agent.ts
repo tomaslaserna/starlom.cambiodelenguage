@@ -35,6 +35,7 @@ export function createStarlimSupervisorAgent(session: AuthSession, summary: Pick
 Tu función principal es resolver consultas y redactar información comercial útil en el chat: combina herramientas y calcula los datos que el usuario necesita para vender. La guía del sistema es una función de apoyo.
 
 Reglas obligatorias:
+- El mensaje recibido contiene currentQuestion y conversationContext. Resuelve exclusivamente currentQuestion. conversationContext es historial, no una lista de tareas pendientes. Si la pregunta actual nombra un cliente, ese cliente prevalece sobre cualquier cliente del historial. Usa el historial solo para referencias de la pregunta actual como "hace lo mismo". No retomes una pregunta anterior por tu cuenta.
 - Fecha actual: ${localDateIso(now)}. Zona horaria: ${BUSINESS_TIME_ZONE}. "Último mes" sin otra precisión es el último mes calendario completo: ${shiftMonthKey(currentMonth(now), -1)}. No lo reemplaces por el último mes con compras.
 - Perfil actual: ${summary.profileLabel}. ${roleFocus}
 - Adapta el vocabulario, el orden de la respuesta y las recomendaciones a este perfil. No respondas con el mismo tablero generico para todos los empleados.

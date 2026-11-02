@@ -10,7 +10,7 @@
     "env:check": "node scripts/check-env.mjs",
     "security:scan": "node scripts/security-scan.mjs",
     "test:purchases": "node --test scripts/purchase-intake-wiring.test.mjs",
-    "test:supervisor-evaluation": "node --test scripts/supervisor-evaluation-plan.test.mjs scripts/supervisor-lab-wiring.test.mjs scripts/supervisor-product-pattern.test.mjs scripts/supervisor-learning-contract.test.mjs scripts/supervisor-message-compact.test.mjs scripts/supervisor-customer-orders.test.mjs scripts/supervisor-answer-recovery.test.mjs",
+    "test:supervisor-evaluation": "node --test scripts/supervisor-evaluation-plan.test.mjs scripts/supervisor-lab-wiring.test.mjs scripts/supervisor-product-pattern.test.mjs scripts/supervisor-learning-contract.test.mjs scripts/supervisor-message-compact.test.mjs scripts/supervisor-customer-orders.test.mjs scripts/supervisor-answer-recovery.test.mjs scripts/supervisor-request-context.test.mjs",
     "test:principal-seller": "node --test scripts/principal-seller-access.test.mjs scripts/crm-vendor.test.mjs",
     "test:inventory-search": "node --test scripts/inventory-search.test.mjs",
     "test:currency": "node --test scripts/currency-format.test.mjs scripts/order-confirmation.test.mjs",
