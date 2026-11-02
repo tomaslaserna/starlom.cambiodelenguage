@@ -5,7 +5,8 @@ import { queryWithCompanyContext } from "@/lib/db";
 import { normalizedOrderStatusSql } from "@/lib/order-status";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { currentMonth, monthRange } from "@/lib/month-range";
-import { netSalesAmountSql } from "@/lib/sales-vat";
+import { netSalesAmountSql, adjustedSalesAmountSql } from "@/lib/sales-vat";
+import { summarizeCustomerOrders } from "@/lib/supervisor-lab/customer-orders";
 import { activeAccountMovementWhereSql } from "@/lib/accounts";
 
 export type SupervisorPurchaseItem = {
@@ -295,6 +296,42 @@ export async function getSupervisorCustomerHistory(
   };
 }
 
+export async function getSupervisorCustomerOrderSummary(
+  session: AuthSession,
+  customerId: string,
+  period?: string,
+) {
+  assertSupervisorReader(session);
+  const scope = await sellerScope(session, "c", 3);
+  const result = await queryWithCompanyContext<{
+    customer_name: string; id: string | null; number: string; date: string | null;
+    created_date: string; order_status: string; total: string;
+  }>(session.companyId, `
+    SELECT c.display_name AS customer_name, s.id::text AS id,
+           COALESCE(NULLIF(s.sale_number, ''), 'P-' || s.commercial_number::text) AS number,
+           s.sale_date::text AS date,
+           (s.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date::text AS created_date,
+           ${normalizedOrderStatusSql("s")} AS order_status,
+           ${adjustedSalesAmountSql("COALESCE(s.total_amount, 0)", "s")}::text AS total
+      FROM clients c
+      LEFT JOIN sales s ON s.client_id = c.id AND s.empresa_id = c.empresa_id
+       AND ${canonicalSalesSourceSql("s")}
+     WHERE c.id = $1::uuid AND c.empresa_id = $2 ${scope.sql}
+     ORDER BY s.sale_date DESC NULLS LAST, s.created_at DESC, s.id DESC
+  `, [customerId, session.companyId, ...scope.params], { cache: false });
+  if (!result.rows.length) return null;
+  return {
+    customerId,
+    customerName: result.rows[0].customer_name,
+    ...summarizeCustomerOrders(result.rows.filter((row) => row.id !== null).map((row) => ({
+      id: row.id!, number: row.number, date: row.date, createdDate: row.created_date,
+      status: row.order_status, total: Number(row.total),
+    })), period),
+    sourceHref: `/customers/${customerId}`,
+    howToVerify: "Abrí la ficha del cliente y revisá Historial de compras, con las columnas Fecha y Estado pedido. No inventar una pestaña ni un filtro mensual en esta ficha. La fecha de carga es distinta de la fecha comercial mostrada en Fecha.",
+  };
+}
+
 export async function searchSupervisorCustomers(
   session: AuthSession,
   search: string,
@@ -408,6 +445,58 @@ export async function getSupervisorCustomerBalances(
       sourceHref: `/payments/accounts/${row.id}`,
     };
   });
+}
+
+/** Actual issued invoices and delivery notes, never order headers presented as documents. */
+export async function getSupervisorCustomerDocuments(
+  session: AuthSession,
+  customerId: string,
+  limit = 2,
+) {
+  assertSupervisorReader(session);
+  const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 10) : 2;
+  const scope = await sellerScope(session, "c", 4);
+  const result = await queryWithCompanyContext<{
+    kind: "factura" | "remito"; document_id: string; sale_id: string; issue_date: string | null;
+    receipt_type: number | null; point_of_sale: number | null; number: string; total: string;
+  }>(session.companyId, `
+    WITH accessible_sales AS (
+      SELECT s.* FROM sales s
+      JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
+      WHERE s.empresa_id = $1 AND c.id = $2::uuid
+        AND ${canonicalSalesSourceSql("s")} ${scope.sql}
+    ), documents AS (
+      SELECT 'factura'::text AS kind, s.id::text AS document_id, s.id::text AS sale_id,
+             COALESCE(s.fiscal_issue_date, (s.fiscal_authorized_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date, s.sale_date) AS issue_date,
+             s.fiscal_receipt_type AS receipt_type, s.fiscal_point_of_sale AS point_of_sale,
+             s.fiscal_receipt_number::text AS number, COALESCE(s.total_amount, 0)::text AS total,
+             COALESCE(s.fiscal_authorized_at, s.created_at) AS recorded_at
+        FROM accessible_sales s
+       WHERE s.fiscal_status = 'aprobado' AND COALESCE(s.cae, '') NOT IN ('', 'manual')
+         AND s.fiscal_receipt_type IN (1, 6, 11)
+         AND s.fiscal_point_of_sale IS NOT NULL AND s.fiscal_receipt_number IS NOT NULL
+      UNION ALL
+      SELECT 'remito', r.id::text, s.id::text, r.delivery_date,
+             NULL::integer, NULL::integer, r.delivery_number::text, COALESCE(r.total_amount, 0)::text,
+             r.created_at
+        FROM delivery_documents r
+        JOIN accessible_sales s ON s.id = r.sale_id AND s.empresa_id = r.empresa_id
+       WHERE r.empresa_id = $1 AND r.delivery_number > 0
+    )
+    SELECT kind, document_id, sale_id, issue_date::text, receipt_type, point_of_sale, number, total
+      FROM documents
+     ORDER BY issue_date DESC NULLS LAST, recorded_at DESC, document_id DESC
+     LIMIT $3
+  `, [session.companyId, customerId, safeLimit, ...scope.params], { cache: false });
+  return result.rows.map((row) => ({
+    documentId: row.document_id,
+    saleId: row.sale_id,
+    type: row.kind === "factura" ? fiscalInvoiceTypeLabel(Number(row.receipt_type)) : "Remito",
+    number: row.kind === "factura" ? fiscalInvoiceNumber(Number(row.point_of_sale), Number(row.number)) : row.number.padStart(8, "0"),
+    date: row.issue_date,
+    amount: Number(row.total),
+    pdfHref: row.kind === "factura" ? `/api/pdfs/fiscal/sales/${row.sale_id}` : `/api/pdfs/deliveries/${row.document_id}`,
+  }));
 }
 
 export async function getSupervisorCustomerInvoices(

@@ -7,6 +7,8 @@ import { isAdminRole, normalizeRole } from "@/lib/auth";
 import { queryWithCompanyContext } from "@/lib/db";
 import {
   getSupervisorCustomerHistory,
+  getSupervisorCustomerOrderSummary,
+  getSupervisorCustomerDocuments,
   getSupervisorCustomerBalances,
   getSupervisorCustomerInvoices,
   getSupervisorInvoiceByNumber,
@@ -101,6 +103,61 @@ export function createSupervisorTools(session: AuthSession) {
         source: { label: "Clientes", href: "/customers" },
       })),
     }),
+    getCustomerOrderSummary: tool({
+      description: "Resuelve por nombre la frecuencia de compra, último pedido (incluye pendientes), última compra entregada y cantidad/importe de pedidos del mes. Último mes por defecto es el mes calendario anterior. Distingue fecha comercial y fecha de carga.",
+      inputSchema: z.object({
+        search: z.string().trim().min(2).max(120),
+        period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional().describe("Mes AAAA-MM; omitir para el último mes completo"),
+      }),
+      execute: async ({ search, period }) => executeOnce(`getCustomerOrderSummary:${search.trim().toLocaleLowerCase("es")}:${period ?? "previous"}`, async () => {
+        const matches = await searchSupervisorCustomers(session, search);
+        const selected = selectUnambiguousCustomerMatch(matches, search);
+        if (!selected) return {
+          summary: null,
+          matches,
+          clarification: matches.length ? "Hay varios clientes posibles. Pedir que el operador elija; no mezclar historiales." : "No se encontró un cliente accesible con ese nombre. Pedir el nombre exacto.",
+        };
+        return { summary: await getSupervisorCustomerOrderSummary(session, selected.customerId, period) };
+      }),
+    }),
+    getCustomerCommercialBrief: tool({
+      description: "Prepara información comercial redactable de un cliente por nombre: qué productos suele pedir, cantidades promedio cuando los compra, cada cuánto compra, importe promedio por pedido entregado y sus dos últimos comprobantes reales. Para vendedores en la calle y preguntas compuestas; los promedios son históricos, no cotizaciones actuales.",
+      inputSchema: z.object({ search: z.string().trim().min(2).max(120) }),
+      execute: async ({ search }) => executeOnce(`getCustomerCommercialBrief:${search.trim().toLocaleLowerCase("es")}`, async () => {
+        const matches = await searchSupervisorCustomers(session, search);
+        const selected = selectUnambiguousCustomerMatch(matches, search);
+        if (!selected) return { brief: null, matches, clarification: matches.length ? "Pedir que el operador elija el cliente; no combinar homónimos." : "No se encontró un cliente accesible con ese nombre." };
+        const [summary, history, documents] = await Promise.all([
+          getSupervisorCustomerOrderSummary(session, selected.customerId),
+          getSupervisorCustomerHistory(session, selected.customerId),
+          getSupervisorCustomerDocuments(session, selected.customerId, 2),
+        ]);
+        return {
+          brief: {
+            summary,
+            usualProducts: history ? summarizeCustomerProductPatterns([history]).slice(0, 10) : [],
+            productHistoryPurchaseCount: history?.purchases.length ?? 0,
+            documents,
+            clarification: "Cantidades promedio por compra de cada producto, no por todos los pedidos. Los importes son históricos y no constituyen una cotización actual. Factura y remito pueden corresponder a la misma venta: no sumarlos como compras distintas. La lista de productos muestra hasta diez de los más frecuentes.",
+          },
+        };
+      }),
+    }),
+    getCustomerDocuments: tool({
+      description: "Devuelve los últimos N comprobantes reales de un cliente por nombre: facturas fiscales aprobadas y remitos emitidos, con tipo, número, fecha, importe y PDF. No incluye pedidos ni notas de crédito/débito. Para últimas facturas solamente, usar getCustomerInvoices.",
+      inputSchema: z.object({ search: z.string().trim().min(2).max(120), limit: z.number().int().min(1).max(10).default(2) }),
+      execute: async ({ search, limit }) => executeOnce(`getCustomerDocuments:${search.trim().toLocaleLowerCase("es")}:${limit}`, async () => {
+        const matches = await searchSupervisorCustomers(session, search);
+        const selected = selectUnambiguousCustomerMatch(matches, search);
+        if (!selected) return { documents: [], matches, clarification: matches.length ? "Pedir que el operador elija el cliente; no combinar homónimos." : "No se encontró un cliente accesible con ese nombre." };
+        return {
+          customerName: selected.customerName,
+          documents: await getSupervisorCustomerDocuments(session, selected.customerId, limit),
+          source: { label: selected.customerName, href: selected.sourceHref },
+          clarification: "Incluye facturas y remitos; no notas de crédito/débito. Un remito y una factura pueden corresponder a la misma venta. La cantidad es de documentos, no de pedidos. Si hay menos que los solicitados, indicarlo. No es el saldo actual de deuda.",
+        };
+      }),
+    }),
     getCustomerHistory: tool({
       description: "Obtiene compras entregadas, productos, cantidades, precios y comprobantes de un cliente identificado por UUID.",
       inputSchema: z.object({ customerId: z.string().uuid() }),
@@ -122,7 +179,7 @@ export function createSupervisorTools(session: AuthSession) {
       })),
     }),
     getCustomerInvoices: tool({
-      description: "Obtiene las ultimas facturas fiscales aprobadas de un cliente por nombre, razon social o CUIT. Usar para preguntas como ultimas facturas, facturas de un cliente o mostrame sus comprobantes. Cada resultado incluye PDF y cuenta corriente.",
+      description: "Obtiene las últimas facturas fiscales aprobadas de un cliente por nombre, razón social o CUIT. Usar cuando pide facturas expresamente. Si pide comprobantes sin especificar factura, usar getCustomerDocuments, que también incluye remitos. Cada resultado incluye PDF y cuenta corriente.",
       inputSchema: z.object({
         search: z.string().trim().min(2).max(120),
         limit: z.number().int().min(1).max(10).default(3),

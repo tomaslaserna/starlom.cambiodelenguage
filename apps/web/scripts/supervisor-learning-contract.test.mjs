@@ -17,19 +17,21 @@ test("LA TIRRA exige permiso CRM tanto en la pantalla como en la API", () => {
   assert.match(route, /No tenés permiso para consultar LA TIRRA ia\.1\.1/);
 });
 
-test("las respuestas de consulta enseñan cómo verificar el dato y no inventan fuentes", () => {
+test("las respuestas resuelven la consulta comercial y usan fuentes como respaldo", () => {
   const agent = read("src/lib/supervisor-lab/agent.ts");
   const contract = read("src/lib/supervisor-lab/response-contract.ts");
   const chat = read("src/app/supervisor-lab/supervisor-chat.tsx");
 
   assert.match(agent, /SUPERVISOR_RESPONSE_CONTRACT/);
-  assert.match(contract, /### Qué significa/);
-  assert.match(contract, /### Cómo verificarlo/);
-  assert.match(contract, /### Fuente/);
+  assert.match(contract, /Resuelve la consulta dentro del chat/);
+  assert.match(contract, /últimos dos comprobantes/);
+  assert.match(contract, /importe promedio por pedido entregado/);
+  assert.match(contract, /Solo si pregunta dónde o cómo verificarlo/);
+  assert.doesNotMatch(contract, /Usa el encabezado/);
   assert.match(contract, /No inventes rutas ni enlaces/);
   assert.match(contract, /no inventes pestañas, ordenamientos automáticos, campos ni comportamientos del ERP/);
   assert.match(chat, /Solo lectura · no autorizo, facturo, cobro ni modifico datos por vos/);
-  assert.match(chat, /te muestro cómo verificarlo vos/);
+  assert.match(chat, /busco los datos, hago los cálculos/);
 });
 
 test("la fuente de ventas aplica el mismo mes que la métrica consultada", () => {

@@ -7,14 +7,15 @@ import { Button, Card, Textarea } from "@/components/ui";
 import { MessageResponse } from "@/components/ai-elements/message";
 import type { StarlimSupervisorMessage } from "@/lib/supervisor-lab/agent";
 import { compactSupervisorMessages } from "@/lib/supervisor-lab/message-compact";
+import { supervisorToolStateLabel } from "@/lib/supervisor-lab/tool-state";
 
 const CAPABILITIES = [
   {
     number: "01",
     eyebrow: "Información del ERP",
     title: "Preguntame sobre el sistema",
-    description: "Ventas, saldos, facturas, pedidos, stock, clientes y pendientes con enlaces para verificar.",
-    example: "¿Cuánto vendimos este mes y dónde lo verifico?",
+    description: "Te resumo qué compra un cliente, cuánto gasta, sus últimos comprobantes y los datos que necesitás para vender.",
+    example: "¿Qué suele pedir Torre del Carmen, cuánto gasta por pedido y cuáles son sus últimos dos comprobantes?",
   },
   {
     number: "02",
@@ -43,6 +44,9 @@ function toolLabel(toolName: string) {
   return {
     searchCustomers: "Buscando clientes",
     getCustomerHistory: "Consultando historial",
+    getCustomerOrderSummary: "Calculando frecuencia e importes",
+    getCustomerCommercialBrief: "Preparando resumen comercial",
+    getCustomerDocuments: "Buscando comprobantes",
     getCustomerAccountBalance: "Consultando cuenta corriente",
     getCustomerInvoices: "Buscando facturas",
     getInvoiceByNumber: "Buscando comprobante fiscal",
@@ -185,7 +189,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
             <div className="grid gap-2">
               <h2 className="text-2xl font-black tracking-[-0.03em] sm:text-3xl">Hola, soy LA TIRRA.</h2>
               <p className="max-w-2xl text-sm font-medium leading-6 text-blue-50 sm:text-base">
-                No necesitás aprender comandos ni saber dónde está cada dato. Escribime como hablarías con un compañero: te respondo, te explico qué significa y te muestro cómo verificarlo vos.
+                Escribime como hablarías con un compañero: busco los datos, hago los cálculos y te dejo una respuesta clara para resolver lo que necesitás.
               </p>
               <p className="w-fit rounded-lg border border-white/20 bg-[#034ba7]/35 px-3 py-2 text-xs font-bold leading-5 text-white">
                 Solo lectura · no autorizo, facturo, cobro ni modifico datos por vos.
@@ -245,7 +249,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d9e2ef] bg-white px-4 py-3 sm:px-6">
           <div>
             <h3 className="text-base font-extrabold text-[#0f172a]">Conversación con LA TIRRA</h3>
-            <p className="text-xs font-medium text-[#64748b]">Respuesta, significado, pasos para verificar y fuentes del ERP · memoria privada de 48 horas.</p>
+            <p className="text-xs font-medium text-[#64748b]">Respuestas y resúmenes comerciales con datos del ERP · memoria privada de 48 horas.</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="hidden items-center gap-2 rounded-full bg-[#ecfdf5] px-3 py-1.5 text-xs font-extrabold text-[#047857] sm:inline-flex">
@@ -264,7 +268,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
           ) : messages.length === 0 ? (
             <div className="m-auto max-w-md py-20 text-center text-sm font-medium text-[#64748b]">
               <strong className="mb-2 block text-base text-[#0f172a]">¿Qué necesitás resolver?</strong>
-              Escribí la consulta con tus propias palabras o elegí una opción de arriba. Te voy a responder y mostrar cómo encontrarlo vos en StarLim. Si me falta un dato importante, te lo voy a preguntar.
+              Escribí lo que necesitás saber: últimos comprobantes, productos habituales, importes promedio o varias cosas juntas. Te respondo acá con los datos disponibles.
             </div>
           ) : null}
 
@@ -298,7 +302,7 @@ export function SupervisorChat({ quickPrompts }: { quickPrompts: string[] }) {
                   if (isToolUIPart(part)) {
                     return (
                       <div className="rounded-lg bg-[#f1f5f9] px-3 py-2 text-xs font-bold text-[#475569]" key={part.toolCallId}>
-                        {toolLabel(getToolName(part))} · {part.state === "output-available" ? "listo" : "en curso"}
+                        {toolLabel(getToolName(part))} · {supervisorToolStateLabel(part.state, busy)}
                       </div>
                     );
                   }

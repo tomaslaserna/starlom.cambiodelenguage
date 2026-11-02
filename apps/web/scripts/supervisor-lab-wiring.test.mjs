@@ -63,8 +63,9 @@ test("el agente usa herramientas tipadas, de servidor y solo lectura", () => {
   assert.match(agent, /Nunca recomiendes mezclar lavandina\/hipoclorito/);
   assert.match(agent, /Sos LA TIRRA ia\.1\.1/);
   assert.match(tools, /executedCalls/);
-  assert.match(agent, /toolChoice: "none"/);
-  assert.match(agent, /stepNumber >= 1/);
+  assert.match(agent, /prepareStep: prepareSupervisorStep/);
+  assert.match(agent, /stepCountIs\(SUPERVISOR_MAX_STEPS\)/);
+  assert.match(tools, /getCustomerOrderSummary/);
   assert.doesNotMatch(agent, /activeTools: \[\]/);
   assert.match(tools, /employeeName/);
   assert.match(tools, /resolvePrioritySession/);
@@ -79,8 +80,10 @@ test("la ruta experimental exige sesion, configuracion y limites", () => {
   const guard = fs.readFileSync(path.join(root, "src/lib/supervisor-lab/request-guard.ts"), "utf8");
   assert.match(route, /requireApiSession\(\)/);
   assert.match(route, /assertSupervisorAiConfigured\(\)/);
-  assert.match(route, /createAgentUIStreamResponse/);
-  assert.match(route, /timeout: \{ totalMs: 65_000 \}/);
+  assert.match(route, /createUIMessageStreamResponse/);
+  assert.match(route, /supervisorAnswerRecovery/);
+  assert.match(route, /timeout: \{ totalMs: 45_000 \}/);
+  assert.match(route, /timeout: \{ totalMs: 15_000 \}/);
   assert.match(route, /export const maxDuration = 90/);
   assert.match(route, /Supervisor request started/);
   assert.match(route, /Supervisor request completed/);

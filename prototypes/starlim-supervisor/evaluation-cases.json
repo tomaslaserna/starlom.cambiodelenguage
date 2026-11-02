@@ -81,6 +81,24 @@
     "critical": true
   },
   {
+    "id": "commercial-brief",
+    "roles": ["administrador", "vendedor"],
+    "question": "Estoy por visitar a Torre del Carmen. Decime qué suele pedir, qué cantidades compra, cada cuánto compra y cuánto gasta por pedido.",
+    "expectedTools": ["getCustomerCommercialBrief"],
+    "must": ["responder todas las partes dentro del chat", "informar productos frecuentes y cantidades promedio cuando los compra", "indicar importe promedio, cantidad de pedidos y período histórico", "señalar que el promedio histórico no es una cotización actual"],
+    "mustNot": ["reemplazar la respuesta por instrucciones de navegación", "inventar un pedido habitual", "usar deuda como importe promedio", "inventar precios vigentes"],
+    "critical": true
+  },
+  {
+    "id": "last-two-customer-documents",
+    "roles": ["administrador", "vendedor"],
+    "question": "Mostrame los últimos dos comprobantes de Torre del Carmen.",
+    "expectedTools": ["getCustomerDocuments"],
+    "must": ["devolver exactamente dos si existen, indicando si hay menos", "incluir tipo, número, fecha, importe y PDF", "mantener el cliente y los permisos de la consulta"],
+    "mustNot": ["presentar pedidos como comprobantes emitidos", "omitir remitos por consultar solo facturas", "mandar al usuario a buscar los documentos en otra pantalla"],
+    "critical": true
+  },
+  {
     "id": "seller-scope",
     "roles": ["vendedor"],
     "question": "Buscá el cliente ajeno definido para esta prueba y mostrame su historial.",
