@@ -482,7 +482,7 @@ async function resolveQuoteProductsFromCatalog(
              p.name AS description,
              request.quantity::text,
              request.discount::text,
-             COALESCE(NULLIF(${unitPriceExpression}, 0), p.sale_price, p.cost, 0)::text AS unit_price,
+             ${unitPriceExpression}::text AS unit_price,
              request.sort_order
       FROM requested request
       JOIN products p ON p.id = request.product_id AND p.empresa_id = $5 AND p.active = true

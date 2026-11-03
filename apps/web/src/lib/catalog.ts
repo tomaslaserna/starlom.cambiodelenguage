@@ -334,13 +334,7 @@ export async function listSalePrices(input: ListInput = {}): Promise<SalePricesR
       LEFT JOIN LATERAL (
         SELECT jsonb_object_agg(
           lp.nombre,
-          COALESCE(
-            NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(ml.multiplicador, 1), 2), 0),
-            NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
-            p.sale_price,
-            p.cost,
-            0
-          )
+          COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(ml.multiplicador, 0), 2), 0), 0)
         ) AS list_prices
         FROM listas_precio lp
         LEFT JOIN margenes_listas ml
@@ -395,9 +389,9 @@ export async function listStorefrontProducts(companyId = DEFAULT_COMPANY_ID) {
             COALESCE(p.sku, p.category_code, '') AS code,
             p.category, p.brand, p.name, p.image_path, p.presentation_units,
             COALESCE(stock.available, 0)::text AS available,
-            COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l1_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_1,
-            COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l2_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_2,
-            COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l3_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_3
+            COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(l1_margin.multiplicador, 0), 2), 0), 0)::text AS price_list_1,
+            COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(l2_margin.multiplicador, 0), 2), 0), 0)::text AS price_list_2,
+            COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(l3_margin.multiplicador, 0), 2), 0), 0)::text AS price_list_3
        FROM products p
        LEFT JOIN listas_precio l1 ON l1.empresa_id=p.empresa_id AND l1.nombre ILIKE 'L1%' AND l1.activa=1
        LEFT JOIN listas_precio l2 ON l2.empresa_id=p.empresa_id AND l2.nombre ILIKE 'L2%' AND l2.activa=1
@@ -530,12 +524,7 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
         0::text AS reserved,
         COALESCE(stock.stock_real, 0)::text AS available,
         COALESCE(price_map.list_prices, '[]'::jsonb) AS list_prices,
-        COALESCE(
-          NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
-          p.sale_price,
-          p.cost,
-          0
-        )::text AS fallback_price
+        0::text AS fallback_price
       FROM products p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
       LEFT JOIN margenes m
@@ -545,13 +534,7 @@ export async function listProducts(input: ListInput = {}): Promise<ProductsResul
         SELECT jsonb_agg(
           jsonb_build_object(
             'name', lp.nombre,
-            'price', COALESCE(
-              NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(ml.multiplicador, 1), 2), 0),
-              NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
-              p.sale_price,
-              p.cost,
-              0
-            )
+            'price', COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(ml.multiplicador, 0), 2), 0), 0)
           )
           ORDER BY lp.orden ASC, lp.nombre ASC
         ) AS list_prices

@@ -121,6 +121,12 @@ export async function importProductsFromCsv(request: Request, companyId: number)
   const result: CsvImportResult = { inserted: 0, skipped: 0, errors: [], processed: 0 };
 
   await withCompanyContext(companyId, async (client) => {
+    const marginRows = await client.query<{ codigo: string; nombre: string }>(
+      "SELECT codigo, nombre FROM margenes WHERE empresa_id = $1",
+      [companyId],
+    );
+    const validMargins = new Map(marginRows.rows.map((margin) => [margin.codigo.toUpperCase(), margin.nombre]));
+
     for (const [index, row] of dataRows.entries()) {
       const rowNumber = index + 2;
       if (!hasData(row)) continue;
@@ -136,6 +142,16 @@ export async function importProductsFromCsv(request: Request, companyId: number)
       if (!name) {
         result.skipped++;
         result.errors.push(`Fila ${rowNumber}: sin nombre, omitida`);
+        continue;
+      }
+      if (!code || !validMargins.has(code)) {
+        result.skipped++;
+        result.errors.push(`Fila ${rowNumber}: categoría de precio ${code || "vacía"} inválida`);
+        continue;
+      }
+      if (cost <= 0) {
+        result.skipped++;
+        result.errors.push(`Fila ${rowNumber}: el costo debe ser mayor a 0`);
         continue;
       }
 
@@ -169,7 +185,7 @@ export async function importProductsFromCsv(request: Request, companyId: number)
           VALUES ($1, $2, $3::uuid, $4, $5, $6)
           RETURNING id::text AS id
         `,
-        [category || rubro, code, supplier.rows[0]?.id ?? null, name, cost, companyId],
+        [category || validMargins.get(code) || rubro, code, supplier.rows[0]?.id ?? null, name, cost, companyId],
       );
 
       result.inserted = (result.inserted ?? 0) + 1;

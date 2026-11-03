@@ -97,9 +97,9 @@ export async function createStorefrontRequest(input: StorefrontRequest, portalCl
       price_list_1: string; price_list_2: string; price_list_3: string;
     }>(
       `SELECT p.id::text, p.name, p.presentation_units,
-              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l1_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_1,
-              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l2_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_2,
-              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(l3_margin.multiplicador, 1), 2), 0), p.sale_price, p.cost, 0)::text AS price_list_3
+              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(l1_margin.multiplicador, 0), 2), 0), 0)::text AS price_list_1,
+              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(l2_margin.multiplicador, 0), 2), 0), 0)::text AS price_list_2,
+              COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(l3_margin.multiplicador, 0), 2), 0), 0)::text AS price_list_3
          FROM products p
          LEFT JOIN listas_precio l1 ON l1.empresa_id=p.empresa_id AND l1.nombre ILIKE 'L1%' AND l1.activa=1
          LEFT JOIN listas_precio l2 ON l2.empresa_id=p.empresa_id AND l2.nombre ILIKE 'L2%' AND l2.activa=1

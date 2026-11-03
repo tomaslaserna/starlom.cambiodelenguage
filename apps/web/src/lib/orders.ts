@@ -723,8 +723,8 @@ async function resolveBasicOrderDetail(
              p.name AS description,
              request.quantity::text,
              request.discount::text,
-             COALESCE(NULLIF(${unitPriceExpression}, 0), p.sale_price, p.cost, 0)::text AS unit_price,
-             COALESCE(NULLIF(${improvedUnitPriceExpression}, 0), p.sale_price, p.cost, 0)::text AS improved_unit_price,
+             ${unitPriceExpression}::text AS unit_price,
+             ${improvedUnitPriceExpression}::text AS improved_unit_price,
              COALESCE(p.cost, 0)::text AS unit_cost,
              p.presentation_units,
              request.sort_order
@@ -933,7 +933,7 @@ export async function getOrderFormData(
              COALESCE(p.cost, 0)::text AS cost,
              GREATEST(COALESCE(stock.stock_real, 0) - COALESCE(reserved.reserved, 0), 0)::text AS available,
              COALESCE(price_map.list_prices, '{}'::jsonb) AS list_prices,
-             COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0), p.sale_price, p.cost, 0)::text AS fallback_price
+             0::text AS fallback_price
       FROM products p
       LEFT JOIN margenes m
         ON m.empresa_id = p.empresa_id
@@ -941,13 +941,7 @@ export async function getOrderFormData(
       LEFT JOIN LATERAL (
         SELECT jsonb_object_agg(
           lp.nombre,
-          COALESCE(
-            NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(ml.multiplicador, 1), 2), 0),
-            NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
-            p.sale_price,
-            p.cost,
-            0
-          )
+          COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(ml.multiplicador, 0), 2), 0), 0)
         ) AS list_prices
         FROM listas_precio lp
         LEFT JOIN margenes_listas ml

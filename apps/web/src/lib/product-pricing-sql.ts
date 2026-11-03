@@ -18,14 +18,10 @@ export function priceSqlExpression(key: PriceListKey) {
   }
 }
 
-export function dynamicPriceSqlExpression(key: PriceListKey, selectedMarginAlias = "selected_margin") {
-  const legacyExpression = priceSqlExpression(key);
+export function dynamicPriceSqlExpression(_key: PriceListKey, selectedMarginAlias = "selected_margin") {
   return `
     COALESCE(
       NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(${selectedMarginAlias}.multiplicador, 0), 2), 0),
-      NULLIF(${legacyExpression}, 0),
-      p.sale_price,
-      p.cost,
       0
     )
   `;

@@ -30,9 +30,16 @@ type PurchaseLineState = PurchaseLineDraft & {
   id: string;
   newProductName?: string;
   newProductCode?: string;
+  newProductCategoryCode?: string;
+};
+
+type PurchaseCategoryOption = {
+  code: string;
+  name: string;
 };
 
 type PurchaseEntryFieldsProps = {
+  categories: PurchaseCategoryOption[];
   defaultDate: string;
   initialSupplierId?: string;
   initialLines?: Array<{ productId: string; quantity: number }>;
@@ -82,7 +89,7 @@ function numericInput(value: string, fallback = 0) {
   return Number.isFinite(numberValue) ? numberValue : fallback;
 }
 
-export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initialLines = [], mode = "received" }: PurchaseEntryFieldsProps) {
+export function PurchaseEntryFields({ categories, defaultDate, initialSupplierId = "", initialLines = [], mode = "received" }: PurchaseEntryFieldsProps) {
   const isOrder = mode === "order";
   const [taxMode, setTaxMode] = useState("con_iva");
   const [vatRate, setVatRate] = useState("21");
@@ -95,6 +102,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
   const [newProductOpen, setNewProductOpen] = useState(false);
   const [newProductName, setNewProductName] = useState("");
   const [newProductCode, setNewProductCode] = useState("");
+  const [newProductCategoryCode, setNewProductCategoryCode] = useState("");
   const [newProductQuantity, setNewProductQuantity] = useState("1");
   const [newProductCost, setNewProductCost] = useState("");
   const [loadingSupplierId, setLoadingSupplierId] = useState(initialSupplierId);
@@ -133,6 +141,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
       productId: line.productId,
       newProductName: line.newProductName ?? "",
       newProductCode: line.newProductCode ?? "",
+      newProductCategoryCode: line.newProductCategoryCode ?? "",
       quantity: Math.max(0, Math.trunc(numericInput(line.quantity, 0))),
       unitCost: Math.max(0, numericInput(line.unitCost, 0)),
     }))
@@ -208,17 +217,19 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
   function addNewProductLine() {
     const quantity = Math.max(0, Math.trunc(numericInput(newProductQuantity, 0)));
     const cost = Math.max(0, numericInput(newProductCost, 0));
-    if (newProductName.trim().length < 2 || quantity < 1) return;
+    if (newProductName.trim().length < 2 || !newProductCategoryCode || quantity < 1 || cost <= 0) return;
     setLines((current) => [...current, {
       id: `purchase-line-new-${lineIdRef.current++}`,
       productId: `new:${lineIdRef.current}`,
       newProductName: newProductName.trim(),
       newProductCode: newProductCode.trim(),
+      newProductCategoryCode,
       quantity: String(quantity),
       unitCost: String(cost),
     }]);
     setNewProductName("");
     setNewProductCode("");
+    setNewProductCategoryCode("");
     setNewProductQuantity("1");
     setNewProductCost("");
     setNewProductOpen(false);
@@ -308,11 +319,12 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
 
       {!isOrder && newProductOpen ? (
         <div className="grid gap-3 rounded-[10px] border border-blue-200 bg-blue-50/60 p-4 md:grid-cols-2 xl:grid-cols-12 xl:items-end">
-          <Field className="xl:col-span-5" htmlFor="purchase-new-product-name" label="Nombre del nuevo producto"><Input id="purchase-new-product-name" placeholder="Ej.: Detergente concentrado 5 L" value={newProductName} onChange={(event) => setNewProductName(event.target.value)} /></Field>
+          <Field className="xl:col-span-4" htmlFor="purchase-new-product-name" label="Nombre del nuevo producto"><Input id="purchase-new-product-name" placeholder="Ej.: Detergente concentrado 5 L" value={newProductName} onChange={(event) => setNewProductName(event.target.value)} /></Field>
           <Field className="xl:col-span-2" htmlFor="purchase-new-product-code" label="Código (opcional)"><Input id="purchase-new-product-code" value={newProductCode} onChange={(event) => setNewProductCode(event.target.value)} /></Field>
-          <Field className="xl:col-span-2" htmlFor="purchase-new-product-quantity" label="Cantidad"><Input id="purchase-new-product-quantity" min="1" step="1" type="number" value={newProductQuantity} onChange={(event) => setNewProductQuantity(event.target.value)} /></Field>
+          <Field className="xl:col-span-2" htmlFor="purchase-new-product-category" label="Categoría de precio"><Select id="purchase-new-product-category" required value={newProductCategoryCode} onChange={(event) => setNewProductCategoryCode(event.target.value)}><option value="">Seleccionar</option>{categories.map((category) => <option key={category.code} value={category.code}>{category.code} · {category.name}</option>)}</Select></Field>
+          <Field className="xl:col-span-1" htmlFor="purchase-new-product-quantity" label="Cantidad"><Input id="purchase-new-product-quantity" min="1" step="1" type="number" value={newProductQuantity} onChange={(event) => setNewProductQuantity(event.target.value)} /></Field>
           <Field className="xl:col-span-2" htmlFor="purchase-new-product-cost" label="Costo unitario s/IVA"><MoneyInput id="purchase-new-product-cost" min="0" value={newProductCost} onValueChange={setNewProductCost} /></Field>
-          <Button className="w-full xl:col-span-1" disabled={newProductName.trim().length < 2 || numericInput(newProductQuantity) < 1} type="button" onClick={addNewProductLine}>Agregar</Button>
+          <Button className="w-full xl:col-span-1" disabled={newProductName.trim().length < 2 || !newProductCategoryCode || numericInput(newProductQuantity) < 1 || numericInput(newProductCost) <= 0} type="button" onClick={addNewProductLine}>Agregar</Button>
           <p className="md:col-span-2 xl:col-span-12 text-xs font-semibold text-blue-800">Se creará vinculado a {selectedSupplier?.name ?? "este proveedor"}, con este costo y con la cantidad ingresada como stock inicial.</p>
         </div>
       ) : null}
@@ -392,7 +404,7 @@ export function PurchaseEntryFields({ defaultDate, initialSupplierId = "", initi
                     </div>
                     {product?.code ? (
                       <div className="text-xs text-[color:var(--muted)]">{product.code}</div>
-                    ) : line.newProductCode ? <div className="text-xs text-[color:var(--muted)]">{line.newProductCode} · Nuevo producto</div> : line.newProductName ? <div className="text-xs font-semibold text-blue-700">Nuevo producto</div> : null}
+                    ) : line.newProductName ? <div className="text-xs font-semibold text-blue-700">{line.newProductCode ? `${line.newProductCode} · ` : ""}Nuevo producto · {line.newProductCategoryCode}</div> : null}
                   </div>
                   <Input
                     aria-label={`Cantidad de ${lineName}`}

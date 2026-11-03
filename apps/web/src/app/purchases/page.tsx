@@ -51,6 +51,7 @@ import { PurchaseEntryFields } from "@/app/purchases/purchase-entry-fields";
 import { PurchaseReceiptUpload } from "@/app/purchases/purchase-receipt-upload";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { getReplenishmentSuggestions } from "@/lib/replenishment-v2";
+import { listMargins } from "@/lib/pricing";
 
 type PurchasesPageProps = {
   searchParams: Promise<{
@@ -174,8 +175,9 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
     sessionAllows(session, [PURCHASES_EDIT_PERMISSION]),
     showRegistry ? sessionCanDeleteOperationalRecords(session) : Promise.resolve(false),
   ]);
-  const [allPurchases] = await Promise.all([
+  const [allPurchases, purchaseMargins] = await Promise.all([
     showRegistry ? listPurchases(session.companyId) : Promise.resolve([]),
+    showCreateForm ? listMargins(session.companyId) : Promise.resolve([]),
   ]);
   const mrpSupplierId = params.mrpSupplier?.trim() ?? "";
   let initialSupplierId = "";
@@ -255,7 +257,13 @@ export default async function PurchasesPage({ searchParams }: PurchasesPageProps
               </p>
             </div>
             <form action={createPurchaseAction} className="grid gap-4">
-              <PurchaseEntryFields defaultDate={today} initialLines={initialLines} initialSupplierId={initialSupplierId} mode={planningOrder ? "order" : "received"} />
+              <PurchaseEntryFields
+                categories={purchaseMargins.map((margin) => ({ code: margin.code, name: margin.name }))}
+                defaultDate={today}
+                initialLines={initialLines}
+                initialSupplierId={initialSupplierId}
+                mode={planningOrder ? "order" : "received"}
+              />
             </form>
           </Card>
         ) : null}

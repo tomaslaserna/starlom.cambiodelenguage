@@ -10,6 +10,7 @@ type PurchaseItem = {
   productId: string;
   newProductName: string;
   newProductCode: string;
+  newProductCategoryCode: string;
   quantity: number;
   unitCost: number;
 };
@@ -89,6 +90,10 @@ function bodyItems(body: RequestBody): PurchaseItem[] {
       productId: String(item.productId ?? item.id_producto ?? item.id ?? "").trim(),
       newProductName: String(item.newProductName ?? item.new_product_name ?? "").trim().slice(0, 180),
       newProductCode: String(item.newProductCode ?? item.new_product_code ?? "").trim().slice(0, 80),
+      newProductCategoryCode: String(item.newProductCategoryCode ?? item.new_product_category_code ?? "")
+        .trim()
+        .toUpperCase()
+        .slice(0, 10),
       quantity: Number(item.quantity ?? item.cantidad ?? 0),
       unitCost: Number(item.unitCost ?? item.unit_cost ?? item.costo ?? 0),
     }))
@@ -388,6 +393,12 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
         continue;
       }
       if (!isSupplierIntake) throw new ApiError(400, "Los productos nuevos solo pueden crearse desde una compra recibida");
+      if (!item.newProductCategoryCode) {
+        throw new ApiError(400, `Seleccioná la categoría de precio para ${item.newProductName}`);
+      }
+      if (item.unitCost <= 0) {
+        throw new ApiError(400, `El costo de ${item.newProductName} debe ser mayor a 0`);
+      }
 
       const duplicate = item.newProductCode
         ? await client.query<{ id: string }>(
@@ -400,11 +411,30 @@ export async function createPurchase(session: AuthSession, input: PurchaseInput)
         continue;
       }
 
+      const category = await client.query<{ codigo: string; nombre: string }>(
+        `SELECT codigo, nombre
+           FROM margenes
+          WHERE empresa_id = $1 AND codigo = $2
+          LIMIT 1`,
+        [session.companyId, item.newProductCategoryCode],
+      );
+      if (!category.rows[0]) {
+        throw new ApiError(400, `La categoría ${item.newProductCategoryCode} no tiene reglas de precio configuradas`);
+      }
+
       const created = await client.query<{ id: string }>(
         `INSERT INTO products (category, category_code, sku, supplier_id, name, cost, empresa_id)
-         VALUES ('Nuevos productos', 'NUEVO', NULLIF($1, ''), $2::uuid, $3, $4, $5)
+         VALUES ($1, $2, NULLIF($3, ''), $4::uuid, $5, $6, $7)
          RETURNING id::text AS id`,
-        [item.newProductCode, input.supplierId, item.newProductName, item.unitCost, session.companyId],
+        [
+          category.rows[0].nombre,
+          category.rows[0].codigo,
+          item.newProductCode,
+          input.supplierId,
+          item.newProductName,
+          item.unitCost,
+          session.companyId,
+        ],
       );
       resolvedItems.push({ ...item, productId: created.rows[0].id });
     }

@@ -1386,13 +1386,7 @@ export async function buildPriceListPdf(companyId: number, options: PriceListPdf
              COALESCE(p.unit, '') AS presentacion,
              COALESCE(NULLIF(p.category, ''), 'Sin categoría') AS categoria,
              COALESCE(NULLIF(s.display_name, ''), 'Sin proveedor') AS proveedor,
-             COALESCE(
-               NULLIF(ROUND(COALESCE(p.cost, 0) * NULLIF(ml.multiplicador, 1), 2), 0),
-               NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(m.precio_1, 1), 2), 0),
-               p.sale_price,
-               p.cost,
-               0
-             ) AS precio,
+             COALESCE(NULLIF(ROUND(COALESCE(p.cost, 0) * COALESCE(ml.multiplicador, 0), 2), 0), 0) AS precio,
              COALESCE(stock.stock_real, 0)::text AS stock_real
       FROM products p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
