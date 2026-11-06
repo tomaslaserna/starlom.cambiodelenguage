@@ -366,7 +366,13 @@ export async function getCustomerStatement(
     companyId,
     `
       SELECT m.id::text AS id, m.movement_date::text AS movement_date,
-             COALESCE(m.description, '') AS description, m.debit::text, m.credit::text,
+             CASE
+               WHEN fiscal_note.id IS NOT NULL THEN
+                 CASE WHEN fiscal_note.class_name = 'NC' THEN 'Nota de credito fiscal #' ELSE 'Nota de debito fiscal #' END
+                 || COALESCE(fiscal_note.fiscal_receipt_number::text, '')
+               ELSE COALESCE(m.description, '')
+             END AS description,
+             m.debit::text, m.credit::text,
              m.payment_id::text AS payment_id, m.sale_id::text AS sale_id,
              s.sale_number,
              CASE WHEN receipt_payment.receipt_url LIKE 'starlim-storage://%' THEN receipt_payment.id::text END AS payment_receipt_id,
@@ -400,7 +406,7 @@ export async function getCustomerStatement(
        AND internal_note.empresa_id = m.empresa_id
        AND internal_note.fiscal = false
       LEFT JOIN LATERAL (
-        SELECT fiscal.id, fiscal.fiscal_receipt_number
+        SELECT fiscal.id, fiscal.class_name, fiscal.fiscal_receipt_number
         FROM sales_internal_documents fiscal
         WHERE fiscal.empresa_id = internal_note.empresa_id
           AND fiscal.operational_document_id = internal_note.id

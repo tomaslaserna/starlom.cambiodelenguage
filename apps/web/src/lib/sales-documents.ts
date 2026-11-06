@@ -399,7 +399,13 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
 
   return withCompanyContext(session.companyId, async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(83030, $1::int)", [session.companyId]);
-    let reference: { nombre_cliente: string; estado_pedido?: string; client_id?: string | null; vat_rate?: string } | undefined;
+    let reference: {
+      nombre_cliente: string;
+      estado_pedido?: string;
+      client_id?: string | null;
+      vat_rate?: string;
+      has_fiscal_invoice?: boolean;
+    } | undefined;
 
     if (input.saleId) {
       const referenceResult = await client.query<{
@@ -407,12 +413,19 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
         estado_pedido: string;
         client_id: string | null;
         vat_rate: string;
+        has_fiscal_invoice: boolean;
       }>(
         `
           SELECT COALESCE(s.client_name, c.display_name, '') AS nombre_cliente,
                  ${normalizedOrderStatusSql("s")} AS estado_pedido,
                  s.client_id::text,
-                 COALESCE(s.vat_rate, 0)::text AS vat_rate
+                 COALESCE(s.vat_rate, 0)::text AS vat_rate,
+                 (
+                   COALESCE(s.fiscal_status, 'no_enviado') = 'aprobado'
+                   AND COALESCE(s.cae, '') <> ''
+                   AND s.fiscal_receipt_type IS NOT NULL
+                   AND s.fiscal_receipt_number IS NOT NULL
+                 ) AS has_fiscal_invoice
           FROM sales s
           LEFT JOIN clients c ON c.id = s.client_id AND c.empresa_id = s.empresa_id
           WHERE s.id = $1::uuid AND s.empresa_id = $2
@@ -646,6 +659,7 @@ export async function createSalesNote(session: AuthSession, input: SalesNoteInpu
       fiscal: false,
       receiptNumber,
       amount,
+      requiresFiscal: Boolean(reference.has_fiscal_invoice),
     };
   });
 }

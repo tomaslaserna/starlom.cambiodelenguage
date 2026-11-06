@@ -85,6 +85,28 @@ test("la fiscalizacion vinculada no duplica el impacto financiero", () => {
   assert.doesNotMatch(fiscal, /SELECT 'factura', \$4, \$5, \$6::numeric, \$7, 'pendiente', \$8::jsonb, \$2/);
 });
 
+test("el ajuste hereda el comprobante original y fiscaliza automaticamente las facturas", () => {
+  const documents = read("src/lib/sales-documents.ts");
+  const action = read("src/app/orders/new/adjustment-actions.ts");
+  const fields = read("src/app/orders/new/sales-adjustment-fields.tsx");
+  const orders = read("src/lib/orders.ts");
+  const accounts = read("src/lib/customer-accounts.ts");
+  const statement = read("src/app/payments/accounts/[id]/statement-movements.tsx");
+  assert.match(documents, /AS has_fiscal_invoice/);
+  assert.match(documents, /requiresFiscal: Boolean\(reference\.has_fiscal_invoice\)/);
+  assert.match(action, /authorizeSaleCreditNote/);
+  assert.match(action, /authorizeSaleDebitNote/);
+  assert.match(action, /note\.requiresFiscal/);
+  assert.match(action, /operationalDocumentId/);
+  assert.match(action, /status=error/);
+  assert.match(fields, /ajuste fiscal automatico/);
+  assert.match(fields, /Registrar y emitir nota/);
+  assert.match(fields, /interna porque la venta original fue con remito/);
+  assert.match(orders, /document\.fiscal \|\| !document\.hasFiscalDocument/);
+  assert.match(accounts, /Nota de credito fiscal #/);
+  assert.match(statement, /line\.internalDocumentId && !line\.fiscalDocumentId/);
+});
+
 test("el comprobante habitual del cliente es sugerencia y no bloquea solicitar factura", () => {
   const fields = read("src/app/orders/new/order-entry-fields.tsx");
   const ordersPage = read("src/app/orders/page.tsx");

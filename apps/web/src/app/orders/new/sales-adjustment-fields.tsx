@@ -34,11 +34,12 @@ export function SalesAdjustmentFields({
   const [reason, setReason] = useState("");
   const selectedSale = references.find((sale) => sale.id === saleId) ?? null;
   const isCredit = className === "NC";
+  const willIssueFiscalNote = Boolean(selectedSale?.fiscalApproved);
 
   const saleOptions = useMemo(() => references.map((sale) => ({
     value: sale.id,
     label: sale.label,
-    description: `${formatCurrency(sale.amount)}${sale.fiscalApproved ? " · Factura emitida" : " · Remito"}`,
+    description: `${formatCurrency(sale.amount)}${sale.fiscalApproved ? " · Factura emitida · ajuste fiscal automatico" : " · Remito · ajuste interno"}`,
     searchText: sale.customerName,
   })), [references]);
 
@@ -116,6 +117,11 @@ export function SalesAdjustmentFields({
           <div><div className="erp-text-caption text-[color:var(--muted)]">Cliente</div><div className="font-bold">{selectedSale.customerName}</div></div>
           <div><div className="erp-text-caption text-[color:var(--muted)]">Venta original</div><div className="font-bold">{formatCurrency(selectedSale.amount)}</div></div>
           <div><div className="erp-text-caption text-[color:var(--muted)]">Comprobante</div><div className="font-bold">{selectedSale.fiscalApproved ? "Factura emitida" : "Remito"}</div></div>
+          <div className={`md:col-span-3 rounded-lg border px-3 py-2 text-sm font-semibold ${willIssueFiscalNote ? "border-amber-300 bg-amber-50 text-amber-900" : "border-blue-200 bg-blue-50 text-blue-900"}`}>
+            {willIssueFiscalNote
+              ? `Al registrar, se emitira automaticamente una nota ${isCredit ? "de credito" : "de debito"} fiscal en ARCA vinculada a la factura original.`
+              : `Al registrar, se generara una nota ${isCredit ? "de credito" : "de debito"} interna porque la venta original fue con remito.`}
+          </div>
         </div>
       ) : null}
 
@@ -157,7 +163,9 @@ export function SalesAdjustmentFields({
       </div>
 
       <Button disabled={!saleId || !lines.length || reason.trim().length < 5} type="submit">
-        Registrar {isCredit ? "nota de credito" : "nota de debito"}
+        {willIssueFiscalNote
+          ? `Registrar y emitir nota ${isCredit ? "de credito" : "de debito"} fiscal`
+          : `Registrar nota ${isCredit ? "de credito" : "de debito"} interna`}
       </Button>
     </div>
   );

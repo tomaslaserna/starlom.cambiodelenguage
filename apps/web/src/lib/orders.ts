@@ -212,7 +212,9 @@ function mapOrder(row: {
     adjustedAmount: money(storedAmounts.totalAmount + Number(row.debit_note_amount) - Number(row.credit_note_amount)),
     creditNoteAmount: Number(row.credit_note_amount),
     debitNoteAmount: Number(row.debit_note_amount),
-    associatedDocuments: row.adjustment_documents ?? [],
+    associatedDocuments: (row.adjustment_documents ?? []).filter(
+      (document) => document.fiscal || !document.hasFiscalDocument,
+    ),
     collectedAmount: Number(row.monto_cobrado),
     outstandingAmount: Number(row.saldo_pendiente),
     netAmount,
