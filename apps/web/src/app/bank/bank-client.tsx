@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { AppIcon } from "@/components/ui/app-icon";
 import { Button, cn } from "@/components/ui";
 import { formatBytes, type BankScope } from "@/lib/bank";
 import type { BankListing } from "@/lib/bank-store";
@@ -36,7 +37,7 @@ async function jsonFetch(url: string, init: RequestInit) {
 
 export function BankClient({ personal, shared }: { personal: BankListing; shared: BankListing }) {
   const router = useRouter();
-  const [scope, setScope] = useState<BankScope>("personal");
+  const [scope, setScope] = useState<BankScope>("shared");
   const [folderId, setFolderId] = useState<number | null>(null);
   const [newFolder, setNewFolder] = useState("");
   const [busy, setBusy] = useState(false);
@@ -55,6 +56,7 @@ export function BankClient({ personal, shared }: { personal: BankListing; shared
 
   function switchScope(next: BankScope) {
     setScope(next);
+    setNewFolder("");
     setFolderId(null);
     setError("");
     setStatus("");
@@ -125,173 +127,89 @@ export function BankClient({ personal, shared }: { personal: BankListing; shared
     });
   }
 
+  const folder = listing.folders.find((item) => item.id === folderId);
+  const spaceName = scope === "shared" ? "Empresa" : "Mi banco";
+
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <TabButton active={scope === "personal"} onClick={() => switchScope("personal")}>
-          Mi banco
-        </TabButton>
-        <TabButton active={scope === "shared"} onClick={() => switchScope("shared")}>
-          Empresa
-        </TabButton>
-      </div>
-
-      <div className="rounded-[10px] border border-[#d9e2ef] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.045)]">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="erp-text-caption font-semibold text-[#64748b]">
-              {scope === "personal" ? "Espacio personal (privado)" : "Espacio de la empresa (compartido)"}
-            </p>
-            <p className="text-sm font-bold text-[#0f172a]">
-              {formatBytes(usedBytes)} de {formatBytes(quotaBytes)} usados
-            </p>
-          </div>
-          <div className="min-w-[180px] flex-1">
-            <div className="h-2 w-full overflow-hidden rounded-full bg-[#eef2f8]">
-              <div
-                className={cn("h-full rounded-full", usedPct >= 90 ? "bg-[#dc2626]" : "bg-[#2563eb]")}
-                style={{ width: `${usedPct}%` }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {!canWrite ? (
-          <p className="erp-text-caption mt-3 rounded-md bg-[#f8fafc] px-3 py-2 text-[#64748b]">
-            Solo el jefe o un administrador puede subir o borrar archivos en el banco de la empresa. Podés ver y descargar.
-          </p>
-        ) : (
-          <div className="mt-3 flex flex-wrap items-end gap-2">
-            <Button disabled={busy} onClick={() => fileInputRef.current?.click()} type="button">
-              Subir archivo
-            </Button>
-            <input className="hidden" multiple onChange={onFilesSelected} ref={fileInputRef} type="file" />
-            <div className="flex items-end gap-2">
-              <label className="grid gap-1">
-                <span className="erp-text-caption font-semibold text-[#64748b]">Nueva carpeta</span>
-                <input
-                  className="h-10 rounded-[9px] border border-[#d9e2ef] px-3 text-sm"
-                  onChange={(event) => setNewFolder(event.target.value)}
-                  placeholder="Nombre"
-                  value={newFolder}
-                />
-              </label>
-              <Button disabled={busy || !newFolder.trim()} onClick={createFolder} type="button" variant="secondary">
-                Crear
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {status ? <p className="erp-text-caption mt-2 text-[#2563eb]">{status}</p> : null}
-        {error ? <p className="erp-text-caption mt-2 font-semibold text-[#dc2626]">{error}</p> : null}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <FolderChip active={folderId === null} onClick={() => setFolderId(null)}>
-          Raíz
-        </FolderChip>
-        {listing.folders.map((folder) => (
-          <FolderChip active={folderId === folder.id} key={folder.id} onClick={() => setFolderId(folder.id)}>
-            <span className="flex items-center gap-1.5">
-              📁 {folder.name}
-              {canWrite ? (
-                <span
-                  aria-label={`Borrar carpeta ${folder.name}`}
-                  className="ml-1 rounded px-1 text-[#94a3b8] hover:bg-[#fee2e2] hover:text-[#dc2626]"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void deleteFolder(folder.id, folder.name);
-                  }}
-                  role="button"
-                >
-                  ✕
-                </span>
-              ) : null}
-            </span>
-          </FolderChip>
+    <div className="grid gap-4 text-slate-900">
+      <nav aria-label="Espacios del banco" className="flex w-fit gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+        {(["shared", "personal"] as const).map((space) => (
+          <button key={space} type="button" disabled={busy} aria-pressed={scope === space}
+            className={cn("flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold", scope === space ? "bg-blue-700 text-white" : "text-slate-600 hover:bg-slate-50")}
+            onClick={() => switchScope(space)}>
+            <AppIcon name={space === "shared" ? "units" : "user"} className="h-4 w-4" />
+            {space === "shared" ? "Empresa" : "Mi banco"}
+          </button>
         ))}
-      </div>
+      </nav>
 
-      <div className="overflow-hidden rounded-[10px] border border-[#d9e2ef] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.045)]">
-        {visibleFiles.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-[#64748b]">
-            {folderId === null ? "No hay archivos en la raíz." : "Esta carpeta está vacía."}
-            {canWrite ? " Usá “Subir archivo” para agregar." : ""}
-          </p>
-        ) : (
-          <ul className="divide-y divide-[#eef2f8]">
+      <div className="grid items-start gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
+        <aside className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-3 text-sm font-bold">Carpetas</h2>
+          <nav aria-label="Carpetas" className="grid max-h-64 gap-1 overflow-auto lg:max-h-96">
+            {[{ id: null, name: "Sin carpeta" }, ...listing.folders].map((item) => (
+              <button key={item.id ?? "root"} type="button" disabled={busy} aria-pressed={item.id === folderId}
+                className={cn("break-words rounded-lg px-3 py-2 text-left text-sm", item.id === folderId ? "bg-blue-50 font-bold text-blue-800" : "text-slate-700 hover:bg-slate-50")}
+                onClick={() => setFolderId(item.id)}>{item.name}</button>
+            ))}
+          </nav>
+          {canWrite && <details key={scope} className="mt-3 border-t border-slate-100 pt-3">
+            <summary className="cursor-pointer text-sm font-semibold text-blue-700">Nueva carpeta</summary>
+            <form className="mt-2 grid gap-2" onSubmit={(event) => { event.preventDefault(); void createFolder(); }}>
+              <label className="grid gap-1 text-xs font-medium">Nombre de la carpeta
+                <input className="min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm" value={newFolder} onChange={(event) => setNewFolder(event.target.value)} />
+              </label>
+              <Button type="submit" variant="secondary" disabled={busy || !newFolder.trim()}>Crear carpeta</Button>
+            </form>
+          </details>}
+          <div className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-600">
+            <p>Almacenamiento de {spaceName}</p>
+            <div className="my-2 h-1 overflow-hidden rounded-full bg-slate-100"><div className={cn("h-full", usedPct >= 90 ? "bg-amber-600" : "bg-blue-500")} style={{ width: `${usedPct}%` }} /></div>
+            {formatBytes(usedBytes)} de {formatBytes(quotaBytes)}
+          </div>
+        </aside>
+
+        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-5">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-slate-500">{scope === "shared" ? "Empresa · Compartido" : "Mi banco · Privado"}</p>
+              <h2 className="mt-1 break-words text-xl font-bold">{folder?.name ?? "Archivos sin carpeta"}</h2>
+              <p className="mt-1 text-xs text-slate-600">{visibleFiles.length} {visibleFiles.length === 1 ? "archivo" : "archivos"}{!canWrite && " · Solo lectura"}</p>
+            </div>
+            {canWrite && <div>
+              <Button disabled={busy} onClick={() => fileInputRef.current?.click()} type="button">Subir archivo</Button>
+              <input className="hidden" multiple onChange={onFilesSelected} ref={fileInputRef} type="file" />
+            </div>}
+          </header>
+          {status && <p role="status" className="px-5 pt-3 text-sm text-blue-700">{status}</p>}
+          {error && <p role="alert" className="px-5 pt-3 text-sm text-red-700">{error}</p>}
+          {visibleFiles.length === 0 ? (
+            <div className="grid justify-items-center gap-3 px-4 py-10 text-center text-slate-500">
+              <AppIcon name="invoice" className="h-8 w-8" />
+              <p className="text-sm">{folder ? "Esta carpeta todavía está vacía." : "Todavía no hay archivos sin carpeta."}</p>
+            </div>
+          ) : <ul className="divide-y divide-slate-100">
             {visibleFiles.map((file) => (
-              <li className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-[#f8fbff]" key={file.id}>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[#172033]">{file.name}</p>
-                  <p className="erp-text-caption text-[#64748b]">
-                    {formatBytes(file.sizeBytes)} · {new Date(file.createdAt).toLocaleDateString("es-AR")}
-                  </p>
+              <li key={file.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50">
+                <div className="flex min-w-0 flex-1 basis-48 items-center gap-3">
+                  <span className="rounded-lg bg-blue-50 p-2 text-blue-700"><AppIcon name="invoice" className="h-5 w-5" /></span>
+                  <div className="min-w-0">
+                    <a className="break-words text-sm font-semibold hover:text-blue-700 hover:underline" href={`/api/bank/files/${file.id}`} target="_blank" rel="noreferrer">{file.name}</a>
+                    <p className="text-xs text-slate-500">{formatBytes(file.sizeBytes)} · {new Date(file.createdAt).toLocaleDateString("es-AR")}</p>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <a
-                    className="rounded-md bg-[#eaf2ff] px-2.5 py-1 text-xs font-bold text-[#2563eb] hover:bg-[#dbe8ff]"
-                    href={`/api/bank/files/${file.id}`}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    Ver
-                  </a>
-                  <a
-                    className="rounded-md bg-[#f1f5f9] px-2.5 py-1 text-xs font-bold text-[#334155] hover:bg-[#e2e8f0]"
-                    href={`/api/bank/files/${file.id}?download=1`}
-                  >
-                    Descargar
-                  </a>
-                  {canWrite ? (
-                    <button
-                      className="rounded-md px-2.5 py-1 text-xs font-bold text-[#dc2626] hover:bg-[#fee2e2]"
-                      disabled={busy}
-                      onClick={() => deleteFile(file.id, file.name)}
-                      type="button"
-                    >
-                      Borrar
-                    </button>
-                  ) : null}
+                <div className="flex items-center gap-4 text-xs font-semibold">
+                  <a className="inline-flex items-center gap-1 py-2 text-blue-700 hover:underline" href={`/api/bank/files/${file.id}?download=1`} aria-label={`Descargar ${file.name}`}><AppIcon name="download" className="h-4 w-4" />Descargar</a>
+                  {canWrite && <button type="button" disabled={busy} className="py-2 text-slate-500 hover:text-red-700" aria-label={`Borrar ${file.name}`} onClick={() => deleteFile(file.id, file.name)}>Borrar</button>}
                 </div>
               </li>
             ))}
-          </ul>
-        )}
+          </ul>}
+          {folder && canWrite && <footer className="border-t border-slate-100 px-5 py-3 text-right">
+            <button type="button" className="text-xs font-medium text-slate-500 hover:text-red-700" disabled={busy} onClick={() => deleteFolder(folder.id, folder.name)}>Borrar carpeta</button>
+          </footer>}
+        </section>
       </div>
     </div>
-  );
-}
-
-function TabButton({ active, children, onClick }: { active: boolean; children: ReactNode; onClick: () => void }) {
-  return (
-    <button
-      className={cn(
-        "h-10 rounded-[9px] border px-4 text-sm font-bold transition-colors",
-        active
-          ? "border-[#2563eb] bg-[#2563eb] text-white"
-          : "border-[#d9e2ef] bg-white text-[#334155] hover:border-[#2563eb]",
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
-
-function FolderChip({ active, children, onClick }: { active: boolean; children: ReactNode; onClick: () => void }) {
-  return (
-    <button
-      className={cn(
-        "h-9 rounded-full border px-3 text-xs font-bold transition-colors",
-        active ? "border-[#2563eb] bg-[#eaf2ff] text-[#2563eb]" : "border-[#d9e2ef] bg-white text-[#334155] hover:border-[#2563eb]",
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      {children}
-    </button>
   );
 }

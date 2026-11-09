@@ -13,7 +13,7 @@ export default async function BankPage() {
   return (
     <ModulePage
       active="bank"
-      description="Tu espacio de archivos: guardá lo que necesitás para tu día a día y accedé a los documentos de la empresa."
+      description="Documentos de la empresa y archivos personales."
       session={session}
       title="Banco"
     >
