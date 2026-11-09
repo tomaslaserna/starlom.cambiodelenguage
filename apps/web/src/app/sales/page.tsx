@@ -140,8 +140,9 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
-                <DataTableHead className="w-[13%] px-2">Venta</DataTableHead>
-                <DataTableHead className="w-[30%] px-2">Cliente</DataTableHead>
+                <DataTableHead className="w-[8%] px-2">Venta</DataTableHead>
+                <DataTableHead align="center" className="w-24 px-1">Reputación</DataTableHead>
+                <DataTableHead className="px-2">Cliente</DataTableHead>
                 <DataTableHead className="w-[16%] px-2">Vendedor</DataTableHead>
                 <DataTableHead className="w-[13%] px-2">Fecha</DataTableHead>
                 <DataTableHead className="w-[15%] px-2">Monto neto de ajustes</DataTableHead>
@@ -151,7 +152,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
             <DataTableBody>
               {sales.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={6}>
+                  <DataTableCell colSpan={7}>
                     <EmptyState
                       description="Ajusta la busqueda para volver al listado completo de ventas entregadas."
                       title="No hay ventas entregadas para los filtros actuales"
@@ -173,9 +174,11 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                       <DataTableCell className="px-2 py-2">
                         <div className="truncate font-mono text-xs font-black">#{saleNumberLabel}</div>
                       </DataTableCell>
+                      <DataTableCell className="whitespace-nowrap px-1 py-2 text-center">
+                        {sale.customerId ? <CustomerReputation value={scores[sale.customerId]} compact /> : "—"}
+                      </DataTableCell>
                       <DataTableCell className="px-2 py-2">
                         <div className="truncate font-medium">{sale.customerName || "Sin cliente"}</div>
-                        {sale.customerId && <CustomerReputation value={scores[sale.customerId]} />}
                         <div className="mt-1 truncate font-mono text-xs text-[color:var(--muted)]">
                           {sale.customerDocument || "-"}
                         </div>

@@ -70,7 +70,6 @@ export default async function CustomerDetailPage({ params, searchParams, crmMode
       <div className="grid gap-5">
         <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
-          <CustomerReputation value={scores[id]} detail />
           <PageHeader
             description={`${customer.taxIdType || "ID"} ${customer.taxId || "-"}`}
             title={customer.name || "Sin nombre"}
@@ -110,6 +109,9 @@ export default async function CustomerDetailPage({ params, searchParams, crmMode
               vendors={vendors}
             />
           </div>
+          </div>
+          <div className="mt-4 border-t border-[color:var(--border)] pt-4">
+            <CustomerReputation value={scores[id]} featured />
           </div>
         </div>
 

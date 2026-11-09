@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { CustomerReputation } from "@/components/customer-reputation";
+import { customerReputations } from "@/lib/customer-reputation";
 import { ModulePage } from "@/components/module-page";
 import { PaginationLinks } from "@/components/pagination-links";
 import {
@@ -78,6 +80,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
     sessionAllows(session, [{ resource: "clientes", action: "crear" }]),
   ]);
   const activePriceLists = priceLists.filter((list) => list.active);
+  const reputations = await customerReputations(session.companyId, result.data.map((customer) => customer.id));
 
   return (
     <ModulePage
@@ -225,6 +228,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
           >
             <DataTableHeader>
               <DataTableRow className="hover:bg-transparent">
+                <DataTableHead className="w-24">Reputación</DataTableHead>
                 <DataTableHead>Cliente</DataTableHead>
                 <DataTableHead>Identificacion</DataTableHead>
                 <DataTableHead>Contacto</DataTableHead>
@@ -239,7 +243,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
             <DataTableBody>
               {result.data.length === 0 ? (
                 <DataTableRow className="hover:bg-transparent">
-                  <DataTableCell colSpan={9}>
+                  <DataTableCell colSpan={10}>
                     <EmptyState
                       description={
                         result.meta.query
@@ -253,6 +257,9 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
               ) : (
                 result.data.map((customer) => (
                   <DataTableRow key={customer.id}>
+                    <DataTableCell className="w-24 whitespace-nowrap">
+                      <CustomerReputation value={reputations[customer.id]} compact />
+                    </DataTableCell>
                     <DataTableCell>
                       <Link
                         className="max-w-[260px] break-words font-medium text-[color:var(--accent)] hover:underline"
