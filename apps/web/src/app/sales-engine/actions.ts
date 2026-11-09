@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { ApiError } from "@/lib/api-response";
 import { requireApiSession } from "@/lib/route-auth";
 import { completeSalesMission, type SalesMissionKind } from "@/lib/sales-missions";
@@ -20,4 +21,5 @@ export async function completeSalesMissionAction(formData: FormData) {
     notes: String(formData.get("notes") ?? ""),
   });
   revalidatePath("/sales-engine");
+  (await cookies()).set(`starlim-sound-${session.companyId}-${session.userId}`, "mission", { path: "/", sameSite: "lax", maxAge: 30 });
 }

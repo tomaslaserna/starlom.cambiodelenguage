@@ -5,6 +5,7 @@ import { formatCurrency } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { COLLECTIONS_READ_PERMISSION } from "@/lib/route-auth";
+import { customerReputations } from "@/lib/customer-reputation";
 import { CustomerAccountsTable } from "./customer-accounts-table";
 
 type AccountsPageProps = { searchParams: Promise<{ q?: string }> };
@@ -18,6 +19,7 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
   const totalDebt = accounts.reduce((sum, account) => sum + Math.max(0, account.balance), 0);
   const totalFavor = accounts.reduce((sum, account) => sum + Math.max(0, -account.balance), 0);
   const debtors = accounts.filter((account) => account.balance > 0).length;
+  const scores = await customerReputations(session.companyId, accounts.map(a => a.clientId));
 
   return (
     <ModulePage active="collections" description="Cobranzas · Clientes" session={session} title="Cuentas corrientes">
@@ -48,7 +50,7 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
             </form>
             <p className="text-xs text-slate-500">{query ? "La búsqueda incluye cuentas saldadas." : "Sólo cuentas abiertas. Buscá un cliente para consultar también una cuenta saldada."}</p>
           </div>
-          <CustomerAccountsTable key={query} accounts={accounts} searching={Boolean(query)} />
+          <CustomerAccountsTable key={query} accounts={accounts} scores={scores} searching={Boolean(query)} />
         </section>
       </div>
     </ModulePage>

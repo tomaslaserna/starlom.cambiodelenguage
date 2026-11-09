@@ -1,4 +1,6 @@
 import { ModulePage } from "@/components/module-page";
+import { CustomerReputation } from "@/components/customer-reputation";
+import { customerReputations } from "@/lib/customer-reputation";
 import { MetricIcon } from "@/components/metric-icon";
 import { PaginationLinks } from "@/components/pagination-links";
 import {
@@ -59,6 +61,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
     sessionCanDeleteOperationalRecords(session),
     sessionAllows(session, [SALES_OPERATE_PERMISSION]),
   ]);
+  const scores = await customerReputations(session.companyId, sales.data.flatMap(sale => sale.customerId ? [sale.customerId] : []));
 
   return (
     <ModulePage
@@ -172,6 +175,7 @@ export default async function SalesPage({ searchParams }: SalesPageProps) {
                       </DataTableCell>
                       <DataTableCell className="px-2 py-2">
                         <div className="truncate font-medium">{sale.customerName || "Sin cliente"}</div>
+                        {sale.customerId && <CustomerReputation value={scores[sale.customerId]} />}
                         <div className="mt-1 truncate font-mono text-xs text-[color:var(--muted)]">
                           {sale.customerDocument || "-"}
                         </div>

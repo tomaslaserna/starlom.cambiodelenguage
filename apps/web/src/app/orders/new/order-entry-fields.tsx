@@ -1,4 +1,6 @@
 "use client";
+import { CustomerReputation } from "@/components/customer-reputation";
+import type { Reputation } from "@/lib/customer-reputation";
 
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
@@ -64,6 +66,7 @@ export type OrderEntryInitialValue = {
 
 type OrderEntryFieldsProps = {
   clients: OrderFormClient[];
+  scores?: Record<string, Reputation>;
   priceLists: OrderFormPriceList[];
   products: OrderFormProduct[];
   initialValue?: OrderEntryInitialValue;
@@ -90,6 +93,7 @@ function isWholeQuantityInput(value: string) {
 
 export function OrderEntryFields({
   clients,
+  scores,
   priceLists,
   products,
   initialValue,
@@ -427,6 +431,7 @@ export function OrderEntryFields({
               <Select id="order-price-list" value={activePriceList} onChange={(event) => setPriceListOverride(event.target.value)}>
                 {priceListOptions.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}
               </Select>
+              {selectedClient && scores && <CustomerReputation value={scores[selectedClient.id]} />}
               {customerPriceList ? <div className="mt-1 text-xs text-[color:var(--muted)]">Acuerdo del cliente: {customerPriceList}.</div> : null}
             </Field>
           ) : null}
@@ -463,7 +468,7 @@ export function OrderEntryFields({
 
           {setupComplete ? (
             <div className="grid gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm md:grid-cols-2 xl:grid-cols-5">
-              <div><span className="block text-xs font-semibold text-emerald-800">Cliente</span><b>{selectedClient?.name}</b></div>
+              <div><span className="block text-xs font-semibold text-emerald-800">Cliente</span><b>{selectedClient?.name}</b> {selectedClient && scores && <CustomerReputation value={scores[selectedClient.id]} />}</div>
               <div><span className="block text-xs font-semibold text-emerald-800">Precio</span><b>{activePriceList}</b></div>
               <div><span className="block text-xs font-semibold text-emerald-800">Comprobante</span><b>{desiredDocument ? desiredDocumentLabel(desiredDocument) : "-"}</b></div>
               <div><span className="block text-xs font-semibold text-emerald-800">Entrega estimada</span><b>{date}</b></div>

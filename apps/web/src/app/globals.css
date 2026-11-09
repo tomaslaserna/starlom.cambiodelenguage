@@ -810,6 +810,21 @@ body::after {
   animation: portal-benefit-heartbeat 2.8s ease-in-out infinite;
 }
 
+@keyframes notification-bell-ring {
+  0%, 50%, 100% { transform: rotate(0deg); }
+  9% { transform: rotate(17deg); }
+  19% { transform: rotate(-15deg); }
+  29% { transform: rotate(10deg); }
+  39% { transform: rotate(-6deg); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  details:not([open]) > summary .notification-bell-pending {
+    transform-origin: 50% 18%;
+    animation: notification-bell-ring 2s ease-in-out infinite;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .portal-benefit-heartbeat {
     animation: none;

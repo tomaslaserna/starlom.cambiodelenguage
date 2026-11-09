@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { acceptQuote, createQuote, deleteQuote, quoteInputFromBody, updateQuote } from "@/lib/quotes";
 import type { CreateQuoteState } from "@/lib/quote-form-state";
@@ -34,6 +35,7 @@ export async function acceptQuoteAction(formData: FormData) {
   revalidatePath("/orders");
   revalidatePath("/billing");
   const fiscal = result.fiscalRequested ? "&fiscal=solicitada" : "";
+  (await cookies()).set(`starlim-sound-${session.companyId}-${session.userId}`, "sale", { path: "/", sameSite: "lax", maxAge: 30 });
   redirect(`/orders?status=cargado&created=remito${fiscal}`);
 }
 
@@ -44,6 +46,7 @@ export async function acceptQuoteAndRemitAction(formData: FormData) {
   ]);
   const id = String(formData.get("id") ?? "").trim();
   await acceptQuote(session, id);
+  (await cookies()).set(`starlim-sound-${session.companyId}-${session.userId}`, "sale", { path: "/", sameSite: "lax", maxAge: 30 });
   revalidatePath("/quotes");
   revalidatePath("/orders");
   redirect("/orders?status=cargado");

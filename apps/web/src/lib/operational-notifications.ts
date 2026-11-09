@@ -1,3 +1,4 @@
+import { vendorReputationAlerts } from "@/lib/customer-reputation";
 import type { AuthSession } from "@/lib/auth";
 import { listSalesToCollect } from "@/lib/collections";
 import { getVendorClients, getVendorQuotes } from "@/lib/crm";
@@ -23,6 +24,7 @@ export type OperationalNotification = {
   href: string;
   category: "missions" | "collections" | "deliveries" | "fiscal" | "purchases" | "tasks";
   priority: OperationalNotificationPriority;
+  overdue?: boolean;
   count: number;
 };
 
@@ -83,7 +85,8 @@ async function missionNotification(session: AuthSession): Promise<OperationalNot
     missionStates,
     today,
   });
-  if (!missions.length) return [];
+  const alerts = (await vendorReputationAlerts(session.companyId, clients)).map<OperationalNotification>(a => ({ ...a, category: "missions", priority: "high", count: 1 }));
+  if (!missions.length) return alerts;
   const urgent = missions.filter((mission) => mission.urgency === "ahora").length;
   const alreadyRecontacted = missions.filter((mission) => mission.completedBefore).length;
   return [{
@@ -96,7 +99,7 @@ async function missionNotification(session: AuthSession): Promise<OperationalNot
     category: "missions",
     priority: urgent > 0 ? "urgent" : "normal",
     count: missions.length,
-  }];
+  }, ...alerts];
 }
 
 async function collectionNotifications(companyId: number): Promise<OperationalNotification[]> {
@@ -105,7 +108,8 @@ async function collectionNotifications(companyId: number): Promise<OperationalNo
     sale.dueDate === today || (sale.overdue && sale.overdueDays === 1),
   );
   const items = newlyDue.slice(0, 3).map<OperationalNotification>((sale) => ({
-    id: `collection-${sale.id}`,
+    id: `collection-${sale.id}-${sale.overdue ? "overdue" : "due"}`,
+    overdue: sale.overdue,
     title: `Cobrar a ${sale.customerName || "cliente sin identificar"}`,
     detail: sale.overdue
       ? `${formatCurrency(sale.outstandingAmount)} · venció ayer.`
@@ -118,6 +122,7 @@ async function collectionNotifications(companyId: number): Promise<OperationalNo
   if (newlyDue.length > items.length) {
     items.push({
       id: "collections-more",
+      overdue: newlyDue.slice(items.length).some(sale => sale.overdue),
       title: `Hay ${newlyDue.length - items.length} cobranzas de hoy más`,
       detail: "Son saldos que vencen hoy o que ingresaron hoy en mora.",
       href: "/payments/accounts",

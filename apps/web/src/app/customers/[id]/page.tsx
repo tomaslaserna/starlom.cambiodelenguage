@@ -1,3 +1,5 @@
+import { customerReputations } from "@/lib/customer-reputation";
+import { CustomerReputation } from "@/components/customer-reputation";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
@@ -51,6 +53,7 @@ export default async function CustomerDetailPage({ params, searchParams, crmMode
 
   const customer = await getCustomer(session.companyId, id).catch(() => null);
   if (!customer) notFound();
+  const scores = await customerReputations(session.companyId, [id]);
 
   const [history, vendors, canDelete, allClients, priceLists, portalAccess] = await Promise.all([
     getCustomerPurchaseHistory(session.companyId, id),
@@ -67,6 +70,7 @@ export default async function CustomerDetailPage({ params, searchParams, crmMode
       <div className="grid gap-5">
         <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
+          <CustomerReputation value={scores[id]} detail />
           <PageHeader
             description={`${customer.taxIdType || "ID"} ${customer.taxId || "-"}`}
             title={customer.name || "Sin nombre"}

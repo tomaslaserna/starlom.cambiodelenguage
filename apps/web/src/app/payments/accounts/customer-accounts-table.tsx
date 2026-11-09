@@ -1,5 +1,7 @@
 "use client";
 
+import { CustomerReputation } from "@/components/customer-reputation";
+import type { Reputation } from "@/lib/customer-reputation";
 import Link from "next/link";
 import { Fragment, useState } from "react";
 import { cn, EmptyState } from "@/components/ui";
@@ -7,7 +9,7 @@ import type { OpenCustomerAccount } from "@/lib/customer-accounts";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { customerAccountSituation, customerAccountAging } from "@/lib/customer-account-presentation";
 
-export function CustomerAccountsTable({ accounts, searching }: { accounts: OpenCustomerAccount[]; searching: boolean }) {
+export function CustomerAccountsTable({ accounts, scores, searching }: { accounts: OpenCustomerAccount[]; scores: Record<string, Reputation>; searching: boolean }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   return (
@@ -31,6 +33,7 @@ export function CustomerAccountsTable({ accounts, searching }: { accounts: OpenC
                 <tr className={cn("border-t border-slate-100 transition-colors hover:bg-slate-50/60", open && "bg-blue-50/30")}>
                   <td className="px-5 py-4">
                     <Link className="block font-semibold text-slate-900 underline-offset-2 hover:text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-blue-500" href={`/payments/accounts/${account.clientId}`}>{name}</Link>
+                    <CustomerReputation value={scores[account.clientId]} />
                     <span className="mt-1 block text-xs text-slate-500">{account.sellerName || "Sin vendedor"} · Últ. mov. {formatDate(account.lastMovementDate)}</span>
                   </td>
                   <td className="px-4 py-4"><span className={cn("inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", status.className)}>{status.label}</span></td>

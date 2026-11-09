@@ -1,3 +1,5 @@
+import { customerReputations } from "@/lib/customer-reputation";
+import { CustomerReputation } from "@/components/customer-reputation";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
@@ -36,6 +38,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
     throw error;
   });
   const fullPromise = loadStatement({});
+  const scores = await customerReputations(session.companyId, [id]);
   const [periodResult, fullResult, customers, treasuryAccounts, paymentContext] = await Promise.all([
     filteredPeriod ? loadStatement({ from, to }) : fullPromise,
     fullPromise,
@@ -63,6 +66,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h2 className="text-2xl font-bold tracking-tight text-slate-900">{customer.name || "Sin nombre"}</h2>
+            <CustomerReputation value={scores[id]} detail />
             <p className="mt-1.5 text-xs text-slate-500">{[customer.taxId ? `CUIT ${customer.taxId}` : "", customer.sellerName ? `Vendedor: ${customer.sellerName}` : ""].filter(Boolean).join(" · ") || "Cuenta corriente del cliente"}</p>
           </div>
           <div className="flex flex-wrap gap-2">

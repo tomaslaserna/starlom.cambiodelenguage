@@ -153,7 +153,7 @@ export async function ModulePage({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <PresenceIndicator />
-              <NotificationBell initialSnapshot={notifications} />
+              <NotificationBell initialSnapshot={notifications} employeeKey={`${session.companyId}:${session.userId}`} />
               <div className="erp-text-caption flex h-10 max-w-[360px] items-center truncate rounded-[9px] border border-[#d9e2ef] bg-[#f8fafc] px-3 shadow-[var(--shadow-xs)]">
                 <span className="font-bold">{session.displayName}</span>
                 <span className="font-medium text-[#64748b]"> - {session.role} - {session.companyName}</span>
@@ -184,7 +184,7 @@ export async function ModulePage({
               <BrandBlock title={title} />
               <div className="ml-auto">
                 <div className="flex items-center gap-2">
-                  <NotificationBell compact initialSnapshot={notifications} />
+                  <NotificationBell compact initialSnapshot={notifications} employeeKey={`${session.companyId}:${session.userId}`} />
                   <PresenceIndicator compact />
                 </div>
               </div>

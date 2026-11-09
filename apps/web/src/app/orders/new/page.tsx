@@ -1,3 +1,4 @@
+import { customerReputations } from "@/lib/customer-reputation";
 import { ModulePage } from "@/components/module-page";
 import { createOrderAction } from "@/app/orders/new/actions";
 import { OrderEntryFields } from "@/app/orders/new/order-entry-fields";
@@ -64,6 +65,7 @@ export default async function NewOrderPage({ searchParams }: NewOrderPageProps) 
     listPriceOffers(session.companyId),
     listPriceListParameters(session.companyId),
   ]);
+  const scores = await customerReputations(session.companyId, formData.clients.map(c => c.id));
   const comboOffers = priceOffers.filter((offer) => offer.status === "vigente");
   const offerListNames = priceListParams.filter((list) => list.admitsOffers).map((list) => list.name);
 
@@ -91,6 +93,7 @@ export default async function NewOrderPage({ searchParams }: NewOrderPageProps) 
         >
           <OrderEntryFields
             clients={formData.clients}
+            scores={scores}
             comboOffers={comboOffers}
             offerListNames={offerListNames}
             offers={breakEven.reached ? offers.map((offer) => ({ id: offer.id, title: offer.title, description: offer.description })) : []}

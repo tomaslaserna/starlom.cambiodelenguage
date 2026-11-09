@@ -1,3 +1,4 @@
+import { vendorReputationAlerts } from "@/lib/customer-reputation";
 import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import { AppIcon, ButtonLink, Card, PageHeader, StatCard } from "@/components/ui";
@@ -30,6 +31,7 @@ export default async function SalesEnginePage() {
     getSalesMissionStates(session),
   ]);
   const missions = buildCrmMissions({ clients, leads: leadAgenda, quotes: quotes.buckets, priceListSignals, missionStates });
+  const reputationAlerts = await vendorReputationAlerts(session.companyId, clients);
   const urgentMissions = missions.filter((mission) => mission.urgency === "ahora").length;
   const recontacts = missions.filter((mission) => mission.kind === "lead" || mission.kind === "cliente" || mission.kind === "lista").length;
   const quoteMissions = missions.filter((mission) => mission.kind === "presupuesto").length;
@@ -44,6 +46,7 @@ export default async function SalesEnginePage() {
           <StatCard icon={<AppIcon name="quote" />} label="Presupuestos accionables" value={quoteMissions} detail="Próximos a vencer o pendientes de resolución" tone="warning" />
           <StatCard icon={<AppIcon name="trend" />} label="Cartera en observación" value={riskClients} detail={`${formatCurrency(profile.monthSalesTotal)} vendidos este mes`} tone={riskClients > 0 ? "warning" : "success"} />
         </div>
+        {reputationAlerts.length > 0 && <Card className="grid gap-3 p-5"><h2 className="font-bold">Alertas de clientes</h2>{reputationAlerts.map(alert => <a key={alert.id} href={alert.href} className="text-sm hover:underline"><strong>{alert.title}</strong> · {alert.detail}</a>)}</Card>}
         <DailyMissions defaultNextFollowupOn={daysFromToday(7)} minFollowupOn={localDateIso()} missions={missions} />
         <Card className="grid gap-3 p-5">
           <div><h2 className="text-base font-black text-[#0f172a]">Cómo decide el motor</h2><p className="mt-1 text-sm text-[#64748b]">Cada misión necesita una señal, una ventana temporal y una acción posible.</p></div>

@@ -10,6 +10,7 @@ import {
 
 type NotificationBellProps = {
   initialSnapshot: OperationalNotificationSnapshot;
+  employeeKey: string;
   compact?: boolean;
 };
 
@@ -33,9 +34,99 @@ function categoryLabel(category: OperationalNotification["category"]) {
   return labels[category];
 }
 
-export function NotificationBell({ initialSnapshot, compact = false }: NotificationBellProps) {
+// A short original metallic chime. A single context is shared by both header layouts.
+let bellAudio: AudioContext | undefined;
+const chimes = {
+  bell: [[780, .075, .65, 0], [1564, .028, .43, 0], [2075, .015, .26, 0]],
+  overdue: [[330, .09, .48, 0], [660, .035, .32, 0], [294, .065, .48, .22]],
+  mission: [[659, .07, .24, 0], [988, .07, .4, .14]],
+  sale: [[1320, .06, .16, 0], [2790, .018, .12, 0], [1760, .06, .38, .10], [3520, .018, .22, .10]],
+};
+function playChime(context: AudioContext, kind: keyof typeof chimes) {
+  for (const [hz, gain, decay, offset] of chimes[kind]) {
+    const start = context.currentTime + offset;
+    const tone = context.createOscillator();
+    const volume = context.createGain();
+    tone.frequency.value = hz;
+    volume.gain.setValueAtTime(0.0001, start);
+    volume.gain.exponentialRampToValueAtTime(gain, start + 0.009);
+    volume.gain.exponentialRampToValueAtTime(0.0001, start + decay);
+    tone.connect(volume).connect(context.destination);
+    tone.onended = () => { tone.disconnect(); volume.disconnect(); };
+    tone.start(start);
+    tone.stop(start + decay);
+  }
+}
+
+export function NotificationBell({ initialSnapshot, employeeKey, compact = false }: NotificationBellProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const detailsRef = useRef<HTMLDetailsElement>(null);
+  const [muted, setMuted] = useState(false);
+  const storageKey = "starlim:bell:" + employeeKey;
+  useEffect(() => {
+    const sync = () => {
+      try { setMuted(localStorage.getItem(storageKey + ":mute") === "1"); } catch { /* Storage is optional. */ }
+    };
+    sync();
+    window.addEventListener("storage", sync);
+    window.addEventListener("starlim-bell-preference", sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("starlim-bell-preference", sync);
+    };
+  }, [storageKey]);
+
+  useEffect(() => {
+    const panel = detailsRef.current;
+    if (!panel) return;
+    const tokens = snapshot.items.map(item => JSON.stringify([item.id, item.title, item.count]));
+    function notify() {
+      if (!panel?.getClientRects().length || document.visibilityState !== "visible" || !document.hasFocus()) return;
+      try {
+        const cookieName = "starlim-sound-" + employeeKey.replace(":", "-");
+        const cue = document.cookie.split("; ").find(part => part.startsWith(cookieName + "="))?.split("=")[1];
+        const silent = muted || localStorage.getItem(storageKey + ":mute") === "1";
+        let played = false;
+        if ((cue === "sale" || cue === "mission") && (silent || bellAudio?.state === "running")) {
+          document.cookie = cookieName + "=; Path=/; Max-Age=0; SameSite=Lax";
+          if (!silent && bellAudio) { playChime(bellAudio, cue); played = true; }
+        }
+        const key = storageKey + ":announced";
+        const previous: string[] = JSON.parse(localStorage.getItem(key) || "[]");
+        if (tokens.every(token => previous.includes(token))) {
+          if (tokens.length !== previous.length) localStorage.setItem(key, JSON.stringify(tokens));
+          return;
+        }
+        if (!panel.open) {
+          if (muted || localStorage.getItem(storageKey + ":mute") === "1" || bellAudio?.state !== "running") return;
+          const overdue = snapshot.items.some((item, i) => item.overdue && !previous.includes(tokens[i]));
+          if (!played) playChime(bellAudio, overdue ? "overdue" : "bell");
+        }
+        localStorage.setItem(key, JSON.stringify(tokens));
+      } catch { /* Visual notifications remain available. */ }
+    }
+    let active = true;
+    function enableAudio() {
+      if (!panel?.getClientRects().length || muted || typeof AudioContext === "undefined") return;
+      try {
+        bellAudio ??= new AudioContext();
+        if (bellAudio.state === "running") notify();
+        else void bellAudio.resume().then(() => { if (active) notify(); }).catch(() => {});
+      } catch { /* The browser can restrict audio. */ }
+    }
+    notify();
+    window.addEventListener("click", enableAudio);
+    window.addEventListener("keydown", enableAudio);
+    window.addEventListener("focus", notify);
+    panel.addEventListener("toggle", notify);
+    return () => {
+      active = false;
+      window.removeEventListener("click", enableAudio);
+      window.removeEventListener("keydown", enableAudio);
+      window.removeEventListener("focus", notify);
+      panel.removeEventListener("toggle", notify);
+    };
+  }, [snapshot, initialSnapshot, employeeKey, storageKey, muted]);
 
   useEffect(() => {
     let active = true;
@@ -72,7 +163,7 @@ export function NotificationBell({ initialSnapshot, compact = false }: Notificat
         )}
       >
         <span className="sr-only">Abrir centro de notificaciones</span>
-        <AppIcon className="h-[19px] w-[19px]" name="bell" />
+        <AppIcon className={cn("h-[19px] w-[19px]", snapshot.pendingCount > 0 && "notification-bell-pending")} name="bell" />
         {snapshot.pendingCount > 0 ? (
           <span className="absolute -right-1.5 -top-1.5 min-w-[1.25rem] rounded-full border-2 border-white bg-[#dc2626] px-1 py-0.5 text-center text-[10px] font-black leading-none text-white">
             {badge}
@@ -112,7 +203,15 @@ export function NotificationBell({ initialSnapshot, compact = false }: Notificat
           )}
         </div>
         <div className="border-t border-[#e2e8f0] px-4 py-2.5 text-center text-[11px] font-medium text-[#64748b]">
-          Se actualiza automaticamente cada minuto
+          <button type="button" aria-pressed={!muted} onClick={() => {
+            setMuted(!muted);
+            try {
+              localStorage.setItem(storageKey + ":mute", muted ? "0" : "1");
+              window.dispatchEvent(new Event("starlim-bell-preference"));
+            } catch { /* Keep the preference for this page. */ }
+          }} className="rounded px-2 py-1 hover:bg-slate-100">
+            {muted ? "Sonido silenciado · Activar" : "Sonido activo · Silenciar"}
+          </button>
         </div>
       </div>
     </details>
