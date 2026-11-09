@@ -15,6 +15,7 @@ type NotificationBellProps = {
 };
 
 const POLL_INTERVAL_MS = 60_000;
+const REMINDER_INTERVAL_MS = 60_000;
 
 function notificationTone(priority: OperationalNotification["priority"]) {
   if (priority === "urgent") return "border-l-[#dc2626] bg-[#fff7f7]";
@@ -80,7 +81,9 @@ export function NotificationBell({ initialSnapshot, employeeKey, compact = false
     const panel = detailsRef.current;
     if (!panel) return;
     const tokens = snapshot.items.map(item => JSON.stringify([item.id, item.title, item.count]));
+    let reminder: number | undefined;
     function notify() {
+      window.clearTimeout(reminder);
       if (!panel?.getClientRects().length || document.visibilityState !== "visible" || !document.hasFocus()) return;
       try {
         const cookieName = "starlim-sound-" + employeeKey.replace(":", "-");
@@ -91,18 +94,23 @@ export function NotificationBell({ initialSnapshot, employeeKey, compact = false
           document.cookie = cookieName + "=; Path=/; Max-Age=0; SameSite=Lax";
           if (!silent && bellAudio) { playChime(bellAudio, cue); played = true; }
         }
-        const key = storageKey + ":announced";
-        const previous: string[] = JSON.parse(localStorage.getItem(key) || "[]");
-        if (tokens.every(token => previous.includes(token))) {
-          if (tokens.length !== previous.length) localStorage.setItem(key, JSON.stringify(tokens));
+        const key = storageKey + ":read";
+        const read: string[] = JSON.parse(localStorage.getItem(key) || "[]");
+        if (panel.open) {
+          localStorage.setItem(key, JSON.stringify(tokens));
           return;
         }
-        if (!panel.open) {
-          if (muted || localStorage.getItem(storageKey + ":mute") === "1" || bellAudio?.state !== "running") return;
-          const overdue = snapshot.items.some((item, i) => item.overdue && !previous.includes(tokens[i]));
-          if (!played) playChime(bellAudio, overdue ? "overdue" : "bell");
+        const unread = snapshot.items.filter((_, i) => !read.includes(tokens[i]));
+        if (!unread.length || silent || bellAudio?.state !== "running") return;
+        const lastKey = storageKey + ":last-ring";
+        const remaining = Number(localStorage.getItem(lastKey) || 0) + REMINDER_INTERVAL_MS - Date.now();
+        if (remaining > 0) {
+          reminder = window.setTimeout(notify, remaining);
+          return;
         }
-        localStorage.setItem(key, JSON.stringify(tokens));
+        if (!played) playChime(bellAudio, unread.some(item => item.overdue) ? "overdue" : "bell");
+        localStorage.setItem(lastKey, String(Date.now()));
+        reminder = window.setTimeout(notify, REMINDER_INTERVAL_MS);
       } catch { /* Visual notifications remain available. */ }
     }
     let active = true;
@@ -118,9 +126,12 @@ export function NotificationBell({ initialSnapshot, employeeKey, compact = false
     window.addEventListener("click", enableAudio);
     window.addEventListener("keydown", enableAudio);
     window.addEventListener("focus", notify);
+    document.addEventListener("visibilitychange", notify);
     panel.addEventListener("toggle", notify);
     return () => {
       active = false;
+      window.clearTimeout(reminder);
+      document.removeEventListener("visibilitychange", notify);
       window.removeEventListener("click", enableAudio);
       window.removeEventListener("keydown", enableAudio);
       window.removeEventListener("focus", notify);

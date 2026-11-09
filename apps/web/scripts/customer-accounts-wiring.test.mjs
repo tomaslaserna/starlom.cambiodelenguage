@@ -641,7 +641,8 @@ test("cuentas abiertas usa listOpenCustomerAccounts y linkea al detalle", () => 
   assert.match(table, /\/payments\/accounts\/\$\{account\.clientId\}/);
   assert.match(table, /aria-expanded=\{open\}/);
   assert.match(table, /hidden=\{!open\}/);
-  assert.equal((table.match(/<th scope="col"/g) ?? []).length, 4);
+  assert.equal((table.match(/<th scope="col"/g) ?? []).length, 5);
+  assert.match(table, /Reputación<\/th>[\s\S]+Cliente<\/th>[\s\S]+Días de mora[\s\S]+Saldo/);
   assert.match(presentation, /aging\.d7/);
   assert.match(presentation, /aging\.d15/);
   assert.match(presentation, /aging\.d30/);

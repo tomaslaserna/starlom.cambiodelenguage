@@ -31,7 +31,7 @@ export type StatementMovement = {
 export type AccountMovementRow = StatementMovement & { paymentId?: string | null };
 export type StatementLine = StatementMovement & { balance: number };
 export type CustomerStatement = { openingBalance: number; lines: StatementLine[]; finalBalance: number };
-export type OpenCustomerAccount = { clientId: string; name: string; sellerName: string; taxId: string; lastMovementDate: string | null; balance: number; aging: AgingBuckets };
+export type OpenCustomerAccount = { clientId: string; name: string; sellerName: string; taxId: string; lastMovementDate: string | null; balance: number; aging: AgingBuckets; overdueDays: number; paymentTermDays: number | null };
 export type CustomerStatementResult = {
   customer: { id: string; name: string; taxId: string; sellerName: string };
   statement: CustomerStatement;
@@ -129,6 +129,11 @@ function daysBetween(fromIso: string, toIso: string) {
 }
 
 export function computeAgingBuckets(debits: AgingDebit[], creditTotal: number, asOf: string): AgingBuckets {
+  return computeAccountAging(debits, creditTotal, asOf).aging;
+}
+
+function computeAccountAging(debits: AgingDebit[], creditTotal: number, asOf: string) {
+  let oldest = 0;
   const buckets: AgingBuckets = { current: 0, d7: 0, d15: 0, d30: 0, d30Plus: 0, overdueTotal: 0 };
   let remainingCredit = Math.max(0, money(creditTotal));
   const ordered = [...debits].sort((a, b) => a.date.localeCompare(b.date));
@@ -146,6 +151,7 @@ export function computeAgingBuckets(debits: AgingDebit[], creditTotal: number, a
     if (overdueDays <= 0) {
       buckets.current = money(buckets.current + outstanding);
     } else {
+      oldest = Math.max(oldest, overdueDays);
       if (overdueDays <= 7) buckets.d7 = money(buckets.d7 + outstanding);
       else if (overdueDays <= 15) buckets.d15 = money(buckets.d15 + outstanding);
       else if (overdueDays <= 30) buckets.d30 = money(buckets.d30 + outstanding);
@@ -153,7 +159,7 @@ export function computeAgingBuckets(debits: AgingDebit[], creditTotal: number, a
       buckets.overdueTotal = money(buckets.overdueTotal + outstanding);
     }
   }
-  return buckets;
+  return { aging: buckets, overdueDays: oldest };
 }
 
 export function buildCustomerStatement(
@@ -181,8 +187,7 @@ export function buildCustomerStatement(
   return { openingBalance, lines, finalBalance };
 }
 
-const DUE_DATE_SQL = `CASE
-  WHEN m.sale_id IS NOT NULL THEN (s.sale_date::date + COALESCE(
+const SALE_DUE_DATE_SQL = `(s.sale_date::date + COALESCE(
     s.source_payment_term_days,
     CASE
       WHEN COALESCE(s.payment_condition, '') ~ '[0-9]'
@@ -191,19 +196,21 @@ const DUE_DATE_SQL = `CASE
       ELSE c.payment_term_days
     END,
     0
-  ))
+  ))`;
+const DUE_DATE_SQL = `CASE WHEN m.sale_id IS NOT NULL THEN ${SALE_DUE_DATE_SQL}
   ELSE m.movement_date::date END`;
 
 const OPEN_SALES_FOR_AGING_SQL = `
   SELECT s.client_id::text AS client_id,
          s.sale_date::text AS date,
-         (s.sale_date::date + COALESCE(s.source_payment_term_days, 0))::text AS due_date,
+         ${SALE_DUE_DATE_SQL}::text AS due_date,
          GREATEST(
            COALESCE(movements.total_debit, 0)
            - COALESCE(movements.total_credit, 0),
            0
          )::text AS outstanding
   FROM sales s
+  LEFT JOIN clients c ON c.id=s.client_id AND c.empresa_id=s.empresa_id
   LEFT JOIN LATERAL (
     SELECT COALESCE(SUM(cam.credit), 0) AS total_credit,
            COALESCE(SUM(cam.debit), 0) AS total_debit
@@ -253,7 +260,7 @@ export async function listOpenCustomerAccounts(
   }
 
   const rows = await queryWithCompanyContext<{
-    client_id: string; name: string; seller_name: string; tax_id: string;
+    client_id: string; name: string; seller_name: string; tax_id: string; payment_term_days: number | null;
     last_movement: string | null; total_debit: string; total_credit: string;
     debits: { amount: string; date: string; due: string | null }[] | null;
   }>(
@@ -265,6 +272,7 @@ export async function listOpenCustomerAccounts(
                COALESCE(c.seller_name, '') AS seller_name,
                COALESCE(c.tax_id, '') AS tax_id,
                MAX(m.movement_date)::text AS last_movement,
+               MAX(c.payment_term_days) AS payment_term_days,
                COALESCE(SUM(m.debit), 0) AS total_debit,
                COALESCE(SUM(m.credit), 0) AS total_credit,
                COALESCE(JSON_AGG(JSON_BUILD_OBJECT('amount', m.debit, 'date', m.movement_date::text, 'due', ${DUE_DATE_SQL}))
@@ -280,6 +288,7 @@ export async function listOpenCustomerAccounts(
              seller_name,
              tax_id,
              last_movement,
+             payment_term_days,
              total_debit::text,
              total_credit::text,
              debits
@@ -325,9 +334,8 @@ export async function listOpenCustomerAccounts(
       taxId: row.tax_id,
       lastMovementDate: row.last_movement,
       balance,
-      aging: saleDebits
-        ? computeAgingBuckets(saleDebits, 0, today)
-        : computeAgingBuckets(debits, Number(row.total_credit), today),
+      paymentTermDays: row.payment_term_days ?? null,
+      ...computeAccountAging(saleDebits ?? debits, saleDebits ? 0 : Number(row.total_credit), today),
     };
   });
 
