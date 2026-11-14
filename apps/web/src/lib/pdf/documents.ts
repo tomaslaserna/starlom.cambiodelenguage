@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api-response";
+import { documentFilename } from "@/lib/pdf/document-filename";
 import QRCode from "qrcode";
 import { accountBalanceExpressionSql, activeAccountMovementWhereSql, visibleAccountMovementWhereSql } from "@/lib/accounts";
 import { queryWithCompanyContext } from "@/lib/db";
@@ -211,7 +212,7 @@ function compactPdfCode(value: string | number | null | undefined) {
 export async function buildQuotePdf(companyId: number, quoteId: string) {
   const quote = await getQuote(companyId, quoteId);
   const products = asQuoteProducts(quote.products);
-  const filename = `presupuesto_${safeFilename(quote.quoteNumber)}.pdf`;
+  const filename = documentFilename("PRP", quote.quoteNumber, quote.customer.name || quote.customer.businessName, quote.issueDate);
 
   return createPdfFile(filename, ({ pdf }) => {
     pdf.drawHeader({
@@ -381,7 +382,7 @@ export async function buildDeliveryPdf(companyId: number, deliveryId: string, in
   })), vatRate);
   const valuedSummary = valuedDocumentSummary(valuedLines);
   if (includePrices) assertValuedPdfTotal(Number(remito.monto), valuedSummary.net, vatRate);
-  return createPdfFile(`${includePrices ? "remito_con_precios" : "remito"}_${number}.pdf`, ({ pdf }) => {
+  return createPdfFile(documentFilename("RMT", number, remito.nombre_cliente, remito.fecha, includePrices ? "CON PRECIOS" : "SIN PRECIOS"), ({ pdf }) => {
     pdf.drawHeader({
       title: "Remito",
       code: "R",
@@ -883,6 +884,7 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
     id: string;
     sale_number: string;
     nombre_cliente: string;
+    nombre_archivo_cliente: string;
     dni_cliente: string;
     condicion_iva_cliente: string;
     domicilio_cliente: string;
@@ -902,6 +904,7 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
       SELECT s.id::text AS id,
              COALESCE(s.sale_number, '') AS sale_number,
              COALESCE(NULLIF(TRIM(c.legal_name), ''), NULLIF(TRIM(s.client_name), ''), c.display_name, '') AS nombre_cliente,
+             COALESCE(NULLIF(TRIM(c.display_name), ''), NULLIF(TRIM(s.client_name), ''), c.legal_name, '') AS nombre_archivo_cliente,
              COALESCE(s.client_document, c.tax_id, '') AS dni_cliente,
              COALESCE(c.fiscal_condition, '') AS condicion_iva_cliente,
              COALESCE(c.delivery_address, c.address, '') AS domicilio_cliente,
@@ -990,7 +993,7 @@ export async function buildFiscalSalePdf(companyId: number, saleId: string) {
     cae: sale.cae,
   });
 
-  return createPdfFile(`factura_${safeFilename(number)}.pdf`, ({ pdf }) => {
+  return createPdfFile(documentFilename(`F${receipt.letter}`, number, sale.nombre_archivo_cliente, sale.fiscal_issue_date), ({ pdf }) => {
     pdf.drawHeader({
       title: receipt.title,
       code: receipt.letter,
@@ -1667,7 +1670,7 @@ export async function buildOrderRemitoPdf(
     legacyRemittanceNumber: order.receipt_number,
   });
   const number = commercialCode === "Sin número" ? "Sin número" : commercialCode;
-  const filenamePrefix = includePrices ? "remito_con_precios" : "remito_sin_precios";
+  const filenameVariant = `${includePrices ? "CON PRECIOS" : "SIN PRECIOS"}${copia ? "-COPIA" : ""}`;
 
   const vatRate = includePrices
     ? valuedPdfVatRate(order.vat_rate, {
@@ -1691,7 +1694,7 @@ export async function buildOrderRemitoPdf(
     [`IVA ${vatLabel(vatRate)}`, pdfMoney(valuedSummary.vat)],
   ];
 
-  return createPdfFile(`${filenamePrefix}_${safeFilename(number)}.pdf`, ({ pdf }) => {
+  return createPdfFile(documentFilename("RMT", number, order.nombre_cliente, order.fecha, filenameVariant), ({ pdf }) => {
     pdf.drawHeader({
       title: "Remito",
       code: "R",
