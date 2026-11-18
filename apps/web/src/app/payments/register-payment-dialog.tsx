@@ -8,6 +8,7 @@ import { cn } from "@/components/ui/utils";
 import type { CustomerAccountReconciliation } from "@/lib/customer-accounts";
 import { PaymentReceiptAttachment } from "./payment-receipt-attachment";
 import { paymentReceiptFileError } from "@/lib/payment-receipt";
+import { suggestPaymentAllocation } from "@/lib/payment-allocation";
 
 const METHODS = [
   { value: "transferencia", label: "Transferencia", hint: "Banco o billetera" },
@@ -90,7 +91,15 @@ export function RegisterPaymentDialog({ action, customers, treasuryAccounts, def
     setAmounts((current) => {
       const next = { ...current };
       if (Object.hasOwn(next, sale.saleId)) delete next[sale.saleId];
-      else next[sale.saleId] = sale.outstanding.toFixed(2);
+      else {
+        const suggested = suggestPaymentAllocation(received, applied, sale.outstanding);
+        if (suggested <= 0) {
+          setError(received <= 0 ? "Ingresá primero el importe recibido para aplicarlo al remito." : "El importe recibido ya está aplicado por completo.");
+          return current;
+        }
+        setError("");
+        next[sale.saleId] = suggested.toFixed(2);
+      }
       return next;
     });
   }
