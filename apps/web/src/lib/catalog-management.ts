@@ -74,13 +74,26 @@ export type CustomerInput = {
 export type Supplier = {
   id: string;
   name: string;
-  contact: string;
+  legalName: string;
+  contactName: string;
+  taxId: string;
+  fiscalCondition: string;
   rubric: string;
   phone: string;
   email: string;
   address: string;
+  locality: string;
+  province: string;
   notes: string;
   paymentTermDays: number;
+  deliveryLeadDays: number;
+  minimumOrderAmount: number;
+  shippingMethod: string;
+  bankName: string;
+  bankAccountType: string;
+  bankAccountHolder: string;
+  bankAccountIdentifier: string;
+  bankAlias: string;
   createdAt: string;
 };
 
@@ -240,25 +253,51 @@ function mapSupplier(row: {
   id: string;
   display_name: string;
   legal_name: string | null;
+  contact_name: string | null;
+  tax_id: string | null;
+  fiscal_condition: string | null;
   rubric: string | null;
   phone: string | null;
   email: string | null;
   address: string | null;
+  locality: string | null;
+  province: string | null;
   notes: string | null;
   payment_term_days: number | null;
+  delivery_lead_days: number | null;
+  minimum_order_amount: string | null;
+  shipping_method: string | null;
+  bank_name: string | null;
+  bank_account_type: string | null;
+  bank_account_holder: string | null;
+  bank_account_identifier: string | null;
+  bank_alias: string | null;
   created_at: string;
 }): Supplier {
   const legacy = splitSupplierNotes(row.notes ?? "");
   return {
     id: row.id,
     name: row.display_name,
-    contact: row.legal_name ?? "",
+    legalName: row.legal_name ?? "",
+    contactName: row.contact_name ?? "",
+    taxId: row.tax_id ?? "",
+    fiscalCondition: row.fiscal_condition ?? "",
     rubric: row.rubric || legacy.rubric,
     phone: row.phone ?? "",
     email: row.email ?? "",
     address: row.address ?? "",
+    locality: row.locality ?? "",
+    province: row.province ?? "",
     notes: row.rubric ? row.notes ?? "" : legacy.notes,
     paymentTermDays: Number(row.payment_term_days ?? 0),
+    deliveryLeadDays: Number(row.delivery_lead_days ?? 0),
+    minimumOrderAmount: Number(row.minimum_order_amount ?? 0),
+    shippingMethod: row.shipping_method ?? "",
+    bankName: row.bank_name ?? "",
+    bankAccountType: row.bank_account_type ?? "",
+    bankAccountHolder: row.bank_account_holder ?? "",
+    bankAccountIdentifier: row.bank_account_identifier ?? "",
+    bankAlias: row.bank_alias ?? "",
     createdAt: row.created_at,
   };
 }
@@ -348,18 +387,61 @@ export function supplierInputFromBody(
   body: RequestBody,
   defaults: Partial<SupplierInput> = {},
 ): SupplierInput {
+  const rawTaxId = firstText(body, ["taxId", "tax_id", "cuit"], defaults.taxId);
+  const taxId = rawTaxId.replace(/\D/g, "");
+  const rawBankIdentifier = firstText(
+    body,
+    ["bankAccountIdentifier", "bank_account_identifier", "cbu", "cvu"],
+    defaults.bankAccountIdentifier,
+  );
+  const bankAccountIdentifier = rawBankIdentifier.replace(/\D/g, "");
+  const paymentTermDays = Math.trunc(
+    firstNumber(body, ["paymentTermDays", "plazo_pago_dias"], defaults.paymentTermDays),
+  );
+  const deliveryLeadDays = Math.trunc(
+    firstNumber(body, ["deliveryLeadDays", "delivery_lead_days"], defaults.deliveryLeadDays),
+  );
+  const minimumOrderAmount = firstNumber(
+    body,
+    ["minimumOrderAmount", "minimum_order_amount"],
+    defaults.minimumOrderAmount,
+  );
   const input = {
     name: firstText(body, ["name", "nombre"], defaults.name),
-    contact: firstText(body, ["contact", "contacto"], defaults.contact),
+    legalName: firstText(body, ["legalName", "legal_name", "razon_social"], defaults.legalName),
+    contactName: firstText(body, ["contactName", "contact_name", "contact", "contacto"], defaults.contactName),
+    taxId,
+    fiscalCondition: firstText(body, ["fiscalCondition", "fiscal_condition", "condicion_fiscal"], defaults.fiscalCondition),
     rubric: firstText(body, ["rubric", "rubro"], defaults.rubric),
     phone: firstText(body, ["phone", "telefono"], defaults.phone),
-    email: firstText(body, ["email"], defaults.email),
+    email: firstText(body, ["email"], defaults.email).toLowerCase(),
     address: firstText(body, ["address", "direccion"], defaults.address),
+    locality: firstText(body, ["locality", "localidad"], defaults.locality),
+    province: firstText(body, ["province", "provincia"], defaults.province),
     notes: firstText(body, ["notes", "notas"], defaults.notes),
-    paymentTermDays: Math.max(0, Math.trunc(firstNumber(body, ["paymentTermDays", "plazo_pago_dias"], defaults.paymentTermDays))),
+    paymentTermDays,
+    deliveryLeadDays,
+    minimumOrderAmount,
+    shippingMethod: firstText(body, ["shippingMethod", "shipping_method", "forma_envio"], defaults.shippingMethod),
+    bankName: firstText(body, ["bankName", "bank_name", "banco"], defaults.bankName),
+    bankAccountType: firstText(body, ["bankAccountType", "bank_account_type", "tipo_cuenta"], defaults.bankAccountType),
+    bankAccountHolder: firstText(body, ["bankAccountHolder", "bank_account_holder", "titular_cuenta"], defaults.bankAccountHolder),
+    bankAccountIdentifier,
+    bankAlias: firstText(body, ["bankAlias", "bank_alias", "alias"], defaults.bankAlias),
   };
 
   if (!input.name) throw new ApiError(400, "El nombre es obligatorio");
+  if (rawTaxId && taxId.length !== 11) throw new ApiError(400, "El CUIT debe tener 11 dígitos");
+  if (rawBankIdentifier && bankAccountIdentifier.length !== 22) {
+    throw new ApiError(400, "El CBU/CVU debe tener 22 dígitos");
+  }
+  if (paymentTermDays < 0 || paymentTermDays > 3650) {
+    throw new ApiError(400, "El plazo de pago debe estar entre 0 y 3650 días");
+  }
+  if (deliveryLeadDays < 0 || deliveryLeadDays > 3650) {
+    throw new ApiError(400, "El plazo de entrega debe estar entre 0 y 3650 días");
+  }
+  if (minimumOrderAmount < 0) throw new ApiError(400, "La compra mínima no puede ser negativa");
   return input;
 }
 
@@ -557,7 +639,7 @@ export async function listSuppliers(input: ListInput = {}): Promise<ListResult<S
   if (query) {
     params.push(searchPattern(query));
     filters.push(
-      `(display_name ILIKE $${params.length} ESCAPE '\\' OR legal_name ILIKE $${params.length} ESCAPE '\\' OR rubric ILIKE $${params.length} ESCAPE '\\' OR phone ILIKE $${params.length} ESCAPE '\\' OR email ILIKE $${params.length} ESCAPE '\\' OR address ILIKE $${params.length} ESCAPE '\\' OR notes ILIKE $${params.length} ESCAPE '\\')`,
+      `(display_name ILIKE $${params.length} ESCAPE '\\' OR legal_name ILIKE $${params.length} ESCAPE '\\' OR contact_name ILIKE $${params.length} ESCAPE '\\' OR tax_id ILIKE $${params.length} ESCAPE '\\' OR rubric ILIKE $${params.length} ESCAPE '\\' OR phone ILIKE $${params.length} ESCAPE '\\' OR email ILIKE $${params.length} ESCAPE '\\' OR address ILIKE $${params.length} ESCAPE '\\' OR locality ILIKE $${params.length} ESCAPE '\\' OR province ILIKE $${params.length} ESCAPE '\\' OR notes ILIKE $${params.length} ESCAPE '\\')`,
     );
   }
 
@@ -572,7 +654,11 @@ export async function listSuppliers(input: ListInput = {}): Promise<ListResult<S
   const rows = await queryWithCompanyContext<Parameters<typeof mapSupplier>[0]>(
     companyId,
     `
-      SELECT id, display_name, legal_name, rubric, phone, email, address, notes, payment_term_days, created_at::text
+      SELECT id, display_name, legal_name, contact_name, tax_id, fiscal_condition, rubric,
+             phone, email, address, locality, province, notes, payment_term_days,
+             delivery_lead_days, minimum_order_amount::text, shipping_method,
+             bank_name, bank_account_type, bank_account_holder, bank_account_identifier,
+             bank_alias, created_at::text
       FROM suppliers
       WHERE ${where}
       ORDER BY display_name ASC, id ASC
@@ -614,7 +700,11 @@ export async function getSupplier(companyId: number, id: string) {
   const result = await queryWithCompanyContext<Parameters<typeof mapSupplier>[0]>(
     companyId,
     `
-      SELECT id, display_name, legal_name, rubric, phone, email, address, notes, payment_term_days, created_at::text
+      SELECT id, display_name, legal_name, contact_name, tax_id, fiscal_condition, rubric,
+             phone, email, address, locality, province, notes, payment_term_days,
+             delivery_lead_days, minimum_order_amount::text, shipping_method,
+             bank_name, bank_account_type, bank_account_holder, bank_account_identifier,
+             bank_alias, created_at::text
       FROM suppliers
       WHERE id = $1::uuid AND empresa_id = $2 AND active = true
       LIMIT 1
@@ -631,59 +721,141 @@ export async function createSupplier(companyId: number, input: SupplierInput) {
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,
     `
-      INSERT INTO suppliers (display_name, legal_name, rubric, phone, email, address, notes, payment_term_days, empresa_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO suppliers (
+        display_name, legal_name, contact_name, tax_id, fiscal_condition, rubric,
+        phone, email, address, locality, province, notes, payment_term_days,
+        delivery_lead_days, minimum_order_amount, shipping_method, bank_name,
+        bank_account_type, bank_account_holder, bank_account_identifier, bank_alias,
+        empresa_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       RETURNING id::text AS id
     `,
     [
       input.name,
-      input.contact,
+      input.legalName,
+      input.contactName,
+      input.taxId,
+      input.fiscalCondition,
       input.rubric,
       input.phone,
       input.email,
       input.address,
+      input.locality,
+      input.province,
       input.notes,
       input.paymentTermDays,
+      input.deliveryLeadDays,
+      input.minimumOrderAmount,
+      input.shippingMethod,
+      input.bankName,
+      input.bankAccountType,
+      input.bankAccountHolder,
+      input.bankAccountIdentifier,
+      input.bankAlias,
       companyId,
     ],
   );
 
+  clearReadQueryCache();
   return getSupplier(companyId, result.rows[0].id);
 }
 
-export async function updateSupplier(companyId: number, id: string, input: SupplierInput) {
-  const result = await queryWithCompanyContext<{ id: string }>(
-    companyId,
-    `
-      UPDATE suppliers
-      SET display_name = $1,
-          legal_name = $2,
-          rubric = $3,
-          phone = $4,
-          email = $5,
-          address = $6,
-          notes = $7,
-          payment_term_days = $8,
-          updated_at = now()
-      WHERE id = $9::uuid AND empresa_id = $10 AND active = true
-      RETURNING id::text AS id
-    `,
-    [
-      input.name,
-      input.contact,
-      input.rubric,
-      input.phone,
-      input.email,
-      input.address,
-      input.notes,
-      input.paymentTermDays,
-      id,
-      companyId,
-    ],
-  );
+export async function updateSupplier(session: AuthSession, id: string, input: SupplierInput) {
+  const supplier = await withCompanyContext(session.companyId, async (client) => {
+    const currentResult = await client.query<Parameters<typeof mapSupplier>[0]>(
+      `
+        SELECT id, display_name, legal_name, contact_name, tax_id, fiscal_condition, rubric,
+               phone, email, address, locality, province, notes, payment_term_days,
+               delivery_lead_days, minimum_order_amount::text, shipping_method,
+               bank_name, bank_account_type, bank_account_holder, bank_account_identifier,
+               bank_alias, created_at::text
+        FROM suppliers
+        WHERE id = $1::uuid AND empresa_id = $2 AND active = true
+        LIMIT 1
+      `,
+      [id, session.companyId],
+    );
+    const current = currentResult.rows[0];
+    if (!current) throw new ApiError(404, "Proveedor no encontrado");
 
-  if (!result.rows[0]) throw new ApiError(404, "Proveedor no encontrado");
-  return getSupplier(companyId, id);
+    const result = await client.query<{ id: string }>(
+      `
+        UPDATE suppliers
+        SET display_name = $1,
+            legal_name = $2,
+            contact_name = $3,
+            tax_id = $4,
+            fiscal_condition = $5,
+            rubric = $6,
+            phone = $7,
+            email = $8,
+            address = $9,
+            locality = $10,
+            province = $11,
+            notes = $12,
+            payment_term_days = $13,
+            delivery_lead_days = $14,
+            minimum_order_amount = $15,
+            shipping_method = $16,
+            bank_name = $17,
+            bank_account_type = $18,
+            bank_account_holder = $19,
+            bank_account_identifier = $20,
+            bank_alias = $21,
+            updated_at = now()
+        WHERE id = $22::uuid AND empresa_id = $23 AND active = true
+        RETURNING id::text AS id
+      `,
+      [
+        input.name,
+        input.legalName,
+        input.contactName,
+        input.taxId,
+        input.fiscalCondition,
+        input.rubric,
+        input.phone,
+        input.email,
+        input.address,
+        input.locality,
+        input.province,
+        input.notes,
+        input.paymentTermDays,
+        input.deliveryLeadDays,
+        input.minimumOrderAmount,
+        input.shippingMethod,
+        input.bankName,
+        input.bankAccountType,
+        input.bankAccountHolder,
+        input.bankAccountIdentifier,
+        input.bankAlias,
+        id,
+        session.companyId,
+      ],
+    );
+    if (!result.rows[0]) throw new ApiError(404, "Proveedor no encontrado");
+
+    await client.query(
+      `
+        INSERT INTO audit_log (actor_id, action, entity_table, entity_id, old_data, new_data, empresa_id)
+        VALUES ($1, $2, $3, $4::uuid, $5::jsonb, $6::jsonb, $7)
+      `,
+      [
+        session.userId,
+        "supplier.updated",
+        "suppliers",
+        id,
+        JSON.stringify(mapSupplier(current)),
+        JSON.stringify(input),
+        session.companyId,
+      ],
+    );
+
+    return { id, ...input, createdAt: current.created_at };
+  });
+
+  clearReadQueryCache();
+  return supplier;
 }
 
 export async function deleteSupplier(companyId: number, id: string) {

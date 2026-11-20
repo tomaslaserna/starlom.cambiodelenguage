@@ -34,16 +34,30 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const body = await readRequestBody(request);
     const current = await getSupplier(session.companyId, supplierId);
     const data = await updateSupplier(
-      session.companyId,
+      session,
       supplierId,
       supplierInputFromBody(body, {
         name: current.name,
-        contact: current.contact,
+        legalName: current.legalName,
+        contactName: current.contactName,
+        taxId: current.taxId,
+        fiscalCondition: current.fiscalCondition,
         rubric: current.rubric,
         phone: current.phone,
         email: current.email,
         address: current.address,
+        locality: current.locality,
+        province: current.province,
         notes: current.notes,
+        paymentTermDays: current.paymentTermDays,
+        deliveryLeadDays: current.deliveryLeadDays,
+        minimumOrderAmount: current.minimumOrderAmount,
+        shippingMethod: current.shippingMethod,
+        bankName: current.bankName,
+        bankAccountType: current.bankAccountType,
+        bankAccountHolder: current.bankAccountHolder,
+        bankAccountIdentifier: current.bankAccountIdentifier,
+        bankAlias: current.bankAlias,
       }),
     );
     return ok({ data });

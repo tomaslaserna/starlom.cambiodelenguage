@@ -185,7 +185,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                     </DataTableCell>
                     <DataTableCell className="text-[color:var(--muted)]">
                       <div className="max-w-[220px] break-words">
-                        {supplier.contact || "-"}
+                        {supplier.contactName || "-"}
                       </div>
                     </DataTableCell>
                     <DataTableCell className="whitespace-nowrap">
