@@ -28,7 +28,9 @@ test("tienda tiene métricas, búsqueda por tokens y catálogo acotado",async()=
   const store=await read("src/app/store/page.tsx");
   const storefront=await read("src/app/tienda/storefront.tsx");
   assert.match(nav,/label: "Tienda y Portal"/);
+  assert.match(nav,/href: "\/store"/);
   assert.match(nav,/icon: "eye"/);
+  assert.match(nav,/badge: "orderRequests"/);
   assert.match(store,/Visualizaciones/);
   assert.match(store,/Checkouts iniciados y no terminados/);
   assert.match(store,/Hablar por WhatsApp/);
