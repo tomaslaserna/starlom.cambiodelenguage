@@ -23,6 +23,7 @@ import { formatNumber } from "@/lib/format";
 import { requireStaffSession } from "@/lib/auth";
 import { sessionAllows, sessionCanReadSuppliers } from "@/lib/route-auth";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 type SuppliersPageProps = {
   searchParams: Promise<{
@@ -173,11 +174,13 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                 result.data.map((supplier) => (
                   <DataTableRow key={supplier.id}>
                     <DataTableCell>
-                      <div className="max-w-[280px] break-words font-medium">
+                      <Link
+                        className="block max-w-[280px] break-words font-medium text-[color:var(--accent)] hover:underline"
+                        href={`/suppliers/${supplier.id}`}
+                      >
                         {supplier.name || "Sin nombre"}
-                      </div>
+                      </Link>
                     </DataTableCell>
-                    <DataTableCell className="whitespace-nowrap">{supplier.paymentTermDays} días</DataTableCell>
                     <DataTableCell className="text-[color:var(--muted)]">
                       <div className="max-w-[180px] break-words">
                         {supplier.rubric || "-"}
@@ -196,6 +199,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
                         {supplier.email || "-"}
                       </div>
                     </DataTableCell>
+                    <DataTableCell className="whitespace-nowrap">{supplier.paymentTermDays} días</DataTableCell>
                   </DataTableRow>
                 ))
               )}
