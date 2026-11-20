@@ -46,6 +46,9 @@ test("supplier editing is permission-gated, complete, and keeps recoverable form
   assert.match(detail, /searchParams: Promise<\{ updated\?: string \}>/);
   assert.match(detail, /Proveedor actualizado correctamente/);
   assert.match(dialog, /useActionState\(updateSupplierAction/);
+  assert.match(dialog, /useState\(\(\) => supplierDraftFromSupplier\(supplier\)\)/);
+  assert.match(dialog, /value=\{draft\./);
+  assert.match(dialog, /onChange=\{changeField/);
   assert.match(dialog, /state\.status === "error"/);
   for (const name of ["name", "legalName", "contactName", "taxId", "fiscalCondition", "rubric", "phone", "email", "address", "locality", "province", "notes", "paymentTermDays", "deliveryLeadDays", "minimumOrderAmount", "shippingMethod", "bankName", "bankAccountType", "bankAccountHolder", "bankAccountIdentifier", "bankAlias"]) {
     assert.match(dialog, new RegExp(`name="${name}"`));
@@ -59,14 +62,20 @@ test("supplier editing is permission-gated, complete, and keeps recoverable form
   assert.match(actions, /revalidatePath\(`\/suppliers\/\$\{id\}`\)/);
 });
 
-test("private supplier API keeps read/edit permissions and delegates audited PATCH with complete defaults", () => {
+test("private supplier API keeps read/edit permissions and delegates an atomic partial PATCH", () => {
   const route = read("../src/app/api/suppliers/[id]/route.ts");
   assert.match(route, /resource: "proveedores", action: "ver"/);
   assert.match(route, /resource: "proveedores", action: "editar"/);
   assert.match(route, /uuidParam\(id, "Proveedor"\)/);
-  assert.match(route, /updateSupplier\(\s*session,/);
-  for (const field of ["legalName", "contactName", "taxId", "fiscalCondition", "deliveryLeadDays", "minimumOrderAmount", "bankAccountIdentifier", "bankAlias"]) {
-    assert.match(route, new RegExp(`${field}: current\\.${field}`));
-  }
+  assert.match(route, /patchSupplier\(session, supplierId, body\)/);
+  assert.doesNotMatch(route, /const current = await getSupplier/);
   assert.doesNotMatch(route, /active: current|body\.active/);
+});
+
+test("purchase history links remain searchable and non-received balances are not presented as debt", () => {
+  const purchases = read("../src/app/purchases/page.tsx");
+  const detail = read("../src/app/suppliers/[id]/page.tsx");
+  assert.match(purchases, /`OC-\$\{item\.id\.slice\(0, 8\)\.toUpperCase\(\)\}`/);
+  assert.match(purchases, /item\.id/);
+  assert.match(detail, /purchase\.status === "recibida"[\s\S]*formatCurrency\(purchase\.balance\)[\s\S]*"No devengado"/);
 });

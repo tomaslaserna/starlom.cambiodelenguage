@@ -168,7 +168,7 @@ export default async function SupplierDetailPage({ params, searchParams }: Suppl
                 <DataTableCell><div className="max-w-[260px] break-words">{purchase.description || "-"}</div></DataTableCell>
                 <DataTableCell>{formatCurrency(purchase.total)}</DataTableCell>
                 <DataTableCell>{formatCurrency(purchase.paid)}</DataTableCell>
-                <DataTableCell>{formatCurrency(purchase.balance)}</DataTableCell>
+                <DataTableCell>{purchase.status === "recibida" ? formatCurrency(purchase.balance) : "No devengado"}</DataTableCell>
                 <DataTableCell className="whitespace-nowrap">{formatDate(purchase.dueDate)}</DataTableCell>
                 <DataTableCell><StatusBadge tone={statusTone(purchase.status)}>{purchase.status || "Sin estado"}</StatusBadge></DataTableCell>
               </DataTableRow>)}

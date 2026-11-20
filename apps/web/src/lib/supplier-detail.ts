@@ -114,7 +114,8 @@ export async function getSupplierDetail360(
     queryWithCompanyContext<PurchaseRow>(
       companyId,
       `
-        SELECT id::text AS id, purchase_number, purchase_date::text, description,
+        SELECT id::text AS id, 'OC-' || upper(left(id::text, 8)) AS purchase_number,
+               purchase_date::text, description,
                total_amount::text, paid_amount::text,
                GREATEST(total_amount - paid_amount, 0)::text AS balance,
                due_date::text, status, tax_mode, vat_rate::text, package_status

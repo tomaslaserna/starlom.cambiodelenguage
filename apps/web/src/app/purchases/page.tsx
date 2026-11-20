@@ -127,7 +127,8 @@ function matchesType(item: PurchaseRow, view: PurchaseView) {
 
 function matchesQuery(item: PurchaseRow, query: string) {
   if (!query) return true;
-  return [item.supplierName, item.description, item.status]
+  const purchaseNumber = `OC-${item.id.slice(0, 8).toUpperCase()}`;
+  return [purchaseNumber, item.id, item.supplierName, item.description, item.status]
     .join(" ")
     .toLowerCase()
     .includes(query);

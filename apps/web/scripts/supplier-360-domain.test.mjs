@@ -117,6 +117,42 @@ test("supplier PATCH defaults preserve every omitted field", () => {
   assert.deepEqual(input, { ...defaults, name: "Nombre nuevo" });
 });
 
+test("supplier PATCH accepts explicit blanks and rejects an explicitly blank name", () => {
+  const catalog = loadCatalog();
+  const defaults = catalog.supplierInputFromBody(fullInput);
+  const input = catalog.supplierInputFromBody({
+    contactName: "",
+    bankAlias: "",
+    bankAccountIdentifier: "",
+  }, defaults);
+  assert.equal(input.contactName, "");
+  assert.equal(input.bankAlias, "");
+  assert.equal(input.bankAccountIdentifier, "");
+  assert.throws(() => catalog.supplierInputFromBody({ name: "" }, defaults), /nombre es obligatorio/i);
+});
+
+test("supplier listing returns only directory-safe fields and never selects bank data", async () => {
+  const statements = [];
+  const catalog = loadCatalog({
+    queryWithCompanyContext: async (_companyId, sql) => {
+      statements.push(sql);
+      if (/COUNT/.test(sql)) return { rows: [{ total: "1" }] };
+      return { rows: [{ id: supplierRow().id, display_name: "Proveedor", contact_name: "Ana", rubric: "Papel", phone: "351", email: "a@a.com", payment_term_days: 7 }] };
+    },
+  });
+  const result = await catalog.listSuppliers({ companyId: 9 });
+  assert.deepEqual(result.data[0], {
+    id: supplierRow().id,
+    name: "Proveedor",
+    contactName: "Ana",
+    rubric: "Papel",
+    phone: "351",
+    email: "a@a.com",
+    paymentTermDays: 7,
+  });
+  assert.doesNotMatch(statements.join("\n"), /bank_(?:name|account|alias)/);
+});
+
 function supplierRow() {
   return {
     id: "11111111-1111-4111-8111-111111111111",
@@ -152,7 +188,7 @@ test("updateSupplier scopes the row, updates all master fields, and audits old a
     async query(sql, params = []) {
       statements.push({ sql, params });
       if (/SELECT[\s\S]+FROM suppliers/.test(sql)) return { rows: [current] };
-      if (/UPDATE suppliers/.test(sql)) return { rows: [{ id: current.id }] };
+      if (/UPDATE suppliers/.test(sql)) return { rows: [{ ...current, display_name: "Maralimm", legal_name: "Maralimm SAS", contact_name: "Andrea", fiscal_condition: "Responsable inscripto", rubric: "Descartables", phone: "3515550000", email: "ventas@maralimm.com", address: "Ruta 9", notes: "Entrega por la mañana", payment_term_days: 30, delivery_lead_days: 2, minimum_order_amount: "125000.5", shipping_method: "Reparto propio", bank_name: "Santander", bank_account_type: "Cuenta corriente", bank_account_holder: "Maralimm SAS", bank_alias: "maralimm.cobros" }] };
       return { rows: [] };
     },
   };
@@ -171,6 +207,7 @@ test("updateSupplier scopes the row, updates all master fields, and audits old a
 
   const select = statements.find(({ sql }) => /SELECT[\s\S]+FROM suppliers/.test(sql));
   assert.match(select.sql, /id = \$1::uuid AND empresa_id = \$2 AND active = true/);
+  assert.match(select.sql, /FOR UPDATE/);
   const update = statements.find(({ sql }) => /UPDATE suppliers/.test(sql));
   for (const column of ["contact_name", "fiscal_condition", "locality", "province", "delivery_lead_days", "minimum_order_amount", "shipping_method", "bank_name", "bank_account_type", "bank_account_holder", "bank_account_identifier", "bank_alias"]) {
     assert.match(update.sql, new RegExp(`${column} = \\$\\d+`));
@@ -181,7 +218,8 @@ test("updateSupplier scopes the row, updates all master fields, and audits old a
   assert.equal(audits[0].params[1], "supplier.updated");
   assert.equal(audits[0].params[2], "suppliers");
   assert.equal(JSON.parse(audits[0].params[4]).name, "Anterior");
-  assert.deepEqual(JSON.parse(audits[0].params[5]), input);
+  assert.equal(JSON.parse(audits[0].params[5]).name, "Maralimm");
+  assert.equal(JSON.parse(audits[0].params[5]).createdAt, current.created_at);
   assert.equal(cacheClears, 1);
 });
 

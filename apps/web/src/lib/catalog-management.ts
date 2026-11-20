@@ -99,6 +99,11 @@ export type Supplier = {
 
 export type SupplierInput = Omit<Supplier, "id" | "createdAt">;
 
+export type SupplierListItem = Pick<
+  Supplier,
+  "id" | "name" | "contactName" | "rubric" | "phone" | "email" | "paymentTermDays"
+>;
+
 export type ProductDetail = {
   id: string;
   productId: string;
@@ -187,6 +192,11 @@ function firstText(body: RequestBody, keys: string[], fallback = "") {
     if (value !== "") return value;
   }
   return fallback;
+}
+
+function supplierText(body: RequestBody, keys: string[], fallback = "") {
+  const key = keys.find((candidate) => Object.prototype.hasOwnProperty.call(body, candidate));
+  return key ? textField(body, key, "") : fallback;
 }
 
 function providedText(body: RequestBody, keys: string[]) {
@@ -302,6 +312,26 @@ function mapSupplier(row: {
   };
 }
 
+function mapSupplierList(row: {
+  id: string;
+  display_name: string;
+  contact_name: string | null;
+  rubric: string | null;
+  phone: string | null;
+  email: string | null;
+  payment_term_days: number | null;
+}): SupplierListItem {
+  return {
+    id: row.id,
+    name: row.display_name,
+    contactName: row.contact_name ?? "",
+    rubric: row.rubric ?? "",
+    phone: row.phone ?? "",
+    email: row.email ?? "",
+    paymentTermDays: Number(row.payment_term_days ?? 0),
+  };
+}
+
 function splitSupplierNotes(rawNotes: string) {
   const match = rawNotes.match(/^\[Rubro:\s*([^\]]+)\]\s*/i);
   if (!match) return { rubric: "", notes: rawNotes };
@@ -387,9 +417,9 @@ export function supplierInputFromBody(
   body: RequestBody,
   defaults: Partial<SupplierInput> = {},
 ): SupplierInput {
-  const rawTaxId = firstText(body, ["taxId", "tax_id", "cuit"], defaults.taxId);
+  const rawTaxId = supplierText(body, ["taxId", "tax_id", "cuit"], defaults.taxId);
   const taxId = rawTaxId.replace(/\D/g, "");
-  const rawBankIdentifier = firstText(
+  const rawBankIdentifier = supplierText(
     body,
     ["bankAccountIdentifier", "bank_account_identifier", "cbu", "cvu"],
     defaults.bankAccountIdentifier,
@@ -407,27 +437,27 @@ export function supplierInputFromBody(
     defaults.minimumOrderAmount,
   );
   const input = {
-    name: firstText(body, ["name", "nombre"], defaults.name),
-    legalName: firstText(body, ["legalName", "legal_name", "razon_social"], defaults.legalName),
-    contactName: firstText(body, ["contactName", "contact_name", "contact", "contacto"], defaults.contactName),
+    name: supplierText(body, ["name", "nombre"], defaults.name),
+    legalName: supplierText(body, ["legalName", "legal_name", "razon_social"], defaults.legalName),
+    contactName: supplierText(body, ["contactName", "contact_name", "contact", "contacto"], defaults.contactName),
     taxId,
-    fiscalCondition: firstText(body, ["fiscalCondition", "fiscal_condition", "condicion_fiscal"], defaults.fiscalCondition),
-    rubric: firstText(body, ["rubric", "rubro"], defaults.rubric),
-    phone: firstText(body, ["phone", "telefono"], defaults.phone),
-    email: firstText(body, ["email"], defaults.email).toLowerCase(),
-    address: firstText(body, ["address", "direccion"], defaults.address),
-    locality: firstText(body, ["locality", "localidad"], defaults.locality),
-    province: firstText(body, ["province", "provincia"], defaults.province),
-    notes: firstText(body, ["notes", "notas"], defaults.notes),
+    fiscalCondition: supplierText(body, ["fiscalCondition", "fiscal_condition", "condicion_fiscal"], defaults.fiscalCondition),
+    rubric: supplierText(body, ["rubric", "rubro"], defaults.rubric),
+    phone: supplierText(body, ["phone", "telefono"], defaults.phone),
+    email: supplierText(body, ["email"], defaults.email).toLowerCase(),
+    address: supplierText(body, ["address", "direccion"], defaults.address),
+    locality: supplierText(body, ["locality", "localidad"], defaults.locality),
+    province: supplierText(body, ["province", "provincia"], defaults.province),
+    notes: supplierText(body, ["notes", "notas"], defaults.notes),
     paymentTermDays,
     deliveryLeadDays,
     minimumOrderAmount,
-    shippingMethod: firstText(body, ["shippingMethod", "shipping_method", "forma_envio"], defaults.shippingMethod),
-    bankName: firstText(body, ["bankName", "bank_name", "banco"], defaults.bankName),
-    bankAccountType: firstText(body, ["bankAccountType", "bank_account_type", "tipo_cuenta"], defaults.bankAccountType),
-    bankAccountHolder: firstText(body, ["bankAccountHolder", "bank_account_holder", "titular_cuenta"], defaults.bankAccountHolder),
+    shippingMethod: supplierText(body, ["shippingMethod", "shipping_method", "forma_envio"], defaults.shippingMethod),
+    bankName: supplierText(body, ["bankName", "bank_name", "banco"], defaults.bankName),
+    bankAccountType: supplierText(body, ["bankAccountType", "bank_account_type", "tipo_cuenta"], defaults.bankAccountType),
+    bankAccountHolder: supplierText(body, ["bankAccountHolder", "bank_account_holder", "titular_cuenta"], defaults.bankAccountHolder),
     bankAccountIdentifier,
-    bankAlias: firstText(body, ["bankAlias", "bank_alias", "alias"], defaults.bankAlias),
+    bankAlias: supplierText(body, ["bankAlias", "bank_alias", "alias"], defaults.bankAlias),
   };
 
   if (!input.name) throw new ApiError(400, "El nombre es obligatorio");
@@ -629,7 +659,7 @@ export async function updateCustomerBusinessSegment(companyId: number, id: strin
   return { id, businessSegment };
 }
 
-export async function listSuppliers(input: ListInput = {}): Promise<ListResult<Supplier>> {
+export async function listSuppliers(input: ListInput = {}): Promise<ListResult<SupplierListItem>> {
   const companyId = input.companyId ?? DEFAULT_COMPANY_ID;
   const query = input.query?.trim() ?? "";
   const pagination = parsePagination(input);
@@ -651,14 +681,10 @@ export async function listSuppliers(input: ListInput = {}): Promise<ListResult<S
   );
 
   params.push(pagination.pageSize, pagination.offset);
-  const rows = await queryWithCompanyContext<Parameters<typeof mapSupplier>[0]>(
+  const rows = await queryWithCompanyContext<Parameters<typeof mapSupplierList>[0]>(
     companyId,
     `
-      SELECT id, display_name, legal_name, contact_name, tax_id, fiscal_condition, rubric,
-             phone, email, address, locality, province, notes, payment_term_days,
-             delivery_lead_days, minimum_order_amount::text, shipping_method,
-             bank_name, bank_account_type, bank_account_holder, bank_account_identifier,
-             bank_alias, created_at::text
+      SELECT id, display_name, contact_name, rubric, phone, email, payment_term_days
       FROM suppliers
       WHERE ${where}
       ORDER BY display_name ASC, id ASC
@@ -670,7 +696,7 @@ export async function listSuppliers(input: ListInput = {}): Promise<ListResult<S
   const total = Number.parseInt(countResult.rows[0]?.total ?? "0", 10);
 
   return {
-    data: rows.rows.map(mapSupplier),
+    data: rows.rows.map(mapSupplierList),
     meta: {
       companyId,
       query,
@@ -761,9 +787,8 @@ export async function createSupplier(companyId: number, input: SupplierInput) {
   return getSupplier(companyId, result.rows[0].id);
 }
 
-export async function updateSupplier(session: AuthSession, id: string, input: SupplierInput) {
-  const supplier = await withCompanyContext(session.companyId, async (client) => {
-    const currentResult = await client.query<Parameters<typeof mapSupplier>[0]>(
+async function lockSupplier(client: PoolClient, companyId: number, id: string) {
+  const currentResult = await client.query<Parameters<typeof mapSupplier>[0]>(
       `
         SELECT id, display_name, legal_name, contact_name, tax_id, fiscal_condition, rubric,
                phone, email, address, locality, province, notes, payment_term_days,
@@ -773,13 +798,23 @@ export async function updateSupplier(session: AuthSession, id: string, input: Su
         FROM suppliers
         WHERE id = $1::uuid AND empresa_id = $2 AND active = true
         LIMIT 1
+        FOR UPDATE
       `,
-      [id, session.companyId],
+      [id, companyId],
     );
-    const current = currentResult.rows[0];
-    if (!current) throw new ApiError(404, "Proveedor no encontrado");
+  const current = currentResult.rows[0];
+  if (!current) throw new ApiError(404, "Proveedor no encontrado");
+  return current;
+}
 
-    const result = await client.query<{ id: string }>(
+async function persistSupplier(
+  client: PoolClient,
+  session: AuthSession,
+  id: string,
+  current: Parameters<typeof mapSupplier>[0],
+  input: SupplierInput,
+) {
+  const result = await client.query<Parameters<typeof mapSupplier>[0]>(
       `
         UPDATE suppliers
         SET display_name = $1,
@@ -805,7 +840,12 @@ export async function updateSupplier(session: AuthSession, id: string, input: Su
             bank_alias = $21,
             updated_at = now()
         WHERE id = $22::uuid AND empresa_id = $23 AND active = true
-        RETURNING id::text AS id
+        RETURNING id::text AS id, display_name, legal_name, contact_name, tax_id,
+                  fiscal_condition, rubric, phone, email, address, locality, province,
+                  notes, payment_term_days, delivery_lead_days,
+                  minimum_order_amount::text, shipping_method, bank_name,
+                  bank_account_type, bank_account_holder, bank_account_identifier,
+                  bank_alias, created_at::text
       `,
       [
         input.name,
@@ -833,9 +873,11 @@ export async function updateSupplier(session: AuthSession, id: string, input: Su
         session.companyId,
       ],
     );
-    if (!result.rows[0]) throw new ApiError(404, "Proveedor no encontrado");
+  const updated = result.rows[0];
+  if (!updated) throw new ApiError(404, "Proveedor no encontrado");
+  const supplier = mapSupplier(updated);
 
-    await client.query(
+  await client.query(
       `
         INSERT INTO audit_log (actor_id, action, entity_table, entity_id, old_data, new_data, empresa_id)
         VALUES ($1, $2, $3, $4::uuid, $5::jsonb, $6::jsonb, $7)
@@ -846,12 +888,29 @@ export async function updateSupplier(session: AuthSession, id: string, input: Su
         "suppliers",
         id,
         JSON.stringify(mapSupplier(current)),
-        JSON.stringify(input),
+        JSON.stringify(supplier),
         session.companyId,
       ],
     );
 
-    return { id, ...input, createdAt: current.created_at };
+  return supplier;
+}
+
+export async function updateSupplier(session: AuthSession, id: string, input: SupplierInput) {
+  const supplier = await withCompanyContext(session.companyId, async (client) => {
+    const current = await lockSupplier(client, session.companyId, id);
+    return persistSupplier(client, session, id, current, input);
+  });
+
+  clearReadQueryCache();
+  return supplier;
+}
+
+export async function patchSupplier(session: AuthSession, id: string, body: RequestBody) {
+  const supplier = await withCompanyContext(session.companyId, async (client) => {
+    const current = await lockSupplier(client, session.companyId, id);
+    const input = supplierInputFromBody(body, mapSupplier(current));
+    return persistSupplier(client, session, id, current, input);
   });
 
   clearReadQueryCache();

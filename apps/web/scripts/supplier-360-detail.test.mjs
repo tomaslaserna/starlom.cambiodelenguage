@@ -62,7 +62,7 @@ test("supplier detail maps received metrics, active products, and traceable mixe
     }
     return {
       rows: [
-        { id: "r3", purchase_number: "C-003", purchase_date: null, description: "Pendiente", total_amount: "500", paid_amount: "0", balance: "500", due_date: null, status: "pendiente", tax_mode: "con_iva", vat_rate: "21", package_status: "pendiente" },
+        { id: "r3", purchase_number: "OC-R3", purchase_date: null, description: "Pendiente", total_amount: "500", paid_amount: "0", balance: "500", due_date: null, status: "pendiente", tax_mode: "con_iva", vat_rate: "21", package_status: "pendiente" },
         { id: "r2", purchase_number: "C-002", purchase_date: "2026-11-10", description: "Sobrepagada", total_amount: "1000", paid_amount: "1200", balance: "0", due_date: "2026-11-25", status: "recibida", tax_mode: "con_iva", vat_rate: "21", package_status: "revisado" },
         { id: "r1", purchase_number: "C-001", purchase_date: "2026-11-01", description: "Parcial", total_amount: "2000", paid_amount: "1600", balance: "400", due_date: "2026-11-16", status: "recibida", tax_mode: "sin_iva", vat_rate: "0", package_status: "revisado" },
         { id: "r0", purchase_number: "C-000", purchase_date: "2026-10-01", description: "Cancelada", total_amount: "700", paid_amount: "0", balance: "700", due_date: null, status: "cancelada", tax_mode: "con_iva", vat_rate: "10.5", package_status: "pendiente" },
@@ -95,6 +95,8 @@ test("supplier detail SQL scopes the company and encodes metric and ordering rul
   assert.match(source, /FROM products[\s\S]*active = true/);
   assert.match(source, /ORDER BY name ASC/);
   assert.match(source, /ORDER BY COALESCE\(purchase_date, created_at::date\) DESC/);
+  assert.match(source, /'OC-'\s*\|\|\s*upper\(left\(id::text, 8\)\) AS purchase_number/);
+  assert.doesNotMatch(source, /SELECT id::text AS id, purchase_number,/);
 });
 
 test("supplier detail returns stable empty values and does not query activity after a 404", async () => {

@@ -3,8 +3,7 @@ import { handleApiError, ok } from "@/lib/api-response";
 import {
   deleteSupplier,
   getSupplier,
-  supplierInputFromBody,
-  updateSupplier,
+  patchSupplier,
 } from "@/lib/catalog-management";
 import { readRequestBody, uuidParam } from "@/lib/request-body";
 import { requireApiSession } from "@/lib/route-auth";
@@ -32,34 +31,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
     const supplierId = uuidParam(id, "Proveedor");
     const body = await readRequestBody(request);
-    const current = await getSupplier(session.companyId, supplierId);
-    const data = await updateSupplier(
-      session,
-      supplierId,
-      supplierInputFromBody(body, {
-        name: current.name,
-        legalName: current.legalName,
-        contactName: current.contactName,
-        taxId: current.taxId,
-        fiscalCondition: current.fiscalCondition,
-        rubric: current.rubric,
-        phone: current.phone,
-        email: current.email,
-        address: current.address,
-        locality: current.locality,
-        province: current.province,
-        notes: current.notes,
-        paymentTermDays: current.paymentTermDays,
-        deliveryLeadDays: current.deliveryLeadDays,
-        minimumOrderAmount: current.minimumOrderAmount,
-        shippingMethod: current.shippingMethod,
-        bankName: current.bankName,
-        bankAccountType: current.bankAccountType,
-        bankAccountHolder: current.bankAccountHolder,
-        bankAccountIdentifier: current.bankAccountIdentifier,
-        bankAlias: current.bankAlias,
-      }),
-    );
+    const data = await patchSupplier(session, supplierId, body);
     return ok({ data });
   } catch (error) {
     return handleApiError(error);
