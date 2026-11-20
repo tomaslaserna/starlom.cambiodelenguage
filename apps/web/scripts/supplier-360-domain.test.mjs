@@ -202,3 +202,62 @@ test("updateSupplier does not audit a missing or cross-company supplier", async 
   );
   assert.equal(statements.filter(({ sql }) => /INSERT INTO audit_log/.test(sql)).length, 0);
 });
+
+function loadSupplierActions({ updateError = null } = {}) {
+  const revalidated = [];
+  const redirects = [];
+  const actions = loadTypeScriptModule("../src/app/suppliers/actions.ts", {
+    "next/cache": { revalidatePath: (path) => revalidated.push(path) },
+    "next/navigation": { redirect: (path) => { redirects.push(path); throw Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT" }); } },
+    "@/lib/api-response": { ApiError },
+    "@/lib/catalog-management": {
+      createSupplier: async () => undefined,
+      getSupplier: async () => ({ ...supplierRow(), name: "Anterior", legalName: "Anterior SAS", contactName: "Ana", taxId: "30711478022", fiscalCondition: "RI", locality: "Córdoba", province: "Córdoba", deliveryLeadDays: 1, minimumOrderAmount: 1000, shippingMethod: "Reparto", bankName: "Banco", bankAccountType: "CC", bankAccountHolder: "Anterior SAS", bankAccountIdentifier: "0000003100030821892599", bankAlias: "anterior", createdAt: "2026-01-01" }),
+      supplierInputFromBody: (body, defaults = {}) => ({ ...defaults, ...body }),
+      updateSupplier: async () => { if (updateError) throw updateError; },
+    },
+    "@/lib/request-body": { uuidParam: (value) => value },
+    "@/lib/storage": { stringFieldsFromFormData: (formData) => Object.fromEntries(formData.entries()) },
+    "@/lib/route-auth": { requireApiSession: async () => ({ companyId: 9, userId: "employee-1" }) },
+  });
+  return { actions, redirects, revalidated };
+}
+
+test("updateSupplierAction returns validation and database errors without redirecting", async () => {
+  const validation = loadSupplierActions({ updateError: new ApiError(400, "El CUIT debe tener 11 dígitos") });
+  const form = new FormData();
+  form.set("id", supplierRow().id);
+  form.set("name", "Proveedor");
+  assert.deepEqual(await validation.actions.updateSupplierAction({ status: "idle", message: "" }, form), {
+    status: "error",
+    message: "El CUIT debe tener 11 dígitos",
+  });
+  assert.deepEqual(validation.redirects, []);
+  assert.deepEqual(validation.revalidated, []);
+
+  const database = loadSupplierActions({ updateError: new Error("connection lost") });
+  const originalConsoleError = console.error;
+  console.error = () => undefined;
+  try {
+    assert.deepEqual(await database.actions.updateSupplierAction({ status: "idle", message: "" }, form), {
+      status: "error",
+      message: "No se pudo actualizar el proveedor.",
+    });
+  } finally {
+    console.error = originalConsoleError;
+  }
+  assert.deepEqual(database.redirects, []);
+});
+
+test("updateSupplierAction revalidates list and detail before redirecting after success", async () => {
+  const success = loadSupplierActions();
+  const form = new FormData();
+  form.set("id", supplierRow().id);
+  form.set("name", "Proveedor");
+  await assert.rejects(
+    () => success.actions.updateSupplierAction({ status: "idle", message: "" }, form),
+    /NEXT_REDIRECT/,
+  );
+  assert.deepEqual(success.revalidated, ["/suppliers", `/suppliers/${supplierRow().id}`]);
+  assert.deepEqual(success.redirects, [`/suppliers/${supplierRow().id}?updated=1`]);
+});

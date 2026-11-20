@@ -22,9 +22,11 @@ import { requireStaffSession } from "@/lib/auth";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { sessionAllows, sessionCanReadSuppliers } from "@/lib/route-auth";
 import { getSupplierDetail360 } from "@/lib/supplier-detail";
+import { SupplierEditDialog } from "@/app/suppliers/supplier-edit-dialog";
 
 type SupplierDetailPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ updated?: string }>;
 };
 
 function value(value: string | number | null | undefined) {
@@ -59,7 +61,7 @@ function statusTone(status: string): StatusBadgeTone {
   return "neutral";
 }
 
-export default async function SupplierDetailPage({ params }: SupplierDetailPageProps) {
+export default async function SupplierDetailPage({ params, searchParams }: SupplierDetailPageProps) {
   const session = await requireStaffSession();
   if (!(await sessionCanReadSuppliers(session))) redirect("/");
   const { id } = await params;
@@ -69,6 +71,7 @@ export default async function SupplierDetailPage({ params }: SupplierDetailPageP
   });
   if (!detail) notFound();
   const canEdit = await sessionAllows(session, [{ resource: "proveedores", action: "editar" }]);
+  const query = await searchParams;
   const { supplier, summary, products, purchases } = detail;
 
   return (
@@ -77,11 +80,14 @@ export default async function SupplierDetailPage({ params }: SupplierDetailPageP
         <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--panel)] p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <PageHeader description={supplier.rubric || "Sin rubro registrado"} title={supplier.name} />
-            <Link className="erp-text-body-sm font-semibold text-[color:var(--accent)] hover:underline" href="/suppliers">
-              ← Volver a Proveedores
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link className="erp-text-body-sm font-semibold text-[color:var(--accent)] hover:underline" href="/suppliers">← Volver a Proveedores</Link>
+              {canEdit ? <SupplierEditDialog supplier={supplier} /> : null}
+            </div>
           </div>
         </div>
+
+        {query.updated === "1" ? <div className="rounded-lg border border-[color:var(--success)] bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]">Proveedor actualizado correctamente.</div> : null}
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <StatCard label="Total comprado" value={formatCurrency(summary.totalPurchased)} />
