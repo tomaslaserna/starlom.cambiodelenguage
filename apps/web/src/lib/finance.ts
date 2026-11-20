@@ -1,3 +1,4 @@
+import { readTreasuryAccounts } from "@/lib/treasury-read";
 import { getAccountsPayable, getAdminMetrics, getCashflow } from "@/lib/admin-metrics";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
@@ -211,45 +212,8 @@ export async function getDividendSheet(companyId: number) {
 }
 
 export async function getTreasuryBalances(companyId: number) {
-  const result = await queryWithCompanyContext<{
-    account_id: string;
-    account: string;
-    account_type: string;
-    balance: string;
-    movements: string;
-  }>(
-    companyId,
-    `
-      SELECT account.id::text AS account_id,
-             account.name AS account,
-             account.account_type,
-             (
-               COALESCE(reconciliation.statement_balance, 0)
-               + COALESCE(movements.signed_amount, 0)
-             )::text AS balance,
-             COALESCE(movements.movement_count, 0)::text AS movements
-      FROM admin_treasury_accounts account
-      LEFT JOIN LATERAL (
-        SELECT item.statement_balance, item.reconciled_at
-        FROM admin_treasury_reconciliations item
-        WHERE item.empresa_id = account.empresa_id
-          AND item.account_id = account.id
-        ORDER BY item.reconciled_at DESC, item.id DESC
-        LIMIT 1
-      ) reconciliation ON TRUE
-      LEFT JOIN LATERAL (
-        SELECT COALESCE(SUM(CASE WHEN movement.direction = 'inflow' THEN movement.amount ELSE -movement.amount END), 0) AS signed_amount,
-               COUNT(*) AS movement_count
-        FROM admin_treasury_movements movement
-        WHERE movement.empresa_id = account.empresa_id
-          AND movement.account_id = account.id
-          AND movement.created_at > COALESCE(reconciliation.reconciled_at, '-infinity'::timestamptz)
-      ) movements ON TRUE
-      WHERE account.empresa_id = $1 AND account.active = TRUE
-      ORDER BY account.account_type, account.name
-    `,
-    [companyId],
-  );
+  const asOf = localDateIso();
+  const result = { rows: await readTreasuryAccounts(companyId, asOf) };
 
   const [echeqResult, outgoingEcheqResult, issueResult] = await Promise.all([
     queryWithCompanyContext<{
@@ -330,6 +294,7 @@ export async function getTreasuryBalances(companyId: number) {
     accountType: row.account_type,
     balance: Number(row.balance),
     movements: Number(row.movements),
+    statementDate: row.statement_date,
   }));
 
   const echecks = echeqResult.rows.map((row) => ({
@@ -375,6 +340,9 @@ export async function getTreasuryBalances(companyId: number) {
     })),
     meta: {
       total: available + echeckBalance,
+      asOf,
+      futureNet: result.rows.reduce((sum,row)=>sum+Number(row.future_amount),0),
+      operatingOutflows: result.rows.reduce((sum,row)=>sum+Number(row.operating_outflows),0),
       available,
       echecks: echeckBalance,
       outgoingEchecks: outgoingEcheckBalance,

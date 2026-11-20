@@ -30,6 +30,7 @@ class ApiError extends Error {
 
 function loadCustomerAccounts(overrides = {}) {
   return loadTypeScriptModule("../src/lib/customer-accounts.ts", {
+    "@/lib/customer-account-due-date": loadTypeScriptModule("../src/lib/customer-account-due-date.ts"),
     "@/lib/api-response": { ApiError },
     "@/lib/db": {
       clearReadQueryCache: () => undefined,
@@ -122,7 +123,7 @@ test("API y vistas muestran la conciliación sin FIFO ni aplicación automática
 
 test("listOpenCustomerAccounts arma el vencimiento y reusa el filtro de movimientos activos", () => {
   assert.match(source, /activeAccountMovementWhereSql/);
-  assert.match(source, /source_payment_term_days/);
+  assert.match(readFileSync(new URL("../src/lib/customer-account-due-date.ts", import.meta.url), "utf8"), /source_payment_term_days/);
   assert.match(source, /computeAgingBuckets/);
   assert.match(source, /OPEN_SALES_FOR_AGING_SQL/);
   assert.match(source, /agingDebitsFromOpenSales/);

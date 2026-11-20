@@ -92,7 +92,7 @@ test("treasury separates liquid balances from accepted E-cheqs and settles them 
   const page = read("src/app/administration/treasury-workspace.tsx");
   const migration = read("../../supabase/migrations/20261011141827_treasury_accounts_and_echeq_portfolio.sql");
 
-  assert.match(finance, /admin_treasury_reconciliations/);
+  assert.match(read("src/lib/treasury-read.ts"), /admin_treasury_reconciliations/);
   assert.match(finance, /admin_echeqs/);
   assert.match(finance, /export async function settleEcheq/);
   assert.match(finance, /source_type, source_id/);

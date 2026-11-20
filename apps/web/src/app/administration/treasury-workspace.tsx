@@ -1,3 +1,5 @@
+import { ProjectionSummary } from "./projection-summary";
+import type { getCollectionsBreakdown } from "@/lib/treasury-read";
 import Link from "next/link";
 import type { getCashflow } from "@/lib/admin-metrics";
 import type { getBankReconciliationSummary, getBankReconciliationWorkspace, getTreasuryBalances } from "@/lib/finance";
@@ -16,6 +18,7 @@ import {
 } from "./actions";
 
 type TreasuryWorkspaceProps = {
+  collections: Awaited<ReturnType<typeof getCollectionsBreakdown>>;
   treasury: Awaited<ReturnType<typeof getTreasuryBalances>>;
   cashflow: Awaited<ReturnType<typeof getCashflow>>;
   reconciliation: Awaited<ReturnType<typeof getBankReconciliationSummary>>;
@@ -27,7 +30,7 @@ type TreasuryWorkspaceProps = {
 };
 
 export function TreasuryWorkspace({
-  treasury, cashflow, reconciliation, reconciliationWorkspace, canWriteTreasury, month, today, period,
+  treasury, cashflow, collections, reconciliation, reconciliationWorkspace, canWriteTreasury, month, today, period,
 }: TreasuryWorkspaceProps) {
   const settlementAccounts = treasury.accounts.filter((account) => ["bank", "wallet"].includes(account.accountType));
 
@@ -37,9 +40,9 @@ export function TreasuryWorkspace({
         <CardContent className="space-y-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-600">Dinero disponible</h2>
+              <h2 className="text-sm font-semibold text-slate-600">Saldo registrado a hoy</h2>
               <p className="mt-2 break-words text-3xl font-bold tracking-tight text-slate-950 tabular-nums sm:text-4xl">{formatCurrency(treasury.meta.available)}</p>
-              <p className="mt-2 text-sm text-slate-500">Saldo actual de caja, bancos y billeteras.</p>
+              <p className="mt-2 text-sm text-slate-500">Caja, bancos y billeteras al {formatDate(treasury.meta.asOf)}. No incluye cheques pendientes ni movimientos futuros.</p>
             </div>
             <Link className="inline-flex min-h-10 items-center rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600" href="/payments/accounts">Registrar cobro</Link>
           </div>
@@ -48,12 +51,20 @@ export function TreasuryWorkspace({
               <div className="min-w-0 rounded-xl bg-slate-50 p-4 ring-1 ring-inset ring-slate-200" key={account.accountId}>
                 <dt className="text-sm font-medium text-slate-600">{account.account}</dt>
                 <dd className="mt-2 break-words text-xl font-semibold text-slate-900 tabular-nums">{formatCurrency(account.balance)}</dd>
+                <dd className="mt-2 text-xs text-slate-500">{account.statementDate ? `Último saldo de referencia: ${formatDate(account.statementDate)}` : "Sin saldo de referencia"}</dd>
               </div>
             ))}
           </dl>
+          {!reconciliation.ready ? <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-950"><strong>Pendiente de conciliación</strong><p className="mt-1">Este es el saldo calculado con los movimientos cargados; no acredita el saldo real del banco.{treasury.meta.operatingOutflows === 0 ? " No hay egresos operativos registrados desde los saldos de referencia. Revisá pagos a proveedores, sueldos y gastos antes de usarlo para decidir." : " Contrastá ingresos y egresos con los extractos."}</p></div> : null}
+          {Math.abs(treasury.meta.futureNet)>0.005 ? <p className="text-sm text-slate-500">Movimientos con fecha futura: {formatCurrency(treasury.meta.futureNet)}. Se muestran en la proyección, fuera del saldo de hoy.</p> : null}
           {treasury.accounts.length === 0 ? <p className="text-sm text-slate-500">Agregá tu primera cuenta desde las herramientas de conciliación.</p> : null}
         </CardContent>
       </Card>
+
+      <Card><CardHeader><CardTitle>Cobros registrados · {periodLabel(period)}</CardTitle></CardHeader><CardContent>
+        <dl className="grid gap-4 sm:grid-cols-3"><div><dt className="text-sm text-slate-500">Total válido</dt><dd className="mt-2 text-2xl font-bold tabular-nums">{formatCurrency(collections.total)}</dd></div><div><dt className="text-sm text-slate-500">Efectivo, transferencias y otros</dt><dd className="mt-2 text-xl font-semibold tabular-nums">{formatCurrency(collections.otherMethods)}</dd></div><div><dt className="text-sm text-slate-500">Cheques recibidos en el período</dt><dd className="mt-2 text-xl font-semibold tabular-nums">{formatCurrency(collections.cheques)}</dd></div></dl>
+        <p className="mt-4 text-xs leading-relaxed text-slate-500">Los cheques recibidos cuentan como cobro del cliente, pero sólo pasan a caja al acreditarse. Se excluyen anulados, pendientes y fechas futuras.{collections.cancelled>0 ? ` Anulados excluidos del período: ${formatCurrency(collections.cancelled)}.` : ""}</p>
+      </CardContent></Card>
 
       {treasury.echecks.length > 0 ? (
         <Card>
@@ -131,18 +142,7 @@ export function TreasuryWorkspace({
               </CardContent>
             </details> : null}
 
-      <details className="rounded-2xl border border-slate-200 bg-white">
-        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-700">Ver proyección de caja</summary>
-        <div className="grid gap-3 border-t border-slate-100 p-4 lg:grid-cols-3">
-          {cashflow.meta.horizons.map((horizon) => (
-            <div className="min-w-0 rounded-xl bg-slate-50 p-4" key={horizon.days}>
-              <h3 className="text-sm font-semibold text-slate-700">Próximos {horizon.days} días</h3>
-              <p className={cn("mt-2 break-words text-xl font-semibold tabular-nums", horizon.net >= 0 ? "text-emerald-700" : "text-red-700")}>{formatCurrency(horizon.net)}</p>
-              <p className="mt-1 text-xs text-slate-500">Variación prevista · Entra {formatCurrency(horizon.inflow)} · Sale {formatCurrency(horizon.outflow)}</p>
-            </div>
-          ))}
-        </div>
-      </details>
+      <Card><CardHeader><CardTitle>Proyección de caja</CardTitle></CardHeader><CardContent><ProjectionSummary cashflow={cashflow} /></CardContent></Card>
 
       <details className="rounded-2xl border border-slate-200 bg-white">
         <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-slate-700">Herramientas de conciliación</summary>

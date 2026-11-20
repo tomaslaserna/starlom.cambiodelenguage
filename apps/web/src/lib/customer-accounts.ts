@@ -1,3 +1,4 @@
+import { SALE_DUE_DATE_SQL } from "@/lib/customer-account-due-date";
 import { ApiError } from "@/lib/api-response";
 import { activeAccountMovementWhereSql, visibleAccountMovementWhereSql } from "@/lib/accounts";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
@@ -187,16 +188,7 @@ export function buildCustomerStatement(
   return { openingBalance, lines, finalBalance };
 }
 
-const SALE_DUE_DATE_SQL = `(s.sale_date::date + COALESCE(
-    s.source_payment_term_days,
-    CASE
-      WHEN COALESCE(s.payment_condition, '') ~ '[0-9]'
-        THEN (regexp_match(s.payment_condition, '([0-9]+)'))[1]::int
-      WHEN LOWER(BTRIM(COALESCE(s.payment_condition, ''))) IN ('pendiente', 'contado', 'pago al recibir') THEN 0
-      ELSE c.payment_term_days
-    END,
-    0
-  ))`;
+
 const DUE_DATE_SQL = `CASE WHEN m.sale_id IS NOT NULL THEN ${SALE_DUE_DATE_SQL}
   ELSE m.movement_date::date END`;
 

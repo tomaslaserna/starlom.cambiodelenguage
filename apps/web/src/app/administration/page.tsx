@@ -1,3 +1,6 @@
+import { ProjectionSummary } from "./projection-summary";
+import { getCollectionsBreakdown } from "@/lib/treasury-read";
+import { monthRange as collectionMonthRange } from "@/lib/month-range";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ModulePage } from "@/components/module-page";
@@ -191,6 +194,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
     canWriteTreasury,
     canWritePayables,
     canClosePeriods,
+    collections,
   ] = await Promise.all([
     getBalanceDashboard(session.companyId, period),
     getTreasuryBalances(session.companyId),
@@ -206,6 +210,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
     sessionAllows(session, [ADMIN_TREASURY_WRITE_PERMISSION]),
     sessionAllows(session, [ADMIN_ACCOUNTS_PAYABLE_WRITE_PERMISSION]),
     sessionAllows(session, [ADMIN_BALANCE_WRITE_PERMISSION]),
+    getCollectionsBreakdown(session.companyId, collectionMonthRange(month).start, collectionMonthRange(month).endExclusive, today),
   ]);
 
   const { metrics } = dashboard;
@@ -271,7 +276,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
         {view === "control" ? (
           <div className="grid gap-5">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard detail={`${formatCurrency(treasury.meta.available)} disponible · ${formatCurrency(treasury.meta.echecks)} en E-cheqs`} label="Tesorería total" tone="accent" value={formatCurrency(treasury.meta.total)} />
+              <StatCard detail={`${formatCurrency(treasury.meta.available)} en cuentas · ${formatCurrency(treasury.meta.echecks)} en E-cheqs`} label="Tesorería registrada" tone="accent" value={formatCurrency(treasury.meta.total)} />
               <StatCard detail={`${payables.meta.count} obligaciones abiertas`} label="Por pagar" tone={overduePayables.length > 0 ? "danger" : "warning"} value={formatCurrency(payables.meta.total)} />
               <StatCard detail="Saldo de cuentas corrientes" label="Por cobrar" tone="info" value={formatCurrency(metrics.receivables.openTotal)} />
               <StatCard detail={`${formatNumber(metrics.stock.units)} unidades`} label="Stock valorizado" value={formatCurrency(metrics.stock.value)} />
@@ -316,12 +321,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
               <Card>
                 <CardHeader><CardTitle>Liquidez próxima</CardTitle></CardHeader>
                 <CardContent className="grid gap-3">
-                  {cashflow.meta.horizons.map((horizon) => (
-                    <div className="rounded-xl border border-[#e2e8f0] p-4" key={horizon.days}>
-                      <div className="flex items-center justify-between gap-3"><strong>Próximos {horizon.days} días</strong><strong className={horizon.net >= 0 ? "text-emerald-700" : "text-red-700"}>{formatCurrency(horizon.net)}</strong></div>
-                      <div className="mt-2 flex justify-between text-xs text-[#64748b]"><span>Ingresos {formatCurrency(horizon.inflow)}</span><span>Egresos {formatCurrency(horizon.outflow)}</span></div>
-                    </div>
-                  ))}
+                  <ProjectionSummary cashflow={cashflow} />
                 </CardContent>
               </Card>
             </div>
@@ -447,6 +447,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
 
         {view === "treasury" ? (
           <TreasuryWorkspace
+            collections={collections}
             treasury={treasury}
             cashflow={cashflow}
             reconciliation={reconciliation}

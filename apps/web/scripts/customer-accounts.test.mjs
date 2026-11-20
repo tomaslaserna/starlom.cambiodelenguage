@@ -29,6 +29,7 @@ class ApiError extends Error {
 }
 
 const accounts = loadTypeScriptModule("../src/lib/customer-accounts.ts", {
+  "@/lib/customer-account-due-date": loadTypeScriptModule("../src/lib/customer-account-due-date.ts"),
   "@/lib/api-response": { ApiError },
   "@/lib/db": {
     clearReadQueryCache: () => undefined,
