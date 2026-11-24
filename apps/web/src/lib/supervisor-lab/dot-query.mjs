@@ -16,7 +16,11 @@ export function compileDotQuery(
 ) {
   if (!identifier.test(table)) throw new Error("Tabla inválida");
   const params = [companyId, ...extraParams];
-  const clauses = ["t.empresa_id=$1", ...(extraWhere ? [extraWhere] : [])];
+  // Global directory tables need an explicit tenant join instead of a row-level empresa_id.
+  const tenantPredicate = table === "empresas" ? "t.id=$1"
+    : table === "profiles" ? "EXISTS (SELECT 1 FROM public.usuario_empresa ue WHERE ue.id_usuario=t.id AND ue.empresa_id=$1 AND ue.activo=TRUE)"
+    : "t.empresa_id=$1";
+  const clauses = [tenantPredicate, ...(extraWhere ? [extraWhere] : [])];
   if (
     input.filters &&
     (!Array.isArray(input.filters) || input.filters.length > 12)
@@ -66,7 +70,7 @@ export function compileDotQuery(
   }
   const where = clauses.join(" AND ");
   const from = `FROM public."${table}" t WHERE ${where}`;
-  const fields = input.columns?.length ? input.columns : columns;
+  const fields = input.columns?.length ? input.columns : columns.slice(0, 80);
   if (!Array.isArray(fields) || !fields.length || fields.length > 80)
     throw new Error("Columnas inválidas");
   const projection = fields.map((name) => column(name, columns)).join(",");

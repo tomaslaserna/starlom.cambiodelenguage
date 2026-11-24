@@ -7,7 +7,7 @@ import { localDateIso } from "@/lib/timezone";
 import { listOpenCustomerRemittances } from "@/lib/customer-accounts";
 import { getSupervisorCustomerBalances } from "./read-model";
 import { createSupervisorTools } from "./tools";
-import { describeDotData, readDotData } from "./dot-data";
+import { describeDotData, readDotData, queryInput } from "./dot-data";
 import { DOT_EVENT } from "./dot-protocol.mjs";
 import {
   answerDotQuestion,
@@ -18,47 +18,6 @@ import {
 } from "./dot-store";
 
 const requestId = z.string().uuid();
-const queryInput = z.object({
-  dataset: z.string().min(1).max(80),
-  columns: z.array(z.string()).max(80).optional(),
-  filters: z
-    .array(
-      z.object({
-        column: z.string(),
-        op: z.enum([
-          "eq",
-          "ne",
-          "gt",
-          "gte",
-          "lt",
-          "lte",
-          "contains",
-          "in",
-          "isNull",
-        ]),
-        value: z
-          .union([
-            z.string(),
-            z.number(),
-            z.boolean(),
-            z.array(z.union([z.string(), z.number(), z.boolean()])),
-          ])
-          .optional(),
-      }),
-    )
-    .max(12)
-    .optional(),
-  orderBy: z.string().optional(),
-  descending: z.boolean().optional(),
-  limit: z.number().int().min(1).max(100).optional(),
-  offset: z.number().int().min(0).max(100000).optional(),
-  aggregate: z
-    .object({
-      function: z.enum(["sum", "avg", "min", "max"]),
-      column: z.string(),
-    })
-    .optional(),
-});
 const additional = {
   listPendingQuestions: {
     description:
