@@ -1,6 +1,6 @@
 import "server-only";
 
-import { ToolLoopAgent, stepCountIs, type InferAgentUIMessage } from "ai";
+import { ToolLoopAgent, stepCountIs, type InferAgentUIMessage, type ToolLoopAgentSettings } from "ai";
 import type { AuthSession } from "@/lib/auth";
 import { createSupervisorTools } from "@/lib/supervisor-lab/tools";
 import type { SupervisorLandingSummary } from "@/lib/supervisor-lab/landing-summary";
@@ -11,8 +11,11 @@ import { prepareSupervisorStep, SUPERVISOR_MAX_STEPS } from "@/lib/supervisor-la
 
 const DEFAULT_MODEL = "google/gemini-3.5-flash";
 
-export function getSupervisorModelSettings() {
+export function getSupervisorModelSettings(): Pick<ToolLoopAgentSettings, "model" | "providerOptions"> {
   const model = process.env.SUPERVISOR_AI_MODEL || DEFAULT_MODEL;
+  if (model === "openai/gpt-6.2-sol") {
+    return { model, providerOptions: { openai: { reasoningEffort: "high" } } };
+  }
   return {
     model,
     ...(model === DEFAULT_MODEL ? {
