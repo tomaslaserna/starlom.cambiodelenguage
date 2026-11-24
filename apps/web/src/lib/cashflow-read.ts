@@ -1,3 +1,4 @@
+import { monthlyPayrollPayables } from '@/lib/monthly-cost-ledger';
 import { queryWithCompanyContext } from '@/lib/db';
 import { activeAccountMovementWhereSql } from '@/lib/accounts';
 import { localDateIso } from '@/lib/timezone';
@@ -87,7 +88,12 @@ export async function getCashflowSnapshot(companyId: number, asOf = localDateIso
       ) SELECT id,label,amount::text,date::text,kind,source FROM flows WHERE amount>0.005 ORDER BY date NULLS LAST,id
     `, [companyId, asOf]),
   ]);
-  const rows = result.rows.map(row => ({ ...row, amount: Number(row.amount) }));
+  const payroll = await monthlyPayrollPayables(companyId,asOf.slice(0,7));
+  const rows = result.rows.filter(row=>!payroll||row.source!=='sueldo_estimado').map(row => ({ ...row, amount: Number(row.amount) }));
+  if(payroll) {
+    const due=new Date(`${asOf.slice(0,7)}-01T12:00:00Z`);due.setUTCMonth(due.getUTCMonth()+1);
+    rows.push(...payroll.filter(r=>r.balance>0).map(r=>({id:`salary:${r.id}`,label:`${r.employee} · estimación mensual`,amount:r.balance,date:due.toISOString().slice(0,10),kind:'outflow',source:'sueldo_estimado'})));
+  }
   const items = rows.filter(row => row.kind !== 'credit');
   const openingBalance = accounts.reduce((sum,row)=>sum+Math.round(Number(row.balance)*100),0)/100;
   const meta = summarizeCashProjection(items, openingBalance, asOf);

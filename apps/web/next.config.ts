@@ -47,6 +47,7 @@ const dotOAuthHeaders = securityHeaders.map((header) =>
 );
 
 const nextConfig: NextConfig = {
+  outputFileTracingExcludes: { '/*': ['**/.local/**'] },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**.supabase.co", pathname: "/storage/v1/object/public/**" },

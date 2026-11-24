@@ -8,6 +8,7 @@ import { periodBounds, type Period } from "@/lib/period-range";
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { netSalesAmountSql } from "@/lib/sales-vat";
 import { payrollDuplicateEmployeeSql } from "@/lib/operating-cost-source";
+import { monthlyCostAdjustment, monthlyPayrollPayables } from "@/lib/monthly-cost-ledger";
 
 function monthBounds(date = new Date()) {
   const month = currentMonth(date);
@@ -222,7 +223,8 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
   const salesCurrent = Number(row.sales_current);
   const salesPrevious = Number(row.sales_previous);
   const grossCostCurrent = Number(row.gross_cost_current);
-  const operatingCosts = Number(row.operating_costs_current);
+  const costAdjustment = await monthlyCostAdjustment(companyId,bounds.currentStart,bounds.nextStart);
+  const operatingCosts = Number(row.operating_costs_current)+costAdjustment.total;
 
   return {
     period: bounds,
@@ -242,8 +244,8 @@ async function loadAdminMetrics(companyId: number, bounds = monthBounds()): Prom
       grossCost: grossCostCurrent,
       grossProfit: salesCurrent - grossCostCurrent,
       operatingCosts,
-      scheduledCosts: Number(row.scheduled_costs_current ?? 0),
-      payrollCosts: Number(row.payroll_costs_current ?? 0),
+      scheduledCosts: Number(row.scheduled_costs_current ?? 0)+costAdjustment.expenses,
+      payrollCosts: Number(row.payroll_costs_current ?? 0)+costAdjustment.salaries,
       operatingResult: salesCurrent - grossCostCurrent - operatingCosts,
     },
     stock: {
@@ -487,7 +489,8 @@ export async function getAccumulatedOperatingResult(
   const row = result.rows[0];
   const netSales = Number(row?.net_sales ?? 0);
   const grossCost = Number(row?.gross_cost ?? 0);
-  const operatingCosts = Number(row?.operating_costs ?? 0);
+  const costAdjustment = await monthlyCostAdjustment(companyId,`${row?.start_month??throughMonth}-01`,range.endExclusive);
+  const operatingCosts = Number(row?.operating_costs ?? 0)+costAdjustment.total;
 
   return {
     startMonth: row?.start_month ?? throughMonth,
@@ -659,6 +662,7 @@ export async function getAccountsPayable(companyId: number) {
     [companyId],
   );
 
+  const versionedPayroll = await monthlyPayrollPayables(companyId,currentStart.slice(0,7));
   const data = [
     ...issuedCheques.rows.map((row) => ({
       id: row.id,
@@ -686,10 +690,10 @@ export async function getAccountsPayable(companyId: number) {
       scheduledDate: row.scheduled_date,
       source: "compra",
     })),
-    ...salaries.rows
+    ...(versionedPayroll ?? salaries.rows.map(row=>({id:row.id,employee:row.employee,total:Number(row.monthly)+Number(row.bonus)+Number(row.charges),paid:Number(row.paid)})))
       .map((row) => {
-        const total = Number(row.monthly) + Number(row.bonus) + Number(row.charges);
-        const paid = Number(row.paid);
+        const total = row.total;
+        const paid = row.paid;
         return {
           id: row.id,
           provider: row.employee,

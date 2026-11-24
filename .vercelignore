@@ -10,3 +10,5 @@ apps/web/.next/
 apps/web/src/app/preview/
 apps/web/scripts/operations/
 **/.local/
+
+**/.local/**

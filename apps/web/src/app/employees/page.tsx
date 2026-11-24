@@ -230,7 +230,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                       <DataTableCell align="right" className="font-mono">{salary ? formatCurrency(salary.charges) : "—"}</DataTableCell>
                       <DataTableCell align="right" className="font-mono font-bold">{salary ? formatCurrency(salary.totalCost) : "—"}</DataTableCell>
                       <DataTableCell align="right">
-                        {canWriteSalaries ? (
+                        {salaries?.versioned ? <a className="text-sm font-semibold text-blue-600" href="/administration/costs">Cambiar desde un mes…</a> : canWriteSalaries ? (
                           <div className="flex justify-end gap-2">
                             <details className="relative text-left">
                               <summary className="flex min-h-[var(--control-height-sm)] cursor-pointer list-none items-center rounded-[var(--radius-md)] border border-[#a9c7f4] bg-white px-3.5 text-sm font-semibold text-[#0a55bd] [&::-webkit-details-marker]:hidden">{salary ? "Editar" : "Configurar"}</summary>

@@ -1,4 +1,6 @@
+import { readCostMonth } from '@/lib/monthly-costs';
 import { readTreasuryAccounts } from "@/lib/treasury-read";
+import { assertLegacyCostWritable, readMonthlyCostLedger } from "@/lib/monthly-cost-ledger";
 import { getAccountsPayable, getAdminMetrics, getCashflow } from "@/lib/admin-metrics";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
@@ -41,6 +43,7 @@ export function salaryPlanInputFromBody(body: RequestBody): SalaryPlanInput {
 }
 
 export async function createSalaryPlan(companyId: number, input: SalaryPlanInput) {
+  await assertLegacyCostWritable(companyId);
   return withCompanyContext(companyId, async (client) => {
     const duplicate = await client.query<{ id: number }>(
       `SELECT id FROM admin_sueldos_config WHERE empresa_id = $1 AND profile_id = $2::uuid LIMIT 1`,
@@ -128,23 +131,28 @@ export async function getSalaryPlan(companyId: number) {
     [companyId],
   );
 
+  const ledger = await readMonthlyCostLedger(companyId);
+  const salaryMonth = localDateIso().slice(0,7);
   const employees = result.rows.map((row) => {
-    const monthly = Number(row.monthly);
-    const bonusProvision = row.bonus_enabled ? monthly / 12 : 0;
-    const charges = monthly * (Number(row.charges_percent) / 100);
+    const version = ledger && salaryMonth >= ledger.state.baselineMonth ? ledger.state.costs.find(c=>c.id===`salary:${row.id}`)?.versions.filter(v=>v.from<=salaryMonth).at(-1) : undefined;
+    const monthly = version ? version.amountCents/100 : Number(row.monthly);
+    const bonusEnabled = version?.bonus ?? row.bonus_enabled;
+    const chargesPercent = version?.chargesPercent ?? Number(row.charges_percent);
+    const bonusProvision = bonusEnabled ? version ? Math.round(monthly*100/12)/100 : monthly/12 : 0;
+    const charges = version ? Math.round(monthly * chargesPercent)/100 : monthly*chargesPercent/100;
     const totalCost = monthly + bonusProvision + charges;
     const paid = Number(row.paid_current);
 
     return {
-      id: row.id,
+      id: String(row.id),
       employeeId: row.employee_id,
       employee: row.employee,
       monthly,
       modality: row.modality,
-      active: row.active,
-      bonusEnabled: row.bonus_enabled,
+      active: version?.active ?? row.active,
+      bonusEnabled,
       bonusProvision,
-      chargesPercent: Number(row.charges_percent),
+      chargesPercent,
       charges,
       notes: row.notes,
       totalCost,
@@ -153,8 +161,16 @@ export async function getSalaryPlan(companyId: number) {
     };
   });
 
+  if(ledger && salaryMonth>=ledger.state.baselineMonth) {
+    for(const cost of ledger.state.costs.filter(c=>c.source==='salary'&&c.id.startsWith('salary:new:')&&c.start<=salaryMonth)) {
+      const row=readCostMonth(ledger.state,salaryMonth).rows.find(r=>r.id===cost.id)!;
+      const version=cost.versions.filter(v=>v.from<=salaryMonth).at(-1)!;
+      employees.push({id:cost.id.slice(7),employeeId:null,employee:cost.name,monthly:row.amountCents/100,modality:'mensual',active:row.status==='included',bonusEnabled:version.bonus,bonusProvision:row.provisionCents/100,chargesPercent:version.chargesPercent,charges:row.chargesCents/100,notes:'Alta mensual sin usuario vinculado',totalCost:row.totalCents/100,paid:0,payable:row.totalCents/100});
+    }
+  }
   return {
     employees,
+    versioned: !!ledger,
     meta: {
       activeCount: employees.filter((item) => item.active).length,
       monthlyCost: employees.filter((item) => item.active).reduce((sum, item) => sum + item.totalCost, 0),
@@ -699,6 +715,7 @@ export async function matchBankStatementLine(session: AuthSession, input: {
 }
 
 export async function updateSalaryPlan(companyId: number, id: number, input: SalaryPlanInput) {
+  await assertLegacyCostWritable(companyId);
   const result = await queryWithCompanyContext(
     companyId,
     `
@@ -717,6 +734,7 @@ export async function updateSalaryPlan(companyId: number, id: number, input: Sal
 }
 
 export async function setSalaryPlanActive(companyId: number, id: number, active: boolean) {
+  await assertLegacyCostWritable(companyId);
   const result = await queryWithCompanyContext(
     companyId,
     "UPDATE admin_sueldos_config SET activo = $3, updated_at = NOW() WHERE empresa_id = $1 AND id = $2",

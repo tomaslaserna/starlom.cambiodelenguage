@@ -33,6 +33,8 @@ import { getBalanceDashboard, getBankReconciliationSummary, getBankReconciliatio
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import { currentMonth } from "@/lib/month-range";
 import { requirePagePermission } from "@/lib/page-auth";
+import { readCostMonth } from "@/lib/monthly-costs";
+import { readMonthlyCostLedger } from "@/lib/monthly-cost-ledger";
 import { periodLabel, type Period } from "@/lib/period-range";
 import { getBreakEvenStatus, listScheduledOperatingCosts } from "@/lib/profitability";
 import {
@@ -52,8 +54,8 @@ import {
   closeAdministrationMonthAction,
   createAdministrationCostAction,
   createAdministrationPayableAction,
-  reopenAdministrationMonthAction,
   scheduleAdministrationSupplierPaymentAction,
+  reopenAdministrationMonthAction,
   setAdministrationCostMonthAction,
   updateAdministrationCostAction,
 } from "./actions";
@@ -213,6 +215,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
     getCollectionsBreakdown(session.companyId, collectionMonthRange(month).start, collectionMonthRange(month).endExclusive, today),
   ]);
 
+  const monthlyCostLedger = view === 'results' ? await readMonthlyCostLedger(session.companyId) : null;
   const { metrics } = dashboard;
   const overduePayables = payables.data.filter((item) => daysFromToday(item.date, today) < 0);
   const dueSoonPayables = payables.data.filter((item) => {
@@ -226,11 +229,12 @@ export default async function AdministrationPage({ searchParams }: Administratio
     ? (metrics.margin.grossProfit / metrics.sales.current) * 100
     : 0;
   const suspendedIndefiniteCosts = operatingCosts.filter((cost) => cost.durationMonths === null && !cost.included && !cost.payrollEmployee);
+  const pendingCostCount = monthlyCostLedger && month >= monthlyCostLedger.state.baselineMonth ? readCostMonth(monthlyCostLedger.state,month).pending : suspendedIndefiniteCosts.length;
   const payrollDuplicates = operatingCosts.filter((cost) => cost.payrollEmployee);
   const closeChecks = [
     { label: "Costos de ventas completos", ready: profitability.complete, detail: profitability.complete ? "Todos los remitos tienen costo comprobable" : `${profitability.missingCostSales} ventas sin costo` },
     { label: "Conciliación bancaria completa", ready: reconciliation.ready, detail: reconciliation.ready ? "Extractos sin diferencias pendientes" : `${reconciliation.pendingLines + reconciliation.partialLines} movimientos a revisar` },
-    { label: "Costos fijos confirmados", ready: suspendedIndefiniteCosts.length === 0, detail: suspendedIndefiniteCosts.length === 0 ? "No quedan costos indefinidos suspendidos" : `${suspendedIndefiniteCosts.length} costos requieren decisión` },
+    { label: "Costos fijos confirmados", ready: pendingCostCount === 0, detail: pendingCostCount === 0 ? "No quedan costos indefinidos suspendidos" : `${pendingCostCount} costos requieren decisión` },
   ];
   const closeReady = closeChecks.every((check) => check.ready);
 
@@ -343,7 +347,8 @@ export default async function AdministrationPage({ searchParams }: Administratio
             ) : (
               <ConfidenceNote tone="success"><strong>Costo de mercadería completo.</strong> Todas las ventas tienen costo comprobable. El cierre también requiere confirmar gastos y conciliación bancaria.</ConfidenceNote>
             )}
-            {canWriteMetrics ? <Card>
+            <a className="block rounded-xl border border-blue-200 bg-white p-4 font-semibold text-blue-700" href="/administration/costs">Sueldos y costos por mes · guardar y editar con vigencia</a>
+            {canWriteMetrics && !monthlyCostLedger ? <Card>
               <CardHeader><CardTitle>Agregar costo programado</CardTitle></CardHeader>
               <CardContent>
                 <form action={createAdministrationCostAction} className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:items-end">
@@ -365,7 +370,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                 <div><p className="text-sm text-[#64748b]">Total operativo</p><strong className="tabular-nums">{formatCurrency(metrics.margin.operatingCosts)}</strong></div>
                 {payrollDuplicates.length ? <p className="sm:col-span-3 text-sm text-amber-800">{payrollDuplicates.length} registros manuales de sueldo coinciden en nombre e importe con RRHH. Se conservan para consulta y se cuentan una sola vez desde RRHH.</p> : null}
               </CardContent>
-              <DataTable caption="Costos operativos programados" className="rounded-none border-0 shadow-none" minWidth="1050px" tableLabel="Costos programados">
+              {!monthlyCostLedger ? <DataTable caption="Costos operativos programados" className="rounded-none border-0 shadow-none" minWidth="1050px" tableLabel="Costos programados">
                 <DataTableHeader><DataTableRow><DataTableHead>Concepto</DataTableHead><DataTableHead>Etiqueta</DataTableHead><DataTableHead>Vigencia</DataTableHead><DataTableHead>Estado</DataTableHead><DataTableHead align="right">Monto</DataTableHead><DataTableHead align="center">Acciones</DataTableHead></DataTableRow></DataTableHeader>
                 <DataTableBody>
                   {operatingCosts.length === 0 ? <DataTableRow><DataTableCell className="py-8 text-center text-[#64748b]" colSpan={6}>No hay costos configurados para este período.</DataTableCell></DataTableRow> : operatingCosts.map((cost) => {
@@ -397,7 +402,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                     );
                   })}
                 </DataTableBody>
-              </DataTable>
+              </DataTable> : <p className="p-4 text-sm text-slate-500">El detalle y los cambios se administran en Costos por mes.</p>}
             </Card>
             <Card>
               <CardHeader><CardTitle>Resultado gerencial del período</CardTitle></CardHeader>

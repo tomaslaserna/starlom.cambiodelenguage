@@ -61,7 +61,7 @@ test("cost list preserves duplicate records as excluded and ordinary monthly inc
   const rows = db.prepare(`SELECT c.id, c.concepto, c.monto, ${source.payrollDuplicateEmployeeSql("c")} AS payroll_employee FROM costs c`).all().map((r) => ({ ...r, id: String(r.id), categoria: "fijo", fecha: "2026-10-01", start_month: "2026-10-01", duration_months: null, override_included: null, cost_type: "fijo" }));
   let sql;
   const profitability = load("src/lib/profitability.ts", {
-    "@/lib/api-response": {}, "@/lib/db": { queryWithCompanyContext: async (company, query) => { assert.equal(company, 1); sql = query; return { rows }; } },
+    "@/lib/monthly-cost-ledger": {}, "@/lib/api-response": {}, "@/lib/db": { queryWithCompanyContext: async (company, query) => { assert.equal(company, 1); sql = query; return { rows }; } },
     "@/lib/month-range": {}, "@/lib/order-status": {}, "@/lib/operating-cost-schedule": schedule,
     "@/lib/sales-source-sql": {}, "@/lib/sales-vat": {}, "@/lib/operating-cost-source": source,
   });

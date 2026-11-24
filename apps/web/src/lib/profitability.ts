@@ -12,6 +12,7 @@ import {
 import { canonicalSalesSourceSql } from "@/lib/sales-source-sql";
 import { netSalesAmountSql } from "@/lib/sales-vat";
 import { payrollDuplicateEmployeeSql } from "@/lib/operating-cost-source";
+import { assertLegacyCostWritable, monthlyCostTotals } from "@/lib/monthly-cost-ledger";
 
 export type OperatingCost = {
   id: string;
@@ -68,6 +69,7 @@ export async function listOperatingCosts(companyId: number, month: string): Prom
 }
 
 export async function createOperatingCost(companyId: number, input: OperatingCostInput): Promise<string> {
+  await assertLegacyCostWritable(companyId);
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,
     `INSERT INTO costos_operativos (
@@ -82,6 +84,7 @@ export async function createOperatingCost(companyId: number, input: OperatingCos
 }
 
 export async function deleteOperatingCost(companyId: number, id: string): Promise<void> {
+  await assertLegacyCostWritable(companyId);
   const result = await queryWithCompanyContext(
     companyId,
     `UPDATE costos_operativos
@@ -177,6 +180,7 @@ export async function listScheduledOperatingCosts(companyId: number, month: stri
 }
 
 export async function createScheduledOperatingCost(companyId: number, input: ScheduledOperatingCostInput) {
+  await assertLegacyCostWritable(companyId);
   const result = await queryWithCompanyContext<{ id: string }>(
     companyId,
     `INSERT INTO costos_operativos (
@@ -190,6 +194,7 @@ export async function createScheduledOperatingCost(companyId: number, input: Sch
 }
 
 export async function updateScheduledOperatingCost(companyId: number, id: string, input: ScheduledOperatingCostInput) {
+  await assertLegacyCostWritable(companyId);
   const result = await queryWithCompanyContext(
     companyId,
     `UPDATE costos_operativos
@@ -216,6 +221,7 @@ export async function setOperatingCostMonthStatus(input: {
   included: boolean;
 }) {
   const month = `${normalizeMonthKey(input.month)}-01`;
+  await assertLegacyCostWritable(input.companyId);
   const result = await queryWithCompanyContext(
     input.companyId,
     `INSERT INTO admin_operating_cost_month_status (
@@ -255,7 +261,8 @@ export async function getBreakEvenStatus(companyId: number, month: string): Prom
         AND COALESCE(monthly.included, CASE WHEN c.duration_months IS NULL THEN c.start_month = $2::date ELSE true END)`,
     [companyId, start],
   );
-  const fixedCosts = Number(costsResult.rows[0].total);
+  const monthly = await monthlyCostTotals(companyId,normalizedMonth);
+  const fixedCosts = monthly?.total ?? Number(costsResult.rows[0].total);
 
   const marginResult = await queryWithCompanyContext<{
     gross_revenue: string;
