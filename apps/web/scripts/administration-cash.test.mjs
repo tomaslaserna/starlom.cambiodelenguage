@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import ts from 'typescript';
-const module = { exports: {} };
+const compiledModule = { exports: {} };
 const source = readFileSync(new URL('../src/lib/cash-projection.ts', import.meta.url), 'utf8');
-Function('module', 'exports', ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(module, module.exports);
-const { summarizeCashProjection } = module.exports;
+Function('module', 'exports', ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(compiledModule, compiledModule.exports);
+const { summarizeCashProjection } = compiledModule.exports;
 test('future projections include opening cash, but never assume overdue or undated collection', () => {
   const result = summarizeCashProjection([
     { amount: 100, kind: 'inflow', date: '2026-11-19' },
