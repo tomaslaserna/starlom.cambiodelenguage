@@ -9,6 +9,7 @@ import { SUPERVISOR_RESPONSE_CONTRACT } from "@/lib/supervisor-lab/response-cont
 import { localDateIso, BUSINESS_TIME_ZONE } from "@/lib/timezone";
 import { currentMonth, shiftMonthKey } from "@/lib/month-range";
 import { prepareSupervisorStep, SUPERVISOR_MAX_STEPS } from "@/lib/supervisor-lab/loop-policy";
+import { prepareSupervisorTools } from "@/lib/supervisor-lab/tool-results";
 
 const DEFAULT_MODEL = "google/gemini-3.5-flash";
 
@@ -34,7 +35,7 @@ export function createStarlimSupervisorAgent(session: AuthSession, summary: Pick
     ...getSupervisorModelSettings(),
     stopWhen: stepCountIs(SUPERVISOR_MAX_STEPS),
     prepareStep: prepareSupervisorStep,
-    tools: { ...createSupervisorTools(session), ...createAdminDataTools(session) },
+    tools: prepareSupervisorTools({ ...createSupervisorTools(session), ...createAdminDataTools(session) }),
     instructions: `Sos LA TIRRA ia.1.1, el asistente interno del ERP Starlim y asesor de limpieza de la empresa.
 Tu función principal es resolver consultas y redactar información comercial útil en el chat: combina herramientas y calcula los datos que el usuario necesita para vender. La guía del sistema es una función de apoyo.
 

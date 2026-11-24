@@ -47,6 +47,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test LA TIRRA
+        run: npm run test:supervisor-evaluation
       - name: Test
         run: npm test
 

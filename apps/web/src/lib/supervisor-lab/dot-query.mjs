@@ -13,6 +13,7 @@ export function compileDotQuery(
   companyId,
   extraWhere = "",
   extraParams = [],
+  dateColumns = [],
 ) {
   if (!identifier.test(table)) throw new Error("Tabla inválida");
   const params = [companyId, ...extraParams];
@@ -73,7 +74,12 @@ export function compileDotQuery(
   const fields = input.columns?.length ? input.columns : columns.slice(0, 80);
   if (!Array.isArray(fields) || !fields.length || fields.length > 80)
     throw new Error("Columnas inválidas");
-  const projection = fields.map((name) => column(name, columns)).join(",");
+  // A SQL DATE is a calendar day. Reading it as text avoids a timezone
+  // conversion when the database driver's JavaScript Date is serialized.
+  const projection = fields.map((name) => {
+    const field = column(name, columns);
+    return dateColumns.includes(name) ? `${field}::text AS "${name}"` : field;
+  }).join(",");
   const tieBreaker = columns.includes("id") ? ", t.id ASC" : "";
   const order = input.orderBy
     ? ` ORDER BY ${column(input.orderBy, columns)} ${input.descending === true ? "DESC" : "ASC"} NULLS LAST${tieBreaker}`

@@ -312,6 +312,7 @@ export async function readDotData(
       session.companyId,
       scope,
       scopeParams,
+      schema.columns.filter((field) => field.type === "date").map((field) => field.name),
     );
   } catch (error) {
     throw new ApiError(
