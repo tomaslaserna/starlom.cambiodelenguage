@@ -10,6 +10,19 @@ import * as protocol from "../src/lib/supervisor-lab/dot-protocol.mjs";
 import { compileDotQuery } from "../src/lib/supervisor-lab/dot-query.mjs";
 
 const require = createRequire(import.meta.url);
+test("ERP calendar dates are returned as text while filters and ordering stay typed", () => {
+  const query = compileDotQuery("crm_leads", ["id", "next_followup", "amount"], {
+    columns: ["next_followup", "amount"],
+    filters: [{ column: "next_followup", op: "gte", value: "2026-11-24" }],
+    orderBy: "next_followup",
+  }, 1, "", [], ["next_followup"]);
+
+  assert.match(query.sql, /^SELECT t."next_followup"::text AS "next_followup",t."amount" FROM /);
+  assert.match(query.sql, /t."next_followup" >= \$2 ORDER BY t."next_followup" ASC/);
+  assert.match(query.countSql, /t."next_followup" >= \$2/);
+  assert.deepEqual(query.params, [1, "2026-11-24"]);
+});
+
 test("webhook transport pins validated DNS in both Node resolver modes", async (t) => {
   const destination = { address: "93.184.216.34", family: 4 };
   t.mock.method(https, "request", (url, options, receive) => {
