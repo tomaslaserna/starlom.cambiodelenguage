@@ -30,8 +30,8 @@ test("las respuestas resuelven la consulta comercial y usan fuentes como respald
   assert.doesNotMatch(contract, /Usa el encabezado/);
   assert.match(contract, /No inventes rutas ni enlaces/);
   assert.match(contract, /no inventes pestañas, ordenamientos automáticos, campos ni comportamientos del ERP/);
-  assert.match(chat, /Solo lectura · no autorizo, facturo, cobro ni modifico datos por vos/);
-  assert.match(chat, /busco los datos, hago los cálculos/);
+  assert.match(chat, /part.type === "source-url"/);
+  assert.match(chat, /href=\{part.url\}/);
 });
 
 test("la fuente de ventas aplica el mismo mes que la métrica consultada", () => {
