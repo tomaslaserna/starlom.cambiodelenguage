@@ -47,6 +47,7 @@ const dotOAuthHeaders = securityHeaders.map((header) =>
 );
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ['@electric-sql/pglite'],
   outputFileTracingExcludes: { '/*': ['**/.local/**'] },
   images: {
     remotePatterns: [

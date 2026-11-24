@@ -1,3 +1,4 @@
+import {readMonthlyExpenseObligations} from '@/lib/cost-obligations';
 import { validCustomerPaymentSql } from "@/lib/treasury-read";
 import { queryWithCompanyContext } from "@/lib/db";
 import { activeAccountMovementWhereSql } from "@/lib/accounts";
@@ -663,7 +664,9 @@ export async function getAccountsPayable(companyId: number) {
   );
 
   const versionedPayroll = await monthlyPayrollPayables(companyId,currentStart.slice(0,7));
+  const expenseObligations = await readMonthlyExpenseObligations(companyId);
   const data = [
+    ...expenseObligations.filter(o=>o.balanceCents>0).map(o=>({id:o.id,provider:o.concept,concept:`Costo de ${o.month}`,total:o.amountCents/100,paid:o.paidCents/100,balance:o.balanceCents/100,date:o.dueDate,status:'pendiente',scheduledAmount:0,scheduledDate:null,source:'costo_mensual'})),
     ...issuedCheques.rows.map((row) => ({
       id: row.id,
       provider: row.provider,
@@ -722,7 +725,7 @@ export async function getAccountsPayable(companyId: number) {
       scheduledDate: null,
       source: "impuesto",
     })),
-    ...projectedServices.rows.map((row) => ({
+    ...projectedServices.rows.filter(row=>!expenseObligations.some(o=>o.costId===`expense:${row.id}`&&o.month===String(row.date).slice(0,7))).map((row) => ({
       id: row.id,
       provider: row.provider,
       concept: row.concept,

@@ -1,3 +1,4 @@
+import {readMonthlyExpenseObligations} from '@/lib/cost-obligations';
 import { monthlyPayrollPayables } from '@/lib/monthly-cost-ledger';
 import { queryWithCompanyContext } from '@/lib/db';
 import { activeAccountMovementWhereSql } from '@/lib/accounts';
@@ -94,6 +95,8 @@ export async function getCashflowSnapshot(companyId: number, asOf = localDateIso
     const due=new Date(`${asOf.slice(0,7)}-01T12:00:00Z`);due.setUTCMonth(due.getUTCMonth()+1);
     rows.push(...payroll.filter(r=>r.balance>0).map(r=>({id:`salary:${r.id}`,label:`${r.employee} · estimación mensual`,amount:r.balance,date:due.toISOString().slice(0,10),kind:'outflow',source:'sueldo_estimado'})));
   }
+  const expenseObligations = await readMonthlyExpenseObligations(companyId);
+  rows.push(...expenseObligations.filter(o=>o.balanceCents>0).map(o=>({id:`cost:${o.id}`,label:o.concept,amount:o.balanceCents/100,date:o.dueDate,kind:'outflow',source:'costo_mensual'})));
   const items = rows.filter(row => row.kind !== 'credit');
   const openingBalance = accounts.reduce((sum,row)=>sum+Math.round(Number(row.balance)*100),0)/100;
   const meta = summarizeCashProjection(items, openingBalance, asOf);

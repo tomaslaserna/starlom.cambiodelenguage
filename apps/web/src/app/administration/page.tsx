@@ -108,6 +108,7 @@ function sourceLabel(source: string) {
     sueldo: "Sueldo",
     impuesto: "Impuesto",
     servicio: "Costo operativo",
+    costo_mensual: "Costo mensual",
     echeq: "E-cheq emitido",
   }[source] ?? source;
 }
@@ -484,7 +485,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
               <StatCard detail={`${dueSoonPayables.length} obligaciones`} label="Próximos 7 días" tone="info" value={formatCurrency(dueSoonPayables.reduce((sum, item) => sum + item.balance, 0))} />
             </div>
             <Card>
-              <CardHeader><CardTitle>Agenda unificada de pagos</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Agenda unificada de pagos</CardTitle>{process.env.COST_OBLIGATIONS_ENABLED==='true'?<a className="text-sm font-semibold text-blue-600" href="/administration/obligations">Gastos mensuales y pagos</a>:null}</CardHeader>
               <DataTable caption="Obligaciones pendientes ordenadas por vencimiento" className="rounded-none border-0 shadow-none" minWidth="1080px" tableLabel="Agenda de obligaciones">
                 <DataTableHeader><DataTableRow><DataTableHead>Vencimiento</DataTableHead><DataTableHead>Tipo</DataTableHead><DataTableHead>Beneficiario</DataTableHead><DataTableHead>Concepto</DataTableHead><DataTableHead>Estado</DataTableHead><DataTableHead align="right">Saldo</DataTableHead><DataTableHead align="center">Acciones</DataTableHead></DataTableRow></DataTableHeader>
                 <DataTableBody>

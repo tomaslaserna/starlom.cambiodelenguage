@@ -42,6 +42,10 @@ export async function mutateMonthlyCostLedger(companyId:number,userId:string,com
   if(state.companyId!==companyId)throw new ApiError(409,'Empresa inválida');
   let next;
   try {next=applyMonthlyCostCommand(state,command,userId);}catch(e){throw new ApiError(409,e instanceof Error?e.message:'Cambio inválido');}
+  if(process.env.COST_OBLIGATIONS_ENABLED==='true'){
+   const linked=await client.query<{cost_id:string;month:string;amount_cents:string}>('SELECT cost_id,month,amount_cents::text FROM admin_cost_obligations WHERE empresa_id=$1',[companyId]);
+   for(const o of linked.rows){const row=readCostMonth(next,o.month).rows.find(r=>r.id===o.cost_id);if(!row||row.totalCents!==Number(o.amount_cents))throw new ApiError(409,'Este mes ya tiene una obligación programada. Aplicá el cambio desde un mes posterior.');}
+  }
   await client.query('UPDATE admin_monthly_cost_ledger SET state=$2::jsonb,updated_by=$3::uuid,updated_at=now() WHERE empresa_id=$1',[companyId,JSON.stringify(next),userId]);
   return next;
  });
