@@ -34,6 +34,18 @@ const securityHeaders = [
   { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
 ];
 
+const dotOAuthHeaders = securityHeaders.map((header) =>
+  header.key === "Content-Security-Policy"
+    ? {
+        ...header,
+        value: header.value.replace(
+          "form-action 'self'",
+          "form-action 'self' https://chatgpt.com/connector_platform_oauth_redirect https://chatgpt.com/connector/oauth/",
+        ),
+      }
+    : header,
+);
+
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
@@ -49,6 +61,10 @@ const nextConfig: NextConfig = {
       {
         source: "/:path*",
         headers: securityHeaders,
+      },
+      {
+        source: "/api/supervisor-lab/oauth/authorize",
+        headers: dotOAuthHeaders,
       },
     ];
   },

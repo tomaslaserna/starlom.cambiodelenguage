@@ -12,6 +12,12 @@ const API_RATE_WINDOW_MS = 60_000;
 const API_RATE_LIMIT = 120;
 const MUTATION_RATE_LIMIT = 40;
 const MAX_ALLOWED_ORIGINS = 20;
+const DOT_PROTOCOL_ENDPOINTS = new Set([
+  "/api/supervisor-lab/mcp",
+  "/api/supervisor-lab/oauth/register",
+  "/api/supervisor-lab/oauth/token",
+  "/api/supervisor-lab/oauth/revoke",
+]);
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function clientIp(request: NextRequest) {
@@ -87,6 +93,16 @@ function csrfResponse() {
 export function proxy(request: NextRequest) {
   const limited = rateLimit(request);
   if (limited) return limited;
+
+  // Server-to-server calls are authenticated by the protocol handlers, without cookies.
+  if (
+    request.method === "POST" &&
+    DOT_PROTOCOL_ENDPOINTS.has(request.nextUrl.pathname) &&
+    !request.headers.has("origin") &&
+    !request.cookies.has(SESSION_COOKIE)
+  ) {
+    return NextResponse.next();
+  }
 
   if (MUTATING_METHODS.has(request.method) && !isSameOrigin(request)) {
     return csrfResponse();
