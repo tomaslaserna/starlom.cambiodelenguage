@@ -54,7 +54,7 @@ function load(relative, aliases) {
       esModuleInterop: true,
     },
   }).outputText;
-  const module = { exports: {} };
+  const compiledModule = { exports: {} };
   Function(
     "require",
     "module",
@@ -62,10 +62,10 @@ function load(relative, aliases) {
     compiled,
   )(
     (name) => (Object.hasOwn(aliases, name) ? aliases[name] : require(name)),
-    module,
-    module.exports,
+    compiledModule,
+    compiledModule.exports,
   );
-  return module.exports;
+  return compiledModule.exports;
 }
 const owner = {
   userId: "11111111-1111-4111-8111-111111111111",
