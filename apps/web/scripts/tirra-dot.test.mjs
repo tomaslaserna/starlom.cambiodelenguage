@@ -386,3 +386,59 @@ test("OAuth JSON submission validates origin, consent identity and expiry before
   assert.equal(grantCalls, 1);
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
+
+test("administrative datasets use the principal, reviewed fields and company or personal scope", async () => {
+  const catalog = [
+    ["admin_sueldos_config", "sueldo_mensual"], ["admin_dividendos", "monto"],
+    ["admin_treasury_movements", "amount"], ["profiles", "full_name"],
+    ["empresas", "nombre"], ["bank_files", "name"],
+  ];
+  const calls = [];
+  const client = { query: async (sql, params) => {
+    calls.push({ sql, params });
+    return { rows: sql.includes("COUNT(*)") ? [{ count: "0" }] : [] };
+  }, release() {} };
+  const reader = load("../src/lib/supervisor-lab/dot-data.ts", {
+    "server-only": {}, "ai": { tool: (config) => config },
+    "@/lib/auth": { normalizeRole: (role) => role, isAdminRole: (role) => ["administrador", "jefe"].includes(role) },
+    "@/lib/api-response": { ApiError },
+    "@/lib/crm": { hasAllCustomerAccess: async () => false },
+    "@/lib/route-auth": { sessionAllows: async () => true },
+    "./dot-query.mjs": { compileDotQuery },
+    "@/lib/db": { getDbPool: () => ({
+      query: async (_sql, [names]) => ({ rows: catalog.filter(([name]) => names.includes(name))
+        .flatMap(([table_name, field]) => ["id", ...(["profiles", "empresas"].includes(table_name) ? [] : ["empresa_id"]), field, "password_hash", "session_version"]
+          .map((column_name) => ({ table_name, column_name, data_type: "text" }))) }),
+      connect: async () => client,
+    }) },
+  });
+  for (const role of ["operador", "vendedor"]) {
+    const principal = { ...owner, role };
+    assert.deepEqual(reader.createAdminDataTools(principal), {});
+    assert.deepEqual(await reader.describeDotData(principal), []);
+    for (const [dataset] of catalog) {
+      await assert.rejects(reader.readDotData(principal, { dataset }), (error) => error.status === 403);
+    }
+  }
+  assert.equal(calls.length, 0);
+  const principal = { ...owner, username: "prueba" };
+  assert.equal((await reader.describeDotData(principal)).length, catalog.length);
+  await assert.rejects(reader.readDotData(principal, { dataset: "profiles", columns: ["session_version"] }), (error) => error.status === 400);
+  for (const [dataset, field] of catalog) {
+    calls.length = 0;
+    await reader.readDotData(principal, { dataset, columns: [field] });
+    assert.equal(calls[0].sql, "BEGIN READ ONLY");
+    const selects = calls.filter(({ sql }) => sql.includes('FROM public."' + dataset + '" t'));
+    assert.equal(selects.length, 2);
+    for (const { sql, params } of selects) {
+      assert.equal(params[0], principal.companyId);
+      if (dataset === "profiles") assert.match(sql, /ue.id_usuario=t.id AND ue.empresa_id=\$1/);
+      else if (dataset === "empresas") assert.match(sql, /WHERE t.id=\$1/);
+      else assert.match(sql, /WHERE t.empresa_id=\$1/);
+      if (dataset === "bank_files") {
+        assert.match(sql, /owner_username=\$2/);
+        assert.equal(params[1], principal.username);
+      }
+    }
+  }
+});
