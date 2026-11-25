@@ -11,6 +11,7 @@ const state = {
   snapshots: {},
   events: [],
   costs: [
+    {id:"salary:9",name:"Empleado · ejemplo",source:"salary",start:"2026-11",durationMonths:null,versions:[{from:"2026-11",amountCents:80000000,active:true,bonus:true,chargesPercent:20}]},
     {
       id: "expense:rent",
       name: "Alquiler · ejemplo",
@@ -74,6 +75,9 @@ export const obligationFixtureSql = `
 
  CREATE TABLE admin_monthly_cost_ledger(empresa_id bigint PRIMARY KEY,state jsonb);INSERT INTO admin_monthly_cost_ledger VALUES(1,'${JSON.stringify(state)}');
 
+ CREATE TABLE admin_sueldos_config(id bigint,empresa_id bigint,profile_id uuid);
+ CREATE TABLE admin_sueldo_movimientos(empresa_id bigint,profile_id uuid,periodo date,tipo text,monto numeric);
+ INSERT INTO admin_sueldos_config VALUES(9,1,'11111111-1111-4111-8111-111111111111');
  CREATE TABLE admin_finance_monthly_closures(id serial,empresa_id bigint,month date,status text);
 
  CREATE TABLE admin_treasury_accounts(id bigint PRIMARY KEY,empresa_id bigint,name text,active boolean,currency text);INSERT INTO admin_treasury_accounts VALUES(1,1,'Santander · demo',true,'ARS'),(2,2,'Otra empresa',true,'ARS'),(3,1,'Inactiva',false,'ARS'),(4,1,'Efectivo · demo',true,'ARS');

@@ -10,6 +10,6 @@ export async function readMonthlyExpenseObligations(companyId: number) {
   );
   if (!ready.rows[0]?.ready) return [];
   return withCompanyContext(companyId, (tx) =>
-    readCostObligations(tx, companyId),
+    readCostObligations(tx, companyId).then(rows=>rows.filter(o=>!o.cancelled)),
   );
 }

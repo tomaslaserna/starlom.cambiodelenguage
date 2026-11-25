@@ -10,6 +10,8 @@ import {
   createCostObligation,
   payCostObligation,
   readCostObligations,
+  cancelCostObligation,
+  reverseCostPayment,
 } from "../src/lib/cost-obligations-core.ts";
 
 import { obligationFixtureSql } from "../src/lib/cost-obligations-fixture.ts";
@@ -27,6 +29,7 @@ async function setup() {
       "utf8",
     ),
   );
+  await db.exec(readFileSync("../../supabase/migrations/20261125135907_administration_payment_lifecycle.sql", "utf8"));
   return db;
 }
 
@@ -302,4 +305,75 @@ test("closed payment periods reject writes and RLS isolates other companies", as
   } finally {
     await db.close();
   }
+});
+
+test('salary requires a confirmed amount and excludes bonus and charges from cash payment',async()=>{
+ const db=await setup();try {
+
+ await assert.rejects(db.transaction(tx=>create(tx,{costId:'salary:9'})),/confirm/i);
+ const o=await db.transaction(tx=>create(tx,{costId:'salary:9',salaryConfirmed:true,payableCents:75000000,salaryNote:'Descuentos según liquidación revisada'}));
+ assert.equal((await readCostObligations(db,1))[0].amountCents,75000000);
+ await db.transaction(tx=>pay(tx,o.id,{amountCents:75000000}));
+ assert.equal((await readCostObligations(db,1))[0].balanceCents,0);
+ assert.equal((await db.query("select amount::text from admin_treasury_movements where source_type='monthly_cost_payment'")).rows[0].amount,'750000.00');
+ assert.equal((await db.query('select state from admin_monthly_cost_ledger')).rows[0].state.costs.find(c=>c.id==="salary:9").versions[0].amountCents,80000000);
+ }finally{await db.close();}
+});
+test('salary legacy payments and unexplained differences block duplicate scheduling',async()=>{
+ const db=await setup();try{
+
+ await assert.rejects(db.transaction(tx=>create(tx,{costId:'salary:9',salaryConfirmed:true,payableCents:75000000})),/motivo/i);
+ await db.exec("INSERT INTO admin_sueldo_movimientos VALUES(1,'11111111-1111-4111-8111-111111111111','2026-11-01','pago',100)");
+ await assert.rejects(db.transaction(tx=>create(tx,{costId:'salary:9',salaryConfirmed:true,payableCents:80000000})),/conciliar/i);
+ assert.equal((await db.query('select count(*)::int n from admin_cost_obligations')).rows[0].n,0);
+ }finally{await db.close();}
+});
+
+test('cancellation preserves original obligation and allows corrected scheduling without money', async()=>{
+ const db=await setup();try {
+ const o=await db.transaction(tx=>create(tx));
+ await db.transaction(tx=>cancelCostObligation(tx,1,actor,{obligationId:o.id,reason:'Vencimiento incorrecto'},'2026-11-24'));
+ assert.equal((await readCostObligations(db,1))[0].cancelled,true);
+ const replacement=await db.transaction(tx=>create(tx,{dueDate:'2026-11-30'}));
+ assert.notEqual(replacement.id,o.id);
+ assert.equal((await db.query('select count(*)::int n from admin_treasury_movements')).rows[0].n,1);
+ }finally{await db.close();}
+});
+test('reversal appends one compensating movement, preserves payment and allows retry',async()=>{
+ const db=await setup();try{
+ const o=await db.transaction(tx=>create(tx));await db.transaction(tx=>pay(tx,o.id));
+ const p=(await db.query('select id from admin_cost_obligation_payments')).rows[0];
+ const input={paymentId:p.id,date:'2026-11-24',reason:'Cuenta seleccionada por error'};
+ await db.transaction(tx=>reverseCostPayment(tx,1,actor,input,'2026-11-24'));
+ await db.transaction(tx=>reverseCostPayment(tx,1,actor,input,'2026-11-24'));
+ assert.equal((await readCostObligations(db,1))[0].paidCents,0);
+ assert.equal((await db.query('select count(*)::int n from admin_cost_obligation_payments')).rows[0].n,1);
+ assert.equal((await db.query("select count(*)::int n from admin_treasury_movements where source_type='monthly_cost_reversal' and direction='inflow'")).rows[0].n,1);
+ }finally{await db.close();}
+});
+test('unlinking a manual payment does not change treasury; paid obligation cannot be cancelled',async()=>{
+ const db=await setup();try{
+ const o=await db.transaction(tx=>create(tx));
+ await db.transaction(tx=>pay(tx,o.id,{existingMovementId:'10',amountCents:5000}));
+ await assert.rejects(db.transaction(tx=>cancelCostObligation(tx,1,actor,{obligationId:o.id,reason:'Error registrado'},'2026-11-24')),/pagos/i);
+ const p=(await db.query('select id from admin_cost_obligation_payments')).rows[0];
+ await db.transaction(tx=>reverseCostPayment(tx,1,actor,{paymentId:p.id,date:'2026-11-24',reason:'Vinculación incorrecta'},'2026-11-24'));
+ assert.equal((await db.query('select count(*)::int n from admin_treasury_movements')).rows[0].n,1);
+ }finally{await db.close();}
+});
+
+test('manual unlink allows one new allocation and closed periods reject corrections',async()=>{
+ const db=await setup();try{
+ const o=await db.transaction(tx=>create(tx));
+ await db.transaction(tx=>pay(tx,o.id,{existingMovementId:'10',amountCents:5000}));
+ const p=(await db.query('select id from admin_cost_obligation_payments')).rows[0];
+ await db.transaction(tx=>reverseCostPayment(tx,1,actor,{paymentId:p.id,date:'2026-11-24',reason:'Corregir imputación'},'2026-11-24'));
+ await db.transaction(tx=>pay(tx,o.id,{existingMovementId:'10',amountCents:5000,requestId:crypto.randomUUID()}));
+ assert.equal((await readCostObligations(db,1))[0].paidCents,5000);
+ assert.equal((await db.query('select count(*)::int n from admin_treasury_movements')).rows[0].n,1);
+ await db.exec("INSERT INTO admin_finance_monthly_closures VALUES(1,1,'2026-11-01','closed')");
+ const p2=(await db.query('select id from admin_cost_obligation_payments where reversed_at is null')).rows[0];
+ await assert.rejects(db.transaction(tx=>reverseCostPayment(tx,1,actor,{paymentId:p2.id,date:'2026-11-24',reason:'Otra corrección'},'2026-11-24')),/cerrado/i);
+ await assert.rejects(db.transaction(tx=>reverseCostPayment(tx,2,actor,{paymentId:p2.id,date:'2026-11-24',reason:'Otra corrección'},'2026-11-24')),/encontrado/i);
+ }finally{await db.close();}
 });

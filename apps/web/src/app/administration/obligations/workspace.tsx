@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CostPaymentWorkspace } from "@/lib/cost-obligations-read";
+import { PaymentCorrections } from "./payment-corrections";
 import type { CostObligation } from "@/lib/cost-obligations-core";
 const money = (n: number) =>
   new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(
@@ -31,6 +32,9 @@ export function CostObligationsWorkspace({
     [showPaid, setShowPaid] = useState(false);
   const [creating, setCreating] = useState(""),
     [due, setDue] = useState(""),
+    [salaryAmount, setSalaryAmount] = useState(""),
+    [salaryNote, setSalaryNote] = useState(""),
+    [salaryConfirmed, setSalaryConfirmed] = useState(false),
     [paying, setPaying] = useState<CostObligation | null>(null),
     [account, setAccount] = useState(""),
     [date, setDate] = useState(""),
@@ -109,13 +113,15 @@ export function CostObligationsWorkspace({
     return <main className="p-8">{error || "Cargando obligaciones…"}</main>;
   const selectedMonth = month || data.month,
     rows = data.obligations.filter((o) => o.month === selectedMonth),
-    visible = rows.filter((o) => showPaid || o.balanceCents > 0);
+    visible = rows.filter((o) => showPaid || (!o.cancelled && o.balanceCents > 0));
   const available = data.costs.filter(
-    (c) => c.status === "included" && !rows.some((o) => o.costId === c.id),
+    (c) => c.status === "included" && !rows.some((o) => !o.cancelled && o.costId === c.id),
   );
+  const selectedCost = data.costs.find(c => c.id === creating);
+  const isSalary = selectedCost?.source === "salary";
   const manual = data.movements.filter(
     (m) =>
-      !m.linked &&
+      m.sourceType === "manual" && !m.linked &&
       m.date <= data.today &&
       m.amountCents <= (paying?.balanceCents ?? 0),
   );
@@ -127,7 +133,7 @@ export function CostObligationsWorkspace({
             <p className="text-xs font-bold tracking-widest text-blue-600">
               STARLIM · ADMINISTRACIÓN
             </p>
-            <h1 className="mt-2 text-3xl font-extrabold">Gastos y pagos</h1>
+            <h1 className="mt-2 text-3xl font-extrabold">Gastos, sueldos y pagos</h1>
             <p className="mt-2 text-sm text-slate-500">
               Del costo del mes al pago, con su cuenta de origen.
             </p>
@@ -175,6 +181,8 @@ export function CostObligationsWorkspace({
             {message}
           </p>
         ) : null}
+        {!local ? <a className="inline-block text-sm text-blue-600" href="/administration/costs">Editar costos y sueldos por mes</a> : null}
+        {data.legacySalaries.length ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm"><strong>Sueldos con pagos anteriores para conciliar</strong>{data.legacySalaries.map(p=><p key={p.costId}>{data.costs.find(c=>c.id===p.costId)?.name ?? p.costId}: {money(p.amountCents)} registrados. Revisar su correspondencia antes de programar un nuevo pago.</p>)}</div> : null}
         <section className="grid gap-4 sm:grid-cols-3">
           {[
             {
@@ -188,7 +196,7 @@ export function CostObligationsWorkspace({
               sub: "Cada pago tiene un único egreso asociado",
             },
             {
-              title: "Gastos sin programar",
+              title: "Conceptos sin programar",
               value: available.length,
               sub: "Sin vencimientos ni egresos todavía",
             },
@@ -211,7 +219,7 @@ export function CostObligationsWorkspace({
           ))}
         </section>
         <section className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="font-bold">Programar un gasto del mes</h2>
+          <h2 className="font-bold">Programar un gasto o sueldo del mes</h2>
           <p className="mt-1 text-sm text-slate-500">
             Elegí el costo y su vencimiento. El importe viene del circuito
             mensual.
@@ -227,6 +235,7 @@ export function CostObligationsWorkspace({
                   month: selectedMonth,
                   dueDate: due,
                   expectedRevision: data.revision,
+                  ...(isSalary ? {salaryConfirmed, payableCents:cents(salaryAmount), salaryNote} : {}),
                 })
               ) {
                 setCreating("");
@@ -245,14 +254,17 @@ export function CostObligationsWorkspace({
                 value={creating}
                 onChange={(e) => {
                   setCreating(e.target.value);
+                  setSalaryConfirmed(false);setSalaryNote("");
+                  const c=data.costs.find(c=>c.id===e.target.value);
+                  setSalaryAmount(c ? (c.amountCents/100).toLocaleString("es-AR",{minimumFractionDigits:2}) : "");
                   setDue(data.today);
                   setPaying(null);
                 }}
               >
                 <option value="">Seleccionar costo…</option>
                 {available.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} · {money(c.totalCents)}
+                  <option key={c.id} value={c.id} disabled={data.legacySalaries.some(p=>p.costId===c.id)}>
+                    {c.source === "salary" ? "Sueldo · " : ""}{c.name} · {money(c.source === "salary" ? c.amountCents : c.totalCents)}
                   </option>
                 ))}
               </select>
@@ -269,9 +281,16 @@ export function CostObligationsWorkspace({
                 onChange={(e) => setDue(e.target.value)}
               />
             </label>
-            <button disabled={busy || !creating} className={primary}>
+            <button disabled={busy || !creating || !due || (isSalary && (!salaryConfirmed || !Number.isSafeInteger(cents(salaryAmount)) || cents(salaryAmount)<=0 || cents(salaryAmount)>selectedCost!.amountCents || (cents(salaryAmount)!==selectedCost!.amountCents && salaryNote.trim().length<5)))} className={primary}>
               Crear obligación
             </button>
+            {isSalary && selectedCost ? <div className="sm:col-span-3 rounded-xl bg-blue-50 p-4 space-y-3 text-sm">
+              <p>Base mensual: <strong>{money(selectedCost.amountCents)}</strong> · Provisión de aguinaldo: {money(selectedCost.provisionCents)} · Cargas estimadas: {money(selectedCost.chargesCents)}.</p>
+              <p>El pago al empleado usa únicamente el importe confirmado. Las provisiones siguen en costos; no se transfieren al empleado.</p>
+              <label className="block">Importe de sueldo a pagar $<input className={field} value={salaryAmount} onChange={e=>{setSalaryAmount(e.target.value);setSalaryConfirmed(false);}} inputMode="decimal" /></label>
+              <label className="block">Detalle de liquidación o motivo de la diferencia<input className={field} value={salaryNote} onChange={e=>setSalaryNote(e.target.value)} maxLength={1000}/></label>
+              <label className="flex gap-2"><input type="checkbox" checked={salaryConfirmed} onChange={e=>setSalaryConfirmed(e.target.checked)}/>Revisé la liquidación y confirmo el importe a pagar</label>
+            </div> : null}
           </form>
         </section>
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -283,7 +302,7 @@ export function CostObligationsWorkspace({
                 checked={showPaid}
                 onChange={(e) => setShowPaid(e.target.checked)}
               />
-              Ver también pagadas
+              Ver pagadas y anuladas
             </label>
           </div>
           <div className="overflow-x-auto">
@@ -329,7 +348,7 @@ export function CostObligationsWorkspace({
                           Registrar pago
                         </button>
                       ) : (
-                        <span className="text-emerald-700">Pagada</span>
+                        <span className="text-slate-500">{o.cancelled ? "Anulada" : "Pagada"}</span>
                       )}
                     </td>
                   </tr>
@@ -539,6 +558,7 @@ export function CostObligationsWorkspace({
             )}
           </section>
         ) : null}
+        <PaymentCorrections key={selectedMonth} data={data} rows={rows} busy={busy} send={send}/>
         <details className="rounded-2xl border border-slate-200 bg-white p-5">
           <summary className="cursor-pointer font-semibold">
             Egresos y trazabilidad

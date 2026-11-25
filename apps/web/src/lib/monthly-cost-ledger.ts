@@ -1,8 +1,11 @@
+import type { CostObligation } from './cost-obligations-core';
+import { assertAdministrationWrite } from './cost-obligations-core';
 import { queryWithCompanyContext, withCompanyContext } from '@/lib/db';
 import { ApiError } from '@/lib/api-response';
 import { applyMonthlyCostCommand, importMonthlyCostSource, restoreErpCostState, type CostCommand, type MonthlyCostSource } from './monthly-cost-erp-domain';
 import { monthlyCostSourceSql } from './monthly-cost-source-sql';
 import { readCostMonth } from './monthly-costs';
+import { readMonthlyExpenseObligations } from './cost-obligations';
 
 export async function readMonthlyCostLedger(companyId:number) {
  const table=await queryWithCompanyContext<{available:boolean}>(companyId,"SELECT to_regclass('public.admin_monthly_cost_ledger') IS NOT NULL AS available",[],{cache:false});
@@ -36,14 +39,20 @@ export async function initializeMonthlyCostLedger(companyId:number,userId:string
 export async function mutateMonthlyCostLedger(companyId:number,userId:string,command:CostCommand) {
  if(process.env.MONTHLY_COST_LEDGER_ENABLED!=='true')throw new ApiError(409,'La integración mensual todavía no está habilitada');
  return withCompanyContext(companyId,async client=>{
+  await assertAdministrationWrite(client,companyId,command.month);
   const r=await client.query<{state:unknown}>('SELECT state FROM admin_monthly_cost_ledger WHERE empresa_id=$1 FOR UPDATE',[companyId]);
   if(!r.rows[0])throw new ApiError(409,'Primero iniciá la integración mensual');
   const state=restoreErpCostState(JSON.stringify(r.rows[0].state));
   if(state.companyId!==companyId)throw new ApiError(409,'Empresa inválida');
   let next;
   try {next=applyMonthlyCostCommand(state,command,userId);}catch(e){throw new ApiError(409,e instanceof Error?e.message:'Cambio inválido');}
+  const closedMonths=await client.query<{month:string}>("SELECT to_char(month,'YYYY-MM') AS month FROM admin_finance_monthly_closures WHERE empresa_id=$1 AND status='closed' AND month>=($2||'-01')::date",[companyId,command.month]);
+  for(const closed of closedMonths.rows){
+    if(closed.month<state.baselineMonth)continue;
+    if(JSON.stringify(readCostMonth(state,closed.month))!==JSON.stringify(readCostMonth(next,closed.month)))throw new ApiError(409,'El cambio afectaría un mes cerrado. Elegí un mes posterior.');
+  }
   if(process.env.COST_OBLIGATIONS_ENABLED==='true'){
-   const linked=await client.query<{cost_id:string;month:string;amount_cents:string}>('SELECT cost_id,month,amount_cents::text FROM admin_cost_obligations WHERE empresa_id=$1',[companyId]);
+   const linked=await client.query<{cost_id:string;month:string;amount_cents:string}>('SELECT cost_id,month,COALESCE(source_total_cents,amount_cents)::text AS amount_cents FROM admin_cost_obligations WHERE empresa_id=$1 AND cancelled_at IS NULL',[companyId]);
    for(const o of linked.rows){const row=readCostMonth(next,o.month).rows.find(r=>r.id===o.cost_id);if(!row||row.totalCents!==Number(o.amount_cents))throw new ApiError(409,'Este mes ya tiene una obligación programada. Aplicá el cambio desde un mes posterior.');}
   }
   await client.query('UPDATE admin_monthly_cost_ledger SET state=$2::jsonb,updated_by=$3::uuid,updated_at=now() WHERE empresa_id=$1',[companyId,JSON.stringify(next),userId]);
@@ -61,7 +70,7 @@ export async function monthlyCostTotals(companyId:number,month:string) {
 }
 
 // Read-only estimate: changing a cost never creates a salary payment.
-export async function monthlyPayrollPayables(companyId:number,month:string) {
+export async function monthlyPayrollPayables(companyId:number,month:string,knownObligations?:CostObligation[]) {
  const ledger=await readMonthlyCostLedger(companyId);
  if(!ledger||month<ledger.state.baselineMonth)return null;
  const paid=await queryWithCompanyContext<{id:string;paid:string}>(companyId,`
@@ -71,9 +80,10 @@ export async function monthlyPayrollPayables(companyId:number,month:string) {
    AND m.periodo>=($2||'-01')::date AND m.periodo<($2||'-01')::date+INTERVAL '1 month'
    AND m.tipo IN ('pago','retiro')
   WHERE c.empresa_id=$1 GROUP BY c.id`,[companyId,month],{cache:false});
+ const obligations=knownObligations ?? await readMonthlyExpenseObligations(companyId);
  const payments=new Map(paid.rows.map(r=>[`salary:${r.id}`,Number(r.paid)]));
- return readCostMonth(ledger.state,month).rows.filter(r=>r.source==='salary').map(r=>{
-  const total=r.totalCents/100,payment=payments.get(r.id)??0;
+ return readCostMonth(ledger.state,month).rows.filter(r=>r.source==='salary' && r.status==='included' && !obligations.some(o=>o.costId===r.id&&o.month===month)).map(r=>{
+  const total=r.amountCents/100,payment=payments.get(r.id)??0;
   return {id:r.id.slice(7),employee:r.name,total,paid:payment,balance:Math.max(0,Math.round((total-payment)*100)/100)};
  });
 }

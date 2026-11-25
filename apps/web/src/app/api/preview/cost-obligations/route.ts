@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { localObligationDb } from "@/lib/cost-obligations-local";
 import {
   createCostObligation,
+  cancelCostObligation,
+  reverseCostPayment,
   payCostObligation,
 } from "@/lib/cost-obligations-core";
 import { readCostPaymentWorkspace } from "@/lib/cost-obligations-read";
@@ -38,11 +40,13 @@ export async function POST(r: Request) {
     return new NextResponse(null, { status: 403 });
   try {
     const b = await r.json();
-    if (!["create", "pay"].includes(b.intent)) throw Error("Acción inválida");
+    if (!["create", "pay", "cancel", "reverse"].includes(b.intent)) throw Error("Acción inválida");
     return NextResponse.json(
       await (
         await localObligationDb()
       ).transaction(async (tx) => {
+        if(b.intent === "cancel") return cancelCostObligation(tx,1,actor,b,today);
+        if(b.intent === "reverse") return reverseCostPayment(tx,1,actor,b,today);
         if (b.intent === "create")
           return await createCostObligation(tx, 1, actor, b, today);
         return await payCostObligation(tx, 1, actor, b, today);

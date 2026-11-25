@@ -8,12 +8,16 @@ import {
   ADMIN_TREASURY_WRITE_PERMISSION,
   ADMIN_TREASURY_READ_PERMISSION,
   ADMIN_METRICS_READ_PERMISSION,
+  ADMIN_SALARIES_READ_PERMISSION,
+  ADMIN_SALARIES_WRITE_PERMISSION,
 } from "@/lib/route-auth";
 
 import { withCompanyContext } from "@/lib/db";
 
 import {
   createCostObligation,
+  cancelCostObligation,
+  reverseCostPayment,
   payCostObligation,
 } from "@/lib/cost-obligations-core";
 
@@ -31,6 +35,7 @@ async function auth() {
   const s = await requireApiSession([ADMIN_ACCOUNTS_PAYABLE_READ_PERMISSION]);
   await requireSessionPermission(s, [ADMIN_TREASURY_READ_PERMISSION]);
   await requireSessionPermission(s, [ADMIN_METRICS_READ_PERMISSION]);
+  await requireSessionPermission(s, [ADMIN_SALARIES_READ_PERMISSION]);
   return s;
 }
 
@@ -72,11 +77,21 @@ export async function POST(request: Request) {
       ADMIN_ACCOUNTS_PAYABLE_WRITE_PERMISSION,
     ]);
     const b = await request.json();
-    if (b.intent === "pay")
+    if (b.intent === "pay" || b.intent === "reverse")
       await requireSessionPermission(s, [ADMIN_TREASURY_WRITE_PERMISSION]);
-    else if (b.intent !== "create") throw new ApiError(400, "Acción inválida");
+    else if (!["create","cancel"].includes(b.intent)) throw new ApiError(400, "Acción inválida");
+    // Salary data is restricted even when it uses the common payment workspace.
+    const salary = b.intent === "create" ? String(b.costId).startsWith("salary:") : await withCompanyContext(s.companyId, async tx => {
+      const result = b.intent === "reverse"
+        ? await tx.query("SELECT o.cost_id FROM admin_cost_obligations o JOIN admin_cost_obligation_payments p ON p.obligation_id=o.id AND p.empresa_id=o.empresa_id WHERE o.empresa_id=$1 AND p.id=$2",[s.companyId,b.paymentId])
+        : await tx.query("SELECT cost_id FROM admin_cost_obligations WHERE empresa_id=$1 AND id=$2",[s.companyId,b.obligationId]);
+      return String(result.rows[0]?.cost_id??"").startsWith("salary:");
+    });
+    if(salary) await requireSessionPermission(s,[ADMIN_SALARIES_WRITE_PERMISSION]);
     const result = await withCompanyContext(s.companyId, async (tx) => {
       try {
+        if(b.intent === "cancel") return await cancelCostObligation(tx,s.companyId,s.userId,b,localDateIso());
+        if(b.intent === "reverse") return await reverseCostPayment(tx,s.companyId,s.userId,b,localDateIso());
         return b.intent === "create"
           ? await createCostObligation(
               tx,

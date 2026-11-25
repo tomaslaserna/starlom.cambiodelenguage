@@ -14,6 +14,9 @@ export type CreateObligation = {
   month: string;
   dueDate: string;
   expectedRevision: number;
+  salaryConfirmed?: boolean;
+  payableCents?: number;
+  salaryNote?: string;
 };
 
 export type PayObligation = {
@@ -35,6 +38,7 @@ export type CostObligation = {
   paidCents: number;
   balanceCents: number;
   dueDate: string;
+  cancelled: boolean;
 };
 
 function date(v: string) {
@@ -90,17 +94,27 @@ export async function createCostObligation(
 
   if (
     !row ||
-    row.source !== "expense" ||
     row.status !== "included" ||
     row.totalCents <= 0
   )
     throw Error(
-      "El gasto debe estar incluido en el mes. Sueldos conservan su circuito propio.",
+      "El concepto debe estar incluido en el mes.",
     );
+
+  let payableCents = row.totalCents;
+  if (row.source === "salary") {
+    if (input.salaryConfirmed !== true || !Number.isSafeInteger(input.payableCents) || input.payableCents! <= 0 || input.payableCents! > row.amountCents)
+      throw Error("Confirmá el importe del sueldo a pagar, sin provisiones ni cargas");
+    if (input.payableCents !== row.amountCents && (!input.salaryNote || input.salaryNote.trim().length < 5))
+      throw Error("Indicá el motivo de la diferencia con el sueldo base");
+    const legacy = await tx.query(`SELECT m.monto FROM admin_sueldo_movimientos m JOIN admin_sueldos_config c ON c.empresa_id=m.empresa_id AND c.profile_id=m.profile_id WHERE c.empresa_id=$1 AND 'salary:'||c.id::text=$2 AND m.periodo>=($3||'-01')::date AND m.periodo<($3||'-01')::date+INTERVAL '1 month' AND m.tipo IN ('pago','retiro') AND m.monto<>0`,[companyId,row.id,input.month]);
+    if(legacy.rows.length) throw Error("Hay pagos salariales anteriores: conciliar antes de programar para no duplicar");
+    payableCents = input.payableCents!;
+  }
 
   const prior = (
     await tx.query<{ id: string; due_date: string; amount_cents: string }>(
-      "SELECT id,due_date::text,amount_cents::text FROM admin_cost_obligations WHERE empresa_id=$1 AND cost_id=$2 AND month=$3",
+      "SELECT id,due_date::text,amount_cents::text FROM admin_cost_obligations WHERE empresa_id=$1 AND cost_id=$2 AND month=$3 AND cancelled_at IS NULL",
       [companyId, input.costId, input.month],
     )
   ).rows[0];
@@ -108,7 +122,7 @@ export async function createCostObligation(
   if (prior) {
     if (
       prior.due_date !== input.dueDate ||
-      Number(prior.amount_cents) !== row.totalCents
+      Number(prior.amount_cents) !== payableCents
     )
       throw Error("Este costo ya tiene una obligación con otros datos");
     return { id: prior.id };
@@ -132,17 +146,19 @@ export async function createCostObligation(
   const id = crypto.randomUUID();
 
   await tx.query(
-    "INSERT INTO admin_cost_obligations(id,empresa_id,cost_id,month,concept,amount_cents,due_date,source_revision,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+    "INSERT INTO admin_cost_obligations(id,empresa_id,cost_id,month,concept,amount_cents,due_date,source_revision,created_by,source_total_cents,salary_note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
     [
       id,
       companyId,
       row.id,
       input.month,
       row.name,
-      row.totalCents,
+      payableCents,
       input.dueDate,
       ledger.state.revision,
       actor,
+      row.totalCents,
+      row.source === "salary" ? (input.salaryNote ?? "Importe base confirmado").trim().slice(0,1000) : "",
     ],
   );
   return { id };
@@ -174,6 +190,8 @@ export async function payCostObligation(
     (input.existingMovementId && !/^\d+$/.test(input.existingMovementId))
   )
     throw Error("Cuenta o movimiento inválido");
+
+  await assertAdministrationWrite(tx,companyId,input.date.slice(0,7));
 
   const payload = {
     obligationId: input.obligationId,
@@ -215,7 +233,7 @@ export async function payCostObligation(
       concept: string;
       month: string;
     }>(
-      "SELECT id,amount_cents::text,concept,month FROM admin_cost_obligations WHERE empresa_id=$1 AND id=$2 FOR UPDATE",
+      "SELECT id,amount_cents::text,concept,month FROM admin_cost_obligations WHERE empresa_id=$1 AND id=$2 AND cancelled_at IS NULL FOR UPDATE",
       [companyId, input.obligationId],
     )
   ).rows[0];
@@ -256,7 +274,7 @@ export async function payCostObligation(
 
   const paid = (
     await tx.query<{ paid: string }>(
-      "SELECT COALESCE(SUM(amount_cents),0)::text AS paid FROM admin_cost_obligation_payments WHERE empresa_id=$1 AND obligation_id=$2",
+      "SELECT COALESCE(SUM(amount_cents),0)::text AS paid FROM admin_cost_obligation_payments p WHERE empresa_id=$1 AND obligation_id=$2 AND NOT EXISTS(SELECT 1 FROM admin_cost_payment_reversals r WHERE r.payment_id=p.id)",
       [companyId, input.obligationId],
     )
   ).rows[0];
@@ -299,7 +317,7 @@ export async function payCostObligation(
     if (
       (
         await tx.query(
-          "SELECT id FROM admin_cost_obligation_payments WHERE movement_id=$1",
+          "SELECT id FROM admin_cost_obligation_payments WHERE movement_id=$1 AND reversed_at IS NULL",
           [movementId],
         )
       ).rows.length
@@ -353,8 +371,9 @@ export async function readCostObligations(
     amount_cents: string;
     paid_cents: string;
     due_date: string;
+    cancelled: boolean;
   }>(
-    `SELECT o.id,o.cost_id,o.month,o.concept,o.amount_cents::text,o.due_date::text,COALESCE(SUM(p.amount_cents),0)::text AS paid_cents FROM admin_cost_obligations o LEFT JOIN admin_cost_obligation_payments p ON p.obligation_id=o.id AND p.empresa_id=o.empresa_id WHERE o.empresa_id=$1 GROUP BY o.id ORDER BY o.due_date,o.id`,
+    `SELECT o.id,o.cost_id,o.month,o.concept,o.amount_cents::text,o.due_date::text,(o.cancelled_at IS NOT NULL) AS cancelled,COALESCE(SUM(p.amount_cents) FILTER (WHERE r.payment_id IS NULL),0)::text AS paid_cents FROM admin_cost_obligations o LEFT JOIN admin_cost_obligation_payments p ON p.obligation_id=o.id AND p.empresa_id=o.empresa_id LEFT JOIN admin_cost_payment_reversals r ON r.payment_id=p.id AND r.empresa_id=o.empresa_id WHERE o.empresa_id=$1 GROUP BY o.id ORDER BY o.due_date,o.id`,
     [companyId],
   );
 
@@ -365,7 +384,47 @@ export async function readCostObligations(
     concept: o.concept,
     amountCents: Number(o.amount_cents),
     paidCents: Number(o.paid_cents),
-    balanceCents: Number(o.amount_cents) - Number(o.paid_cents),
+    balanceCents: o.cancelled ? 0 : Number(o.amount_cents) - Number(o.paid_cents),
     dueDate: o.due_date,
+    cancelled: o.cancelled,
   }));
+}
+
+// A single ledger lock serializes administrative changes with month closing.
+export async function assertAdministrationWrite(tx:CostSql,companyId:number,month:string) {
+ if(!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) throw Error("Mes inválido");
+ await tx.query("SELECT empresa_id FROM admin_monthly_cost_ledger WHERE empresa_id=$1 FOR UPDATE",[companyId]);
+ if((await tx.query("SELECT id FROM admin_finance_monthly_closures WHERE empresa_id=$1 AND month=($2||'-01')::date AND status='closed'",[companyId,month])).rows.length) throw Error("El mes está cerrado");
+}
+export async function cancelCostObligation(tx:CostSql,companyId:number,actor:string,input:{obligationId:string;reason:string},today:string){
+ company(companyId);uuid(actor);uuid(input.obligationId);date(today);
+ if(typeof input.reason!=="string"||input.reason.trim().length<5)throw Error("Indicá el motivo de anulación");
+ await assertAdministrationWrite(tx,companyId,today.slice(0,7));
+ const o=(await tx.query<{month:string;cancelled_at:string|null}>("SELECT month,cancelled_at FROM admin_cost_obligations WHERE empresa_id=$1 AND id=$2 FOR UPDATE",[companyId,input.obligationId])).rows[0];
+ if(!o)throw Error("Obligación no encontrada");
+ if(o.cancelled_at)return {cancelled:true};
+ await assertAdministrationWrite(tx,companyId,o.month);
+ const paid=(await tx.query("SELECT p.id FROM admin_cost_obligation_payments p WHERE p.empresa_id=$1 AND p.obligation_id=$2 AND NOT EXISTS(SELECT 1 FROM admin_cost_payment_reversals r WHERE r.payment_id=p.id)",[companyId,input.obligationId])).rows;
+ if(paid.length)throw Error("Primero revertí los pagos vinculados");
+ await tx.query("UPDATE admin_cost_obligations SET cancelled_at=now(),cancelled_by=$3,cancel_reason=$4 WHERE empresa_id=$1 AND id=$2",[companyId,input.obligationId,actor,input.reason.trim().slice(0,1000)]);
+ return {cancelled:true};
+}
+export async function reverseCostPayment(tx:CostSql,companyId:number,actor:string,input:{paymentId:string;date:string;reason:string},today:string){
+ company(companyId);uuid(actor);uuid(input.paymentId);date(input.date);date(today);
+ if(typeof input.reason!=="string"||input.reason.trim().length<5)throw Error("Indicá el motivo de corrección");
+ await assertAdministrationWrite(tx,companyId,input.date.slice(0,7));
+ const p=(await tx.query<{obligation_id:string;movement_id:string;amount_cents:string}>("SELECT obligation_id,movement_id::text,amount_cents::text FROM admin_cost_obligation_payments WHERE empresa_id=$1 AND id=$2 FOR UPDATE",[companyId,input.paymentId])).rows[0];
+ if(!p)throw Error("Pago no encontrado");
+ const old=(await tx.query<{movement_id:string;reversal_date:string;reason:string}>("SELECT movement_id::text,reversal_date::text,reason FROM admin_cost_payment_reversals WHERE empresa_id=$1 AND payment_id=$2",[companyId,input.paymentId])).rows[0];
+ if(old){if(old.reversal_date!==input.date||old.reason!==input.reason.trim().slice(0,1000))throw Error("La corrección ya existe con otros datos");return {movementId:old.movement_id,replayed:true};}
+ const o=(await tx.query<{concept:string;month:string}>("SELECT concept,month FROM admin_cost_obligations WHERE empresa_id=$1 AND id=$2 FOR UPDATE",[companyId,p.obligation_id])).rows[0];
+ const m=(await tx.query<{account_id:string;movement_date:string;source_type:string}>("SELECT account_id::text,movement_date::text,source_type FROM admin_treasury_movements WHERE empresa_id=$1 AND id=$2 FOR UPDATE",[companyId,p.movement_id])).rows[0];
+ if(!o||!m||input.date<m.movement_date||input.date>today)throw Error("Fecha de corrección inválida");
+ let movementId:string|null=null;
+ if(m.source_type==='monthly_cost_payment'){
+ movementId=(await tx.query<{id:string}>(`INSERT INTO admin_treasury_movements(empresa_id,account_id,movement_date,direction,amount,concept,source_type,source_id,reference,notes,created_by) VALUES($1,$2,$3,'inflow',$4,$5,'monthly_cost_reversal',$6,$7,$8,$9) RETURNING id::text`,[companyId,m.account_id,input.date,Number(p.amount_cents)/100,`Reversión · ${o.concept}`.slice(0,240),input.paymentId,p.movement_id,input.reason.trim().slice(0,1000),actor])).rows[0].id;
+ }else if(m.source_type!=='manual')throw Error("Este movimiento requiere conciliación manual");
+ await tx.query("INSERT INTO admin_cost_payment_reversals(payment_id,empresa_id,movement_id,reversal_date,reason,created_by) VALUES($1,$2,$3,$4,$5,$6)",[input.paymentId,companyId,movementId,input.date,input.reason.trim().slice(0,1000),actor]);
+ await tx.query("UPDATE admin_cost_obligation_payments SET reversed_at=now() WHERE empresa_id=$1 AND id=$2",[companyId,input.paymentId]);
+ return {movementId,replayed:false};
 }

@@ -1,3 +1,4 @@
+import { readMonthlyExpenseObligations } from '@/lib/cost-obligations';
 import { readCostMonth } from '@/lib/monthly-costs';
 import { readTreasuryAccounts } from "@/lib/treasury-read";
 import { assertLegacyCostWritable, readMonthlyCostLedger } from "@/lib/monthly-cost-ledger";
@@ -122,7 +123,7 @@ export async function getSalaryPlan(companyId: number) {
       FROM admin_sueldos_config c
       LEFT JOIN profiles p ON p.id = c.profile_id
       LEFT JOIN admin_sueldo_movimientos m
-        ON m.empresa_id = c.empresa_id AND m.profile_id IS NOT DISTINCT FROM c.profile_id
+        ON m.empresa_id = c.empresa_id AND c.profile_id IS NOT NULL AND m.profile_id = c.profile_id
       WHERE c.empresa_id = $1
       GROUP BY c.id, c.profile_id, p.full_name, p.username, c.employee_name, c.sueldo_mensual,
                c.modalidad, c.activo, c.aguinaldo_aplica, c.cargas_pct, c.notas
@@ -157,7 +158,7 @@ export async function getSalaryPlan(companyId: number) {
       notes: row.notes,
       totalCost,
       paid,
-      payable: Math.max(0, totalCost - paid),
+      payable: Math.max(0, (version ? monthly : totalCost) - paid),
     };
   });
 
@@ -165,7 +166,15 @@ export async function getSalaryPlan(companyId: number) {
     for(const cost of ledger.state.costs.filter(c=>c.source==='salary'&&c.id.startsWith('salary:new:')&&c.start<=salaryMonth)) {
       const row=readCostMonth(ledger.state,salaryMonth).rows.find(r=>r.id===cost.id)!;
       const version=cost.versions.filter(v=>v.from<=salaryMonth).at(-1)!;
-      employees.push({id:cost.id.slice(7),employeeId:null,employee:cost.name,monthly:row.amountCents/100,modality:'mensual',active:row.status==='included',bonusEnabled:version.bonus,bonusProvision:row.provisionCents/100,chargesPercent:version.chargesPercent,charges:row.chargesCents/100,notes:'Alta mensual sin usuario vinculado',totalCost:row.totalCents/100,paid:0,payable:row.totalCents/100});
+      employees.push({id:cost.id.slice(7),employeeId:null,employee:cost.name,monthly:row.amountCents/100,modality:'mensual',active:row.status==='included',bonusEnabled:version.bonus,bonusProvision:row.provisionCents/100,chargesPercent:version.chargesPercent,charges:row.chargesCents/100,notes:'Alta mensual sin usuario vinculado',totalCost:row.totalCents/100,paid:0,payable:row.amountCents/100});
+    }
+  }
+  if(ledger){
+    const obligations=await readMonthlyExpenseObligations(companyId);
+    for(const employee of employees){
+      const o=obligations.find(o=>o.costId===`salary:${employee.id}`&&o.month===salaryMonth);
+      if(o){employee.paid=o.paidCents/100;employee.payable=o.balanceCents/100;}
+      if(!employee.active)employee.payable=0;
     }
   }
   return {

@@ -8,7 +8,7 @@ const scope = globalThis as typeof globalThis & {
 export function localObligationDb() {
   if (process.env.NODE_ENV !== "development") throw Error("Local only");
   return (scope.costObligationDemo ??= (async () => {
-    const dir = path.join(process.cwd(), ".local", "cost-obligations-pg");
+    const dir = path.join(process.cwd(), ".local", "administration-lifecycle-pg");
     await mkdir(dir, { recursive: true });
     const db = new PGlite(dir);
     const ready = await db.query<{ ready: string | null }>(
@@ -26,6 +26,8 @@ export function localObligationDb() {
         ),
       );
     }
+    const extended = await db.query("SELECT column_name FROM information_schema.columns WHERE table_name='admin_cost_obligations' AND column_name='salary_note'");
+    if(!extended.rows.length) await db.exec(await readFile(path.resolve(process.cwd(),"../../supabase/migrations/20261125135907_administration_payment_lifecycle.sql"),"utf8"));
     return db;
   })());
 }

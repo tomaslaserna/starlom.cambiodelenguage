@@ -233,6 +233,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
   const pendingCostCount = monthlyCostLedger && month >= monthlyCostLedger.state.baselineMonth ? readCostMonth(monthlyCostLedger.state,month).pending : suspendedIndefiniteCosts.length;
   const payrollDuplicates = operatingCosts.filter((cost) => cost.payrollEmployee);
   const closeChecks = [
+    {label:"Período finalizado",ready:month<today.slice(0,7),detail:month<today.slice(0,7)?"Mes terminado":"El mes sigue en curso"},
     { label: "Costos de ventas completos", ready: profitability.complete, detail: profitability.complete ? "Todos los remitos tienen costo comprobable" : `${profitability.missingCostSales} ventas sin costo` },
     { label: "Conciliación bancaria completa", ready: reconciliation.ready, detail: reconciliation.ready ? "Extractos sin diferencias pendientes" : `${reconciliation.pendingLines + reconciliation.partialLines} movimientos a revisar` },
     { label: "Costos fijos confirmados", ready: pendingCostCount === 0, detail: pendingCostCount === 0 ? "No quedan costos indefinidos suspendidos" : `${pendingCostCount} costos requieren decisión` },
@@ -415,7 +416,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                     ["Costo de mercadería vendida", -metrics.margin.grossCost],
                     ["Margen bruto", metrics.margin.grossProfit],
                     ["Gastos operativos incluidos", -metrics.margin.scheduledCosts],
-                    ["Sueldos, aguinaldo y cargas (RRHH)", -metrics.margin.payrollCosts],
+                    ["Sueldos, aguinaldo y cargas (costos por mes)", -metrics.margin.payrollCosts],
                     ["Resultado operativo", metrics.margin.operatingResult],
                   ].map(([label, amount], index) => (
                     <DataTableRow className={index === 3 || index === 6 ? "bg-[#f8fafc] font-bold" : ""} key={String(label)}><DataTableCell>{label}</DataTableCell><DataTableCell align="right" className="font-mono">{formatCurrency(Number(amount))}</DataTableCell></DataTableRow>
@@ -440,7 +441,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
                 ) : closeReady && canClosePeriods ? (
                   <form action={closeAdministrationMonthAction} className="md:col-span-3 flex flex-wrap items-end justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4">
                     <input name="month" type="hidden" value={month} />
-                    <div><strong className="text-sky-950">Crear cierre gerencial</strong><p className="mt-1 text-xs text-sky-800">Guarda una fotografía versionada del resultado, caja, créditos, stock, obligaciones y evidencias del período.</p></div>
+                    <div><strong className="text-sky-950">Crear cierre gerencial</strong><p className="mt-1 text-xs text-sky-800">Guarda el resultado del mes y las evidencias. Caja, créditos, stock y obligaciones se adjuntan como posición actual a la fecha de captura, no como saldo histórico del fin de mes.</p></div>
                     <div className="flex flex-wrap items-end gap-2"><Field htmlFor="admin-close-notes" label="Nota opcional"><Input id="admin-close-notes" name="notes" /></Field><Button type="submit">Cerrar {periodLabel(period)}</Button></div>
                   </form>
                 ) : (
@@ -485,7 +486,7 @@ export default async function AdministrationPage({ searchParams }: Administratio
               <StatCard detail={`${dueSoonPayables.length} obligaciones`} label="Próximos 7 días" tone="info" value={formatCurrency(dueSoonPayables.reduce((sum, item) => sum + item.balance, 0))} />
             </div>
             <Card>
-              <CardHeader><CardTitle>Agenda unificada de pagos</CardTitle>{process.env.COST_OBLIGATIONS_ENABLED==='true'?<a className="text-sm font-semibold text-blue-600" href="/administration/obligations">Gastos mensuales y pagos</a>:null}</CardHeader>
+              <CardHeader><CardTitle>Agenda unificada de pagos</CardTitle>{process.env.COST_OBLIGATIONS_ENABLED==='true'?<a className="text-sm font-semibold text-blue-600" href="/administration/obligations">Gastos, sueldos y pagos</a>:null}</CardHeader>
               <DataTable caption="Obligaciones pendientes ordenadas por vencimiento" className="rounded-none border-0 shadow-none" minWidth="1080px" tableLabel="Agenda de obligaciones">
                 <DataTableHeader><DataTableRow><DataTableHead>Vencimiento</DataTableHead><DataTableHead>Tipo</DataTableHead><DataTableHead>Beneficiario</DataTableHead><DataTableHead>Concepto</DataTableHead><DataTableHead>Estado</DataTableHead><DataTableHead align="right">Saldo</DataTableHead><DataTableHead align="center">Acciones</DataTableHead></DataTableRow></DataTableHeader>
                 <DataTableBody>

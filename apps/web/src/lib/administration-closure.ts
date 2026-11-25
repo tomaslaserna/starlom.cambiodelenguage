@@ -1,3 +1,4 @@
+import { localDateIso } from '@/lib/timezone';
 import { monthlyCostTotals } from '@/lib/monthly-cost-ledger';
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
@@ -20,6 +21,7 @@ export type AdministrationClosureSnapshot = {
   schemaVersion: 1;
   generatedAt: string;
   month: string;
+  positionAsOf?: string;
   results: {
     netSales: number;
     grossSales: number;
@@ -49,7 +51,7 @@ export type AdministrationClosureSnapshot = {
 };
 
 export type AdministrationCloseCheck = {
-  key: "sales_costs" | "bank_reconciliation" | "operating_costs";
+  key: "sales_costs" | "bank_reconciliation" | "operating_costs" | "period_ended";
   label: string;
   ready: boolean;
   detail: string;
@@ -75,7 +77,7 @@ export type AdministrationMonthlyClosure = {
 };
 
 function assertMonth(month: string) {
-  if (!/^\d{4}-\d{2}$/.test(month)) throw new ApiError(400, "Período inválido");
+  if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(month)) throw new ApiError(400, "Período inválido");
 }
 
 export async function getAdministrationClosePreview(
@@ -98,6 +100,7 @@ export async function getAdministrationClosePreview(
   const assets = treasury.meta.total + metrics.receivables.openTotal + metrics.stock.value;
 
   const checks: AdministrationCloseCheck[] = [
+    {key:"period_ended",label:"Período finalizado",ready:month<localDateIso().slice(0,7),detail:month<localDateIso().slice(0,7)?"El mes terminó":"El mes sigue en curso: podés revisar sin cerrarlo"},
     {
       key: "sales_costs",
       label: "Costos de ventas completos",
@@ -131,6 +134,7 @@ export async function getAdministrationClosePreview(
       schemaVersion: 1,
       generatedAt: new Date().toISOString(),
       month,
+      positionAsOf: localDateIso(),
       results: {
         netSales: metrics.sales.current,
         grossSales: metrics.sales.grossCurrent,
@@ -205,13 +209,12 @@ export async function getAdministrationMonthClosure(
 }
 
 export async function closeAdministrationMonth(session: AuthSession, month: string, notes: string) {
-  const preview = await getAdministrationClosePreview(session.companyId, month);
-  if (!preview.ready) {
-    const pending = preview.checks.filter((check) => !check.ready).map((check) => check.label).join(", ");
-    throw new ApiError(409, `No se puede cerrar el período: ${pending}`);
-  }
-
+  assertMonth(month);
   return withCompanyContext(session.companyId, async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock($1::integer,hashtext($2))",[session.companyId,`administration-close:${month}`]);
+    await client.query("SELECT empresa_id FROM admin_monthly_cost_ledger WHERE empresa_id=$1 FOR UPDATE",[session.companyId]);
+    const preview = await getAdministrationClosePreview(session.companyId, month);
+    if(!preview.ready) throw new ApiError(409,`No se puede cerrar el período: ${preview.checks.filter(c=>!c.ready).map(c=>c.label).join(", ")}`);
     const existing = await client.query(
       `SELECT id FROM admin_finance_monthly_closures
         WHERE empresa_id = $1 AND month = $2::date AND status = 'closed'

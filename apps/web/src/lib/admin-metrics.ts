@@ -663,8 +663,8 @@ export async function getAccountsPayable(companyId: number) {
     [companyId],
   );
 
-  const versionedPayroll = await monthlyPayrollPayables(companyId,currentStart.slice(0,7));
   const expenseObligations = await readMonthlyExpenseObligations(companyId);
+  const versionedPayroll = await monthlyPayrollPayables(companyId,currentStart.slice(0,7),expenseObligations);
   const data = [
     ...expenseObligations.filter(o=>o.balanceCents>0).map(o=>({id:o.id,provider:o.concept,concept:`Costo de ${o.month}`,total:o.amountCents/100,paid:o.paidCents/100,balance:o.balanceCents/100,date:o.dueDate,status:'pendiente',scheduledAmount:0,scheduledDate:null,source:'costo_mensual'})),
     ...issuedCheques.rows.map((row) => ({
@@ -700,7 +700,7 @@ export async function getAccountsPayable(companyId: number) {
         return {
           id: row.id,
           provider: row.employee,
-          concept: "Sueldo vigente + aguinaldo proporcional + cargas",
+          concept: versionedPayroll ? "Sueldo base estimado · pendiente de confirmar" : "Sueldo vigente + aguinaldo proporcional + cargas",
           total,
           paid,
           balance: Math.max(0, total - paid),
