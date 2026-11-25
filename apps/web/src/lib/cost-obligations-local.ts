@@ -27,7 +27,7 @@ export function localObligationDb() {
       );
     }
     const extended = await db.query("SELECT column_name FROM information_schema.columns WHERE table_name='admin_cost_obligations' AND column_name='salary_note'");
-    if(!extended.rows.length) await db.exec(await readFile(path.resolve(process.cwd(),"../../supabase/migrations/20261125135907_administration_payment_lifecycle.sql"),"utf8"));
+    if(!extended.rows.length) await db.exec(await readFile(path.resolve(process.cwd(),"../../supabase/migrations/20261125164631_administration_payment_lifecycle.sql"),"utf8"));
     return db;
   })());
 }

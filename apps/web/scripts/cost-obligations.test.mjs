@@ -29,7 +29,7 @@ async function setup() {
       "utf8",
     ),
   );
-  await db.exec(readFileSync("../../supabase/migrations/20261125135907_administration_payment_lifecycle.sql", "utf8"));
+  await db.exec(readFileSync("../../supabase/migrations/20261125164631_administration_payment_lifecycle.sql", "utf8"));
   return db;
 }
 

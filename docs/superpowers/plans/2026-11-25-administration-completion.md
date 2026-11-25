@@ -23,4 +23,4 @@ No aplicar migraciones ni registrar pagos reales en esta etapa. La conciliación
 - El circuito salarial y de gastos ahora exige permiso de lectura de sueldos; las mutaciones salariales requieren escritura de sueldos además de permisos de obligaciones/tesorería.
 
 ## Puesta en producción posterior
-Aplicar únicamente 20261125135907_administration_payment_lifecycle.sql antes del código. No ejecuta backfill ni cambios de importes. Conservar los hashes de costos/pagos/tesorería existentes antes y después. El código depende de columnas y tabla nuevas; no publicar sin migración. Revisar roles operativos con acceso a sueldos.
+Aplicar únicamente 20261125164631_administration_payment_lifecycle.sql antes del código. No ejecuta backfill ni cambios de importes. Conservar los hashes de costos/pagos/tesorería existentes antes y después. El código depende de columnas y tabla nuevas; no publicar sin migración. Revisar roles operativos con acceso a sueldos.
