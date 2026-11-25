@@ -1,5 +1,6 @@
 import { assertQuoteAccess, filterCustomerAccess } from "@/lib/customer-access";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { ApiError } from "@/lib/api-response";
 import { ModulePage } from "@/components/module-page";
 import { Card, PageHeader } from "@/components/ui";
 import { acceptQuoteAction } from "@/app/quotes/actions";
@@ -17,7 +18,10 @@ export default async function ConfirmQuotePage({ params }: ConfirmQuotePageProps
   const session = await requireStaffSession();
   await requirePagePermission(session, [{ resource: "presupuestos", action: "aprobar" }]);
   const { id } = await params;
-  await assertQuoteAccess(session, id);
+  await assertQuoteAccess(session, id).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 403) notFound();
+    throw error;
+  });
   const quote = await getQuote(session.companyId, id).catch(() => null);
   if (!quote) redirect("/quotes?error=Presupuesto%20no%20encontrado");
   if (quote.status !== "pendiente") redirect("/quotes?error=El%20presupuesto%20ya%20no%20esta%20pendiente");

@@ -1,6 +1,7 @@
+import { ApiError } from "@/lib/api-response";
 import { filterCustomerAccess } from "@/lib/customer-access";
 import { assertQuoteAccess } from "@/lib/customer-access";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import { Card, PageHeader } from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
@@ -20,7 +21,10 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [{ resource: "presupuestos", action: "editar" }]);
   const { id } = await params;
-    await assertQuoteAccess(session, id);
+  await assertQuoteAccess(session, id).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 403) notFound();
+    throw error;
+  });
 
   const quote = await getQuote(session.companyId, id).catch(() => null);
   if (!quote) redirect("/quotes?error=Presupuesto%20no%20encontrado");

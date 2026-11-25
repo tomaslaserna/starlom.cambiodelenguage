@@ -1,3 +1,4 @@
+import { ApiError } from "@/lib/api-response";
 import { assertCustomerAccess, filterCustomerAccess } from "@/lib/customer-access";
 import { customerReputations } from "@/lib/customer-reputation";
 import { CustomerReputation } from "@/components/customer-reputation";
@@ -51,7 +52,10 @@ export default async function CustomerDetailPage({ params, searchParams, crmMode
   await requirePagePermission(session, [CUSTOMERS_READ_PERMISSION]);
   const { id } = await params;
   const portalStatus = await searchParams;
-  await assertCustomerAccess(session, id);
+  await assertCustomerAccess(session, id).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 403) notFound();
+    throw error;
+  });
 
   const customer = await getCustomer(session.companyId, id).catch(() => null);
   if (!customer) notFound();
