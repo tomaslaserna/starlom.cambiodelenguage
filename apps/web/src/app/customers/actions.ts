@@ -1,4 +1,6 @@
 "use server";
+import { assertCustomerAccess } from "@/lib/customer-access";
+
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -95,6 +97,7 @@ export async function createCustomerAction(formData: FormData) {
 export async function updateCustomerAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "clientes", action: "editar" }]);
   const id = uuidParam(String(formData.get("id") ?? ""), "Cliente");
+  await assertCustomerAccess(session, id);
   const current = await getCustomer(session.companyId, id);
   await updateCustomer(
     session.companyId,
@@ -150,6 +153,7 @@ export async function updateCustomerBusinessSegmentAction(formData: FormData) {
 export async function deleteCustomerAction(formData: FormData) {
   const session = await requireApiSession([CLIENTES_ELIMINAR]);
   const id = uuidParam(String(formData.get("id") ?? ""), "Cliente");
+  await assertCustomerAccess(session, id);
   await deleteCustomer(session.companyId, id);
   revalidatePath("/customers");
   // La acción se dispara desde la ficha del cliente eliminado: esa ruta ya no

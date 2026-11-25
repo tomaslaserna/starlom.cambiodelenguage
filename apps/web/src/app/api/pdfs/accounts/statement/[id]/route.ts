@@ -1,3 +1,4 @@
+import { assertCustomerAccess } from "@/lib/customer-access";
 import { type NextRequest } from "next/server";
 import { handleApiError } from "@/lib/api-response";
 import { getCustomerStatement } from "@/lib/customer-accounts";
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const session = await requireApiSession([COLLECTIONS_READ_PERMISSION]);
     const clientId = uuidParam((await context.params).id, "Cliente");
     const search = request.nextUrl.searchParams;
+    await assertCustomerAccess(session, clientId);
     const result = await getCustomerStatement(session.companyId, clientId, { from: search.get("from") ?? "", to: search.get("to") ?? "" });
     return pdfResponse(await buildCustomerStatementPdf(result, search), search.get("download") !== "1");
   } catch (error) { return handleApiError(error); }

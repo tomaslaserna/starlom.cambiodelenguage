@@ -1,3 +1,4 @@
+import { assertCustomerAccess, filterCustomerAccess } from "@/lib/customer-access";
 import { customerReputations } from "@/lib/customer-reputation";
 import { CustomerReputation } from "@/components/customer-reputation";
 import Link from "next/link";
@@ -27,6 +28,10 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
   await requirePagePermission(session, [COLLECTIONS_READ_PERMISSION]);
   const { id } = await params;
   if (!/^[0-9a-fA-F-]{36}$/.test(id)) notFound();
+  await assertCustomerAccess(session, id).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 403) notFound();
+    throw error;
+  });
   const query = await searchParams;
   const from = query.from ?? "";
   const to = query.to ?? "";
@@ -42,7 +47,7 @@ export default async function CustomerStatementPage({ params, searchParams }: Cu
   const [periodResult, fullResult, customers, treasuryAccounts, paymentContext] = await Promise.all([
     filteredPeriod ? loadStatement({ from, to }) : fullPromise,
     fullPromise,
-    listCustomerOptions(session.companyId),
+    listCustomerOptions(session.companyId).then(rows => filterCustomerAccess(session, rows)),
     getTreasuryAccountOptions(session.companyId),
     getCustomerPaymentContext(session.companyId, id),
   ]);

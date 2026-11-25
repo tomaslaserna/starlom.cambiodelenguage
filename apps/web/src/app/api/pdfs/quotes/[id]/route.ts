@@ -1,3 +1,4 @@
+import { assertQuoteAccess } from "@/lib/customer-access";
 import { type NextRequest } from "next/server";
 import { handleApiError } from "@/lib/api-response";
 import { buildQuotePdf } from "@/lib/pdf/documents";
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const session = await requireApiSession([{ resource: "presupuestos", action: "ver" }]);
     const { id } = await context.params;
+    await assertQuoteAccess(session, id);
     const file = await buildQuotePdf(session.companyId, id);
     return pdfResponse(file, request.nextUrl.searchParams.get("download") !== "1");
   } catch (error) {

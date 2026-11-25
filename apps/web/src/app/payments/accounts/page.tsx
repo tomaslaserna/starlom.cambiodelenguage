@@ -1,3 +1,4 @@
+import { customerAccessIds } from "@/lib/customer-access";
 import { ModulePage } from "@/components/module-page";
 import { Button, ButtonLink, Input } from "@/components/ui";
 import { listOpenCustomerAccounts } from "@/lib/customer-accounts";
@@ -16,7 +17,9 @@ export default async function CustomerAccountsPage({ searchParams }: AccountsPag
   await requirePagePermission(session, [COLLECTIONS_READ_PERMISSION]);
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
-  const { accounts: allAccounts } = await listOpenCustomerAccounts(session.companyId, { query, includeSettled: Boolean(query) });
+  const accessIds = await customerAccessIds(session);
+  const { accounts: rawAccounts } = await listOpenCustomerAccounts(session.companyId, { query, customerIds: accessIds, includeSettled: Boolean(query) });
+  const allAccounts = rawAccounts.filter(account => accessIds === null || accessIds.includes(account.clientId));
   const scores = await customerReputations(session.companyId, allAccounts.map(a => a.clientId));
   const terms = [...new Set(allAccounts.flatMap(a => a.paymentTermDays == null ? [] : [a.paymentTermDays]))].sort((a,b) => a-b);
   const band = params.reputacion || "";

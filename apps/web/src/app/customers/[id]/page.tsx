@@ -1,3 +1,5 @@
+import { ApiError } from "@/lib/api-response";
+import { assertCustomerAccess, filterCustomerAccess } from "@/lib/customer-access";
 import { customerReputations } from "@/lib/customer-reputation";
 import { CustomerReputation } from "@/components/customer-reputation";
 import Link from "next/link";
@@ -50,6 +52,10 @@ export default async function CustomerDetailPage({ params, searchParams, crmMode
   await requirePagePermission(session, [CUSTOMERS_READ_PERMISSION]);
   const { id } = await params;
   const portalStatus = await searchParams;
+  await assertCustomerAccess(session, id).catch((error: unknown) => {
+    if (error instanceof ApiError && error.status === 403) notFound();
+    throw error;
+  });
 
   const customer = await getCustomer(session.companyId, id).catch(() => null);
   if (!customer) notFound();
@@ -59,7 +65,7 @@ export default async function CustomerDetailPage({ params, searchParams, crmMode
     getCustomerPurchaseHistory(session.companyId, id),
     listVendors(session.companyId),
     sessionAllows(session, [{ resource: "clientes", action: "eliminar" }]),
-    listClientOptions(session.companyId),
+    listClientOptions(session.companyId).then(rows => filterCustomerAccess(session, rows)),
     listPriceLists(session.companyId, true),
     queryWithCompanyContext<{ id: string; email: string }>(session.companyId, `SELECT a.id::text, a.email FROM customer_portal_accounts a JOIN customer_portal_memberships m ON m.portal_account_id=a.id AND m.empresa_id=a.empresa_id WHERE a.empresa_id=$1 AND m.client_id=$2::uuid AND a.active=TRUE ORDER BY a.email`, [session.companyId, id], { cache: false }),
   ]);

@@ -1,3 +1,4 @@
+import { assertCustomerAccess } from "@/lib/customer-access";
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
 import {
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const session = await requireApiSession([{ resource: "clientes", action: "ver" }]);
     const { id } = await context.params;
+    await assertCustomerAccess(session, id);
     const data = await getCustomer(session.companyId, uuidParam(id, "Cliente"));
     return ok({ data });
   } catch (error) {
@@ -29,6 +31,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const session = await requireApiSession([{ resource: "clientes", action: "editar" }]);
     const { id } = await context.params;
+    await assertCustomerAccess(session, id);
     const customerId = uuidParam(id, "Cliente");
     const body = await readRequestBody(request);
     const current = await getCustomer(session.companyId, customerId);

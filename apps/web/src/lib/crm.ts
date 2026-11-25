@@ -1,3 +1,4 @@
+import { customerAccessIds, assertCustomerAccess } from "@/lib/customer-access";
 import type { AuthSession } from "@/lib/auth";
 import { ApiError } from "@/lib/api-response";
 import {
@@ -191,6 +192,7 @@ const STATE_KEYS = ["al_dia", "contactar", "riesgo", "perdido", "sin_historial"]
 // clientes del vendedor (propios ∪ a cargo), enriqueciendo con zona y relacion.
 export async function getVendorClients(session: AuthSession): Promise<CrmClientsResult> {
   const names = new Set(sellerCandidates(session));
+  const accessIds = await customerAccessIds(session);
   const allCustomers = await hasAllCustomerAccess(session);
   const followUp = await getCustomerFollowUp(session.companyId);
 
@@ -215,7 +217,7 @@ export async function getVendorClients(session: AuthSession): Promise<CrmClients
       if (!info) continue;
       const propio = names.has(info.sn);
       const aCargo = names.has(info.asg);
-      if (!allCustomers && !propio && !aCargo) continue;
+      if (accessIds !== null ? !accessIds.includes(info.id) : (!allCustomers && !propio && !aCargo)) continue;
       const zona = info.loc || info.prov || "Sin zona";
       zonas.add(zona);
       groups[key]!.push({
@@ -247,6 +249,7 @@ const QUOTE_BUCKETS: QuoteBucket[] = ["vigentes", "por_vencer", "vencidos", "ace
 // Presupuestos del vendedor (quotes filtradas por seller_id -> profiles), agrupados
 // por vencimiento con classifyQuote y con el top de clientes que mas piden.
 export async function getVendorQuotes(session: AuthSession): Promise<VendorQuotesResult> {
+  const accessIds = await customerAccessIds(session);
   const names = sellerCandidates(session);
   const rows = (
     await queryWithCompanyContext<{
@@ -276,11 +279,12 @@ export async function getVendorQuotes(session: AuthSession): Promise<VendorQuote
         LEFT JOIN clients c ON c.id = q.client_id AND c.empresa_id = q.empresa_id
         LEFT JOIN profiles p ON p.id = q.seller_id
         WHERE q.empresa_id = $1
-          AND (UPPER(BTRIM(COALESCE(p.username, p.full_name, ''))) = ANY($2::text[])
+          AND ($3::uuid[] IS NOT NULL OR UPPER(BTRIM(COALESCE(p.username, p.full_name, ''))) = ANY($2::text[])
                OR q.visible_to_all = true)
+          AND ($3::uuid[] IS NULL OR q.client_id = ANY($3::uuid[]) OR (q.client_id IS NULL AND q.seller_id = $4::uuid))
         ORDER BY q.created_at DESC, q.id DESC
       `,
-      [session.companyId, names],
+      [session.companyId, names, accessIds, session.userId],
     )
   ).rows;
 
@@ -380,6 +384,7 @@ export async function getVendorCustomers(
   input: { query?: string | null; page?: string | null; pageSize?: string | null } = {},
 ) {
   const names = sellerCandidates(session);
+  const accessIds = await customerAccessIds(session);
   const allCustomers = await hasAllCustomerAccess(session);
   const query = input.query?.trim() ?? "";
   const pagination = parsePagination(input);
@@ -390,6 +395,7 @@ export async function getVendorCustomers(
     ? "$2::text[] IS NOT NULL"
     : "(UPPER(BTRIM(COALESCE(seller_name,''))) = ANY($2::text[]) OR UPPER(BTRIM(COALESCE(assigned_seller,''))) = ANY($2::text[]))";
   const filters = ["empresa_id = $1", sellerFilter];
+  if (accessIds !== null) { params.push(accessIds); filters.push(`id = ANY($${params.length}::uuid[])`); }
   if (query) {
     params.push(`%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);
     const p = params.length;
@@ -460,13 +466,17 @@ export async function getVendorCustomers(
 // Delega en listOpenCustomerAccounts (customer-accounts.ts) filtrando por seller_name.
 export async function getVendorOpenAccounts(session: AuthSession) {
   const allCustomers = await hasAllCustomerAccess(session);
+  const ids = await customerAccessIds(session);
   return listOpenCustomerAccounts(session.companyId, {
     sellerNames: allCustomers ? undefined : sellerCandidates(session),
+    customerIds: ids,
   });
 }
 
 // Guard: el cliente debe ser propio o a cargo del vendedor, si no 403.
 export async function assertVendorOwnsClient(session: AuthSession, clientId: string): Promise<void> {
+  const accessIds = await customerAccessIds(session);
+  if (accessIds !== null) { await assertCustomerAccess(session, clientId); return; }
   if (await hasAllCustomerAccess(session)) return;
   const names = sellerCandidates(session);
   const result = await queryWithCompanyContext<{ ok: number }>(

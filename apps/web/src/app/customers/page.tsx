@@ -1,3 +1,4 @@
+import { customerAccessIds } from "@/lib/customer-access";
 import Link from "next/link";
 import { CustomerReputation } from "@/components/customer-reputation";
 import { customerReputations } from "@/lib/customer-reputation";
@@ -60,6 +61,7 @@ function customerStatusTone(status: string): StatusBadgeTone {
 
 export default async function CustomersPage({ searchParams, crmMode = false }: CustomersPageProps) {
   const session = await requireStaffSession();
+  const accessIds = await customerAccessIds(session);
   await requirePagePermission(session, [CUSTOMERS_READ_PERMISSION]);
   const navigationAuthorization = await fastOr(
     getNavigationAuthorization(session),
@@ -71,6 +73,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
   const [result, priceLists, canCreateCustomers] = await Promise.all([
     listCustomers({
       companyId: session.companyId,
+      customerIds: accessIds,
       query: params.q,
       page: params.page,
       pageSize: "25",

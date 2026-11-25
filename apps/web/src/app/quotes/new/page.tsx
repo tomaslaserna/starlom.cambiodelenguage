@@ -1,3 +1,4 @@
+import { filterCustomerAccess } from "@/lib/customer-access";
 import { ModulePage } from "@/components/module-page";
 import { ButtonLink, Card, PageHeader } from "@/components/ui";
 import { requireStaffSession } from "@/lib/auth";
@@ -30,7 +31,7 @@ export default async function NewQuotePage() {
           <QuoteEntryForm action={createQuoteAction} className="grid gap-4 p-4">
             <input name="returnTo" type="hidden" value="/quotes?created=1" />
             <QuoteEntryFields
-              clients={quoteFormData.clients}
+              clients={await filterCustomerAccess(session, quoteFormData.clients)}
               priceLists={quoteFormData.priceLists}
               products={quoteFormData.products}
               vendors={vendors}

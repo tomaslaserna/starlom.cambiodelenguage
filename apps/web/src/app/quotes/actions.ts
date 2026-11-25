@@ -1,4 +1,6 @@
 "use server";
+import { assertQuoteAccess } from "@/lib/customer-access";
+
 
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
@@ -10,6 +12,7 @@ import { requireApiSession } from "@/lib/route-auth";
 export async function acceptQuoteAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "presupuestos", action: "aprobar" }]);
   const id = String(formData.get("id") ?? "").trim();
+  await assertQuoteAccess(session, id);
   const requestFiscalInvoice = String(formData.get("requestFiscalInvoice") ?? "") === "true";
   const customerMode = String(formData.get("customerMode") ?? "existing");
   const customer = customerMode === "new"
@@ -45,6 +48,7 @@ export async function acceptQuoteAndRemitAction(formData: FormData) {
     { resource: "ventas", action: "editar" },
   ]);
   const id = String(formData.get("id") ?? "").trim();
+  await assertQuoteAccess(session, id);
   await acceptQuote(session, id);
   (await cookies()).set(`starlim-sound-${session.companyId}-${session.userId}`, "sale", { path: "/", sameSite: "lax", maxAge: 30 });
   revalidatePath("/quotes");
@@ -78,6 +82,7 @@ export async function updateQuoteAction(
 ): Promise<CreateQuoteState> {
   const session = await requireApiSession([{ resource: "presupuestos", action: "editar" }]);
   const id = String(formData.get("quoteId") ?? "").trim();
+  await assertQuoteAccess(session, id);
   try {
     await updateQuote(session, id, quoteInputFromBody(Object.fromEntries(formData.entries())));
   } catch (error) {
@@ -90,6 +95,7 @@ export async function updateQuoteAction(
 export async function deleteQuoteAction(formData: FormData) {
   const session = await requireApiSession([{ resource: "presupuestos", action: "cancelar" }]);
   const id = String(formData.get("id") ?? "").trim();
+  await assertQuoteAccess(session, id);
   try {
     await deleteQuote(session.companyId, id);
   } catch (error) {

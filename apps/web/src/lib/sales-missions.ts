@@ -1,3 +1,4 @@
+import { assertQuoteAccess, customerAccessIds } from "@/lib/customer-access";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { assertVendorOwnsClient, sellerCandidates } from "@/lib/crm";
@@ -140,14 +141,18 @@ export async function completeSalesMission(session: AuthSession, input: Complete
     }
 
     if (input.kind === "presupuesto") {
+      await assertQuoteAccess(session, input.entityId);
+      const accessIds = await customerAccessIds(session);
       const quote = await client.query<{ customer_id: string | null }>(
         `SELECT client_id::text AS customer_id
            FROM quotes
           WHERE id = $1::uuid AND empresa_id = $2
-            AND (seller_id = $3::uuid OR visible_to_all = true)
+            AND (($4::uuid[] IS NULL AND (seller_id = $3::uuid OR visible_to_all = true))
+              OR client_id = ANY($4::uuid[])
+              OR (client_id IS NULL AND seller_id = $3::uuid))
             AND status = 'pendiente'
           LIMIT 1`,
-        [input.entityId, session.companyId, session.userId],
+        [input.entityId, session.companyId, session.userId, accessIds],
       );
       if (!quote.rows[0]) throw new ApiError(404, "Presupuesto pendiente no encontrado");
       customerId = quote.rows[0].customer_id;

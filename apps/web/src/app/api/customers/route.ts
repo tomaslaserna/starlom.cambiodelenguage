@@ -1,3 +1,4 @@
+import { customerAccessIds } from "@/lib/customer-access";
 import { NextResponse, type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
 import { listCustomers } from "@/lib/catalog";
@@ -13,9 +14,11 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
     const session = await requireApiSession([{ resource: "clientes", action: "ver" }]);
+  const accessIds = await customerAccessIds(session);
     const searchParams = request.nextUrl.searchParams;
     const result = await listCustomers({
       companyId: session.companyId,
+      customerIds: accessIds,
       query: searchParams.get("q"),
       page: searchParams.get("page"),
       pageSize: searchParams.get("pageSize"),

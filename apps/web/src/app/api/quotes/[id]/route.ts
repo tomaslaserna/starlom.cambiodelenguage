@@ -1,3 +1,4 @@
+import { assertQuoteAccess } from "@/lib/customer-access";
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
 import { deleteQuote, getQuote } from "@/lib/quotes";
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const session = await requireApiSession([{ resource: "presupuestos", action: "ver" }]);
     const { id } = await context.params;
+    await assertQuoteAccess(session, id);
     const data = await getQuote(session.companyId, id);
     return ok({ data });
   } catch (error) {
@@ -24,6 +26,7 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
   try {
     const session = await requireApiSession([{ resource: "presupuestos", action: "cancelar" }]);
     const { id } = await context.params;
+    await assertQuoteAccess(session, id);
     const data = await deleteQuote(session.companyId, id);
     return ok({ data });
   } catch (error) {

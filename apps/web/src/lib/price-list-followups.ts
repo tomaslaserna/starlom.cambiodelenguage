@@ -1,3 +1,4 @@
+import { customerAccessIds } from "@/lib/customer-access";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { queryWithCompanyContext, withCompanyContext } from "@/lib/db";
@@ -132,7 +133,8 @@ export async function getPriceListFollowupSignals(session: AuthSession): Promise
     [session.companyId, session.userId],
     { cache: false },
   );
-  return result.rows.map((row) => ({
+  const accessIds = await customerAccessIds(session);
+  return result.rows.filter(row => !row.customer_id || accessIds === null || accessIds.includes(row.customer_id)).map((row) => ({
     id: row.id,
     customerId: row.customer_id,
     priceListId: Number(row.price_list_id),
