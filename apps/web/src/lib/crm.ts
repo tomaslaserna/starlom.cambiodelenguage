@@ -246,11 +246,10 @@ export type VendorQuotesResult = {
 
 const QUOTE_BUCKETS: QuoteBucket[] = ["vigentes", "por_vencer", "vencidos", "aceptados"];
 
-// Presupuestos del vendedor (quotes filtradas por seller_id -> profiles), agrupados
-// por vencimiento con classifyQuote y con el top de clientes que mas piden.
+// El acceso global incluye presupuestos de cualquier autor. El resto ve solamente
+// su cartera asignada y sus prospectos, aunque el documento sea visible para todos.
 export async function getVendorQuotes(session: AuthSession): Promise<VendorQuotesResult> {
   const accessIds = await customerAccessIds(session);
-  const names = sellerCandidates(session);
   const rows = (
     await queryWithCompanyContext<{
       id: string;
@@ -277,14 +276,11 @@ export async function getVendorQuotes(session: AuthSession): Promise<VendorQuote
                (q.status = 'aceptada' AND q.approved_at >= date_trunc('month', CURRENT_DATE)) AS approved_this_month
         FROM quotes q
         LEFT JOIN clients c ON c.id = q.client_id AND c.empresa_id = q.empresa_id
-        LEFT JOIN profiles p ON p.id = q.seller_id
         WHERE q.empresa_id = $1
-          AND ($3::uuid[] IS NOT NULL OR UPPER(BTRIM(COALESCE(p.username, p.full_name, ''))) = ANY($2::text[])
-               OR q.visible_to_all = true)
-          AND ($3::uuid[] IS NULL OR q.client_id = ANY($3::uuid[]) OR (q.client_id IS NULL AND q.seller_id = $4::uuid))
+          AND ($2::uuid[] IS NULL OR q.client_id = ANY($2::uuid[]) OR (q.client_id IS NULL AND q.seller_id = $3::uuid))
         ORDER BY q.created_at DESC, q.id DESC
       `,
-      [session.companyId, names, accessIds, session.userId],
+      [session.companyId, accessIds, session.userId],
     )
   ).rows;
 
