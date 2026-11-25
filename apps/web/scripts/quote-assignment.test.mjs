@@ -168,22 +168,3 @@ test("updateQuote setea seller_id y visible_to_all segun la asignacion", async (
   assert.match(upd.sql, /seller_id = \$\d+::uuid/i);
   assert.match(upd.sql, /visible_to_all = \$\d+/i);
 });
-
-test("getVendorQuotes incluye OR visible_to_all en el filtro", async () => {
-  const calls = [];
-  const crm = loadTypeScriptModule("../src/lib/crm.ts", {
-    "@/lib/api-response": { ApiError },
-    "@/lib/crm-quotes": { classifyQuote: () => null, topQuoteClients: () => [] },
-    "@/lib/customer-accounts": { listOpenCustomerAccounts: async () => ({ accounts: [], totals: { debit: 0, credit: 0 } }) },
-    "@/lib/db": { queryWithCompanyContext: async (_c, sql) => { calls.push(sql); return { rows: [] }; } },
-    "@/lib/customer-follow-up": { getCustomerFollowUp: async () => ({ groups: {} }) },
-    "@/lib/order-status": { normalizedOrderStatusSql: () => "estado" },
-    "@/lib/pricing": { listPriceListParameters: async () => [] },
-    "@/lib/sales-source-sql": { canonicalSalesSourceSql: () => "true" },
-    "@/lib/sales-vat": { adjustedSalesAmountSql: (expression) => expression },
-    "@/lib/pagination": { parsePagination: () => ({ page: 1, pageSize: 25, offset: 0 }) },
-    "@/lib/collections": { listSalesToCollectWhere: async () => [] },
-  });
-  await crm.getVendorQuotes({ companyId: 1, userId: "u", username: "juan", displayName: "Juan" });
-  assert.ok(calls.some((sql) => /q\.visible_to_all = true/i.test(sql)));
-});

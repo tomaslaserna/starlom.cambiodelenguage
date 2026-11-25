@@ -81,7 +81,7 @@ test('sales engine SQL returns assigned-client quotes regardless of author and e
       CREATE TABLE quotes(id uuid, empresa_id int, client_id uuid, seller_id uuid, quote_number text,
         client_name text,total_amount numeric,created_at timestamp,validity_days int,status text,approved_at timestamp,visible_to_all boolean);
       INSERT INTO clients VALUES ('${own}',1,'Matias Ferrer','Own',''),('${other}',1,'Fran','Other','');
-      INSERT INTO profiles VALUES ('${author}','lucas','Lucas');
+      INSERT INTO profiles VALUES ('${author}','francisco','Francisco');
       INSERT INTO quotes VALUES ('${own}',1,'${own}','${author}','P-OWN','Own',100,NOW(),15,'pendiente',NULL,FALSE),
         ('${other}',1,'${other}','${author}','P-OTHER','Other',200,NOW(),15,'pendiente',NULL,TRUE);`);
     const query=(sql,params)=>db.query(sql,params);
@@ -95,5 +95,8 @@ test('sales engine SQL returns assigned-client quotes regardless of author and e
     Function('require','module','exports',compiled)(s=>aliases[s]??{},module,module.exports);
     const result=await module.exports.getVendorQuotes({...session,userId:user});
     assert.deepEqual(result.buckets.vigentes.map(q=>q.quoteNumber),['P-OWN']);
-  } finally {await db.close();}
+    all=true;
+    const principal=await module.exports.getVendorQuotes({...session,userId:user,username:'lucaslaserna',displayName:'Lucas La Serna'});
+    assert.deepEqual(principal.buckets.vigentes.map(q=>q.quoteNumber).sort(),['P-OTHER','P-OWN']);
+  } finally {all=false;await db.close();}
 });
