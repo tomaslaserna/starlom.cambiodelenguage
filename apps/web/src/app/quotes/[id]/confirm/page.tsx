@@ -1,4 +1,4 @@
-import { assertQuoteAccess } from "@/lib/customer-access";
+import { assertQuoteAccess, filterCustomerAccess } from "@/lib/customer-access";
 import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import { Card, PageHeader } from "@/components/ui";
@@ -17,7 +17,7 @@ export default async function ConfirmQuotePage({ params }: ConfirmQuotePageProps
   const session = await requireStaffSession();
   await requirePagePermission(session, [{ resource: "presupuestos", action: "aprobar" }]);
   const { id } = await params;
-    await assertQuoteAccess(session, id);
+  await assertQuoteAccess(session, id);
   const quote = await getQuote(session.companyId, id).catch(() => null);
   if (!quote) redirect("/quotes?error=Presupuesto%20no%20encontrado");
   if (quote.status !== "pendiente") redirect("/quotes?error=El%20presupuesto%20ya%20no%20esta%20pendiente");
@@ -38,7 +38,7 @@ export default async function ConfirmQuotePage({ params }: ConfirmQuotePageProps
           </div>
           <QuoteConfirmationForm
             action={acceptQuoteAction}
-            clients={formData.clients}
+            clients={await filterCustomerAccess(session, formData.clients)}
             quote={{
               id: quote.id,
               clientId: quote.clientId,

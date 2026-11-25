@@ -902,6 +902,7 @@ export async function acceptQuote(
   options: { requestFiscalInvoice?: boolean; customer?: QuoteAcceptanceCustomerInput } = {},
 ) {
   await assertQuoteAccess(session, id);
+  if (options.customer?.existingCustomerId) await assertCustomerAccess(session, options.customer.existingCustomerId);
   const result = await withCompanyContext(session.companyId, async (client) => {
     const quoteResult = await client.query<{
       id: string;
@@ -1023,6 +1024,7 @@ export async function acceptQuote(
           [session.companyId, normalizedTaxId],
         );
         clientId = duplicate.rows[0]?.id ?? "";
+        if (clientId) await assertCustomerAccess(session, clientId);
       }
 
       if (!clientId) {
