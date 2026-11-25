@@ -5,7 +5,8 @@ import { CUSTOMERS_ALL_READ_PERMISSION, isFullAccessRole, sessionAllows } from "
 
 // null means unrestricted; [] means no assigned customers (never unrestricted).
 export async function customerAccessIds(session: AuthSession): Promise<string[] | null> {
-  if (isFullAccessRole(session.role) || normalizeRole(session.role) !== "vendedor") return null;
+  const role = normalizeRole(session.role);
+  if (isFullAccessRole(role) || !["vendedor", "operador"].includes(role)) return null;
   if (await sessionAllows(session, [CUSTOMERS_ALL_READ_PERMISSION])) return null;
   const names = [...new Set([session.username, session.displayName]
     .filter((name): name is string => Boolean(name?.trim()))

@@ -29,6 +29,14 @@ test('seller only receives assigned clients, including an empty portfolio',async
   rows=[{id:'own'}];
   assert.deepEqual(await access.filterCustomerAccess(session,[{id:'own'},{id:'other'}]),[{id:'own'}]);
 });
+test('Fran operator role is restricted to assigned accounts without changing his operating permissions',async()=>{
+  const access=load();
+  const fran={...session,userId:'fran',role:'operador',username:'Francisco Valdes',displayName:'Francisco Valdes'};
+  assert.deepEqual(await access.customerAccessIds(fran),['own']);
+  await assert.rejects(access.assertCustomerAccess(fran,'other'),e=>e.status===403);
+  assert.equal(access.quoteIsAccessible({clientId:'',sellerId:'fran'},[],fran.userId),true);
+  assert.equal(access.quoteIsAccessible({clientId:'',sellerId:'mati'},[],fran.userId),false);
+});
 test('public quote visibility and origin seller never override assigned client',async()=>{
   const {quoteIsAccessible}=load();
   assert.equal(quoteIsAccessible({clientId:'other',sellerId:'mati',visibleToAll:true},['own'],'mati'),false);
