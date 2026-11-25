@@ -1,3 +1,4 @@
+import {afterReconciliationSql} from './treasury-cutoff';
 import { queryWithCompanyContext } from '@/lib/db';
 import { localDateIso } from '@/lib/timezone';
 
@@ -33,7 +34,7 @@ export async function readTreasuryAccounts(companyId: number, asOf = localDateIs
           AND movement.source_type <> 'customer_payment_void') AS operating_outflows
       FROM admin_treasury_movements movement
       WHERE movement.empresa_id = account.empresa_id AND movement.account_id = account.id
-        AND movement.created_at > COALESCE(reconciliation.reconciled_at, '-infinity'::timestamptz)
+        AND ${afterReconciliationSql('movement','reconciliation')}
     ) movements ON TRUE
     WHERE account.empresa_id = $1 AND account.active = TRUE
     ORDER BY account.account_type, account.name`, [companyId, asOf]);

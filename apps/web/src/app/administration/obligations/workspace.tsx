@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CostPaymentWorkspace } from "@/lib/cost-obligations-read";
+import {SupplierPayments} from "./supplier-payments";
 import { PaymentCorrections } from "./payment-corrections";
 import type { CostObligation } from "@/lib/cost-obligations-core";
 const money = (n: number) =>
@@ -20,10 +21,13 @@ const cents = (s: string) =>
 export function CostObligationsWorkspace({
   endpoint,
   local = false,
+  unified = false,
 }: {
   endpoint: string;
   local?: boolean;
+  unified?: boolean;
 }) {
+  const [section,setSection]=useState(local||unified?"suppliers":"costs");
   const [data, setData] = useState<CostPaymentWorkspace | null>(null),
     [month, setMonth] = useState(local ? "2026-11" : ""),
     [error, setError] = useState(""),
@@ -109,6 +113,7 @@ export function CostObligationsWorkspace({
     setError("");
     request.current = crypto.randomUUID();
   }
+  if(section==="suppliers") return <SupplierPayments local={local} onCosts={()=>setSection("costs")}/>;
   if (!data)
     return <main className="p-8">{error || "Cargando obligaciones…"}</main>;
   const selectedMonth = month || data.month,
@@ -133,7 +138,7 @@ export function CostObligationsWorkspace({
             <p className="text-xs font-bold tracking-widest text-blue-600">
               STARLIM · ADMINISTRACIÓN
             </p>
-            <h1 className="mt-2 text-3xl font-extrabold">Gastos, sueldos y pagos</h1>
+            <h1 className="mt-2 text-3xl font-extrabold">Pagos · Gastos y sueldos</h1>
             <p className="mt-2 text-sm text-slate-500">
               Del costo del mes al pago, con su cuenta de origen.
             </p>
@@ -155,6 +160,7 @@ export function CostObligationsWorkspace({
             />
           </label>
         </header>
+        {(local||unified)&&<nav className="flex gap-2"><button className={secondary} onClick={()=>setSection("suppliers")}>Proveedores</button><button className={primary}>Gastos y sueldos</button></nav>}
         {local ? (
           <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             <strong>Vista local funcional · datos de ejemplo.</strong> Los pagos

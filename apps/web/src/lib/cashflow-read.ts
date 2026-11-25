@@ -1,3 +1,4 @@
+import {afterReconciliationSql} from './treasury-cutoff';
 import {readMonthlyExpenseObligations} from '@/lib/cost-obligations';
 import { monthlyPayrollPayables } from '@/lib/monthly-cost-ledger';
 import { queryWithCompanyContext } from '@/lib/db';
@@ -37,6 +38,12 @@ export async function getCashflowSnapshot(companyId: number, asOf = localDateIso
         FROM app_solicitudes req JOIN purchases p ON req.metadata->>'purchaseId'=p.id::text AND p.empresa_id=req.empresa_id
         WHERE req.empresa_id=$1 AND req.estado='pendiente' AND req.metadata->>'action'='supplier_payment'
           AND p.status <> 'cancelada'
+        ${process.env.UNIFIED_PAYMENTS_ENABLED === 'true' ? `UNION ALL
+        SELECT p.id,o.id::text,COALESCE(s.display_name,'Proveedor')||' · pago programado',o.due_date,
+          LEAST((o.amount_cents-o.paid_cents)::numeric/100,GREATEST(p.total_amount-COALESCE(p.paid_amount,0),0))
+        FROM admin_supplier_payment_operations o JOIN purchases p ON p.id=o.purchase_id AND p.empresa_id=o.empresa_id
+        LEFT JOIN suppliers s ON s.id=p.supplier_id AND s.empresa_id=p.empresa_id
+        WHERE o.empresa_id=$1 AND o.intent='schedule' AND o.paid_cents<o.amount_cents AND p.status<>'cancelada'` : ''}
       ), flows AS (
         SELECT 'sale:'||s.id::text AS id, COALESCE(c.display_name,s.client_name,'Cliente')||' · '||COALESCE(s.sale_number,s.id::text) AS label,
           b.balance AS amount, ${SALE_DUE_DATE_SQL} AS date, 'inflow' AS kind, 'remito' AS source
@@ -69,9 +76,11 @@ export async function getCashflowSnapshot(companyId: number, asOf = localDateIso
         UNION ALL
         SELECT 'movement:'||m.id::text,m.concept,m.amount,m.movement_date,m.direction,'movimiento_futuro'
         FROM admin_treasury_movements m JOIN admin_treasury_accounts a ON a.id=m.account_id AND a.empresa_id=m.empresa_id AND a.active
+        LEFT JOIN LATERAL (SELECT r.reconciled_at,r.statement_date FROM admin_treasury_reconciliations r
+          WHERE r.empresa_id=m.empresa_id AND r.account_id=m.account_id AND r.statement_date<=$2::date
+          ORDER BY r.reconciled_at DESC,r.id DESC LIMIT 1) reconciliation ON TRUE
         WHERE m.empresa_id=$1 AND m.movement_date>$2::date
-          AND m.created_at>COALESCE((SELECT MAX(r.reconciled_at) FROM admin_treasury_reconciliations r
-            WHERE r.empresa_id=m.empresa_id AND r.account_id=m.account_id AND r.statement_date<=$2::date),'-infinity'::timestamptz)
+          AND ${afterReconciliationSql('m','reconciliation')}
         UNION ALL
         SELECT 'salary:'||c.id::text,COALESCE(p.full_name,p.username,c.employee_name,'Empleado')||' · estimación mensual',
           GREATEST(c.sueldo_mensual + CASE WHEN COALESCE(c.aguinaldo_aplica,TRUE) THEN c.sueldo_mensual/12 ELSE 0 END

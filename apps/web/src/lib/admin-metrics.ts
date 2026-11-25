@@ -533,15 +533,15 @@ export async function getAccountsPayable(companyId: number) {
       FROM purchases p
       LEFT JOIN suppliers s ON s.id = p.supplier_id AND s.empresa_id = p.empresa_id
       LEFT JOIN LATERAL (
-        SELECT
-          COALESCE(SUM(COALESCE(NULLIF(req.metadata->>'amount', '')::numeric, req.monto, 0)), 0) AS scheduled_amount,
-          MIN(NULLIF(req.metadata->>'date', '')) AS scheduled_date
-        FROM app_solicitudes req
-        WHERE req.empresa_id = p.empresa_id
-          AND req.estado = 'pendiente'
-          AND req.metadata->>'action' = 'supplier_payment'
-          AND req.metadata->>'purchaseId' = p.id::text
-      ) scheduled ON true
+ SELECT COALESCE(SUM(amount),0) AS scheduled_amount,MIN(date) AS scheduled_date FROM (
+ SELECT COALESCE(NULLIF(req.metadata->>'amount','')::numeric,req.monto,0) AS amount,NULLIF(req.metadata->>'date','') AS date
+ FROM app_solicitudes req WHERE req.empresa_id=p.empresa_id AND req.estado='pendiente'
+ AND req.metadata->>'action'='supplier_payment' AND req.metadata->>'purchaseId'=p.id::text
+ ${process.env.UNIFIED_PAYMENTS_ENABLED === 'true' ? `UNION ALL
+ SELECT (o.amount_cents-o.paid_cents)::numeric/100,o.due_date::text FROM admin_supplier_payment_operations o
+ WHERE o.empresa_id=p.empresa_id AND o.purchase_id=p.id AND o.intent='schedule' AND o.paid_cents<o.amount_cents` : ''}
+ ) plans
+ ) scheduled ON true
       WHERE p.empresa_id = $1
         AND p.status = 'recibida'
         AND GREATEST(p.total_amount - COALESCE(p.paid_amount, 0), 0) > 0

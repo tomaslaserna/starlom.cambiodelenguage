@@ -17,6 +17,6 @@ export default async function Page() {
   await requirePagePermission(s, [ADMIN_METRICS_READ_PERMISSION]);
   await requirePagePermission(s,[ADMIN_SALARIES_READ_PERMISSION]);
   return (
-    <CostObligationsWorkspace endpoint="/api/administration/cost-obligations" />
+    <CostObligationsWorkspace endpoint="/api/administration/cost-obligations" unified={process.env.UNIFIED_PAYMENTS_ENABLED === "true"} />
   );
 }
