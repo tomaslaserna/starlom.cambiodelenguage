@@ -12,4 +12,4 @@ No production deploy or data mutations. Existing records remain unchanged.
 - Browser localhost:3011: synthetic purchase 99,370.80; scheduled, paid 40,000.00; remaining and scheduled remainder 59,370.80; navigation to existing salary workspace verified.
 - No production SQL, migration, payment, push, or deployment executed.
 ## Release prerequisites (not done)
-Apply additive 20261125180000 migration after reviewing live schema/permissions. Enable UNIFIED_PAYMENTS_ENABLED only with that schema. Keep existing supplier requests visible/blocked for reconciliation; do not execute or delete them automatically. Existing historic purchases/payments are not backfilled. This preview does not add supplier-payment reversals or editing old schedules.
+Apply additive 20261125184912 migration after reviewing live schema/permissions. Enable UNIFIED_PAYMENTS_ENABLED only with that schema. Keep existing supplier requests visible/blocked for reconciliation; do not execute or delete them automatically. Existing historic purchases/payments are not backfilled. This preview does not add supplier-payment reversals or editing old schedules.

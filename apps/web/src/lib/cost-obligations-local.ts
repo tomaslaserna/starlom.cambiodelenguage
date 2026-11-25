@@ -30,7 +30,7 @@ export function localObligationDb() {
     const extended = await db.query("SELECT column_name FROM information_schema.columns WHERE table_name='admin_cost_obligations' AND column_name='salary_note'");
     if(!extended.rows.length) await db.exec(await readFile(path.resolve(process.cwd(),"../../supabase/migrations/20261125164631_administration_payment_lifecycle.sql"),"utf8"));
     const suppliers=await db.query<{ready:string|null}>("SELECT to_regclass('public.admin_supplier_payment_operations') ready");
-    if(!suppliers.rows[0]?.ready){await db.exec(supplierFixtureSql);await db.exec(await readFile(path.resolve(process.cwd(),'../../supabase/migrations/20261125180000_unified_supplier_payments.sql'),'utf8'));}
+    if(!suppliers.rows[0]?.ready){await db.exec(supplierFixtureSql);await db.exec(await readFile(path.resolve(process.cwd(),'../../supabase/migrations/20261125184912_unified_supplier_payments.sql'),'utf8'));}
     return db;
   })());
 }

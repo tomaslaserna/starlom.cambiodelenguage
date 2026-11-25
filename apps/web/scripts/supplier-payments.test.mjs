@@ -6,7 +6,7 @@ import {obligationFixtureSql} from '../src/lib/cost-obligations-fixture.ts';
 import {supplierFixtureSql} from '../src/lib/supplier-payments-fixture.ts';
 import {writeSupplierPayment} from '../src/lib/supplier-payments-core.ts';
 const actor='11111111-1111-4111-8111-111111111111',purchaseId='44444444-4444-4444-8444-444444444444';
-async function setup(){const db=new PGlite();await db.exec(obligationFixtureSql);await db.exec(supplierFixtureSql);await db.exec(readFileSync('../../supabase/migrations/20261125180000_unified_supplier_payments.sql','utf8'));return db;}
+async function setup(){const db=new PGlite();await db.exec(obligationFixtureSql);await db.exec(supplierFixtureSql);await db.exec(readFileSync('../../supabase/migrations/20261125184912_unified_supplier_payments.sql','utf8'));return db;}
 const input={intent:'pay',purchaseId,requestId:'55555555-5555-4555-8555-555555555555',accountId:'1',date:'2026-11-24',amountCents:9937080,expectedPaidCents:9937080};
 test('schedule changes no money; payment and retry produce one debit without changing old records',async()=>{const db=await setup();try{
  const original=(await db.query('select * from admin_treasury_movements order by id')).rows;
