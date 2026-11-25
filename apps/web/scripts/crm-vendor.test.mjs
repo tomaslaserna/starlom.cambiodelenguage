@@ -12,7 +12,7 @@ function loadTypeScriptModule(relativePath, aliases = {}) {
     compilerOptions: { esModuleInterop: true, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const compiledModule = { exports: {} };
-  const moduleRequire = (specifier) => aliases[specifier] ?? require(specifier);
+  const moduleRequire = (specifier) => aliases[specifier] ?? (specifier === "@/lib/customer-access" ? {customerAccessIds: async () => null, assertCustomerAccess: async () => {}, assertQuoteAccess: async () => {}} : require(specifier));
   Function("require", "module", "exports", compiled)(moduleRequire, compiledModule, compiledModule.exports);
   return compiledModule.exports;
 }

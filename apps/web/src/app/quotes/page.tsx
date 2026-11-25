@@ -1,3 +1,4 @@
+import { customerAccessIds, quoteIsAccessible } from "@/lib/customer-access";
 import { ModulePage } from "@/components/module-page";
 import { MetricIcon } from "@/components/metric-icon";
 import {
@@ -112,7 +113,8 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
     sessionAllows(session, [{ resource: "presupuestos", action: "cancelar" }]),
     listQuotes(session.companyId, status === "all" ? "" : status),
   ]);
-  const quotes = rawQuotes.filter((item) => matchesQuery(item, query));
+  const accessIds = await customerAccessIds(session);
+  const quotes = rawQuotes.filter((item) => quoteIsAccessible(item, accessIds, session.userId) && matchesQuery(item, query));
   const total = quotes.reduce((sum, quote) => sum + quote.total, 0);
   const expired = quotes.filter((quote) => quote.valid === false).length;
 

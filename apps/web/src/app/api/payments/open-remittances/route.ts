@@ -1,3 +1,4 @@
+import { assertCustomerAccess } from "@/lib/customer-access";
 import { handleApiError, ok } from "@/lib/api-response";
 import { getCustomerPaymentContext } from "@/lib/customer-accounts";
 import { uuidParam } from "@/lib/request-body";
@@ -9,6 +10,7 @@ export async function GET(request: Request) {
   try {
     const session = await requireApiSession([COLLECTIONS_CREATE_PERMISSION, CRM_READ_PERMISSION]);
     const clientId = uuidParam(new URL(request.url).searchParams.get("clientId") ?? "", "Cliente");
+    await assertCustomerAccess(session, clientId);
     const { data, reconciliation } = await getCustomerPaymentContext(session.companyId, clientId);
     return ok({ data, reconciliation });
   } catch (error) {

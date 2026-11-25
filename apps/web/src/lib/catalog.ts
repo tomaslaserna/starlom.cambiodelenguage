@@ -76,6 +76,7 @@ export type SalePricesResult = {
 };
 
 type ListInput = {
+  customerIds?: string[] | null;
   companyId?: number;
   query?: string | null;
   page?: string | null;
@@ -164,6 +165,7 @@ export async function listCustomers(input: ListInput = {}): Promise<ListResult<C
   const pagination = parsePagination(input);
   const params: unknown[] = [companyId];
   const filters = ["empresa_id = $1"];
+  if (input.customerIds != null) { params.push(input.customerIds); filters.push(`id = ANY($${params.length}::uuid[])`); }
 
   if (query) {
     params.push(searchPattern(query));

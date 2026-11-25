@@ -1,3 +1,5 @@
+import { filterCustomerAccess } from "@/lib/customer-access";
+import { assertQuoteAccess } from "@/lib/customer-access";
 import { redirect } from "next/navigation";
 import { ModulePage } from "@/components/module-page";
 import { Card, PageHeader } from "@/components/ui";
@@ -18,6 +20,7 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
   const session = await requireStaffSession();
   await requirePagePermission(session, [{ resource: "presupuestos", action: "editar" }]);
   const { id } = await params;
+    await assertQuoteAccess(session, id);
 
   const quote = await getQuote(session.companyId, id).catch(() => null);
   if (!quote) redirect("/quotes?error=Presupuesto%20no%20encontrado");
@@ -61,7 +64,7 @@ export default async function EditQuotePage({ params }: EditQuotePageProps) {
         <Card>
           <QuoteEntryForm action={updateQuoteAction} className="grid gap-4 p-4">
             <QuoteEntryFields
-              clients={quoteFormData.clients}
+              clients={await filterCustomerAccess(session, quoteFormData.clients)}
               initialValues={initialValues}
               mode="edit"
               priceLists={quoteFormData.priceLists}

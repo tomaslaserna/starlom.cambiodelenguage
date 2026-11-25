@@ -1,3 +1,4 @@
+import { assertCustomerAccess, assertQuoteAccess } from "@/lib/customer-access";
 import type { PoolClient } from "pg";
 import { ApiError } from "@/lib/api-response";
 import { reactivateClientIfInactive } from "@/lib/client-reactivation";
@@ -700,6 +701,7 @@ export async function resolveQuoteAssignment(
 }
 
 export async function createQuote(session: AuthSession, input: QuoteInput) {
+  if (input.customerId) await assertCustomerAccess(session, input.customerId);
   const quoteId = await withCompanyContext(session.companyId, async (client) => {
     const draft = await buildQuoteDraft(client, session, input);
     const assignment = await resolveQuoteAssignment(client, session, input.assignedSellerId);
@@ -787,6 +789,8 @@ export async function createQuote(session: AuthSession, input: QuoteInput) {
 }
 
 export async function updateQuote(session: AuthSession, id: string, input: QuoteInput) {
+  await assertQuoteAccess(session, id);
+  if (input.customerId) await assertCustomerAccess(session, input.customerId);
   const quoteId = await withCompanyContext(session.companyId, async (client) => {
     const existing = await client.query<{ id: string; status: string }>(
       `
@@ -897,6 +901,7 @@ export async function acceptQuote(
   id: string,
   options: { requestFiscalInvoice?: boolean; customer?: QuoteAcceptanceCustomerInput } = {},
 ) {
+  await assertQuoteAccess(session, id);
   const result = await withCompanyContext(session.companyId, async (client) => {
     const quoteResult = await client.query<{
       id: string;

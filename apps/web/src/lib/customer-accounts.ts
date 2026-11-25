@@ -227,7 +227,7 @@ const OPEN_SALES_FOR_AGING_SQL = `
 
 export async function listOpenCustomerAccounts(
   companyId: number,
-  options: { query?: string | null; sellerNames?: string[] | null; includeSettled?: boolean } = {},
+  options: { query?: string | null; sellerNames?: string[] | null; customerIds?: string[] | null; includeSettled?: boolean } = {},
 ): Promise<{ accounts: OpenCustomerAccount[]; totals: { debit: number; credit: number } }> {
   const params: unknown[] = [companyId];
   const filters = [
@@ -238,6 +238,10 @@ export async function listOpenCustomerAccounts(
   ];
 
   const query = options.query?.trim() ?? "";
+  if (options.customerIds != null) {
+    params.push(options.customerIds);
+    filters.push(`c.id = ANY($${params.length}::uuid[])`);
+  }
   const includeSettled = Boolean(query && options.includeSettled);
   if (query) {
     params.push(`%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`);

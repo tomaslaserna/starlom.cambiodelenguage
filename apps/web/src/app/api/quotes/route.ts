@@ -1,3 +1,4 @@
+import { customerAccessIds, quoteIsAccessible } from "@/lib/customer-access";
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
 import { createQuote, listQuotes, quoteInputFromBody } from "@/lib/quotes";
@@ -10,7 +11,8 @@ export async function GET(request: NextRequest) {
   try {
     const session = await requireApiSession([{ resource: "presupuestos", action: "ver" }]);
     const status = request.nextUrl.searchParams.get("status") ?? "pendiente";
-    const data = await listQuotes(session.companyId, status);
+    const accessIds = await customerAccessIds(session);
+    const data = (await listQuotes(session.companyId, status)).filter(quote => quoteIsAccessible(quote, accessIds, session.userId));
     return ok({ data });
   } catch (error) {
     return handleApiError(error);

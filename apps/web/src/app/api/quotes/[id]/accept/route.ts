@@ -1,3 +1,4 @@
+import { assertQuoteAccess } from "@/lib/customer-access";
 import { type NextRequest } from "next/server";
 import { handleApiError, ok } from "@/lib/api-response";
 import { acceptQuote } from "@/lib/quotes";
@@ -13,6 +14,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const session = await requireApiSession([{ resource: "presupuestos", action: "aprobar" }]);
     const { id } = await context.params;
+    await assertQuoteAccess(session, id);
     const data = await acceptQuote(session, id);
     return ok({ data });
   } catch (error) {
