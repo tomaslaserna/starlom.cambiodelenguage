@@ -60,3 +60,32 @@ test('direct quote access denies an unrelated public quote and permits an assign
   const other=load(async(sql)=>({rows: sql.includes('FROM quotes') ? [{clientId:'other',sellerId:'mati'}] : [{id:'own'}]}));
   await assert.rejects(other.assertQuoteAccess(session,'P-2'),e=>e.status===403);
 });
+test('sales engine SQL returns assigned-client quotes regardless of author and excludes public foreign quotes',async()=>{
+  const {PGlite}=await import('@electric-sql/pglite');
+  const db=new PGlite();
+  const own='11111111-1111-4111-8111-111111111111';
+  const other='22222222-2222-4222-8222-222222222222';
+  const user='33333333-3333-4333-8333-333333333333';
+  const author='44444444-4444-4444-8444-444444444444';
+  try {
+    await db.exec(`CREATE TABLE clients(id uuid, empresa_id int, assigned_seller text, display_name text, legal_name text);
+      CREATE TABLE profiles(id uuid, username text, full_name text);
+      CREATE TABLE quotes(id uuid, empresa_id int, client_id uuid, seller_id uuid, quote_number text,
+        client_name text,total_amount numeric,created_at timestamp,validity_days int,status text,approved_at timestamp,visible_to_all boolean);
+      INSERT INTO clients VALUES ('${own}',1,'Matias Ferrer','Own',''),('${other}',1,'Fran','Other','');
+      INSERT INTO profiles VALUES ('${author}','lucas','Lucas');
+      INSERT INTO quotes VALUES ('${own}',1,'${own}','${author}','P-OWN','Own',100,NOW(),15,'pendiente',NULL,FALSE),
+        ('${other}',1,'${other}','${author}','P-OTHER','Other',200,NOW(),15,'pendiente',NULL,TRUE);`);
+    const query=(sql,params)=>db.query(sql,params);
+    const compiled=ts.transpileModule(readFileSync(new URL('../src/lib/crm.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+    const module={exports:{}};
+    const aliases={
+      '@/lib/customer-access':load(query),
+      '@/lib/db':{queryWithCompanyContext:(_c,sql,params)=>query(sql,params)},
+      '@/lib/crm-quotes':{classifyQuote:()=> 'vigentes',topQuoteClients:()=>[]},
+    };
+    Function('require','module','exports',compiled)(s=>aliases[s]??{},module,module.exports);
+    const result=await module.exports.getVendorQuotes({...session,userId:user});
+    assert.deepEqual(result.buckets.vigentes.map(q=>q.quoteNumber),['P-OWN']);
+  } finally {await db.close();}
+});
