@@ -83,6 +83,20 @@ function isLegacyTlsFailure(error: unknown) {
   );
 }
 
+function transportErrorDetail(error: unknown) {
+  if (!(error instanceof Error)) return "Error de red desconocido";
+  const cause = error.cause;
+  const causeCode =
+    cause && typeof cause === "object" && "code" in cause ? String(cause.code) : "";
+  const causeMessage =
+    cause && typeof cause === "object" && "message" in cause ? String(cause.message) : "";
+  return [causeCode, causeMessage || error.message].filter(Boolean).join(" - ");
+}
+
+function isSafeArcaSoapRetry(soapAction: string) {
+  return !soapAction.toLowerCase().includes("fecaesolicitar");
+}
+
 function legacyTlsPostSoapXml(endpoint: string, soapAction: string, body: string): Promise<SoapResponse> {
   const url = new URL(endpoint);
   const bodyBuffer = Buffer.from(body, "utf8");
@@ -127,25 +141,40 @@ function legacyTlsPostSoapXml(endpoint: string, soapAction: string, body: string
 }
 
 async function fetchPostSoapXml(endpoint: string, soapAction: string, body: string): Promise<SoapResponse> {
+  const request = () => fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/xml; charset=utf-8",
+      SOAPAction: soapAction,
+    },
+    body,
+    signal: AbortSignal.timeout(30000),
+  });
+
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-        SOAPAction: soapAction,
-      },
-      body,
-    });
+    const response = await request();
     return {
       ok: response.ok,
       status: response.status,
       text: await response.text(),
     };
   } catch (error) {
+    if (isSafeArcaSoapRetry(soapAction)) {
+      try {
+        const response = await request();
+        return {
+          ok: response.ok,
+          status: response.status,
+          text: await response.text(),
+        };
+      } catch (retryError) {
+        error = retryError;
+      }
+    }
     if (endpoint.startsWith("https://") && isLegacyTlsFailure(error)) {
       return legacyTlsPostSoapXml(endpoint, soapAction, body);
     }
-    const detail = error instanceof Error ? error.message : "Error de red desconocido";
+    const detail = transportErrorDetail(error);
     throw new ApiError(502, `No se pudo conectar con ARCA (${new URL(endpoint).hostname}): ${detail}`);
   }
 }
