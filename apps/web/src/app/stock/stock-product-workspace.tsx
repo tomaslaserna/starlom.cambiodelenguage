@@ -26,6 +26,7 @@ export function StockProductWorkspace({ action, canEdit, idempotencyKey }: Stock
         value: product.id,
         label: product.name,
         searchText: `${product.code} ${product.categoryCode} ${product.supplier}`,
+        availableStock: product.stock,
       })),
     [products],
   );

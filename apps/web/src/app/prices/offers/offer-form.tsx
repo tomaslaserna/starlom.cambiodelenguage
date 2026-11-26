@@ -39,6 +39,7 @@ export function OfferForm({
         label: product.name,
         description: `${product.code || "Sin código"} · Disp. ${formatNumber(product.available)}`,
         searchText: product.code,
+        availableStock: product.available,
       })),
     [products],
   );

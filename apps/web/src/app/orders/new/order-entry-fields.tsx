@@ -161,6 +161,7 @@ export function OrderEntryFields({
         label: product.name,
         description: `${product.code || "Sin codigo"} - Presentación: ${product.presentationUnits} u. - Disponible: ${formatNumber(product.available)} - Precio neto: ${formatCurrency(priceForList(product.prices, activePriceList))}`,
         searchText: product.code,
+        availableStock: product.available,
       })),
     [activePriceList, products],
   );

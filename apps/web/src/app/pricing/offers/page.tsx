@@ -106,6 +106,7 @@ export default async function OffersPage({ searchParams }: OffersPageProps) {
                         label: product.name,
                         description: product.code || "Sin codigo",
                         searchText: product.code,
+                        availableStock: product.available,
                       })),
                     ]}
                     placeholder="Sin producto"

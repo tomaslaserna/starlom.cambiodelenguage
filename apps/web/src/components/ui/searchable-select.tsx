@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
-import { resolveSearchOptions } from "@/lib/search-options";
+import { isSearchOptionOutOfStock, resolveSearchOptions } from "@/lib/search-options";
 import { cn } from "./utils";
 
 export type SearchableSelectOption = {
@@ -9,6 +9,7 @@ export type SearchableSelectOption = {
   label: string;
   description?: string;
   searchText?: string;
+  availableStock?: number;
 };
 
 type SearchableSelectProps = {
@@ -144,8 +145,9 @@ export function SearchableSelect({
             <div className="px-2.5 py-1.5 text-xs font-medium text-[color:var(--muted)]">{placeholder}</div>
           ) : null}
           {results.length ? (
-            results.map((option, index) => (
-              <button
+            results.map((option, index) => {
+              const outOfStock = isSearchOptionOutOfStock(option);
+              return <button
                 aria-selected={option.value === value}
                 className={cn(
                   "erp-text-body-sm w-full rounded-[var(--radius-sm)] text-left",
@@ -155,6 +157,7 @@ export function SearchableSelect({
                   index === safeActiveIndex
                     ? "bg-[color:var(--accent-subtle)] text-[color:var(--foreground)]"
                     : "hover:bg-[color:var(--panel-subtle)]",
+                  outOfStock && "bg-[#f4f6f8] text-[#7b8797] hover:bg-[#e9edf2]",
                 )}
                 id={`${listboxId}-${index}`}
                 key={option.value}
@@ -163,12 +166,19 @@ export function SearchableSelect({
                 role="option"
                 type="button"
               >
-                <span className={cn("font-semibold", compactOptions && "min-w-0 truncate")}>{option.label}</span>
+                <span className={cn("flex min-w-0 items-center gap-2 font-semibold", compactOptions && "truncate")}>
+                  <span className="min-w-0 truncate">{option.label}</span>
+                  {outOfStock ? (
+                    <span className="shrink-0 rounded-full bg-[#e2e7ed] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#6b7280]">
+                      Sin stock
+                    </span>
+                  ) : null}
+                </span>
                 {!compactOptions && option.description ? (
                   <span className="text-xs text-[color:var(--muted)]">{option.description}</span>
                 ) : null}
-              </button>
-            ))
+              </button>;
+            })
           ) : (
             <div className="px-3 py-3 text-sm text-[color:var(--muted)]">{emptyMessage}</div>
           )}

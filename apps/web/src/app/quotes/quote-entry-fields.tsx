@@ -126,6 +126,7 @@ export function QuoteEntryFields({
         label: product.name,
         description: `${product.code || "Sin codigo"} - Disponible: ${formatNumber(product.available)}`,
         searchText: product.code,
+        availableStock: product.available,
       })),
     [products],
   );

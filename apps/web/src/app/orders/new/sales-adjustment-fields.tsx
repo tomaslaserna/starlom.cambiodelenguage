@@ -67,6 +67,7 @@ export function SalesAdjustmentFields({
     value: product.id,
     label: product.name,
     description: `${isCredit ? "Pendiente de devolver" : "Stock disponible"}: ${formatNumber(product.available)} · ${formatCurrency(product.price)}`,
+    availableStock: product.available,
   }));
   const selectedProduct = selectableProducts.find((product) => product.id === productId) ?? null;
   const requestedQuantity = Math.max(0, Math.trunc(Number(quantity) || 0));

@@ -1,7 +1,16 @@
 export type SearchOptionLike = {
   label: string;
   searchText?: string;
+  availableStock?: number;
 };
+
+export function isSearchOptionOutOfStock(option: SearchOptionLike) {
+  return typeof option.availableStock === "number" && option.availableStock <= 0;
+}
+
+function stockPriority(option: SearchOptionLike) {
+  return isSearchOptionOutOfStock(option) ? 1 : 0;
+}
 
 export function normalizeSearchText(value: string) {
   return value
@@ -78,7 +87,11 @@ export function rankSearchOptions<T extends SearchOptionLike>(options: T[], quer
   return options
     .map((option, index) => ({ option, index, score: searchOptionScore(option, query) }))
     .filter((item) => Number.isFinite(item.score))
-    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .sort((left, right) =>
+      stockPriority(left.option) - stockPriority(right.option)
+      || right.score - left.score
+      || left.index - right.index,
+    )
     .slice(0, limit)
     .map((item) => item.option);
 }
@@ -89,5 +102,10 @@ export function resolveSearchOptions<T extends SearchOptionLike>(
   limit = 40,
   filterLocally = true,
 ) {
-  return filterLocally ? rankSearchOptions(options, query, limit) : options.slice(0, limit);
+  if (filterLocally) return rankSearchOptions(options, query, limit);
+  return options
+    .map((option, index) => ({ option, index }))
+    .sort((left, right) => stockPriority(left.option) - stockPriority(right.option) || left.index - right.index)
+    .slice(0, limit)
+    .map((item) => item.option);
 }
