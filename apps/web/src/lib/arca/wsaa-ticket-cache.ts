@@ -1,19 +1,12 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 import { ApiError } from "@/lib/api-response";
 import { getDbPool } from "@/lib/db";
-import { envValue } from "@/lib/env";
 
 export type WsaaTicket = {
   token: string;
   sign: string;
   expiresAt: number;
 };
-
-function encryptionKey() {
-  const secret = envValue("STARLIM_SESSION_SECRET");
-  if (!secret) throw new ApiError(503, "Falta la clave de cifrado del ticket de ARCA.");
-  return createHmac("sha256", secret).update("starlim:arca:wsaa:v1").digest();
-}
 
 function encryptTicket(ticket: WsaaTicket, cacheKey: string, key: Buffer) {
   const iv = randomBytes(12);
@@ -34,8 +27,8 @@ function decryptTicket(payload: Buffer, cacheKey: string, key: Buffer): WsaaTick
   }
 }
 
-export async function getSharedWsaaTicket(cacheKey: string, issueTicket: () => Promise<WsaaTicket>) {
-  const key = encryptionKey();
+export async function getSharedWsaaTicket(cacheKey: string, signingKey: Buffer, issueTicket: () => Promise<WsaaTicket>) {
+  const key = createHmac("sha256", signingKey).update("starlim:arca:wsaa:v1").digest();
   const client = await getDbPool().connect();
   try {
     await client.query("BEGIN");

@@ -4,7 +4,6 @@ import test from "node:test";
 
 const aliasSources = new Map([
   ["@/lib/api-response", "export const ApiError = Error;"],
-  ["@/lib/env", "export const envValue = () => 'test-session-secret';"],
   ["@/lib/db", "export const getDbPool = () => globalThis.wsaaTicketCacheTestPool;"],
 ]);
 
@@ -17,6 +16,8 @@ registerHooks({
 });
 
 const { getSharedWsaaTicket } = await import("../src/lib/arca/wsaa-ticket-cache.ts");
+
+const signingKey = Buffer.from("test-signing-key");
 
 function fakeSharedPool() {
   const rows = new Map();
@@ -61,8 +62,8 @@ test("las instancias comparten un único ticket vigente y lo guardan cifrado", a
     return ticket;
   };
   const results = await Promise.all([
-    getSharedWsaaTicket("issuer-A", issueTicket),
-    getSharedWsaaTicket("issuer-A", issueTicket),
+    getSharedWsaaTicket("issuer-A", signingKey, issueTicket),
+    getSharedWsaaTicket("issuer-A", signingKey, issueTicket),
   ]);
   assert.deepEqual(results, [ticket, ticket]);
   assert.equal(requests, 1);
@@ -74,19 +75,19 @@ test("renueva un ticket vencido y deja el cache disponible después de fallar", 
   const pool = fakeSharedPool();
   globalThis.wsaaTicketCacheTestPool = pool;
   const issueTicket = async () => newTicket("new-token");
-  await getSharedWsaaTicket("issuer-A", issueTicket);
+  await getSharedWsaaTicket("issuer-A", signingKey, issueTicket);
   pool.rows.get("issuer-A").expiresAt = new Date(0);
-  await assert.rejects(getSharedWsaaTicket("issuer-A", async () => { throw new Error("WSAA falló"); }), /WSAA falló/);
-  assert.equal((await getSharedWsaaTicket("issuer-A", issueTicket)).token, "new-token");
+  await assert.rejects(getSharedWsaaTicket("issuer-A", signingKey, async () => { throw new Error("WSAA falló"); }), /WSAA falló/);
+  assert.equal((await getSharedWsaaTicket("issuer-A", signingKey, issueTicket)).token, "new-token");
 });
 
 test("un ticket cifrado para otro certificado se rechaza sin pedir un segundo ticket", async () => {
   const pool = fakeSharedPool();
   globalThis.wsaaTicketCacheTestPool = pool;
-  await getSharedWsaaTicket("issuer-A", async () => newTicket());
+  await getSharedWsaaTicket("issuer-A", signingKey, async () => newTicket());
   pool.rows.set("issuer-B", pool.rows.get("issuer-A"));
   let issuance = 0;
-  await assert.rejects(getSharedWsaaTicket("issuer-B", async () => {
+  await assert.rejects(getSharedWsaaTicket("issuer-B", signingKey, async () => {
     issuance += 1;
     return newTicket();
   }));

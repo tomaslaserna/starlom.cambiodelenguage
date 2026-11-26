@@ -1,4 +1,4 @@
-import { X509Certificate } from "node:crypto";
+import { createPrivateKey, X509Certificate } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import forge from "node-forge";
 import { ApiError } from "@/lib/api-response";
@@ -99,12 +99,13 @@ export async function getWsaaTicket(config: ArcaConfig): Promise<WsaaTicket> {
   } catch {
     throw new ApiError(503, "El certificado de ARCA no es válido.");
   }
-  const cacheKey = 'wsaa:wsfe:' + config.mode + ':' + config.cuit + ':' + fingerprint;
+  const cacheKey = 'wsaa:v2:wsfe:' + config.mode + ':' + config.cuit + ':' + fingerprint;
   if (cachedTicket?.cacheKey === cacheKey && cachedTicket.expiresAt > Date.now()) {
     return cachedTicket;
   }
 
-  const ticket = await getSharedWsaaTicket(cacheKey, () => issueWsaaTicket(config, certPem));
+  const signingKey = createPrivateKey(await credentialPem(config.key)).export({ type: "pkcs8", format: "der" });
+  const ticket = await getSharedWsaaTicket(cacheKey, signingKey, () => issueWsaaTicket(config, certPem));
   cachedTicket = { ...ticket, cacheKey };
   return ticket;
 }

@@ -38,7 +38,7 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 ### Facturación con ARCA
 
 Las instancias comparten el ticket vigente de WSAA por ambiente, CUIT y certificado.
-El ERP cifra el ticket con una clave derivada de `STARLIM_SESSION_SECRET` y coordina
+El ERP cifra el ticket con una clave derivada de la clave privada del certificado ARCA y coordina
 la renovación desde Postgres. Aplicá la migración
 `20261126183347_persist_arca_wsaa_tickets.sql` antes de desplegar el código.
 
