@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { constants } from "node:crypto";
 import { request as httpsRequest } from "node:https";
 import { ApiError } from "@/lib/api-response";
@@ -122,6 +123,7 @@ function legacyTlsPostSoapXml(endpoint: string, soapAction: string, body: string
         response.on("data", (chunk: Buffer | string) => {
           chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         });
+        response.on("error", reject);
         response.on("end", () => {
           const status = response.statusCode ?? 0;
           resolve({
@@ -143,46 +145,32 @@ function legacyTlsPostSoapXml(endpoint: string, soapAction: string, body: string
 
 async function fetchPostSoapXml(endpoint: string, soapAction: string, body: string): Promise<SoapResponse> {
   const operation = soapAction.split("/").pop() || "loginCms";
-  const request = () => fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/xml; charset=utf-8",
-      SOAPAction: soapAction,
-    },
-    body,
-    signal: AbortSignal.timeout(30000),
-  });
-
-  try {
-    const response = await request();
-    return {
-      ok: response.ok,
-      status: response.status,
-      text: await response.text(),
-    };
-  } catch (error) {
-    if (isSafeArcaSoapRetry(operation)) {
+  const safeRead = isSafeArcaSoapRetry(operation);
+  const attempts = safeRead ? 3 : 1;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (attempt) await delay(400 * 2 ** (attempt - 1) + Math.random() * 150);
+    try {
+      let reply: SoapResponse;
       try {
-        const response = await request();
-        return {
-          ok: response.ok,
-          status: response.status,
-          text: await response.text(),
-        };
-      } catch (retryError) {
-        error = retryError;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "text/xml; charset=utf-8", SOAPAction: soapAction },
+          body,
+          signal: AbortSignal.timeout(safeRead ? 10000 : 30000),
+        });
+        reply = { ok: response.ok, status: response.status, text: await response.text() };
+      } catch (error) {
+        if (!endpoint.startsWith("https://") || !isLegacyTlsFailure(error)) throw error;
+        reply = await legacyTlsPostSoapXml(endpoint, soapAction, body);
       }
+      if (attempt + 1 < attempts && [502, 503, 504].includes(reply.status) && !soapFaultMessage(reply.text)) continue;
+      return reply;
+    } catch (error) {
+      lastError = error;
     }
-    if (endpoint.startsWith("https://") && isLegacyTlsFailure(error)) {
-      try {
-        return await legacyTlsPostSoapXml(endpoint, soapAction, body);
-      } catch (legacyError) {
-        error = legacyError;
-      }
-    }
-    const detail = transportErrorDetail(error);
-    throw new ApiError(502, `No se pudo conectar con ARCA (${new URL(endpoint).hostname}, ${operation}): ${detail}`);
   }
+  throw new ApiError(502, `No se pudo conectar con ARCA (${new URL(endpoint).hostname}, ${operation}): ${transportErrorDetail(lastError)}`);
 }
 
 export async function postSoapXml(endpoint: string, soapAction: string, body: string) {

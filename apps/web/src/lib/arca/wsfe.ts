@@ -387,6 +387,8 @@ export async function lastAuthorizedReceipt(receiptType: number) {
   return Number(number);
 }
 
+export class ArcaReceiptNotFound extends ApiError {}
+
 export async function consultArcaAuthorizedReceipt(
   receiptType: number,
   receiptNumber: number,
@@ -415,6 +417,11 @@ export async function consultArcaAuthorizedReceipt(
     ...arcaMessages(detail, "Obs", "observation"),
     ...arcaMessages(result, "Evt", "event"),
   ];
+
+  const errors = messages.filter(item => item.source === "error");
+  if (!tagContent(result, "ResultGet") && errors.length === 1 && errors[0].code === "602") {
+    throw new ArcaReceiptNotFound(404, "ARCA no encontró el comprobante consultado.");
+  }
 
   if (messages.some((item) => item.source === "error")) {
     throw new ApiError(502, `ARCA rechazo la consulta del comprobante: ${messageText(messages)}`);
@@ -447,7 +454,13 @@ export async function findLastArcaAuthorizedReceipt(receiptType: number) {
   return consultArcaAuthorizedReceipt(receiptType, receiptNumber);
 }
 
-export async function authorizeArcaInvoice(input: AuthorizeArcaInvoiceInput, lifecycle?: { reserve(number: number, date: string): Promise<void>; rejected(number: number): Promise<void> }): Promise<ArcaInvoiceAuthorization> {
+type InvoiceLifecycle = {
+  reserve(number: number, date: string): Promise<void>;
+  rejected(number: number): Promise<void>;
+};
+
+export async function authorizeArcaInvoice(input: AuthorizeArcaInvoiceInput, lifecycle?: InvoiceLifecycle,
+  existing?: { number: number; date: string }): Promise<ArcaInvoiceAuthorization> {
   const config = getArcaConfig();
   const receiptType = input.preserveReceiptType
     ? input.receiptType
@@ -456,7 +469,10 @@ export async function authorizeArcaInvoice(input: AuthorizeArcaInvoiceInput, lif
   const { amounts: { net, vat, total }, xml: ivaXml } = invoiceVatXml(receiptType, input.totalAmount, input.vatRate);
   const vatConditionId = vatConditionIdForArca(input.customerVatCondition, receiptType);
   const receiptNumber = (await lastAuthorizedReceipt(receiptType)) + 1;
-  const invoiceDate = argentinaDateYYYYMMDD();
+  if (existing && receiptNumber !== existing.number) {
+    throw new ApiError(409, "La numeración de ARCA cambió. Se conservó la reserva para conciliación.");
+  }
+  const invoiceDate = existing?.date ?? argentinaDateYYYYMMDD();
   const cbtesAsocXml = associatedReceiptXml(receiptType, input.associatedReceipt);
   const auth = await authXml();
   await lifecycle?.reserve(receiptNumber, invoiceDate);
@@ -504,6 +520,9 @@ export async function authorizeArcaInvoice(input: AuthorizeArcaInvoiceInput, lif
   const caeExpiresAt = arcaDateToIso(tagContent(detail, "CAEFchVto"));
   const resultCode = tagContent(detail, "Resultado") || tagContent(result, "Resultado");
 
+  if (resultCode === "A" && Number(tagContent(detail, "CbteDesde")) !== receiptNumber) {
+    throw new ApiError(502, "ARCA devolvió una autorización con numeración inesperada.");
+  }
   if (resultCode !== "A" || !cae || !caeExpiresAt) {
     if (resultCode === "R" && !cae && Number(tagContent(detail, "CbteDesde")) === receiptNumber) await lifecycle?.rejected(receiptNumber);
     throw new ApiError(400, `ARCA no aprobo el comprobante: ${messageText(messages) || "sin CAE devuelto"}`);

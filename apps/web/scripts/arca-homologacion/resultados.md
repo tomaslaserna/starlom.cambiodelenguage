@@ -9,11 +9,11 @@ Se ejecutó la función de facturación de ventas del ERP con su cliente SOAP y 
 
 Las cuatro variantes pasaron tres veces con esquemas de base de datos independientes. En la prueba concurrente del prototipo se verificó en PostgreSQL que el segundo proceso estaba efectivamente bloqueado antes de liberar la respuesta del primero.
 
-## Cómo reproducir
+## Ensayo inicial
 
 Usar una base local de laboratorio llamada `arca_homologacion_lab` con un usuario `lab_owner` con permiso de crear esquemas. Configurar `ARCA_LAB_PGPORT` y `ARCA_LAB_PGPASSWORD` para esa base y ejecutar `node scripts/arca-homologacion/run.mjs` desde `apps/web`. Cada corrida abre el simulador en un puerto de loopback, crea un esquema nuevo y emite las secuencias SOAP observadas por salida estándar.
 
-La recuperación y la exclusión entre operadores están en `coordinator.mjs` y se cargan sólo en el ensayo.
+En el ensayo inicial se cargó el prototipo desde `coordinator.mjs`. La versión desplegada ejecuta la recuperación en `invoice-attempt.ts`.
 
 ## Verificación con ARCA en homologación
 
@@ -23,3 +23,9 @@ El 26/11/2026 WSAA emitió un ticket para wsfe. El listado de puntos de venta de
 - Factura A 0002-00000002. Dos operadores independientes intentaron facturar la misma venta. Se observó la espera del segundo en PostgreSQL. Los dos obtuvieron el mismo número y CAE y hubo una sola aprobación en la auditoría local.
 
 Una consulta independiente posterior confirmó ambos comprobantes e importes en WSFE de homologación. El prototipo opera sólo en el ensayo.
+
+## Verificación de la versión integrada
+
+El corte después de la aprobación de la factura A 3 de homologación se recuperó en la misma operación del ERP. Para la factura A 4 se cortó el primer envío antes de entregarlo a WSFE. La consulta del número dio 602, WSFE confirmó que el número siguiente seguía siendo 4 y el ERP completó el envío con igual número y fecha. Dos operadores obtuvieron el mismo CAE para la factura A 5. Cada venta registró una sola aprobación.
+
+El simulador local también reproduce una caída prolongada de FECompConsultar. Mientras la consulta falla el ERP conserva la reserva. En el siguiente intento comprueba el número antes de decidir si debe reenviar.

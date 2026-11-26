@@ -92,3 +92,24 @@ test("registra la operación de autenticación sin volver a pedir el ticket", as
     globalThis.fetch = originalFetch;
   }
 });
+
+test("las lecturas toleran un 503 temporal y conservan los rechazos SOAP definitivos", async () => {
+  const original = globalThis.fetch;
+  try {
+    let calls = 0;
+    globalThis.fetch = async () => ++calls === 1
+      ? new Response("Unavailable", { status: 503 })
+      : new Response("<ok/>");
+    assert.equal(await postSoapXml("https://example.invalid", "/FECompConsultar", ""), "<ok/>");
+    assert.equal(calls, 2);
+    calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response("<Fault><faultstring>Solicitud inválida</faultstring></Fault>", { status: 503 });
+    };
+    await assert.rejects(postSoapXml("https://example.invalid", "/FECompConsultar", ""), /Solicitud inválida/);
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = original;
+  }
+});

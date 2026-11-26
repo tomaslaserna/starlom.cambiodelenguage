@@ -1,0 +1,23 @@
+name: Conexión fiscal con ARCA
+
+on:
+  schedule:
+    - cron: "13,43 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  consultar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Verificar WSFE desde producción
+        env:
+          HEALTH_TOKEN: ${{ secrets.STARLIM_FISCAL_HEALTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl --silent --show-error --fail --max-time 90 --retry 1 \
+            --header "Authorization: Bearer $HEALTH_TOKEN" \
+            https://starlim.vercel.app/api/fiscal/health |
+            jq -e '.ok == true and .operation == "FECompUltimoAutorizado"'

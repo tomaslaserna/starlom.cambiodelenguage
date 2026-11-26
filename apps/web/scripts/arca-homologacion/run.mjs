@@ -13,11 +13,13 @@ const official = process.argv.includes("--official");
 if (official && process.env.ARCA_HOMO_POS !== "2") throw new Error("El ensayo está preparado para el punto 2 de homologación");
 const gateway = official ? await import("./official.mjs") : null;
 const requestPath = "/wsfe/" + randomBytes(24).toString("hex");
-const approvalsLimit = 2;
+const approvalsLimit = 3;
 let requested = 0;
 const invoices = [];
 const calls = [];
 const children = new Set();
+let cutBeforeApproval = false;
+let consultationFailure = false;
 let cutAfterApproval = false;
 let heldResponse;
 let holdApproval = false;
@@ -38,6 +40,9 @@ const server = http.createServer(async (req, res) => {
     calls.push(call);
     if (official) {
       if (method === "FECAESolicitar") {
+        call.number = Number(tag(body,"CbteDesde"));
+        call.date = tag(body, "CbteFch");
+        if (cutBeforeApproval) { cutBeforeApproval = false; req.socket.destroy(); return; }
         assert.ok(++requested <= approvalsLimit);
         assert.equal(tag(body,"CbteTipo"),"1");
         assert.equal(tag(body,"ImpTotal"),"121.00");
@@ -65,6 +70,8 @@ const server = http.createServer(async (req, res) => {
     } else if (method === "FECAESolicitar") {
       const number = Number(tag(body, "CbteDesde"));
       call.number = number;
+      call.date = tag(body, "CbteFch");
+      if (cutBeforeApproval) { cutBeforeApproval = false; req.socket.destroy(); return; }
       assert.equal(number, invoices.length + 1, "Número fuera de secuencia");
       assert.equal(tag(body, "PtoVta"), "2");
       assert.equal(tag(body, "CbteTipo"), "1");
@@ -85,8 +92,9 @@ const server = http.createServer(async (req, res) => {
     } else if (method === "FECompConsultar") {
       call.number = Number(tag(body, "CbteNro"));
       const found = invoices.find(r => r.number === call.number);
-      assert.ok(found);
-      result = "<ResultGet><Resultado>A</Resultado><CbteDesde>" + found.number + "</CbteDesde><CodAutorizacion>" +
+      if (consultationFailure) { req.socket.destroy(); return; }
+      if (!found) result = "<Errors><Err><Code>602</Code><Msg>Sin resultados</Msg></Err></Errors>";
+      else result = "<ResultGet><Resultado>A</Resultado><CbteDesde>" + found.number + "</CbteDesde><CodAutorizacion>" +
         found.cae + "</CodAutorizacion><DocNro>" + found.doc + "</DocNro><ImpTotal>" + found.gross +
         "</ImpTotal><FchVto>20261231</FchVto><CbteFch>" + found.date + "</CbteFch></ResultGet>";
     } else {
@@ -147,32 +155,45 @@ async function state(sale) {
   return rows[0];
 }
 
-async function lostResponse(variant) {
+async function recoverCut(beforeApproval = false, offline = false) {
   const sale = await createSale(), first = invoices.length, start = calls.length;
-  cutAfterApproval = true;
-  const initial = await operator(sale, variant, "operador-a");
-  assert.equal(initial.status, "error", JSON.stringify(initial));
-  assert.match(initial.message, /FECAESolicitar/);
-  assert.equal(invoices.length, first + 1);
-  const intermediate = await state(sale);
-  assert.equal(intermediate.fiscal_status,"error");
-  assert.ok(!intermediate.cae);
-  const retry = await operator(sale, variant, "operador-b");
-  assert.equal(retry.status, "ok", JSON.stringify(retry));
-  assert.notEqual(retry.pid, initial.pid);
+  cutBeforeApproval = beforeApproval;
+  cutAfterApproval = !beforeApproval;
+  consultationFailure = offline;
+  let result = await operator(sale, "protected", "operador-a");
+  if (offline) {
+    assert.equal(result.status, "error");
+    assert.equal((await state(sale)).fiscal_status, "error");
+    assert.equal(calls.slice(start).filter(c => c.method === "FECAESolicitar").length, 1);
+    consultationFailure = false;
+    result = await operator(sale, "protected", "operador-b");
+  }
+  assert.equal(result.status, "ok", JSON.stringify(result));
+  assert.equal(invoices.length - first, 1);
   const sequence = calls.slice(start);
-  const recovery = sequence.filter(c => c.method === "FECompConsultar");
-  const expected = variant === "protected" ? 1 : 2;
-  assert.equal(invoices.length - first, expected);
-  assert.equal(sequence.filter(c => c.method === "FECAESolicitar").length, expected);
-  assert.deepEqual(recovery.map(c=>c.number), variant === "protected" ? [invoices[first].number] : []);
+  const writes = sequence.filter(c => c.method === "FECAESolicitar");
+  assert.equal(writes.length, beforeApproval ? 2 : 1);
+  assert.equal(new Set(writes.map(c => c.number)).size, 1);
+  assert.equal(new Set(writes.map(c => c.date)).size, 1);
+  assert.ok(sequence.some(c => c.method === "FECompConsultar" && c.number === writes[0].number));
   const final = await state(sale);
-  assert.equal(final.fiscal_status,"aprobado");
-  assert.equal(final.cae,retry.cae);
-  assert.equal(final.fiscal_receipt_number,retry.number);
-  assert.equal(final.cae === invoices[first].cae, variant === "protected");
-  console.log(JSON.stringify({scenario:"lost-response",variant,approvals:expected,initial:intermediate.fiscal_status,
-    recoveredOriginal: final.cae === invoices[first].cae, final: final.fiscal_status, calls:sequence}));
+  assert.equal(final.fiscal_status, "aprobado");
+  assert.equal(final.cae, invoices[first].cae);
+  assert.equal(result.cae, final.cae);
+  console.log(JSON.stringify({scenario: beforeApproval ? "cut-before-approval" : "lost-response",
+    consultationOffline: offline, approvals: 1, calls: sequence}));
+}
+
+async function interruptedBeforeReservation() {
+  for (const tracked of [false, true]) {
+    const sale = await createSale(), start = invoices.length;
+    await pool.query("UPDATE sales SET fiscal_status='pendiente', fiscal_error_code=$1 WHERE id=$2",
+      [tracked ? "wsfe_reserved_number" : "", sale]);
+    const result = await operator(sale, "protected", "operador-a");
+    assert.equal(result.status, tracked ? "ok" : "error", JSON.stringify(result));
+    assert.equal(invoices.length - start, tracked ? 1 : 0);
+  }
+  console.log("La interrupción previa a la reserva se recupera y los pendientes históricos requieren conciliación.");
 }
 
 async function simultaneous(variant) {
@@ -221,8 +242,11 @@ try {
   await pool.query(await readFile(new URL("./schema.sql", import.meta.url), "utf8"));
   server.listen(0,"127.0.0.1");
   await once(server,"listening");
-  await lostResponse("protected");
+  await recoverCut();
+  await recoverCut(true);
+  if (!official) { await recoverCut(true, true); await recoverCut(false, true); }
   await simultaneous("protected");
+  if (!official) await interruptedBeforeReservation();
 } finally {
   heldResponse?.();
   for (const child of children) child.kill();

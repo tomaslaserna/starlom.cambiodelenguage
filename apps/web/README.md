@@ -47,3 +47,7 @@ corte de `FECAESolicitar` consultá primero el comprobante en ARCA antes de volv
 a autorizarlo, porque el servicio pudo procesar el envío antes de perderse la respuesta.
 
 La emisión de ventas toma un bloqueo por emisor y punto de venta, relee la venta y reserva el número antes de enviarlo. Al reintentar consulta el número reservado en WSFE y verifica receptor, fecha e importe antes de guardar el CAE. Una respuesta incierta conserva la reserva. Para intentos anteriores a la migración sin número, un operador debe establecer el primer número verificable en `starlim_arca.reconciliation_windows`. Si la consulta encuentra una coincidencia, la emisión se detiene para revisión.
+
+Cuando se pierde la respuesta de emisión, el ERP consulta el número en la misma operación. Si WSFE informa que no existe (602), verifica que siga siendo el siguiente de la serie y usa el número y la fecha reservados. Si WSFE permanece inaccesible se puede reintentar la venta desde Facturación al volver el servicio.
+
+El workflow de GitHub Actions **Conexión fiscal con ARCA** comprueba cada media hora que Vercel puede consultar la última factura A con las credenciales de producción. El endpoint `GET /api/fiscal/health` también está disponible a operadores con permiso de lectura de ventas. La credencial técnica del monitor sólo habilita esa consulta.

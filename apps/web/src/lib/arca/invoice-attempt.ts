@@ -1,6 +1,6 @@
 import { ApiError } from "@/lib/api-response";
 import { getArcaConfig } from "@/lib/arca/config";
-import { authorizeArcaInvoice, consultArcaAuthorizedReceipt } from "@/lib/arca/wsfe";
+import { ArcaReceiptNotFound, authorizeArcaInvoice, consultArcaAuthorizedReceipt } from "@/lib/arca/wsfe";
 import { getDbPool } from "@/lib/db";
 
 export async function withInvoiceLock<T>(issue: () => Promise<T>) {
@@ -23,51 +23,74 @@ export async function withInvoiceLock<T>(issue: () => Promise<T>) {
   }
 }
 
+type InvoiceInput = Parameters<typeof authorizeArcaInvoice>[0];
+type Reservation = { number: number; issued_on: string; point: number; kind: number;
+  document: string; cents: string; vat: string; vat_condition: string };
+
+async function reconcileReservation(saved: Reservation, input: InvoiceInput, pointOfSale: number) {
+  const document = input.customerDocument.replace(/\D/g, "");
+  const cents = Math.round(input.totalAmount * 100);
+  if (saved.point !== pointOfSale || saved.kind !== input.receiptType || saved.document !== document ||
+      Number(saved.cents) !== cents || Number(saved.vat) !== input.vatRate || saved.vat_condition !== input.customerVatCondition) {
+    throw new ApiError(409, "La venta cambió desde el intento fiscal. Requiere conciliación.");
+  }
+  let receipt;
+  try {
+    receipt = await consultArcaAuthorizedReceipt(saved.kind, saved.number);
+  } catch (error) {
+    if (!(error instanceof ArcaReceiptNotFound)) {
+      throw new ApiError(502, `No se pudo verificar el comprobante ${saved.number}. La reserva se conserva. Volvé a intentar cuando ARCA responda. ${error instanceof Error ? error.message : ""}`);
+    }
+    // WSFE must also report that this exact number is next; keep the committed reservation on any failure.
+    return authorizeArcaInvoice(input, undefined, { number: saved.number, date: saved.issued_on });
+  }
+  if (receipt && receipt.receiptNumber === saved.number && receipt.pointOfSale === saved.point &&
+      receipt.receiptType === saved.kind && Number(receipt.customerDocument) === Number(document) &&
+      Math.round(receipt.totalAmount * 100) === cents && receipt.issueDate.replaceAll("-", "") === saved.issued_on &&
+      /^\d{14}$/.test(receipt.cae) && receipt.caeExpiresAt) return receipt;
+  throw new ApiError(409, "El número reservado sigue pendiente de conciliación en ARCA.");
+}
+
 export async function authorizeReservedInvoice(company: number, sale: string, requiresReview: boolean,
-  input: Parameters<typeof authorizeArcaInvoice>[0]) {
+  input: InvoiceInput) {
   const {mode, cuit, pointOfSale} = getArcaConfig();
   const db = getDbPool();
   const key = [mode, cuit, company, sale];
   const where = "mode=$1 AND issuer=$2 AND company_id=$3 AND sale_id=$4";
-  const saved = (await db.query("SELECT * FROM starlim_arca.invoice_attempts WHERE " + where, key)).rows[0];
+  const loadReservation = async () => (await db.query<Reservation>("SELECT * FROM starlim_arca.invoice_attempts WHERE " + where, key)).rows[0];
   const document = input.customerDocument.replace(/\D/g, "");
   const cents = Math.round(input.totalAmount * 100);
-  if (saved) {
-    if (saved.point !== pointOfSale || saved.kind !== input.receiptType || saved.document !== document ||
-        Number(saved.cents) !== cents || Number(saved.vat) !== input.vatRate || saved.vat_condition !== input.customerVatCondition)
-      throw new ApiError(409, "La venta cambió desde el intento fiscal. Requiere conciliación.");
-    const receipt = await consultArcaAuthorizedReceipt(saved.kind, saved.number);
-    if (receipt && receipt.receiptNumber === saved.number && receipt.pointOfSale === saved.point &&
-        receipt.receiptType === saved.kind && receipt.customerDocument === document &&
-        Math.round(receipt.totalAmount * 100) === cents && receipt.issueDate.replaceAll("-", "") === saved.issued_on)
-      return receipt;
-    throw new ApiError(409, "El número reservado sigue pendiente de conciliación en ARCA.");
-  }
+  const saved = await loadReservation();
+  if (saved) return reconcileReservation(saved, input, pointOfSale);
   let reserved = false;
   try {
     return await authorizeArcaInvoice(input, {
-    async reserve(number, date) {
-      if (requiresReview) {
-        const window = (await db.query("SELECT first_number FROM starlim_arca.reconciliation_windows WHERE mode=$1 AND issuer=$2 AND sale_id=$3 AND point=$4 AND kind=$5",
-          [mode,cuit,sale,pointOfSale,input.receiptType])).rows[0];
-        if (!window || window.first_number >= number) throw new ApiError(409, "El intento anterior requiere conciliación fiscal.");
-        for (let n = window.first_number; n < number; n++) {
-          const receipt = await consultArcaAuthorizedReceipt(input.receiptType, n);
-          if (!receipt || receipt.receiptNumber !== n || receipt.pointOfSale !== pointOfSale || receipt.receiptType !== input.receiptType ||
-              (receipt.customerDocument === document && Math.round(receipt.totalAmount * 100) === cents))
-            throw new ApiError(409, "Revisá el comprobante " + n + " antes de emitir esta venta.");
+      async reserve(number, date) {
+        if (requiresReview) {
+          const window = (await db.query("SELECT first_number FROM starlim_arca.reconciliation_windows WHERE mode=$1 AND issuer=$2 AND sale_id=$3 AND point=$4 AND kind=$5",
+            [mode,cuit,sale,pointOfSale,input.receiptType])).rows[0];
+          if (!window || window.first_number >= number) throw new ApiError(409, "El intento anterior requiere conciliación fiscal.");
+          for (let n = window.first_number; n < number; n++) {
+            const receipt = await consultArcaAuthorizedReceipt(input.receiptType, n);
+            if (!receipt || receipt.receiptNumber !== n || receipt.pointOfSale !== pointOfSale || receipt.receiptType !== input.receiptType ||
+                (receipt.customerDocument === document && Math.round(receipt.totalAmount * 100) === cents))
+              throw new ApiError(409, "Revisá el comprobante " + n + " antes de emitir esta venta.");
+          }
         }
-      }
-      await db.query("INSERT INTO starlim_arca.invoice_attempts(mode,issuer,company_id,sale_id,point,kind,number,issued_on,document,cents,vat,vat_condition) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
-        [...key,pointOfSale,input.receiptType,number,date,document,cents,input.vatRate,input.customerVatCondition]);
-      reserved = true;
-    },
-    async rejected(number) {
-      await db.query("DELETE FROM starlim_arca.invoice_attempts WHERE " + where + " AND number=$5", [...key, number]);
-      reserved = false;
-    },
+        await db.query("INSERT INTO starlim_arca.invoice_attempts(mode,issuer,company_id,sale_id,point,kind,number,issued_on,document,cents,vat,vat_condition) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+          [...key,pointOfSale,input.receiptType,number,date,document,cents,input.vatRate,input.customerVatCondition]);
+        reserved = true;
+      },
+      async rejected(number) {
+        await db.query("DELETE FROM starlim_arca.invoice_attempts WHERE " + where + " AND number=$5", [...key, number]);
+        reserved = false;
+      },
     });
   } catch (error) {
+    if (reserved) {
+      const pending = await loadReservation();
+      if (pending) return reconcileReservation(pending, input, pointOfSale);
+    }
     if (!reserved && !requiresReview) {
       throw new ApiError(error instanceof ApiError ? error.status : 502,
         "Sin autorización pendiente. " + (error instanceof Error ? error.message : "Error fiscal"));

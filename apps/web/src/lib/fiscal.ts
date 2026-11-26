@@ -105,6 +105,8 @@ function assertSaleFinalTotal(sale: Pick<SaleFiscalCandidate, "totalAmount" | "i
   }
 }
 
+const TRACKED_INVOICE_ATTEMPT = "wsfe_reserved_number";
+
 type SaleFiscalCandidate = {
   id: string;
   clientId: string | null;
@@ -126,6 +128,7 @@ type SaleFiscalCandidate = {
   fiscalReceiptNumber: number | null;
   hasItemDetail: boolean;
   fiscalErrorMessage: string;
+  fiscalErrorCode: string;
 };
 
 export type SaleCreditNotePreview = {
@@ -414,6 +417,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
     fiscal_receipt_number: number | null;
     has_item_detail: boolean;
     fiscal_error_message: string | null;
+    fiscal_error_code: string | null;
   }>(
     companyId,
     `
@@ -439,6 +443,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
              s.fiscal_point_of_sale,
              s.fiscal_receipt_type,
              s.fiscal_receipt_number,
+             s.fiscal_error_code,
              COALESCE(s.fiscal_error_message, '') AS fiscal_error_message,
              (
                EXISTS (
@@ -500,6 +505,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
     fiscalReceiptNumber: row.fiscal_receipt_number,
     hasItemDetail: Boolean(row.has_item_detail),
     fiscalErrorMessage: row.fiscal_error_message ?? "",
+    fiscalErrorCode: row.fiscal_error_code ?? "",
   } satisfies SaleFiscalCandidate;
 }
 
@@ -624,6 +630,7 @@ async function markSaleFiscalPending(
   sale: SaleFiscalCandidate,
   receiptType: number,
   fiscal: FiscalStatus,
+  tracked: boolean,
 ) {
   await withCompanyContext(session.companyId, async (client) => {
     await client.query(
@@ -635,7 +642,7 @@ async function markSaleFiscalPending(
             fiscal_document_source = 'sale',
             fiscal_document_kind = 'invoice',
             fiscal_last_attempt_at = now(),
-            fiscal_error_code = '',
+            fiscal_error_code = $7,
             fiscal_error_message = '',
             fiscal_observations = '[]'::jsonb,
             receipt_type = CASE WHEN COALESCE(receipt_type, 0) = 0 THEN $3 ELSE receipt_type END,
@@ -645,7 +652,7 @@ async function markSaleFiscalPending(
             updated_at = now()
         WHERE id = $5::uuid AND empresa_id = $6
       `,
-      [fiscal.provider, fiscal.mode, receiptType, fiscal.pointOfSale ?? null, sale.id, session.companyId],
+      [fiscal.provider, fiscal.mode, receiptType, fiscal.pointOfSale ?? null, sale.id, session.companyId, tracked ? TRACKED_INVOICE_ATTEMPT : ""],
     );
     await client.query(
       "INSERT INTO eventos_integracion (tipo, datos, empresa_id) VALUES ($1, $2, $3)",
@@ -1413,9 +1420,9 @@ async function issueSaleInvoice(session: AuthSession, saleId: string) {
   assertFiscalVatRate(receiptType, sale.vatRate);
   assertSaleFinalTotal(sale);
   const fiscal = getFiscalStatus();
-  const requiresReview = sale.fiscalStatus === "pendiente" ||
+  const requiresReview = (sale.fiscalStatus === "pendiente" && sale.fiscalErrorCode !== TRACKED_INVOICE_ATTEMPT) ||
     (sale.fiscalStatus === "error" && !sale.fiscalErrorMessage.startsWith("Sin autorización pendiente. "));
-  await markSaleFiscalPending(session, sale, receiptType, fiscal);
+  await markSaleFiscalPending(session, sale, receiptType, fiscal, !requiresReview && fiscal.provider === "arca" && fiscal.ready);
 
   try {
     const result = await getFiscalProvider().authorizeDocument({
