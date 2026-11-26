@@ -357,7 +357,7 @@ async function pointOfSaleDiagnostic(configuredPointOfSale: number) {
   }
 }
 
-async function lastAuthorizedReceipt(receiptType: number) {
+export async function lastAuthorizedReceipt(receiptType: number) {
   const config = getArcaConfig();
   const response = await wsfeSoap(
     "FECompUltimoAutorizado",
