@@ -87,14 +87,15 @@ function transportErrorDetail(error: unknown) {
   if (!(error instanceof Error)) return "Error de red desconocido";
   const cause = error.cause;
   const causeCode =
-    cause && typeof cause === "object" && "code" in cause ? String(cause.code) : "";
+    cause && typeof cause === "object" && "code" in cause ? String(cause.code) :
+      "code" in error ? String(error.code) : "";
   const causeMessage =
     cause && typeof cause === "object" && "message" in cause ? String(cause.message) : "";
   return [causeCode, causeMessage || error.message].filter(Boolean).join(" - ");
 }
 
-function isSafeArcaSoapRetry(soapAction: string) {
-  return !soapAction.toLowerCase().includes("fecaesolicitar");
+function isSafeArcaSoapRetry(operation: string) {
+  return /^(FEDummy|FEParam[A-Za-z]+|FECompUltimoAutorizado|FECompConsultar)$/.test(operation);
 }
 
 function legacyTlsPostSoapXml(endpoint: string, soapAction: string, body: string): Promise<SoapResponse> {
@@ -141,6 +142,7 @@ function legacyTlsPostSoapXml(endpoint: string, soapAction: string, body: string
 }
 
 async function fetchPostSoapXml(endpoint: string, soapAction: string, body: string): Promise<SoapResponse> {
+  const operation = soapAction.split("/").pop() || "loginCms";
   const request = () => fetch(endpoint, {
     method: "POST",
     headers: {
@@ -159,7 +161,7 @@ async function fetchPostSoapXml(endpoint: string, soapAction: string, body: stri
       text: await response.text(),
     };
   } catch (error) {
-    if (isSafeArcaSoapRetry(soapAction)) {
+    if (isSafeArcaSoapRetry(operation)) {
       try {
         const response = await request();
         return {
@@ -172,10 +174,14 @@ async function fetchPostSoapXml(endpoint: string, soapAction: string, body: stri
       }
     }
     if (endpoint.startsWith("https://") && isLegacyTlsFailure(error)) {
-      return legacyTlsPostSoapXml(endpoint, soapAction, body);
+      try {
+        return await legacyTlsPostSoapXml(endpoint, soapAction, body);
+      } catch (legacyError) {
+        error = legacyError;
+      }
     }
     const detail = transportErrorDetail(error);
-    throw new ApiError(502, `No se pudo conectar con ARCA (${new URL(endpoint).hostname}): ${detail}`);
+    throw new ApiError(502, `No se pudo conectar con ARCA (${new URL(endpoint).hostname}, ${operation}): ${detail}`);
   }
 }
 

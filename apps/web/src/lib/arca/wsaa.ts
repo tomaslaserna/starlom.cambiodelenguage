@@ -1,14 +1,10 @@
+import { X509Certificate } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import forge from "node-forge";
 import { ApiError } from "@/lib/api-response";
 import type { ArcaConfig, ArcaCredential } from "@/lib/arca/config";
+import { getSharedWsaaTicket, type WsaaTicket } from "@/lib/arca/wsaa-ticket-cache";
 import { escapeXml, postSoapXml, soapEnvelope, tagContent } from "@/lib/arca/xml";
-
-type WsaaTicket = {
-  token: string;
-  sign: string;
-  expiresAt: number;
-};
 
 let cachedTicket: (WsaaTicket & { cacheKey: string }) | null = null;
 
@@ -38,8 +34,8 @@ async function credentialPem(credential: ArcaCredential) {
   return readFile(credential.value, "utf8");
 }
 
-async function signLoginTicketRequest(xml: string, cert: ArcaCredential, key: ArcaCredential) {
-  const [certPem, keyPem] = await Promise.all([credentialPem(cert), credentialPem(key)]);
+async function signLoginTicketRequest(xml: string, certPem: string, key: ArcaCredential) {
+  const keyPem = await credentialPem(key);
 
   try {
     const certificate = forge.pki.certificateFromPem(certPem);
@@ -78,13 +74,8 @@ function parseWsaaTicket(xml: string): WsaaTicket {
   return { token, sign, expiresAt };
 }
 
-export async function getWsaaTicket(config: ArcaConfig): Promise<WsaaTicket> {
-  const cacheKey = `${config.mode}:${config.cuit}:${config.cert.source}:${config.key.source}`;
-  if (cachedTicket?.cacheKey === cacheKey && cachedTicket.expiresAt > Date.now() + 5 * 60 * 1000) {
-    return cachedTicket;
-  }
-
-  const cms = await signLoginTicketRequest(loginTicketRequestXml("wsfe"), config.cert, config.key);
+async function issueWsaaTicket(config: ArcaConfig, certPem: string) {
+  const cms = await signLoginTicketRequest(loginTicketRequestXml("wsfe"), certPem, config.key);
   const response = await postSoapXml(
     config.wsaaEndpoint,
     "",
@@ -97,6 +88,23 @@ export async function getWsaaTicket(config: ArcaConfig): Promise<WsaaTicket> {
   const loginReturn = tagContent(response, "loginCmsReturn");
   if (!loginReturn) throw new ApiError(502, "WSAA no devolvio loginCmsReturn.");
 
-  cachedTicket = { ...parseWsaaTicket(loginReturn), cacheKey };
-  return cachedTicket;
+  return parseWsaaTicket(loginReturn);
+}
+
+export async function getWsaaTicket(config: ArcaConfig): Promise<WsaaTicket> {
+  const certPem = await credentialPem(config.cert);
+  let fingerprint: string;
+  try {
+    fingerprint = new X509Certificate(certPem).fingerprint256;
+  } catch {
+    throw new ApiError(503, "El certificado de ARCA no es válido.");
+  }
+  const cacheKey = 'wsaa:wsfe:' + config.mode + ':' + config.cuit + ':' + fingerprint;
+  if (cachedTicket?.cacheKey === cacheKey && cachedTicket.expiresAt > Date.now()) {
+    return cachedTicket;
+  }
+
+  const ticket = await getSharedWsaaTicket(cacheKey, () => issueWsaaTicket(config, certPem));
+  cachedTicket = { ...ticket, cacheKey };
+  return ticket;
 }

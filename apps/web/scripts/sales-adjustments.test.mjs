@@ -78,8 +78,8 @@ test("la fiscalizacion vinculada no duplica el impacto financiero", () => {
   assert.match(approvals, /metadata\.action === "fiscal_note"/);
   assert.match(approvals, /operationalDocumentId/);
   assert.doesNotMatch(fiscal, /UPDATE sales[\s\S]{0,1000}\n\s*issue_date\s*=/);
-  assert.match(fiscal, /recoverSaleFiscalInvoiceApproval/);
-  assert.match(fiscal, /fiscalReceiptMatchesSaleInvoice/);
+  assert.match(fiscal, /authorizeReservedInvoice/);
+  assert.match(fiscal, /withInvoiceLock/);
   assert.match(migration, /sales_internal_documents_operational_fiscal_uidx/);
   assert.match(fiscal, /SELECT 'factura', \$3, \$4, \$5::numeric, \$6, 'pendiente', \$7::jsonb, \$2/);
   assert.doesNotMatch(fiscal, /SELECT 'factura', \$4, \$5, \$6::numeric, \$7, 'pendiente', \$8::jsonb, \$2/);

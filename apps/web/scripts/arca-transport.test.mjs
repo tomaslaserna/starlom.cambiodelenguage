@@ -66,7 +66,26 @@ test("no reenvia automaticamente una solicitud de CAE ante una respuesta ambigua
         "http://ar.gov.afip.dif.FEV1/FECAESolicitar",
         "<Envelope />",
       ),
-      /ECONNRESET/,
+      /servicios1\.afip\.gov\.ar, FECAESolicitar.*ECONNRESET/,
+    );
+    assert.equal(attempts, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("registra la operación de autenticación sin volver a pedir el ticket", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    throw new TypeError("fetch failed", { cause: Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" }) });
+  };
+
+  try {
+    await assert.rejects(
+      postSoapXml("https://wsaa.afip.gov.ar/ws/services/LoginCms", "", "<Envelope />"),
+      /wsaa\.afip\.gov\.ar, loginCms.*ECONNRESET/,
     );
     assert.equal(attempts, 1);
   } finally {

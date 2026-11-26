@@ -382,7 +382,9 @@ async function lastAuthorizedReceipt(receiptType: number) {
     throw new ApiError(502, `ARCA rechazo la consulta de ultimo comprobante: ${messageText(messages)}`);
   }
 
-  return Number(tagContent(result, "CbteNro") || 0);
+  const number = tagContent(result, "CbteNro");
+  if (!/^\d+$/.test(number)) throw new ApiError(502, "ARCA omitió el último número autorizado.");
+  return Number(number);
 }
 
 export async function consultArcaAuthorizedReceipt(
@@ -419,12 +421,12 @@ export async function consultArcaAuthorizedReceipt(
   }
 
   const cae = tagContent(detail, "CodAutorizacion") || tagContent(detail, "CAE");
-  if (!cae) return null;
+  if (!cae || tagContent(detail, "Resultado") !== "A") return null;
 
   const caeExpiresAt = arcaDateToIso(tagContent(detail, "FchVto") || tagContent(detail, "CAEFchVto"));
   return {
-    pointOfSale: config.pointOfSale,
-    receiptType,
+    pointOfSale: Number(tagContent(detail, "PtoVta") || config.pointOfSale),
+    receiptType: Number(tagContent(detail, "CbteTipo") || receiptType),
     receiptNumber: Number(tagContent(detail, "CbteDesde") || receiptNumber),
     issueDate: arcaDateToIso(tagContent(detail, "CbteFch")),
     cae,
@@ -445,7 +447,7 @@ export async function findLastArcaAuthorizedReceipt(receiptType: number) {
   return consultArcaAuthorizedReceipt(receiptType, receiptNumber);
 }
 
-export async function authorizeArcaInvoice(input: AuthorizeArcaInvoiceInput): Promise<ArcaInvoiceAuthorization> {
+export async function authorizeArcaInvoice(input: AuthorizeArcaInvoiceInput, lifecycle?: { reserve(number: number, date: string): Promise<void>; rejected(number: number): Promise<void> }): Promise<ArcaInvoiceAuthorization> {
   const config = getArcaConfig();
   const receiptType = input.preserveReceiptType
     ? input.receiptType
@@ -456,9 +458,11 @@ export async function authorizeArcaInvoice(input: AuthorizeArcaInvoiceInput): Pr
   const receiptNumber = (await lastAuthorizedReceipt(receiptType)) + 1;
   const invoiceDate = argentinaDateYYYYMMDD();
   const cbtesAsocXml = associatedReceiptXml(receiptType, input.associatedReceipt);
+  const auth = await authXml();
+  await lifecycle?.reserve(receiptNumber, invoiceDate);
   const response = await wsfeSoap(
     "FECAESolicitar",
-    `${await authXml()}
+    `${auth}
     <FeCAEReq>
       <FeCabReq>
         <CantReg>1</CantReg>
@@ -501,6 +505,7 @@ export async function authorizeArcaInvoice(input: AuthorizeArcaInvoiceInput): Pr
   const resultCode = tagContent(detail, "Resultado") || tagContent(result, "Resultado");
 
   if (resultCode !== "A" || !cae || !caeExpiresAt) {
+    if (resultCode === "R" && !cae && Number(tagContent(detail, "CbteDesde")) === receiptNumber) await lifecycle?.rejected(receiptNumber);
     throw new ApiError(400, `ARCA no aprobo el comprobante: ${messageText(messages) || "sin CAE devuelto"}`);
   }
 

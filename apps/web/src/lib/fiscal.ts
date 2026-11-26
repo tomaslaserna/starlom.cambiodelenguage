@@ -1,3 +1,4 @@
+import { authorizeReservedInvoice, withInvoiceLock } from "@/lib/arca/invoice-attempt";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { arcaMissingEnv, getArcaConfig } from "@/lib/arca/config";
@@ -43,6 +44,7 @@ export type FiscalAuthorizationInput = {
   customerName: string;
   customerDocument: string;
   customerFiscalCondition: string;
+  requiresReview?: boolean;
   preserveReceiptType?: boolean;
   associatedReceipt?: {
     pointOfSale: number;
@@ -214,7 +216,7 @@ class ArcaFiscalProvider implements FiscalProvider {
   }
 
   async authorizeDocument(input: FiscalAuthorizationInput): Promise<FiscalAuthorizationResult> {
-    const result = await authorizeArcaInvoice({
+    const request = {
       customerDocument: input.customerDocument,
       customerVatCondition: input.customerFiscalCondition,
       receiptType: input.receiptType,
@@ -222,7 +224,10 @@ class ArcaFiscalProvider implements FiscalProvider {
       vatRate: input.vatRate,
       preserveReceiptType: input.preserveReceiptType,
       associatedReceipt: input.associatedReceipt,
-    });
+    };
+    const result = input.source === "sale" && input.kind === "invoice"
+      ? await authorizeReservedInvoice(input.companyId, input.documentId, Boolean(input.requiresReview), request)
+      : await authorizeArcaInvoice(request);
 
     return {
       documentId: input.documentId,
@@ -469,6 +474,7 @@ async function getSaleFiscalCandidate(companyId: number, saleId: string) {
       LIMIT 1
     `,
     [saleId, companyId],
+    { cache: false },
   );
   const row = result.rows[0];
   if (!row) throw new ApiError(404, "Venta no encontrada");
@@ -1180,46 +1186,6 @@ function isPostAuthorizationPersistenceError(message: string) {
   return /inconsistent types deduced|fiscal_receipt_number|receipt_number|issue_date|42P08|42703/i.test(message);
 }
 
-function fiscalReceiptMatchesSaleInvoice(receipt: ArcaAuthorizedReceipt, sale: SaleFiscalCandidate, receiptType: number) {
-  return receipt.receiptType === receiptType
-    && digitsOnly(receipt.customerDocument) === digitsOnly(sale.customerDocument)
-    && Math.abs(receipt.totalAmount - sale.totalAmount) < 0.01;
-}
-
-async function recoverSaleFiscalInvoiceApproval(
-  session: AuthSession,
-  sale: SaleFiscalCandidate,
-  receiptType: number,
-) {
-  let receipt: ArcaAuthorizedReceipt | null = null;
-  try {
-    receipt = await findLastArcaAuthorizedReceipt(receiptType);
-  } catch (error) {
-    throw new ApiError(
-      409,
-      `La factura pudo haber sido aprobada en ARCA, pero no pude consultarla para reconciliarla: ${fiscalErrorMessage(error)}`,
-    );
-  }
-  if (!receipt || !fiscalReceiptMatchesSaleInvoice(receipt, sale, receiptType)) {
-    throw new ApiError(
-      409,
-      "La factura pudo haber sido aprobada en ARCA, pero el ultimo comprobante no coincide con esta venta. No se reemitio para evitar un duplicado.",
-    );
-  }
-  const result: FiscalAuthorizationResult = {
-    documentId: sale.id,
-    pointOfSale: receipt.pointOfSale,
-    receiptType: receipt.receiptType,
-    receiptNumber: receipt.receiptNumber,
-    issueDate: receipt.issueDate,
-    cae: receipt.cae,
-    caeExpiresAt: receipt.caeExpiresAt,
-    observations: receipt.observations,
-  };
-  await markSaleFiscalApproved(session, sale.id, result, sale.vatRate);
-  return result;
-}
-
 function fiscalReceiptMatchesSaleNote(
   receipt: ArcaAuthorizedReceipt,
   sale: SaleFiscalCandidate,
@@ -1407,6 +1373,12 @@ export async function authorizeSaleDebitNote(session: AuthSession, saleId: strin
 }
 
 export async function authorizeSaleFiscalDocument(session: AuthSession, saleId: string) {
+  const fiscal = getFiscalStatus();
+  const issue = () => issueSaleInvoice(session, saleId);
+  return fiscal.provider === "arca" && fiscal.ready ? withInvoiceLock(issue) : issue();
+}
+
+async function issueSaleInvoice(session: AuthSession, saleId: string) {
   const sale = await getSaleFiscalCandidate(session.companyId, saleId);
   if (isFiscalApproved(sale.fiscalStatus, sale.cae)) {
     return {
@@ -1441,17 +1413,13 @@ export async function authorizeSaleFiscalDocument(session: AuthSession, saleId: 
   assertFiscalVatRate(receiptType, sale.vatRate);
   assertSaleFinalTotal(sale);
   const fiscal = getFiscalStatus();
-  if (
-    fiscal.provider === "arca"
-    && sale.fiscalStatus === "error"
-    && isPostAuthorizationPersistenceError(sale.fiscalErrorMessage)
-  ) {
-    return recoverSaleFiscalInvoiceApproval(session, sale, receiptType);
-  }
+  const requiresReview = sale.fiscalStatus === "pendiente" ||
+    (sale.fiscalStatus === "error" && !sale.fiscalErrorMessage.startsWith("Sin autorización pendiente. "));
   await markSaleFiscalPending(session, sale, receiptType, fiscal);
 
   try {
     const result = await getFiscalProvider().authorizeDocument({
+      requiresReview,
       companyId: session.companyId,
       userId: session.userId,
       username: session.username,
