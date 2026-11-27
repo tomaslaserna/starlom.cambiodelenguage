@@ -509,7 +509,7 @@ export function productUpdateInputFromBody(
     cost: firstNumber(body, ["cost", "precio", "costo"], defaults.cost),
     code: firstText(body, ["code", "codigo"], defaults.code).toUpperCase(),
     category: firstText(body, ["category", "categoria"], defaults.category),
-    supplierId: providedText(body, ["supplierId", "supplier_id", "proveedor_id"]) ?? defaults.supplierId,
+    supplierId: (providedText(body, ["supplierId", "supplier_id", "proveedor_id"]) ?? defaults.supplierId)?.trim() || null,
     brand: firstText(body, ["brand", "marca"], defaults.brand),
     presentationUnits: Math.trunc(firstNumber(body, ["presentationUnits", "presentacion"], defaults.presentationUnits)),
     justification: firstText(body, ["justification", "justificacion"]),
