@@ -411,6 +411,30 @@ export function customerInputFromBody(
   return input;
 }
 
+export function validateNewCustomerInput(input: CustomerInput) {
+  const requiredOperationalFields: Array<[keyof CustomerInput, string]> = [
+    ["phone", "teléfono"],
+    ["address", "dirección"],
+    ["city", "ciudad"],
+    ["province", "provincia"],
+    ["priceList", "lista de precios"],
+    ["seller", "vendedor"],
+    ["businessSegment", "rubro comercial"],
+  ];
+
+  for (const [field, label] of requiredOperationalFields) {
+    if (!String(input[field] ?? "").trim()) {
+      throw new ApiError(400, `El campo ${label} es obligatorio`);
+    }
+  }
+
+  if (input.receiptType === "Factura A" || input.receiptType === "Factura B") {
+    if (!input.businessName.trim()) throw new ApiError(400, "La razón social es obligatoria para facturar");
+    if (!input.taxId.trim()) throw new ApiError(400, "El CUIT/DNI es obligatorio para facturar");
+    if (!input.vatCondition.trim()) throw new ApiError(400, "La condición de IVA es obligatoria para facturar");
+  }
+}
+
 export function supplierInputFromBody(
   body: RequestBody,
   defaults: Partial<SupplierInput> = {},
@@ -524,6 +548,7 @@ export async function getCustomer(companyId: number, id: string) {
 }
 
 export async function createCustomer(companyId: number, input: CustomerInput) {
+  validateNewCustomerInput(input);
   const priceList = await resolveCustomerPriceList(companyId, input.priceList);
 
   const result = await queryWithCompanyContext<{ id: string }>(

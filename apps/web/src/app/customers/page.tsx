@@ -39,6 +39,7 @@ import { requireStaffSession } from "@/lib/auth";
 import { requirePagePermission } from "@/lib/page-auth";
 import { CUSTOMERS_READ_PERMISSION, sessionAllows } from "@/lib/route-auth";
 import { getNavigationAuthorization } from "@/lib/navigation";
+import { getCustomerDatabaseStats } from "@/lib/customer-database-stats";
 
 type CustomersPageProps = {
   searchParams: Promise<{
@@ -70,7 +71,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
   );
 
   const params = await searchParams;
-  const [result, priceLists, canCreateCustomers] = await Promise.all([
+  const [result, priceLists, canCreateCustomers, customerStats] = await Promise.all([
     listCustomers({
       companyId: session.companyId,
       customerIds: accessIds,
@@ -81,6 +82,7 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
     }),
     fastOr(listPriceLists(session.companyId, true), [], 1_500),
     sessionAllows(session, [{ resource: "clientes", action: "crear" }]),
+    getCustomerDatabaseStats(session.companyId, accessIds),
   ]);
   const activePriceLists = priceLists.filter((list) => list.active);
   const reputations = await customerReputations(session.companyId, result.data.map((customer) => customer.id));
@@ -112,9 +114,9 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
             <form action={createCustomerAction} className="grid gap-3">
               {crmMode ? <input name="returnTo" type="hidden" value="/crm/clientes?created=1" /> : null}
               <div className="grid gap-3 lg:grid-cols-5">
-                <Field htmlFor="customer-segment" label="Rubro comercial">
-                  <Select defaultValue="" id="customer-segment" name="businessSegment">
-                    <option value="">Sin clasificar</option>
+                <Field htmlFor="customer-segment" label="Rubro comercial" required>
+                  <Select defaultValue="" id="customer-segment" name="businessSegment" required>
+                    <option disabled value="">Seleccionar rubro</option>
                     {CUSTOMER_BUSINESS_SEGMENTS.map((segment) => <option key={segment} value={segment}>{segment}</option>)}
                   </Select>
                 </Field>
@@ -148,11 +150,11 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
                 </Field>
               </div>
               <div className="grid gap-3 lg:grid-cols-5">
-                <Field htmlFor="customer-phone" label="Telefono">
-                  <Input id="customer-phone" name="phone" />
+                <Field htmlFor="customer-phone" label="Telefono" required>
+                  <Input id="customer-phone" name="phone" required />
                 </Field>
-                <Field htmlFor="customer-price-list" label="Lista">
-                  <Select id="customer-price-list" name="priceList" defaultValue={activePriceLists[0]?.name ?? ""}>
+                <Field htmlFor="customer-price-list" label="Lista" required>
+                  <Select id="customer-price-list" name="priceList" defaultValue={activePriceLists[0]?.name ?? ""} required>
                     {activePriceLists.length === 0 ? <option value="">Sin listas activas</option> : null}
                     {activePriceLists.map((list) => (
                       <option key={list.id} value={list.name}>
@@ -161,22 +163,22 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
                     ))}
                   </Select>
                 </Field>
-                <Field htmlFor="customer-seller" label="Vendedor">
-                  <Input id="customer-seller" name="seller" />
+                <Field htmlFor="customer-seller" label="Vendedor" required>
+                  <Input id="customer-seller" name="seller" required />
                 </Field>
                 <Field htmlFor="customer-assigned-seller" label="Vendedor asignado (a cargo)">
                   <Input id="customer-assigned-seller" name="assignedSeller" />
                 </Field>
-                <Field htmlFor="customer-city" label="Ciudad">
-                  <Input id="customer-city" name="city" />
+                <Field htmlFor="customer-city" label="Ciudad" required>
+                  <Input id="customer-city" name="city" required />
                 </Field>
-                <Field htmlFor="customer-province" label="Provincia">
-                  <Input id="customer-province" name="province" />
+                <Field htmlFor="customer-province" label="Provincia" required>
+                  <Input id="customer-province" name="province" required />
                 </Field>
               </div>
               <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_minmax(260px,1fr)_auto] lg:items-end">
-                <Field htmlFor="customer-address" label="Direccion">
-                  <Input id="customer-address" name="address" />
+                <Field htmlFor="customer-address" label="Direccion" required>
+                  <Input id="customer-address" name="address" required />
                 </Field>
                 <Field htmlFor="customer-observation" label="Observacion">
                   <Textarea id="customer-observation" name="observation" rows={2} />
@@ -213,12 +215,24 @@ export default async function CustomersPage({ searchParams, crmMode = false }: C
           </form>
         </Toolbar>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-3">
           <StatCard
             className="p-3"
-            detail={`Pagina ${result.meta.page} de ${result.meta.totalPages} - ${result.meta.pageSize} por pagina`}
-            label="Clientes encontrados"
-            value={formatNumber(result.meta.total)}
+            detail="Total de fichas dentro de tu cartera"
+            label="Total de clientes"
+            value={formatNumber(customerStats.total)}
+          />
+          <StatCard
+            className="p-3"
+            detail="Compraron al menos una vez en los últimos 90 días"
+            label="Clientes activos"
+            value={formatNumber(customerStats.active)}
+          />
+          <StatCard
+            className="p-3"
+            detail="Compraron al menos una vez en los últimos 30 días"
+            label="Clientes habituales"
+            value={formatNumber(customerStats.habitual)}
           />
         </div>
 

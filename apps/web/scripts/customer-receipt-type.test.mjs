@@ -34,6 +34,7 @@ const requestBody = loadTypeScriptModule("../src/lib/request-body.ts", {
 const receiptTypes = loadTypeScriptModule("../src/lib/receipt-types.ts");
 const customers = loadTypeScriptModule("../src/lib/catalog-management.ts", {
   "@/lib/customer-segments": loadTypeScriptModule("../src/lib/customer-segments.ts"),
+  "@/lib/customer-receipt-types": loadTypeScriptModule("../src/lib/customer-receipt-types.ts"),
   "@/lib/api-response": { ApiError },
   "@/lib/db": {
     clearReadQueryCache: () => undefined,
