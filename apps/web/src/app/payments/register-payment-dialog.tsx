@@ -9,6 +9,7 @@ import type { CustomerAccountReconciliation } from "@/lib/customer-accounts";
 import { PaymentReceiptAttachment } from "./payment-receipt-attachment";
 import { paymentReceiptFileError } from "@/lib/payment-receipt";
 import { suggestPaymentAllocation } from "@/lib/payment-allocation";
+import type { RegisterCustomerPaymentResult } from "./actions";
 
 const METHODS = [
   { value: "transferencia", label: "Transferencia", hint: "Banco o billetera" },
@@ -20,7 +21,7 @@ export type PaymentCustomerOption = { id: string; name: string };
 export type PaymentTreasuryAccountOption = { id: string; name: string; accountType: "cash" | "bank" | "wallet" | "other" };
 type OpenRemittance = { saleId: string; number: string; date: string; total: number; outstanding: number };
 type Props = {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<RegisterCustomerPaymentResult>;
   customers: PaymentCustomerOption[]; treasuryAccounts: PaymentTreasuryAccountOption[];
   defaultCustomerId?: string; today: string; triggerLabel?: string; triggerClassName?: string;
 };
@@ -108,7 +109,11 @@ export function RegisterPaymentDialog({ action, customers, treasuryAccounts, def
     submitting.current = true; setPending(true); setError("");
     try {
       if (method === "transferencia" && receipt) formData.set("receipt", receipt);
-      await action(formData);
+      const result = await action(formData);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       setOpen(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo guardar. Revisá la cuenta antes de reintentar."); }
     finally { submitting.current = false; setPending(false); }
