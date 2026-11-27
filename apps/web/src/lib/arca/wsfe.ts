@@ -36,6 +36,13 @@ export type ArcaInvoiceAuthorization = {
 export type ArcaAuthorizedReceipt = ArcaInvoiceAuthorization & {
   customerDocument: string;
   totalAmount: number;
+  netAmount: number;
+  vatAmount: number;
+  exemptAmount: number;
+  nonTaxableAmount: number;
+  otherTaxesAmount: number;
+  vatConditionId: number;
+  vatLines: Array<{ id: number; base: number; amount: number }>;
   associatedReceipts: Array<{
     pointOfSale: number;
     receiptType: number;
@@ -441,6 +448,17 @@ export async function consultArcaAuthorizedReceipt(
     observations: messages,
     customerDocument: tagContent(detail, "DocNro"),
     totalAmount: Number(tagContent(detail, "ImpTotal") || 0),
+    netAmount: Number(tagContent(detail, "ImpNeto") || NaN),
+    vatAmount: Number(tagContent(detail, "ImpIVA") || NaN),
+    exemptAmount: Number(tagContent(detail, "ImpOpEx") || NaN),
+    nonTaxableAmount: Number(tagContent(detail, "ImpTotConc") || NaN),
+    otherTaxesAmount: Number(tagContent(detail, "ImpTrib") || NaN),
+    vatConditionId: Number(tagContent(detail, "CondicionIVAReceptorId") || NaN),
+    vatLines: tagContents(detail, "AlicIva").map(block => ({
+      id: Number(tagContent(block, "Id") || NaN),
+      base: Number(tagContent(block, "BaseImp") || NaN),
+      amount: Number(tagContent(block, "Importe") || NaN),
+    })),
     associatedReceipts: tagContents(detail, "CbteAsoc").map((block) => ({
       receiptType: Number(tagContent(block, "Tipo") || 0),
       pointOfSale: Number(tagContent(block, "PtoVta") || 0),

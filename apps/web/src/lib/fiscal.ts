@@ -1,4 +1,5 @@
 import { authorizeReservedInvoice, withInvoiceLock } from "@/lib/arca/invoice-attempt";
+import { assertSaleNotReissued } from "@/lib/fiscal-reissue";
 import { ApiError } from "@/lib/api-response";
 import type { AuthSession } from "@/lib/auth";
 import { arcaMissingEnv, getArcaConfig } from "@/lib/arca/config";
@@ -1271,6 +1272,8 @@ export async function authorizeSaleFiscalNote(
   requestedAmount?: number,
   operationalDocumentId = "",
 ) {
+  const issue = async () => {
+  await assertSaleNotReissued(session.companyId, saleId);
   const sale = await getSaleFiscalCandidate(session.companyId, saleId);
   if (!isFiscalApproved(sale.fiscalStatus, sale.cae)) {
     throw new ApiError(400, "La venta todavia no tiene factura aprobada con CAE.");
@@ -1369,6 +1372,9 @@ export async function authorizeSaleFiscalNote(
     await markSaleFiscalNoteFailure(session, document.documentId, kind, message);
     throw error;
   }
+  };
+  const fiscal = getFiscalStatus();
+  return fiscal.provider === "arca" && fiscal.ready ? withInvoiceLock(issue) : issue();
 }
 
 export async function authorizeSaleCreditNote(session: AuthSession, saleId: string, reason = "", amount?: number, operationalDocumentId = "") {

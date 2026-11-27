@@ -134,6 +134,20 @@ export async function getFiscalVatSummary(companyId: number): Promise<FiscalVatS
             sid.created_at::date
           ) < $3::date
       ),
+      reissue_vat AS (
+        SELECT
+          COALESCE(SUM(d.amount - (d.amount / 1.21))
+            FILTER (WHERE d.kind = 'invoice'), 0) AS sales_vat,
+          COALESCE(SUM(d.amount - (d.amount / 1.21))
+            FILTER (WHERE d.kind = 'credit'), 0) AS credit_vat,
+          COALESCE(SUM(d.amount) FILTER (WHERE d.kind = 'invoice'), 0) AS sales_total
+        FROM starlim_arca.reissues r
+        CROSS JOIN LATERAL (VALUES ('credit',r.credit,(r.snapshot->>'total')::numeric),('invoice',r.invoice,COALESCE(r.snapshot->>'replacementTotal',r.snapshot->>'total')::numeric)) d(kind, fiscal_auth, amount)
+        WHERE r.company_id = $1
+          AND d.fiscal_auth IS NOT NULL
+          AND (d.fiscal_auth->>'issueDate')::date >= $2::date
+          AND (d.fiscal_auth->>'issueDate')::date < $3::date
+      ),
       purchase_vat AS (
         SELECT
           COALESCE(SUM(
@@ -154,13 +168,13 @@ export async function getFiscalVatSummary(companyId: number): Promise<FiscalVatS
           AND p.purchase_date < $3::date
       )
       SELECT
-        fiscal_sales.sales_vat_debit::text,
+        (fiscal_sales.sales_vat_debit + reissue_vat.sales_vat)::text AS sales_vat_debit,
         fiscal_notes.debit_notes_vat::text,
-        fiscal_notes.credit_notes_vat::text,
+        (fiscal_notes.credit_notes_vat + reissue_vat.credit_vat)::text AS credit_notes_vat,
         purchase_vat.purchase_vat_credit::text,
-        fiscal_sales.fiscal_sales_total::text,
+        (fiscal_sales.fiscal_sales_total + reissue_vat.sales_total)::text AS fiscal_sales_total,
         purchase_vat.purchase_with_vat_total::text
-      FROM fiscal_sales, fiscal_notes, purchase_vat
+      FROM fiscal_sales, fiscal_notes, reissue_vat, purchase_vat
     `,
     [companyId, range.start, range.endExclusive],
   );

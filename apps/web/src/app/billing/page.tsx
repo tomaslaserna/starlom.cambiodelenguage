@@ -31,6 +31,7 @@ import { requirePagePermission } from "@/lib/page-auth";
 import { SALES_READ_PERMISSION } from "@/lib/route-auth";
 import { authorizeFiscalInvoiceAction, rejectFiscalInvoiceAction } from "@/app/billing/actions";
 import { LiveBillingSearch } from "@/app/billing/live-billing-search";
+import { listFiscalReissues } from "@/lib/fiscal-reissue";
 
 type BillingPageProps = {
   searchParams: Promise<{
@@ -76,6 +77,7 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
     getFiscalVatSummary(session.companyId),
     getInvoiceCoverageSummary(session.companyId),
   ]);
+  const reissues = new Map((await listFiscalReissues(session.companyId, ledger.data.flatMap(item => item.saleId ? [item.saleId] : []))).map(r => [r.saleId, r]));
 
   return (
     <ModulePage
@@ -241,6 +243,9 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                       <StatusBadge tone={fiscalTone(item.fiscalStatus)}>
                         {fiscalStatusLabel(item.fiscalStatus)}
                       </StatusBadge>
+                      {item.saleId && reissues.has(item.saleId) ? <div className="mt-1 text-xs font-semibold">
+                        {reissues.get(item.saleId)?.state === "completed" ? "Original reemplazada — ver factura vigente" : "Refacturación incompleta — ver expediente"}
+                      </div> : null}
                       {item.fiscalErrorMessage ? (
                         <div className="mt-1 line-clamp-2 text-xs text-[color:var(--danger)]">
                           {item.fiscalErrorMessage}
@@ -304,7 +309,10 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                               </Button>
                             </form>
                           ) : null}
-                          {item.saleId && item.hasFiscalIdentity && !item.creditNoteCae ? (
+                          {item.saleId && item.hasFiscalIdentity ? <ButtonLink className="w-full" href={`/billing/reissue/${item.saleId}`} size="sm" variant="secondary">
+                            {reissues.has(item.saleId) ? "Ver refacturación" : "Refacturar razón social"}
+                          </ButtonLink> : null}
+                          {item.saleId && item.hasFiscalIdentity && !item.creditNoteCae && !reissues.has(item.saleId) ? (
                             <ButtonLink
                               className="w-full"
                               href={`/billing/credit-note/${item.saleId}`}

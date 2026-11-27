@@ -105,7 +105,7 @@ function recipientDocumentType(document: string) {
   return 99;
 }
 
-async function buildArcaQrImage(input: {
+export async function buildArcaQrImage(input: {
   issueDate: string | null;
   pointOfSale: number;
   receiptType: number;
@@ -880,6 +880,11 @@ export async function buildPaymentRecordPdf(companyId: number, paymentId: string
 }
 
 export async function buildFiscalSalePdf(companyId: number, saleId: string) {
+  const { getFiscalReissue } = await import("@/lib/fiscal-reissue");
+  if (await getFiscalReissue(companyId, saleId)) {
+    const { buildFiscalReissuePdf } = await import("@/lib/pdf/fiscal-reissue");
+    return buildFiscalReissuePdf(companyId, saleId, "original");
+  }
   const header = await queryWithCompanyContext<{
     id: string;
     sale_number: string;

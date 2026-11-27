@@ -2,6 +2,7 @@ import { ApiError } from "@/lib/api-response";
 import { getArcaConfig } from "@/lib/arca/config";
 import { ArcaReceiptNotFound, authorizeArcaInvoice, consultArcaAuthorizedReceipt } from "@/lib/arca/wsfe";
 import { getDbPool } from "@/lib/db";
+import { receiptCompositionMatches, requireCompatibleTargetCondition } from "@/lib/fiscal-reissue-validation";
 
 export async function withInvoiceLock<T>(issue: () => Promise<T>) {
   const config = getArcaConfig();
@@ -27,7 +28,7 @@ type InvoiceInput = Parameters<typeof authorizeArcaInvoice>[0];
 type Reservation = { number: number; issued_on: string; point: number; kind: number;
   document: string; cents: string; vat: string; vat_condition: string };
 
-async function reconcileReservation(saved: Reservation, input: InvoiceInput, pointOfSale: number) {
+async function reconcileReservation(saved: Reservation, input: InvoiceInput, pointOfSale: number, strictComposition: boolean) {
   const document = input.customerDocument.replace(/\D/g, "");
   const cents = Math.round(input.totalAmount * 100);
   if (saved.point !== pointOfSale || saved.kind !== input.receiptType || saved.document !== document ||
@@ -47,12 +48,17 @@ async function reconcileReservation(saved: Reservation, input: InvoiceInput, poi
   if (receipt && receipt.receiptNumber === saved.number && receipt.pointOfSale === saved.point &&
       receipt.receiptType === saved.kind && Number(receipt.customerDocument) === Number(document) &&
       Math.round(receipt.totalAmount * 100) === cents && receipt.issueDate.replaceAll("-", "") === saved.issued_on &&
+      (!strictComposition || receiptCompositionMatches(receipt, input.totalAmount, requireCompatibleTargetCondition(input.customerVatCondition))) &&
+      (!input.associatedReceipt || receipt.associatedReceipts.some(a =>
+        a.pointOfSale === input.associatedReceipt!.pointOfSale &&
+        a.receiptType === input.associatedReceipt!.receiptType &&
+        a.receiptNumber === input.associatedReceipt!.receiptNumber)) &&
       /^\d{14}$/.test(receipt.cae) && receipt.caeExpiresAt) return receipt;
   throw new ApiError(409, "El número reservado sigue pendiente de conciliación en ARCA.");
 }
 
 export async function authorizeReservedInvoice(company: number, sale: string, requiresReview: boolean,
-  input: InvoiceInput) {
+  input: InvoiceInput, strictComposition = false) {
   const {mode, cuit, pointOfSale} = getArcaConfig();
   const db = getDbPool();
   const key = [mode, cuit, company, sale];
@@ -61,7 +67,7 @@ export async function authorizeReservedInvoice(company: number, sale: string, re
   const document = input.customerDocument.replace(/\D/g, "");
   const cents = Math.round(input.totalAmount * 100);
   const saved = await loadReservation();
-  if (saved) return reconcileReservation(saved, input, pointOfSale);
+  if (saved) return reconcileReservation(saved, input, pointOfSale, strictComposition);
   let reserved = false;
   try {
     return await authorizeArcaInvoice(input, {
@@ -89,7 +95,7 @@ export async function authorizeReservedInvoice(company: number, sale: string, re
   } catch (error) {
     if (reserved) {
       const pending = await loadReservation();
-      if (pending) return reconcileReservation(pending, input, pointOfSale);
+      if (pending) return reconcileReservation(pending, input, pointOfSale, strictComposition);
     }
     if (!reserved && !requiresReview) {
       throw new ApiError(error instanceof ApiError ? error.status : 502,
