@@ -51,19 +51,26 @@ test('real SQL consolidates per-order lines, subtracts operational NC once, excl
       CREATE TABLE products(id text,empresa_id int,name text,sku text,presentation_units numeric,active boolean);
       CREATE TABLE sales(id text,empresa_id int,client_id text,sale_date date,order_status text,status text,source_sheet text);
       CREATE TABLE sale_items(sale_id text,empresa_id int,product_id text,quantity numeric);
-      CREATE TABLE sales_internal_documents(empresa_id int,sale_id text,class_name text,fiscal boolean,operational_document_id text,detail_json jsonb);
+      CREATE TABLE sales_internal_documents(empresa_id int,sale_id text,class_name text,fiscal boolean,operational_document_id text,detail_json jsonb,delivery_id text);
+      CREATE TABLE delivery_documents(id text,empresa_id int,sale_id text);
       INSERT INTO clients VALUES ('c1',1,'Restaurante'),('c2',1,'Restaurante'),('c3',2,'Restaurante'),('empty',1,'Bar'),('unconfirmed',1,NULL);
       INSERT INTO products VALUES ('p',1,'Detergente','D',1,true),('inactive',1,'Viejo','V',1,false),('p2',2,'Ajeno','A',1,true);
       INSERT INTO sales VALUES ('s1',1,'c1','2026-11-01','entregado',NULL,NULL),('s2',1,'c2','2026-11-02','entregado',NULL,NULL),('cancel',1,'c1','2026-11-02','cancelado',NULL,NULL),('duplicate',1,'c1','2026-11-02','entregado',NULL,'bad-sheet'),('tenant',2,'c3','2026-11-02','entregado',NULL,NULL),('today',1,'c1','2026-11-27','entregado',NULL,NULL),('old',1,'c1','2026-01-01','entregado',NULL,NULL),('unknown',1,'unconfirmed','2026-11-02','entregado',NULL,NULL),('returned',1,'c1','2026-11-02','entregado',NULL,NULL);
       INSERT INTO sale_items VALUES ('s1',1,'p',2),('s1',1,'p',4),('s2',1,'p',2),('cancel',1,'p',100),('duplicate',1,'p',100),('tenant',2,'p2',100),('today',1,'p',100),('old',1,'p',100),('unknown',1,'p',100),('s1',1,'inactive',100),('returned',1,'p',4);
-      INSERT INTO sales_internal_documents VALUES (1,'s1','NC',false,NULL,'[{"id":"p","quantity":2}]'),(1,'s1','NC',true,'mirror','[{"id":"p","quantity":2}]'),(2,'s1','NC',false,NULL,'[{"id":"p","quantity":99}]'),(1,'returned','NC',false,NULL,'[{"id":"p","quantity":4}]');`);
+      INSERT INTO sales_internal_documents(empresa_id,sale_id,class_name,fiscal,operational_document_id,detail_json) VALUES (1,'s1','NC',false,NULL,'[{"id":"p","quantity":2}]'),(1,'s1','NC',true,'mirror','[{"id":"p","quantity":2}]'),(2,'s1','NC',false,NULL,'[{"id":"p","quantity":99}]'),(1,'returned','NC',false,NULL,'[{"id":"p","quantity":4}]');
+      INSERT INTO delivery_documents VALUES ('d1',1,'s1'),('d2',1,'s2'),('d_other',2,'s1');
+      INSERT INTO sales_internal_documents VALUES
+        (1,NULL,'NC',false,NULL,'[{"id":"p","quantity":1}]','d1'),
+        (1,NULL,'ND',false,NULL,'[{"id":"p","quantity":3},{"id":"p","quantity":"invalid"}]','d2'),
+        (1,NULL,'NC',true,'mirror','[{"id":"p","quantity":1}]','d1'),
+        (2,NULL,'NC',false,NULL,'[{"id":"p","quantity":99}]','d_other');`);
     const guide=load('segment-guide',{'@/lib/segment-guide-domain':domain(),'@/lib/customer-segments':{CUSTOMER_BUSINESS_SEGMENTS:['Restaurante','Bar','Carnicería']},'@/lib/db':{queryWithCompanyContext:(_c,sql,params)=>db.query(sql,params)},'@/lib/order-status':load('order-status'),'@/lib/sales-source-sql':load('sales-source-sql')});
     const result=await guide.getSegmentGuide(1,new Date('2026-11-27T15:00:00Z'));
     const r=result.segments.find(x=>x.segment==='Restaurante');
     assert.equal(r.customerCount,2);
     assert.equal(r.orderCount,2);
     assert.equal(r.products.length,1);
-    assert.equal(r.products[0].averageQuantity,3);
+    assert.equal(r.products[0].averageQuantity,4);
     assert.equal(r.products[0].buyerCount,2);
     assert.equal(r.products[0].orderCount,2);
     assert.equal(result.segments.find(x=>x.segment==='Bar').products.length,0);

@@ -27,7 +27,11 @@ export async function getSegmentGuide(companyId: number, now = new Date()) {
              CASE WHEN d.class_name = 'NC' THEN -1 ELSE 1 END *
              CASE WHEN entry->>'quantity' ~ '^[0-9]+([.][0-9]+)?$' THEN (entry->>'quantity')::numeric ELSE 0 END
       FROM eligible_sales s
-      JOIN sales_internal_documents d ON d.sale_id = s.id AND d.empresa_id = s.empresa_id
+      JOIN sales_internal_documents d ON d.empresa_id = s.empresa_id
+        AND (d.sale_id = s.id OR (d.sale_id IS NULL AND EXISTS (
+          SELECT 1 FROM delivery_documents delivery
+          WHERE delivery.id = d.delivery_id AND delivery.empresa_id = s.empresa_id AND delivery.sale_id = s.id
+        )))
       CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(d.detail_json) = 'array' THEN d.detail_json ELSE '[]'::jsonb END) entry
       WHERE d.class_name IN ('NC', 'ND') AND (d.fiscal = false OR d.operational_document_id IS NULL)
         AND entry->>'quantity' ~ '^[0-9]+([.][0-9]+)?$'
