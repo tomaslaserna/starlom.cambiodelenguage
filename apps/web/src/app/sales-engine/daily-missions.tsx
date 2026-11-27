@@ -7,7 +7,7 @@ import { completeSalesMissionAction } from "./actions";
 const KIND_META: Record<CrmMissionKind, { label: string; icon: AppIconName; explanation: string }> = {
   lead: { label: "Prospectos", icon: "trend", explanation: "Contactos cuya fecha de seguimiento llegó y todavía no fueron atendidos." },
   cliente: { label: "Recompra", icon: "user", explanation: "Clientes que se alejaron de su ritmo real de compra." },
-  presupuesto: { label: "Presupuestos", icon: "quote", explanation: "Propuestas próximas a vencer o vencidas que todavía esperan una decisión." },
+  presupuesto: { label: "Presupuestos", icon: "quote", explanation: "Propuestas nuevas a prospectos, próximas a vencer o vencidas que todavía esperan una decisión." },
   lista: { label: "Listas enviadas", icon: "download", explanation: "Listas compartidas cuyo plazo de seguimiento llegó hoy." },
 };
 
