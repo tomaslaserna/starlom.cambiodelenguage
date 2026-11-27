@@ -49,6 +49,35 @@ function whatsappPhone(phone: string) {
   if (!digits) return undefined;
   return digits.startsWith("54") ? digits : `54${digits}`;
 }
+
+function prospectIdentity(quote: VendorQuote) {
+  const normalized = quote.clientName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("es")
+    .trim()
+    .replace(/\s+/g, " ");
+  return normalized || quote.id;
+}
+
+function latestProspectQuotes(
+  quotes: Record<QuoteBucket, VendorQuote[]>,
+  missionStates: SalesMissionStateMap,
+) {
+  const latest = new Map<string, VendorQuote>();
+  for (const quote of [...quotes.vigentes, ...quotes.por_vencer, ...quotes.vencidos]) {
+    if (quote.clientId) continue;
+    const state = missionStates[`quote-${quote.id}`];
+    if ((quote.daysRemaining ?? 0) < 0 && quote.expirationDate && quote.expirationDate < SALES_ENGINE_ROLLOUT_DATE && !state) continue;
+    const key = prospectIdentity(quote);
+    const current = latest.get(key);
+    if (!current || (quote.issueDate ?? "") > (current.issueDate ?? "") || ((quote.issueDate ?? "") === (current.issueDate ?? "") && quote.id > current.id)) {
+      latest.set(key, quote);
+    }
+  }
+  return [...latest.values()];
+}
+
 export function buildCrmMissions({ clients, leads, quotes, priceListSignals = [], missionStates = {}, today = missionToday() }: MissionInput): CrmMission[] {
   const missions: CrmMission[] = [];
 
@@ -68,7 +97,30 @@ export function buildCrmMissions({ clients, leads, quotes, priceListSignals = []
     });
   }
 
+  for (const quote of latestProspectQuotes(quotes, missionStates)) {
+    const daysRemaining = quote.daysRemaining ?? 0;
+    const expired = daysRemaining < 0;
+    const expiring = !expired && daysRemaining <= 3;
+    missions.push({
+      id: `quote-${quote.id}`,
+      kind: "presupuesto",
+      urgency: expired ? "ahora" : expiring ? "hoy" : "proximo",
+      score: expired ? 96 + Math.min(3, Math.abs(daysRemaining)) : expiring ? 90 - Math.max(0, daysRemaining) : 74,
+      title: expired ? `Reactivar ${quote.quoteNumber}` : `Dar seguimiento a ${quote.quoteNumber}`,
+      reason: expired
+        ? `Venció hace ${Math.abs(daysRemaining)} ${Math.abs(daysRemaining) === 1 ? "día" : "días"}`
+        : expiring
+          ? (daysRemaining === 0 ? "El presupuesto vence hoy" : `Vence en ${daysRemaining} días`)
+          : "Prospecto presupuestado sin próximo contacto definido",
+      detail: `${quote.clientName || "Prospecto sin identificar"} · ${new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(quote.total)}`,
+      href: `/crm/presupuestos?q=${encodeURIComponent(quote.quoteNumber)}`,
+      actionLabel: expired ? "Revisar presupuesto" : "Ver oportunidad",
+      entityId: quote.id,
+    });
+  }
+
   for (const quote of quotes.vencidos.filter((item) => {
+    if (!item.clientId) return false;
     // Do not revive the stale historical archive, but once a quote entered the
     // new motor it stays actionable until an operator completes the mission.
     if (item.expirationDate && item.expirationDate >= SALES_ENGINE_ROLLOUT_DATE) return true;
@@ -90,7 +142,7 @@ export function buildCrmMissions({ clients, leads, quotes, priceListSignals = []
     });
   }
 
-  for (const quote of quotes.por_vencer) {
+  for (const quote of quotes.por_vencer.filter((item) => Boolean(item.clientId))) {
     missions.push({
       id: `quote-${quote.id}`,
       kind: "presupuesto",
