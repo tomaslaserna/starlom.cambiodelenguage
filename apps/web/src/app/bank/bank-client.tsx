@@ -174,13 +174,20 @@ export function BankClient({ personal, shared }: { personal: BankListing; shared
             <div className="min-w-0">
               <p className="text-xs font-medium text-slate-500">{scope === "shared" ? "Empresa · Compartido" : "Mi banco · Privado"}</p>
               <h2 className="mt-1 break-words text-xl font-bold">{folder?.name ?? "Archivos sin carpeta"}</h2>
-              <p className="mt-1 text-xs text-slate-600">{visibleFiles.length} {visibleFiles.length === 1 ? "archivo" : "archivos"}{!canWrite && " · Solo lectura"}</p>
+              <p className="mt-1 text-xs text-slate-600">{visibleFiles.length} archivos guardados{scope === "shared" && folderId === null ? " · 1 guía dinámica" : ""}{!canWrite && " · Solo lectura"}</p>
             </div>
             {canWrite && <div>
               <Button disabled={busy} onClick={() => fileInputRef.current?.click()} type="button">Subir archivo</Button>
               <input className="hidden" multiple onChange={onFilesSelected} ref={fileInputRef} type="file" />
             </div>}
           </header>
+          {scope === "shared" && folderId === null ? <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-100 bg-blue-50/50 p-5">
+            <div className="min-w-0 flex-1 basis-48">
+              <a className="text-sm font-bold text-blue-800 hover:underline" href="/api/bank/segment-guide" target="_blank" rel="noreferrer">Sugerencias por rubro — PDF</a>
+              <p className="mt-1 text-xs text-slate-600">Guía con índice, productos habituales y ocasionales y cantidades por pedido. Se actualiza con cada descarga según las compras de los últimos 90 días.</p>
+            </div>
+            <a className="py-2 text-xs font-semibold text-blue-700 hover:underline" href="/api/bank/segment-guide?download=1" aria-label="Descargar sugerencias por rubro">Descargar PDF actualizado</a>
+          </div> : null}
           {status && <p role="status" className="px-5 pt-3 text-sm text-blue-700">{status}</p>}
           {error && <p role="alert" className="px-5 pt-3 text-sm text-red-700">{error}</p>}
           {visibleFiles.length === 0 ? (

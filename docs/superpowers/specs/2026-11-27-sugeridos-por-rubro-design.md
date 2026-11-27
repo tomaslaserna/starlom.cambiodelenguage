@@ -1,6 +1,6 @@
 # Sugerencias por rubro y presupuestos base
 
-Estado: propuesta para revisión de Augusto. No implementada.
+Estado: aprobada por Augusto el 27/11/2026. En implementación.
 
 ## Objetivo
 Transformar las compras históricas de StarLim en una guía comercial compartida y presupuestos editables que reduzcan el tiempo de cotización. El PDF y las plantillas consultarán una misma fuente para evitar recomendaciones contradictorias.

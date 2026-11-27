@@ -32,6 +32,7 @@ const customerReceiptTypes = loadTypeScriptModule("../src/lib/customer-receipt-t
 
 function loadCatalog(dbOverrides = {}) {
   return loadTypeScriptModule("../src/lib/catalog-management.ts", {
+    "@/lib/customer-segments": loadTypeScriptModule("../src/lib/customer-segments.ts"),
     "@/lib/api-response": { ApiError },
     "@/lib/db": {
       clearReadQueryCache: () => undefined,

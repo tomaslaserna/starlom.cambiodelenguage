@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "node scripts/apply-carniceria-migration.mjs",
     "build": "next build",
+    "test:segment-guide": "node --test scripts/segment-guide.test.mjs",
     "start": "next start",
     "lint": "eslint",
     "env:check": "node scripts/check-env.mjs",

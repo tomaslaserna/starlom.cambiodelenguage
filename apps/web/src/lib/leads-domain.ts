@@ -6,7 +6,7 @@ export const LEAD_STAGES = ["nuevo", "contactado", "interesado", "convertido", "
 export type LeadStage = (typeof LEAD_STAGES)[number];
 
 export const ACTIVE_LEAD_STAGES = ["nuevo", "contactado", "interesado"] as const;
-const VALID_LEAD_BUSINESS_SEGMENTS = new Set(["Restaurante", "Cafetería", "Bar", "Salón de eventos", "Cancha o club deportivo", "Consorcio", "Fábrica o industria", "Salud o rehabilitación", "Hotelería", "Comercio", "Empresa de limpieza", "Institución", "Otro"]);
+const VALID_LEAD_BUSINESS_SEGMENTS = new Set(["Restaurante", "Carnicería", "Cafetería", "Bar", "Salón de eventos", "Cancha o club deportivo", "Consorcio", "Fábrica o industria", "Salud o rehabilitación", "Hotelería", "Comercio", "Empresa de limpieza", "Institución", "Otro"]);
 export type ActiveLeadStage = (typeof ACTIVE_LEAD_STAGES)[number];
 
 export const LEAD_CONTACT_OUTCOMES = ["sin_respuesta", "contactado", "interesado", "pedido_probable", "no_interesado"] as const;

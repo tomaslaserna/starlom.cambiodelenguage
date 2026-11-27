@@ -127,7 +127,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
     >
       <div className="grid gap-5">
         <PageHeader
-          actions={canCreateQuotes ? <ButtonLink href="/quotes/new">Nuevo presupuesto</ButtonLink> : null}
+          actions={canCreateQuotes ? <div className="flex flex-wrap gap-2"><ButtonLink href="/quotes/base" variant="secondary">Presupuestos base</ButtonLink><ButtonLink href="/quotes/new">Nuevo presupuesto</ButtonLink></div> : null}
           description="Consulta, busca y gestiona los presupuestos realizados."
           title="Presupuestos"
         />

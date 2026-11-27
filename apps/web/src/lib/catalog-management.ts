@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/api-response";
+import { CUSTOMER_BUSINESS_SEGMENTS } from "@/lib/customer-segments";
 import { clearReadQueryCache, queryWithCompanyContext, withCompanyContext } from "@/lib/db";
 import { resolvePriceListName } from "@/lib/order-pricing";
 import { parsePagination } from "@/lib/pagination";
@@ -131,10 +132,7 @@ export type ProductUpdateInput = {
 };
 
 const DEFAULT_COMPANY_ID = 1;
-const VALID_CUSTOMER_BUSINESS_SEGMENTS = new Set([
-  "Restaurante", "Cafetería", "Bar", "Salón de eventos", "Cancha o club deportivo", "Consorcio",
-  "Fábrica o industria", "Salud o rehabilitación", "Hotelería", "Comercio", "Empresa de limpieza", "Institución", "Otro",
-]);
+const VALID_CUSTOMER_BUSINESS_SEGMENTS = new Set<string>(CUSTOMER_BUSINESS_SEGMENTS);
 
 async function nextCategorySku(client: PoolClient, companyId: number, categoryCode: string) {
   const prefix = categoryCode.trim().toUpperCase();

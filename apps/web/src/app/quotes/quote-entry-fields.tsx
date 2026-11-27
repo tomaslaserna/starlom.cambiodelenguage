@@ -143,7 +143,7 @@ export function QuoteEntryFields({
   const calculatedLines = lines
     .map((line) => {
       const product = productMap.get(line.productId);
-      if (!product || !customerReady) return null;
+      if (!product || !hasConfiguredDocument) return null;
       const quantity = Math.max(0, Math.trunc(numericInput(line.quantity, 0)));
       const discount = Math.min(100, Math.max(0, numericInput(line.discount, 0)));
       const frozenUnitPrice = numericInput(line.unitPrice ?? "", 0);
@@ -162,6 +162,8 @@ export function QuoteEntryFields({
     .filter((line): line is NonNullable<typeof line> => Boolean(line));
 
   const totalAmount = calculatedLines.reduce((total, line) => total + line.subtotal, 0);
+  const missingPrices = calculatedLines.filter(line => !Number.isFinite(line.unitPrice) || line.unitPrice <= 0);
+  const canSubmitQuote = customerReady && calculatedLines.length > 0 && missingPrices.length === 0;
   const quoteTotals = vatAmountsFromNet(totalAmount, vatRate ?? 0);
   const vatAmount = quoteTotals.vat;
   const quoteTotal = quoteTotals.total;
@@ -170,14 +172,14 @@ export function QuoteEntryFields({
   const draftDiscount = Math.min(100, Math.max(0, numericInput(draftLine.discount, 0)));
   const draftUnitPrice = draftProduct && customerReady ? priceForList(draftProduct.prices, activePriceList) : 0;
   const draftSubtotal = draftProduct ? lineSubtotal(draftUnitPrice, draftQuantity, draftDiscount) : 0;
-  const canAddLine = Boolean(customerReady && draftProduct && draftQuantity > 0);
+  const canAddLine = Boolean(customerReady && draftProduct && draftQuantity > 0 && Number.isFinite(draftUnitPrice) && draftUnitPrice > 0);
   const payload = calculatedLines.map((line) => ({
     productId: line.product.id,
     quantity: line.quantity,
     discount: line.discount,
     unitPrice: line.unitPrice,
   }));
-  const canComposeQuickQuote = Boolean(customerReady && calculatedLines.length && quoteTotal > 0);
+  const canComposeQuickQuote = Boolean(canSubmitQuote && quoteTotal > 0);
   const generatedQuickQuoteText = customerReady
     ? [
         `Hola ${quoteCustomerName}, te paso presupuesto rapido de Starlim:`,
@@ -241,6 +243,8 @@ export function QuoteEntryFields({
       <input name="priceListOverride" type="hidden" value={activePriceList} />
       <input name="validityDays" type="hidden" value={validityDays} />
       <input name="desiredDocument" type="hidden" value={desiredDocument ?? "remito"} />
+      {missingPrices.length ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Hay productos sin precio vigente en la lista elegida: {missingPrices.map(line => line.product.name).join(", ")}. Cambiá de lista o quitalos para continuar.</p> : null}
+      {customerReady && draftProduct && draftUnitPrice <= 0 ? <p role="alert" className="text-sm text-amber-900">Este producto no tiene precio vigente en la lista elegida.</p> : null}
       {isEdit ? (
         <div className="rounded-lg border border-[color:var(--success)]/35 bg-[color:var(--success-subtle)] px-4 py-3 text-sm font-semibold text-[color:var(--success)]">
           Los precios originales permanecen congelados. Cambiar cantidades o datos del cliente no los recalcula; los productos nuevos toman su costo actual.
@@ -575,7 +579,7 @@ export function QuoteEntryFields({
         {isEdit ? (
           <>
             <ButtonLink href="/quotes" variant="secondary">Cancelar</ButtonLink>
-            <Button disabled={!customerReady || calculatedLines.length === 0} type="submit">
+            <Button disabled={!canSubmitQuote} type="submit">
               Guardar cambios
             </Button>
           </>
@@ -598,7 +602,7 @@ export function QuoteEntryFields({
             ) : (
               <Button disabled type="button" variant="outline">WhatsApp rapido</Button>
             )}
-            <Button disabled={!customerReady || calculatedLines.length === 0} type="submit">
+            <Button disabled={!canSubmitQuote} type="submit">
               Crear presupuesto formal
             </Button>
           </>
