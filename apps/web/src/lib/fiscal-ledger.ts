@@ -136,9 +136,9 @@ export async function getFiscalVatSummary(companyId: number): Promise<FiscalVatS
       ),
       reissue_vat AS (
         SELECT
-          COALESCE(SUM(d.amount - (d.amount / 1.21))
+          COALESCE(SUM(d.amount - ROUND(d.amount / 1.21, 2))
             FILTER (WHERE d.kind = 'invoice'), 0) AS sales_vat,
-          COALESCE(SUM(d.amount - (d.amount / 1.21))
+          COALESCE(SUM(d.amount - ROUND(d.amount / 1.21, 2))
             FILTER (WHERE d.kind = 'credit'), 0) AS credit_vat,
           COALESCE(SUM(d.amount) FILTER (WHERE d.kind = 'invoice'), 0) AS sales_total
         FROM starlim_arca.reissues r

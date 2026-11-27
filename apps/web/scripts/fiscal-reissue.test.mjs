@@ -568,7 +568,12 @@ test("fiscal book includes each credit and replacement on its own fiscal issue d
   assert.equal(result.salesVatDebit, 21);
   assert.equal(result.creditNotesVat, 0);
   assert.equal(result.netVatBalance, 21);
+  await db.exec(`UPDATE starlim_arca.reissues SET snapshot='{"total":500779.57,"replacementTotal":380695.81}',
+    credit='{"issueDate":"2026-12-01"}',invoice='{"issueDate":"2026-12-01"}' WHERE company_id=1`);
+  result = await ledger.getFiscalVatSummary(1);
   await db.close();
+  assert.equal(result.salesVatDebit, 66071.17);
+  assert.equal(result.creditNotesVat, 86912.16);
 });
 test("durable reservation reconciles remote approval after timeout without a second emission", async () => {
   let saved;
