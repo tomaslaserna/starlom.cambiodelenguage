@@ -192,3 +192,22 @@ test("un prospecto presupuestado permanece oculto hasta la fecha de recontacto",
   assert.equal(buildCrmMissions({ ...input, today: "2027-01-24" }).length, 0);
   assert.equal(buildCrmMissions({ ...input, today: "2027-01-25" })[0]?.id, "quote-quote-new");
 });
+
+test("elige por hora de creacion cuando un prospecto recibe dos presupuestos el mismo dia", () => {
+  const missions = buildCrmMissions({
+    clients: emptyClients,
+    leads: [],
+    quotes: {
+      vigentes: [
+        { id: "zzz-old", clientId: null, quoteNumber: "P-0130", clientName: "Espacio O2", total: 1000, issueDate: "2026-11-27", createdAt: "2026-11-27T10:00:00Z", expirationDate: "2026-12-12", daysRemaining: 15, status: "pendiente", approvedThisMonth: false },
+        { id: "aaa-new", clientId: null, quoteNumber: "P-0133", clientName: "ESPACIO O2", total: 1500, issueDate: "2026-11-27", createdAt: "2026-11-27T15:00:00Z", expirationDate: "2026-12-12", daysRemaining: 15, status: "pendiente", approvedThisMonth: false },
+      ],
+      por_vencer: [],
+      vencidos: [],
+      aceptados: [],
+    },
+    today: "2026-11-27",
+  });
+
+  assert.equal(missions.find((mission) => mission.kind === "presupuesto")?.id, "quote-aaa-new");
+});

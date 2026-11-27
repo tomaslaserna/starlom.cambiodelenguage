@@ -71,7 +71,9 @@ function latestProspectQuotes(
     if ((quote.daysRemaining ?? 0) < 0 && quote.expirationDate && quote.expirationDate < SALES_ENGINE_ROLLOUT_DATE && !state) continue;
     const key = prospectIdentity(quote);
     const current = latest.get(key);
-    if (!current || (quote.issueDate ?? "") > (current.issueDate ?? "") || ((quote.issueDate ?? "") === (current.issueDate ?? "") && quote.id > current.id)) {
+    const quoteCreatedAt = quote.createdAt ?? quote.issueDate ?? "";
+    const currentCreatedAt = current?.createdAt ?? current?.issueDate ?? "";
+    if (!current || quoteCreatedAt > currentCreatedAt || (quoteCreatedAt === currentCreatedAt && quote.id > current.id)) {
       latest.set(key, quote);
     }
   }

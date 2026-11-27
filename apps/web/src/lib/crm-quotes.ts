@@ -8,6 +8,7 @@ export type VendorQuote = {
   clientName: string;
   total: number;
   issueDate: string | null;
+  createdAt?: string | null;
   expirationDate: string | null;
   daysRemaining: number | null;
   status: string;

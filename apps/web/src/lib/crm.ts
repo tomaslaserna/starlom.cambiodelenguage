@@ -258,6 +258,7 @@ export async function getVendorQuotes(session: AuthSession): Promise<VendorQuote
       client_name: string;
       total: string;
       issue_date: string | null;
+      created_at: string | null;
       expiration_date: string | null;
       days_remaining: string | null;
       status: string;
@@ -270,6 +271,7 @@ export async function getVendorQuotes(session: AuthSession): Promise<VendorQuote
                COALESCE(NULLIF(q.client_name, ''), c.display_name, c.legal_name, '') AS client_name,
                q.total_amount::text AS total,
                q.created_at::date::text AS issue_date,
+               q.created_at::text AS created_at,
                (q.created_at::date + (q.validity_days || ' days')::interval)::date::text AS expiration_date,
                ((q.created_at::date + (q.validity_days || ' days')::interval)::date - CURRENT_DATE)::text AS days_remaining,
                q.status,
@@ -291,6 +293,7 @@ export async function getVendorQuotes(session: AuthSession): Promise<VendorQuote
     clientName: row.client_name,
     total: Number(row.total),
     issueDate: row.issue_date,
+    createdAt: row.created_at,
     expirationDate: row.expiration_date,
     daysRemaining: row.days_remaining == null ? null : Number(row.days_remaining),
     status: row.status,
